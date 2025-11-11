@@ -120,6 +120,27 @@ if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
     if [ "$DB_EXISTS" = "yes" ]; then
         echo "⚠️  Database '$DB_NAME' already exists."
         
+        # Check if user exists, create if not
+        USER_EXISTS=$(sudo -u postgres psql -t -c "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | xargs)
+        
+        if [ "$USER_EXISTS" != "1" ]; then
+            echo "Creating database user '$DB_USER'..."
+            sudo -u postgres psql <<EOF
+CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+ALTER DATABASE $DB_NAME OWNER TO $DB_USER;
+GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
+EOF
+            echo "✅ User created and granted access to database"
+        else
+            echo "User '$DB_USER' already exists. Ensuring access to database..."
+            sudo -u postgres psql <<EOF
+ALTER USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+ALTER DATABASE $DB_NAME OWNER TO $DB_USER;
+GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
+EOF
+            echo "✅ User password updated and access granted"
+        fi
+        
         # Check if database is empty
         TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | xargs)
         
