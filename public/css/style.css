@@ -1552,21 +1552,25 @@ body.dark-theme #message-input::placeholder {
 }
 
 body.dark-theme .sidebar {
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.8);
     border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 body.dark-theme #sidebar {
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.8);
 }
 
 body.dark-theme #sidebar-header {
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.8);
+}
+
+body.dark-theme #sidebar-content {
+    background: rgba(0, 0, 0, 0.8);
 }
 
 body.dark-theme .sidebar h3,
 body.dark-theme #sidebar-header h3 {
-    color: white;
+    color: white !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
@@ -1576,6 +1580,7 @@ body.dark-theme .user-item {
 
 body.dark-theme .active-user {
     color: white !important;
+    background: rgba(255, 255, 255, 0.05);
 }
 
 body.dark-theme .active-user .user-name {
