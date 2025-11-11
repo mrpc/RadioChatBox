@@ -133,10 +133,8 @@ docker exec radiochatbox_apache ./vendor/bin/phpunit
 ```
 
 ### 3. Update README Placeholders
-- Replace `yourusername` with your GitHub username
-- Replace `security@radiochatbox.org` with your email
+- All repository URLs have been updated to `github.com/mrpc/RadioChatBox`
 - Add screenshots if desired
-- Update repository URLs
 
 ### 4. Create GitHub Repository
 ```bash
@@ -150,7 +148,7 @@ git add .
 git commit -m "Initial commit: RadioChatBox v1.0.0"
 
 # Add remote
-git remote add origin https://github.com/yourusername/radiochatbox.git
+git remote add origin https://github.com/mrpc/RadioChatBox.git
 
 # Push
 git push -u origin main

@@ -53,8 +53,8 @@ Feature requests are welcome! Please open an issue describing:
 
 1. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/radiochatbox.git
-   cd radiochatbox
+   git clone https://github.com/mrpc/RadioChatBox.git
+   cd RadioChatBox
    ```
 
 2. Set up development environment:

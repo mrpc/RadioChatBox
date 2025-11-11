@@ -72,4 +72,4 @@ Initial release of RadioChatBox - a modern, real-time chat application with comp
 - Apache 2.4
 - Docker & Docker Compose
 
-[1.0.0]: https://github.com/yourusername/radiochatbox/releases/tag/v1.0.0
+[1.0.0]: https://github.com/mrpc/RadioChatBox/releases/tag/v1.0.0

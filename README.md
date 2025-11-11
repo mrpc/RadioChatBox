@@ -68,7 +68,7 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 
 - **Nickname blacklist** to reserve or block usernames   ```bash
 
-- **URL filtering** with customizable blacklist patterns   git clone https://github.com/yourusername/RadioChatBox.git
+- **URL filtering** with customizable blacklist patterns   git clone https://github.com/mrpc/RadioChatBox.git
 
 - **Rate limiting** to prevent spam   cd RadioChatBox
 
@@ -130,7 +130,7 @@ REDIS_HOST=redis
 
    ```bash
 
-   git clone https://github.com/yourusername/radiochatbox.git# PostgreSQL Configuration
+   git clone https://github.com/mrpc/RadioChatBox.git# PostgreSQL Configuration
 
    cd radiochatboxDB_HOST=postgres
 
@@ -720,11 +720,11 @@ docker-compose exec apache php -r "var_dump(new PDO('pgsql:host=postgres;dbname=
 
 
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/radiochatbox/issues)Contributions are welcome! Please feel free to submit a Pull Request.
+- **Issues**: [GitHub Issues](https://github.com/mrpc/RadioChatBox/issues)Contributions are welcome! Please feel free to submit a Pull Request.
 
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/radiochatbox/discussions)
+- **Discussions**: [GitHub Discussions](https://github.com/mrpc/RadioChatBox/discussions)
 
-- **Documentation**: [Wiki](https://github.com/yourusername/radiochatbox/wiki)1. Fork the repository
+- **Documentation**: [Wiki](https://github.com/mrpc/RadioChatBox/wiki)1. Fork the repository
 
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
 
@@ -761,9 +761,8 @@ Made with ❤️ for radio shows and live broadcasts## License
 ## Support
 
 For issues, questions, or contributions:
-- 🐛 [Report bugs](https://github.com/yourusername/RadioChatBox/issues)
-- 💬 [Discussions](https://github.com/yourusername/RadioChatBox/discussions)
-- 📧 Email: support@yourradiosite.com
+- 🐛 [Report bugs](https://github.com/mrpc/RadioChatBox/issues)
+- 💬 [Discussions](https://github.com/mrpc/RadioChatBox/discussions)
 
 ## Credits
 
