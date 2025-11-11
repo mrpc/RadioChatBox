@@ -79,8 +79,7 @@ class ChatService
         $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($messageData));
         $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
         
-        // Set TTL on the list
-        $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), Config::get('chat')['message_ttl']);
+        // No TTL needed - list is already limited by lTrim and messages are persisted in PostgreSQL
 
         // Publish to subscribers
         $this->redis->publish($this->prefixKey(self::PUBSUB_CHANNEL), json_encode($messageData));
