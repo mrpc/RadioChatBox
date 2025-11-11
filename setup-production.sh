@@ -133,8 +133,8 @@ if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
                 cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
                 chmod 644 "$TMP_SQL"
                 
-                # Import as database owner (not postgres superuser)
-                sudo -u postgres psql -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
+                # Import as database owner using password authentication
+                PGPASSWORD="$DB_PASSWORD" psql -h localhost -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
                 
                 # Clean up temp file
                 rm -f "$TMP_SQL"
@@ -149,8 +149,8 @@ if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
             cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
             chmod 644 "$TMP_SQL"
             
-            # Import as database owner (not postgres superuser)
-            sudo -u postgres psql -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
+            # Import as database owner using password authentication
+            PGPASSWORD="$DB_PASSWORD" psql -h localhost -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
             
             # Clean up temp file
             rm -f "$TMP_SQL"
@@ -185,8 +185,8 @@ EOF
         cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
         chmod 644 "$TMP_SQL"
         
-        # Import schema as the database owner (not postgres superuser)
-        sudo -u postgres psql -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
+        # Import schema as the database owner using password authentication
+        PGPASSWORD="$DB_PASSWORD" psql -h localhost -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
         
         # Clean up temp file
         rm -f "$TMP_SQL"
