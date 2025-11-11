@@ -131,6 +131,11 @@ class RadioChatBox {
                     document.title = this.settings.page_title;
                 }
                 
+                // Apply color scheme
+                if (this.settings.color_scheme) {
+                    this.applyColorScheme(this.settings.color_scheme);
+                }
+                
                 // Show profile fields if required
                 if (this.settings.require_profile === 'true') {
                     const profileFields = document.getElementById('profile-fields');
@@ -146,6 +151,18 @@ class RadioChatBox {
         } catch (error) {
             console.error('Failed to load settings:', error);
             this.settings = {};
+        }
+    }
+    
+    applyColorScheme(scheme) {
+        // Remove existing scheme classes
+        document.body.classList.remove('dark-theme', 'light-theme');
+        
+        // Add new scheme class
+        if (scheme === 'light') {
+            document.body.classList.add('light-theme');
+        } else {
+            document.body.classList.add('dark-theme');
         }
     }
     

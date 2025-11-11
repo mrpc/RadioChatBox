@@ -1389,3 +1389,159 @@ body.embedded-mode .emoji-toggle-btn {
     text-align: center;
     color: #9ca3af;
 }
+
+/* Light Theme */
+body.light-theme {
+    background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+}
+
+body.light-theme .chat-container {
+    background: white;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .chat-header {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+body.light-theme .message {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+body.light-theme .message.own-message {
+    background: #dbeafe;
+    border-left: 4px solid #3b82f6;
+}
+
+body.light-theme .message-username {
+    color: #1f2937;
+}
+
+body.light-theme .message-time {
+    color: #6b7280;
+}
+
+body.light-theme .message.own-message .message-username,
+body.light-theme .message.own-message .message-time {
+    color: #1e40af;
+}
+
+body.light-theme .chat-input {
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+
+body.light-theme #message-input {
+    background: white;
+    border: 1px solid #d1d5db;
+    color: #1f2937;
+}
+
+body.light-theme #message-input::placeholder {
+    color: #9ca3af;
+}
+
+body.light-theme .sidebar {
+    background: white;
+    border-left: 1px solid #e5e7eb;
+}
+
+body.light-theme .sidebar h3 {
+    color: #1f2937;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+body.light-theme .user-item {
+    color: #1f2937;
+}
+
+body.light-theme .user-item:hover {
+    background: #f3f4f6;
+}
+
+body.light-theme .status-bar {
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+    color: #6b7280;
+}
+
+/* Dark Theme (default) */
+body.dark-theme {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+body.dark-theme .chat-container {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+body.dark-theme .chat-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+body.dark-theme .message {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+body.dark-theme .message.own-message {
+    background: rgba(102, 126, 234, 0.3);
+    border-left: 4px solid #667eea;
+}
+
+body.dark-theme .message-username {
+    color: white;
+}
+
+body.dark-theme .message-time {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-theme .chat-input {
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme #message-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+body.dark-theme #message-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+body.dark-theme .sidebar {
+    background: rgba(0, 0, 0, 0.5);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme .sidebar h3 {
+    color: white;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme .user-item {
+    color: white;
+}
+
+body.dark-theme .user-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme .status-bar {
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-theme .btn {
+    background: #667eea;
+    color: white;
+}
+
+body.dark-theme .btn:hover {
+    background: #5568d3;
+}
