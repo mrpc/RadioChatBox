@@ -309,6 +309,13 @@ class ChatService
             }
         }
         
+        // Check if session is banned (from being kicked)
+        $sessionBanKey = 'banned_session:' . $sessionId;
+        if ($this->redis->exists($sessionBanKey)) {
+            error_log("Registration blocked: session {$sessionId} is banned (kicked user)");
+            return false;
+        }
+        
         // Check bans
         if ($this->isIPBanned($ipAddress) || $this->isNicknameBanned($username)) {
             return false;
