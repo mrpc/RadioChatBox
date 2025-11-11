@@ -171,57 +171,75 @@ Configure via admin panel (http://localhost:98/admin.html):
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Page Title | Browser tab title | RadioChatBox |
+| Chat Mode | `public`, `private`, or `both` | both |
+| Require Profile | Force users to provide age/sex/location | false |
+| Allow Photo Uploads | Enable photo sharing in private messages | true |
+| Max Photo Size | Maximum upload size in MB | 5 MB |
+| Rate Limit | Messages per time window | 10 per 60s |
 
-| Chat Mode | `public`, `private`, or `both` | both |```json
+---
 
-| Require Profile | Force users to provide age/sex/location | false |{
+## � API Documentation
 
-| Allow Photo Uploads | Enable photo sharing in private messages | true |    "username": "DJ Mike",
+### POST `/api/send.php`
 
-| Max Photo Size | Maximum upload size in MB | 5 MB |    "message": "Hello everyone!"
+Send a new message to the chat.
 
-| Rate Limit | Messages per time window | 10 per 60s |}
+**Request:**
+```json
+{
+    "username": "DJ Mike",
+    "message": "Hello everyone!"
+}
+```
 
+**Response:**
+```json
+{
+    "success": true,
+    "message": {
+        "id": "msg_123456",
+        "username": "DJ Mike",
+        "message": "Hello everyone!",
+        "timestamp": 1699999999
+    }
+}
+```
+
+### GET `/api/history.php`
+
+Get recent message history.
+
+**Parameters:**
+- `limit` (optional): Number of messages to retrieve (default: 50, max: 100)
+
+**Response:**
+```json
+{
+    "success": true,
+    "messages": [...]
+}
 ```
 
 ---
 
-**Response:**
+## 📚 Documentation
 
-## 📚 Documentation```json
+### Project Structure
 
-{
-
-### Project Structure    "success": true,
-
-    "message": {
-
-```        "id": "msg_123456",
-
-radiochatbox/        "username": "DJ Mike",
-
-├── public/              # Frontend assets        "message": "Hello everyone!",
-
-│   ├── index.html       # Main chat interface        "timestamp": 1699999999
-
-│   ├── admin.html       # Admin panel    }
-
-│   ├── api/             # PHP API endpoints}
-
-│   ├── css/             # Stylesheets```
-
+```
+radiochatbox/
+├── public/              # Frontend assets
+│   ├── index.html       # Main chat interface
+│   ├── admin.html       # Admin panel
+│   ├── api/             # PHP API endpoints
+│   ├── css/             # Stylesheets
 │   └── js/              # JavaScript application
-
-├── src/                 # PHP backend classes### GET `/api/history.php`
-
-│   ├── ChatService.phpGet recent message history.
-
+├── src/                 # PHP backend classes
+│   ├── ChatService.php
 │   ├── Database.php
-
-│   ├── PhotoService.php**Parameters:**
-
-│   └── MessageFilter.php- `limit` (optional): Number of messages to retrieve (default: 50, max: 100)
-
+│   ├── PhotoService.php
+│   └── MessageFilter.php
 ├── database/            # Database schema
 
 │   └── init.sql         # Complete schema (v1.0)**Response:**
