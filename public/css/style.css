@@ -1137,14 +1137,35 @@ body.embedded-mode #sidebar-toggle-mobile {
 
 /* When sidebar is shown in embedded mode, display it as overlay */
 body.embedded-mode #sidebar.mobile-open {
-    display: block;
+    display: flex !important;
+    flex-direction: column;
     position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
     width: 280px !important;
     z-index: 999;
+    background: white;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Show sidebar header in embedded mode when open */
+body.embedded-mode #sidebar.mobile-open #sidebar-header {
+    display: flex;
+    opacity: 1;
+}
+
+body.embedded-mode #sidebar.mobile-open #sidebar-header h3 {
+    opacity: 1 !important;
+    width: auto !important;
+}
+
+/* Show sidebar content in embedded mode when open */
+body.embedded-mode #sidebar.mobile-open #sidebar-content {
+    display: flex;
+    flex-direction: column;
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 body.embedded-mode #chat-container {

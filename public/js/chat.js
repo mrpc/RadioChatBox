@@ -1937,9 +1937,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // Close sidebar when clicking outside on mobile
+        // Close sidebar when clicking outside on mobile or embedded mode
         document.addEventListener('click', (e) => {
-            if (window.chatBox.isMobile && 
+            if ((window.chatBox.isMobile || window.chatBox.isEmbedded) && 
                 sidebar.classList.contains('mobile-open') && 
                 !sidebar.contains(e.target) && 
                 e.target !== mobileSidebarToggle) {
