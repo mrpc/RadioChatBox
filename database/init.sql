@@ -9,6 +9,29 @@
 -- - System settings
 
 -- ============================================================================
+-- DROP EXISTING TABLES (for clean re-import)
+-- ============================================================================
+
+DROP TABLE IF EXISTS url_blacklist CASCADE;
+DROP TABLE IF EXISTS banned_nicknames CASCADE;
+DROP TABLE IF EXISTS banned_ips CASCADE;
+DROP TABLE IF EXISTS user_profiles CASCADE;
+DROP TABLE IF EXISTS attachments CASCADE;
+DROP TABLE IF EXISTS private_messages CASCADE;
+DROP TABLE IF EXISTS active_users CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS settings CASCADE;
+
+-- Drop views
+DROP VIEW IF EXISTS recent_messages CASCADE;
+DROP VIEW IF EXISTS user_stats CASCADE;
+
+-- Drop functions
+DROP FUNCTION IF EXISTS update_user_stats() CASCADE;
+DROP FUNCTION IF EXISTS cleanup_inactive_users() CASCADE;
+
+-- ============================================================================
 -- CORE TABLES
 -- ============================================================================
 
@@ -323,3 +346,10 @@ COMMENT ON INDEX idx_messages_active_recent IS 'Optimizes message history querie
 COMMENT ON INDEX idx_banned_ips_banned_until IS 'Speeds up active ban checks';
 COMMENT ON COLUMN attachments.expires_at IS 'Photos auto-delete after 48 hours';
 COMMENT ON COLUMN attachments.file_size IS 'File size in bytes';
+
+-- ============================================================================
+-- GRANT PERMISSIONS
+-- ============================================================================
+-- Note: Run this script as postgres superuser
+-- The script will grant all necessary permissions to the database owner
+-- Usage: psql -U postgres -d YOUR_DATABASE -f init.sql

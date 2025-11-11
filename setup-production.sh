@@ -133,7 +133,8 @@ if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
                 cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
                 chmod 644 "$TMP_SQL"
                 
-                sudo -u postgres psql -d "$DB_NAME" -f "$TMP_SQL"
+                # Import as database owner (not postgres superuser)
+                sudo -u postgres psql -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
                 
                 # Clean up temp file
                 rm -f "$TMP_SQL"
@@ -148,7 +149,8 @@ if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
             cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
             chmod 644 "$TMP_SQL"
             
-            sudo -u postgres psql -d "$DB_NAME" -f "$TMP_SQL"
+            # Import as database owner (not postgres superuser)
+            sudo -u postgres psql -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
             
             # Clean up temp file
             rm -f "$TMP_SQL"
@@ -161,20 +163,19 @@ if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
         USER_EXISTS=$(sudo -u postgres psql -t -c "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | xargs)
         
         if [ "$USER_EXISTS" = "1" ]; then
-            echo "User '$DB_USER' already exists. Creating database only..."
+            echo "User '$DB_USER' already exists. Updating password and creating database..."
             sudo -u postgres psql <<EOF
+ALTER USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
 CREATE DATABASE $DB_NAME;
+ALTER DATABASE $DB_NAME OWNER TO $DB_USER;
 GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
-\c $DB_NAME
-GRANT ALL ON SCHEMA public TO $DB_USER;
 EOF
         else
             sudo -u postgres psql <<EOF
-CREATE DATABASE $DB_NAME;
 CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+CREATE DATABASE $DB_NAME;
+ALTER DATABASE $DB_NAME OWNER TO $DB_USER;
 GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
-\c $DB_NAME
-GRANT ALL ON SCHEMA public TO $DB_USER;
 EOF
         fi
         
@@ -184,7 +185,8 @@ EOF
         cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
         chmod 644 "$TMP_SQL"
         
-        sudo -u postgres psql -d "$DB_NAME" -f "$TMP_SQL"
+        # Import schema as the database owner (not postgres superuser)
+        sudo -u postgres psql -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
         
         # Clean up temp file
         rm -f "$TMP_SQL"
