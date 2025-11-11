@@ -72,18 +72,18 @@ try {
     
     // Update profile
     $stmt = $db->prepare("
-        INSERT INTO user_profiles (username, age, sex, location, updated_at)
-        VALUES (:username, :age, :sex, :location, NOW())
-        ON CONFLICT (username) 
+        INSERT INTO user_profiles (username, session_id, age, sex, location)
+        VALUES (:username, :session_id, :age, :sex, :location)
+        ON CONFLICT (username, session_id) 
         DO UPDATE SET 
             age = EXCLUDED.age,
             sex = EXCLUDED.sex,
-            location = EXCLUDED.location,
-            updated_at = EXCLUDED.updated_at
+            location = EXCLUDED.location
     ");
     
     $stmt->execute([
         'username' => $username,
+        'session_id' => $sessionId,
         'age' => $age,
         'sex' => $sex,
         'location' => $location

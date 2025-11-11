@@ -573,6 +573,14 @@ class RadioChatBox {
             const data = await response.json();
 
             if (data.success) {
+                // Update cookies with new profile data
+                this.setCookie('chatAge', age);
+                this.setCookie('chatLocation', location);
+                this.setCookie('chatSex', sex);
+                
+                // Update local profile object
+                this.userProfile = { age, location, sex };
+                
                 alert('Profile updated successfully!');
                 document.getElementById('profile-modal').style.display = 'none';
             } else {
@@ -603,7 +611,10 @@ class RadioChatBox {
     
     logout() {
         this.disconnect();
-        this.setCookie('chatNickname', '', -1); // Delete cookie
+        this.setCookie('chatNickname', '', -1); // Delete nickname cookie
+        this.setCookie('chatAge', '', -1); // Delete age cookie
+        this.setCookie('chatLocation', '', -1); // Delete location cookie
+        this.setCookie('chatSex', '', -1); // Delete sex cookie
         localStorage.clear(); // Clear any stored settings
         location.reload();
     }
