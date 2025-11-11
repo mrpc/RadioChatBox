@@ -47,6 +47,18 @@ class Database
     }
     
     /**
+     * Get a new Redis connection for subscribe operations
+     * Subscribe blocks the connection, so we need a dedicated instance
+     */
+    public static function getRedisForSubscribe(): Redis
+    {
+        $config = Config::get('redis');
+        $redis = new Redis();
+        $redis->connect($config['host'], $config['port']);
+        return $redis;
+    }
+    
+    /**
      * Get Redis key prefix based on database name
      * This ensures multiple instances don't interfere with each other
      */

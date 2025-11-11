@@ -55,7 +55,8 @@ try {
     $lastPing = time();
     
     // Subscribe to channels based on mode
-    $redis = Database::getRedis();
+    // IMPORTANT: Use a separate Redis connection for subscribe to avoid blocking other requests
+    $redis = Database::getRedisForSubscribe();
     $prefix = Database::getRedisPrefix();
     $channels = [$prefix . 'chat:user_updates'];
     
