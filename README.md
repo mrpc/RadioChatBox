@@ -286,31 +286,37 @@ cd /path/to/RadioChatBox
 This script will:
 - ✅ Check prerequisites (PHP 8.3+, PostgreSQL, Redis, Composer)
 - ✅ Create and configure database
-- ✅ Set up `.env` configuration
+- ✅ Set up `.env` configuration with auto-generated webhook secret
 - ✅ Install PHP dependencies
 - ✅ Configure Apache virtual host
 - ✅ Set correct file permissions
 
-### Automatic Deployment with GitHub Actions
+### Automatic Deployment with Git Webhooks
 
-Configure GitHub to auto-deploy on every push:
+Configure your Git platform (GitHub/GitLab/Gitea) to auto-deploy on every push:
 
-1. **Add GitHub Secrets** (Settings → Secrets and variables → Actions):
-   - `SSH_PRIVATE_KEY` - SSH key for server access
-   - `SERVER_HOST` - Your server IP/domain
-   - `SERVER_USER` - SSH username
-   - `DEPLOY_PATH` - Path to application (e.g., `/var/www/radiochatbox`)
-   - `HEALTH_CHECK_URL` - Base URL for health checks
+1. **Get your webhook secret**:
+   ```bash
+   cd /path/to/RadioChatBox
+   grep WEBHOOK_SECRET .env
+   ```
 
-2. **Push to trigger deployment**:
+2. **Add webhook** in your Git platform:
+   - GitHub: Settings → Webhooks → Add webhook
+   - **Payload URL**: `https://your-domain.com/webhook.php`
+   - **Content type**: `application/json`
+   - **Secret**: Paste your `WEBHOOK_SECRET`
+   - **Events**: Just the push event
+
+3. **Test deployment**:
    ```bash
    git push origin main
-   # GitHub Actions will automatically:
-   # - Run tests
-   # - Deploy to server via SSH
+   # Webhook will automatically:
+   # - Pull latest code
    # - Run database migrations
+   # - Update dependencies
+   # - Clear cache
    # - Reload Apache
-   # - Verify health checks
    ```
 
 ### Manual Deployment
@@ -323,8 +329,10 @@ cd /path/to/RadioChatBox
 ```
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for complete documentation including:
+- Git webhook setup guide
 - SSL certificate setup with Let's Encrypt
 - Nginx reverse proxy configuration
+- Security best practices
 - Backup strategies
 - Monitoring and troubleshooting
 
