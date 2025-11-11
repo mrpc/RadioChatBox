@@ -4,7 +4,14 @@
 # RadioChatBox Production Deployment Script
 #
 # This script handles zero-downtime deployment of RadioChatBox to production.
-# It pulls latest code, runs migrations, and restarts Docker containers.
+# It pulls latest code, runs migrations, and restarts Apache.
+#
+# Requirements:
+#   - Apache 2.4+ with PHP 8.3+
+#   - PostgreSQL 16+
+#   - Redis 7+
+#   - Git
+#   - Composer
 #
 # Usage: ./deploy.sh
 #############################################################################
@@ -21,6 +28,12 @@ NC='\033[0m' # No Color
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="${PROJECT_DIR}/backups"
 LOG_FILE="${PROJECT_DIR}/deploy.log"
+WEB_ROOT="${PROJECT_DIR}/public"
+
+# Database configuration (can be overridden by .env)
+DB_NAME="${DB_NAME:-radiochatbox}"
+DB_USER="${DB_USER:-radiochatbox}"
+DB_HOST="${DB_HOST:-localhost}"
 
 # Functions
 log() {
@@ -49,18 +62,21 @@ if [ ! -f .env ]; then
     error ".env file not found! Please create it from .env.example"
 fi
 
+# Load environment variables
+source .env 2>/dev/null || warning "Could not load .env file"
+
 # Create backup directory if it doesn't exist
 mkdir -p "$BACKUP_DIR"
 
 # Backup database
 log "Creating database backup..."
 BACKUP_FILE="${BACKUP_DIR}/db_backup_$(date +%Y%m%d_%H%M%S).sql"
-docker exec radiochatbox_postgres pg_dump -U radiochatbox radiochatbox > "$BACKUP_FILE" 2>/dev/null || warning "Database backup failed (may be first deployment)"
+sudo -u postgres pg_dump "$DB_NAME" > "$BACKUP_FILE" 2>/dev/null || warning "Database backup failed (may be first deployment)"
 log "Database backed up to: $BACKUP_FILE"
 
 # Keep only last 7 backups
 log "Cleaning old backups (keeping last 7)..."
-ls -t "${BACKUP_DIR}"/db_backup_*.sql | tail -n +8 | xargs -r rm
+ls -t "${BACKUP_DIR}"/db_backup_*.sql 2>/dev/null | tail -n +8 | xargs -r rm
 
 # Pull latest code
 log "Pulling latest code from repository..."
@@ -69,12 +85,12 @@ git reset --hard origin/main || error "Failed to pull latest code"
 
 # Check for migrations
 log "Checking for database migrations..."
-if [ -d "database/migrations" ] && [ "$(ls -A database/migrations)" ]; then
+if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" ]; then
     log "Running database migrations..."
     for migration in database/migrations/*.sql; do
         if [ -f "$migration" ]; then
             log "  Applying: $(basename $migration)"
-            docker exec radiochatbox_postgres psql -U radiochatbox -d radiochatbox -f "/docker-entrypoint-initdb.d/migrations/$(basename $migration)" || warning "Migration $(basename $migration) failed or already applied"
+            sudo -u postgres psql -d "$DB_NAME" -f "$migration" || warning "Migration $(basename $migration) failed or already applied"
         fi
     done
 else
@@ -83,22 +99,31 @@ fi
 
 # Install/update composer dependencies
 log "Installing composer dependencies..."
-docker exec radiochatbox_apache composer install --no-dev --optimize-autoloader || error "Composer install failed"
+composer install --no-dev --optimize-autoloader || error "Composer install failed"
 
-# Build and restart containers
-log "Building and restarting Docker containers..."
-docker-compose pull
-docker-compose build --no-cache
-docker-compose up -d --force-recreate
+# Clear Redis cache
+log "Clearing Redis cache..."
+redis-cli FLUSHDB || warning "Redis cache clear failed"
 
-# Wait for services to be ready
-log "Waiting for services to start..."
-sleep 5
+# Set correct permissions
+log "Setting file permissions..."
+sudo chown -R www-data:www-data "$PROJECT_DIR"
+sudo chmod -R 755 "$WEB_ROOT"
+sudo chmod -R 775 "${PROJECT_DIR}/public/uploads"
+
+# Restart Apache
+log "Reloading Apache..."
+sudo systemctl reload apache2 || sudo systemctl reload httpd || warning "Apache reload failed"
+
+# Wait for service to be ready
+log "Waiting for service to start..."
+sleep 2
 
 # Health check
 log "Running health check..."
+HEALTH_URL="http://localhost/api/health.php"
 for i in {1..30}; do
-    if curl -s -f http://localhost:98/api/health.php > /dev/null 2>&1; then
+    if curl -s -f "$HEALTH_URL" > /dev/null 2>&1; then
         log "✅ Health check passed!"
         break
     fi
@@ -110,23 +135,6 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Clear Redis cache (optional - uncomment if needed)
-log "Clearing Redis cache..."
-docker exec radiochatbox_redis redis-cli FLUSHDB || warning "Redis cache clear failed"
-
-# Clean up old Docker images
-log "Cleaning up old Docker images..."
-docker image prune -f || warning "Docker cleanup failed"
-
-# Set correct permissions
-log "Setting file permissions..."
-docker exec radiochatbox_apache chown -R www-data:www-data /var/www/html
-docker exec radiochatbox_apache chmod -R 755 /var/www/html/public
-
-# Display container status
-log "Container status:"
-docker-compose ps
-
 # Deployment complete
 log "========================================="
 log "✅ Deployment completed successfully!"
@@ -137,13 +145,13 @@ log "  - Code updated from Git"
 log "  - Database backed up to: $BACKUP_FILE"
 log "  - Migrations applied (if any)"
 log "  - Dependencies updated"
-log "  - Containers restarted"
+log "  - Apache reloaded"
 log "  - Health check passed"
 log ""
 log "Next steps:"
-log "  1. Monitor logs: docker-compose logs -f"
-log "  2. Check application: http://localhost:98"
-log "  3. Verify admin panel: http://localhost:98/admin.html"
+log "  1. Monitor Apache logs: sudo tail -f /var/log/apache2/error.log"
+log "  2. Check application in browser"
+log "  3. Verify admin panel access"
 log ""
 
 exit 0
