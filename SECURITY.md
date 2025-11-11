@@ -1,102 +1,180 @@
-# Security Policy# Security Considerations
+# Security Policy# Security Policy
 
 
 
-## Supported Versions## Overview
-
-This document outlines security best practices for RadioChatBox in production environments.
-
-| Version | Supported          |
-
-| ------- | ------------------ |## Authentication & Authorization
-
-| 1.0.x   | :white_check_mark: |
-
-### Current Status
-
-## Reporting a Vulnerability- No user authentication (anonymous chat)
-
-- IP-based rate limiting
-
-**Please do not report security vulnerabilities through public GitHub issues.**- Basic input sanitization
+## Supported Versions## Supported Versions
 
 
 
-Instead, please report them via email to: **security@radiochatbox.org** (or your email)### Recommended Implementations
+We release patches for security vulnerabilities. Which versions are eligible for receiving such patches depends on the CVSS v3.0 Rating:We release patches for security vulnerabilities. Which versions are eligible for receiving such patches depends on the CVSS v3.0 Rating:
 
 
 
-Include:1. **User Registration (Optional)**
+| Version | Supported          || Version | Supported          |
 
-- Description of the vulnerability   - Add user accounts for moderation
+| ------- | ------------------ || ------- | ------------------ |
 
-- Steps to reproduce   - OAuth integration (Google, Facebook)
-
-- Potential impact   - Session management
-
-- Suggested fix (if any)
-
-2. **Moderator Access**
-
-We will respond within 48 hours and work with you to resolve the issue.   - Protected admin endpoints
-
-   - JWT tokens for API authentication
-
-## Security Best Practices   - Role-based access control
+| 1.0.x   | :white_check_mark: || 1.0.x   | :white_check_mark: |
 
 
 
-### For Production Deployment## Input Validation
+## Reporting a Vulnerability## Reporting a Vulnerability
 
 
 
-1. **Change default admin password immediately**### Current Protections
+**Please do not report security vulnerabilities through public GitHub issues.****Please do not report security vulnerabilities through public GitHub issues.**
 
-   - Default: `admin` / `admin123`- XSS prevention via `htmlspecialchars()`
+
+
+Instead, please report them via email to: **security@radiochatbox.org** (or open a private security advisory on GitHub)Instead, please report them via email to: **security@radiochatbox.org** (or open a private security advisory on GitHub)
+
+
+
+Include:Include:
+
+- Description of the vulnerability- Description of the vulnerability
+
+- Steps to reproduce- Steps to reproduce
+
+- Potential impact- Potential impact
+
+- Suggested fix (if any)- Suggested fix (if any)
+
+- Your contact information- Your contact information
+
+
+
+We will respond within 48 hours and work with you to resolve the issue.We will respond within 48 hours and work with you to resolve the issue.
+
+
+
+## Security Disclosure Process## Security Disclosure Process
+
+
+
+1. Security report received and assigned to a handler1. Security report received and assigned to a handler
+
+2. Issue confirmed and affected versions determined2. Issue confirmed and affected versions determined
+
+3. Fix prepared and tested3. Fix prepared and tested
+
+4. Release published with security advisory4. Release published with security advisory
+
+5. Public disclosure after users have had time to update5. Public disclosure after users have had time to update
+
+
+
+## Security Best Practices## Security Best Practices
+
+
+
+For detailed security implementation guidelines, see [SECURITY_GUIDE.md](SECURITY_GUIDE.md)
+
+
+
+### Quick Checklist### For Production Deployment## Input Validation
+
+
+
+**Essential (Before Going Live):**
+
+- [ ] Change default admin password (`admin`/`admin123`)
+
+- [ ] Enable HTTPS/SSL1. **Change default admin password immediately**### Current Protections
+
+- [ ] Use strong database passwords
+
+- [ ] Configure CORS for your domain only   - Default: `admin` / `admin123`- XSS prevention via `htmlspecialchars()`
+
+- [ ] Enable firewall (ports 80, 443 only)
 
    - Change via admin panel → Settings- Message length limits
 
-- Username length limits
+**Recommended:**
 
-2. **Use HTTPS/SSL**
+- [ ] Review rate limiting settings- Username length limits
 
-   - Get free SSL certificate from Let's Encrypt### Additional Recommendations
+- [ ] Set up automated backups
 
-   - Configure reverse proxy (nginx/Apache) with SSL- SQL injection protection (using PDO prepared statements ✓)
+- [ ] Configure Redis password protection2. **Use HTTPS/SSL**
 
-- Profanity filter
+- [ ] Implement logging and monitoring
 
-3. **Update database credentials**- Link/spam detection
+- [ ] Review [SECURITY_GUIDE.md](SECURITY_GUIDE.md) for complete hardening   - Get free SSL certificate from Let's Encrypt### Additional Recommendations
 
-   - Change `POSTGRES_PASSWORD` in `.env`- Image/file upload validation (if added)
 
-   - Use strong, unique passwords
 
-## Rate Limiting
+## Known Security Considerations   - Configure reverse proxy (nginx/Apache) with SSL- SQL injection protection (using PDO prepared statements ✓)
 
-4. **Enable firewall**
 
-   - Only expose necessary ports (80, 443)### Current Implementation
 
-   - Block direct access to PostgreSQL (5432) and Redis (6379)- Redis-based rate limiting
+### Current Implementation- Profanity filter
 
-- Configurable timeout per IP
 
-5. **Regular updates**- Default: 2 seconds between messages
 
-   - Keep Docker images updated
+✅ **Implemented:**3. **Update database credentials**- Link/spam detection
 
-   - Monitor security advisories### Production Settings
+- XSS protection (input sanitization)
+
+- SQL injection prevention (PDO prepared statements)   - Change `POSTGRES_PASSWORD` in `.env`- Image/file upload validation (if added)
+
+- Rate limiting (IP-based, configurable)
+
+- URL filtering in public chat   - Use strong, unique passwords
+
+- Auto-ban for repeated violations
+
+- CSRF protection for admin panel## Rate Limiting
+
+
+
+⚠️ **Limitations:**4. **Enable firewall**
+
+- No user authentication (anonymous chat by design)
+
+- IP-based rate limiting only   - Only expose necessary ports (80, 443)### Current Implementation
+
+- Photos not scanned for malware
+
+- Basic spam detection   - Block direct access to PostgreSQL (5432) and Redis (6379)- Redis-based rate limiting
+
+
+
+### Recommended for Production- Configurable timeout per IP
+
+
+
+- Place behind reverse proxy (nginx/Apache)5. **Regular updates**- Default: 2 seconds between messages
+
+- Use WAF (Web Application Firewall)
+
+- Enable DDoS protection (Cloudflare, etc.)   - Keep Docker images updated
+
+- Implement comprehensive logging
+
+- Set up automated backups   - Monitor security advisories### Production Settings
+
+- Monitor for suspicious activity
 
    - Apply patches promptly```env
 
+## Security Updates
+
 CHAT_RATE_LIMIT_SECONDS=3  # Increase for high traffic
+
+Security updates will be released as patch versions (e.g., 1.0.1, 1.0.2).
 
 6. **Configure rate limiting**```
 
+Subscribe to releases on GitHub to be notified of security updates.
+
    - Adjust based on your audience size
 
+## Credits
+
    - Monitor for abuse patterns### Advanced Rate Limiting
+
+We thank the security researchers who responsibly disclose vulnerabilities to us.
 
 Consider implementing:
 
