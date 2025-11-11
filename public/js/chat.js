@@ -382,6 +382,16 @@ class RadioChatBox {
         const sexInput = document.getElementById('sex-input');
         const nicknameSubmit = document.getElementById('nickname-submit');
         const nicknameError = document.getElementById('nickname-error');
+        const profileFields = document.getElementById('profile-fields');
+
+        // Show/hide profile fields based on setting
+        const requireProfile = this.settings?.require_profile === 'true';
+        if (profileFields) {
+            profileFields.style.display = requireProfile ? 'block' : 'none';
+            if (requireProfile) {
+                this.populateCountryDropdown();
+            }
+        }
 
         modal.style.display = 'flex';
         
@@ -389,7 +399,6 @@ class RadioChatBox {
         if (prefillNickname) {
             nicknameInput.value = prefillNickname;
             // Focus on first profile field if profile is required, otherwise nickname
-            const requireProfile = this.settings?.require_profile === 'true';
             if (requireProfile && ageInput) {
                 ageInput.focus();
             } else {
