@@ -36,7 +36,7 @@ try {
     $settings['analytics'] = [
         'enabled' => $analytics['enabled'],
         'provider' => $analytics['provider'],
-        // Don't send tracking_id to prevent abuse - it's injected server-side
+        'tracking_id' => $analytics['tracking_id'], // Safe to expose - visible in page source anyway
     ];
     
     // Add PHP's upload_max_filesize limit for client-side validation

@@ -19,15 +19,63 @@ class AnalyticsHelper {
             return;
         }
 
-        this.enabled = settings.analytics.enabled === true;
+        this.enabled = settings.analytics.enabled === true || settings.analytics.enabled === 'true';
         this.provider = settings.analytics.provider || '';
+        this.trackingId = settings.analytics.tracking_id || '';
 
         if (!this.enabled) {
             console.log('[Analytics] Disabled');
             return;
         }
+        
+        if (!this.trackingId) {
+            console.error('[Analytics] No tracking ID configured');
+            return;
+        }
 
-        console.log(`[Analytics] Enabled - Provider: ${this.provider}`);
+        console.log(`[Analytics] Enabled - Provider: ${this.provider}, ID: ${this.trackingId}`);
+        
+        // Load provider-specific scripts
+        if (this.provider === 'ga4') {
+            this.loadGoogleAnalytics4();
+        } else if (this.provider === 'gtm') {
+            this.loadGoogleTagManager();
+        }
+    }
+    
+    /**
+     * Load Google Analytics 4 script
+     */
+    loadGoogleAnalytics4() {
+        // Inject Google Analytics script
+        const script = document.createElement('script');
+        script.async = true;
+        script.src = `https://www.googletagmanager.com/gtag/js?id=${this.trackingId}`;
+        document.head.appendChild(script);
+        
+        // Initialize gtag
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function() { dataLayer.push(arguments); };
+        gtag('js', new Date());
+        gtag('config', this.trackingId);
+        
+        console.log('[Analytics] Google Analytics 4 loaded:', this.trackingId);
+    }
+    
+    /**
+     * Load Google Tag Manager script
+     */
+    loadGoogleTagManager() {
+        const containerId = this.trackingId;
+        
+        // Inject GTM script
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer',containerId);
+        
+        console.log('[Analytics] Google Tag Manager loaded:', containerId);
     }
 
     /**
