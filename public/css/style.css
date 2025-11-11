@@ -1572,23 +1572,23 @@ body.metal-theme #chat-header {
 }
 
 body.metal-theme .message {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(50, 50, 50, 0.95);
     color: #ffffff;
-    border-left: 2px solid #555555;
+    border-left: 2px solid #8B0000;
 }
 
 body.metal-theme .message.own-message {
-    background: rgba(139, 0, 0, 0.3);
-    border-left: 4px solid #8B0000;
+    background: rgba(139, 0, 0, 0.6);
+    border-left: 4px solid #FF0000;
 }
 
 body.metal-theme .message-username {
-    color: #FF5555;
+    color: #FF6666;
     font-weight: 600;
 }
 
 body.metal-theme .message-time {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.8);
 }
 
 body.metal-theme .message-text {
