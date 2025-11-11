@@ -41,17 +41,19 @@ try {
     
     if ($requireProfile) {
         // Validate that all profile fields are provided
-        if (empty($age) || empty($location) || empty($sex)) {
+        if ($age === null || $age === '' || $location === null || $location === '' || $sex === null || $sex === '') {
             throw new InvalidArgumentException('Age, location, and sex are required');
         }
         
         // Validate age range
-        if ($age < 18 || $age > 120) {
+        $ageInt = (int)$age;
+        if ($ageInt < 18 || $ageInt > 120) {
             throw new InvalidArgumentException('Age must be between 18 and 120');
         }
-    } elseif ($age !== null) {
+    } elseif ($age !== null && $age !== '') {
         // Validate age if provided (even when not required)
-        if ($age < 18 || $age > 120) {
+        $ageInt = (int)$age;
+        if ($ageInt < 18 || $ageInt > 120) {
             throw new InvalidArgumentException('Age must be between 18 and 120');
         }
     }

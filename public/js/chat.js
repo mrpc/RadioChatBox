@@ -63,25 +63,21 @@ class RadioChatBox {
             const savedNickname = this.getCookie('chatNickname');
             
             if (savedNickname) {
+                // Try to get saved profile data
+                const savedAge = this.getCookie('chatAge');
+                const savedLocation = this.getCookie('chatLocation');
+                const savedSex = this.getCookie('chatSex');
+                
                 // Check if profile is required
                 const requireProfile = this.settings?.require_profile === 'true';
                 
-                if (requireProfile) {
-                    // If profile is required, check if we have profile data saved
-                    const savedAge = this.getCookie('chatAge');
-                    const savedLocation = this.getCookie('chatLocation');
-                    const savedSex = this.getCookie('chatSex');
-                    
-                    if (savedAge && savedLocation && savedSex) {
-                        // We have complete profile data, verify and register
-                        this.checkAndRegisterNickname(savedNickname, savedAge, savedLocation, savedSex);
-                    } else {
-                        // Missing profile data, show modal to collect it
-                        this.showNicknameModal(savedNickname);
-                    }
+                if (requireProfile && (!savedAge || !savedLocation || !savedSex)) {
+                    // Profile is required but we don't have complete data - show modal
+                    this.showNicknameModal(savedNickname);
                 } else {
-                    // Profile not required, just verify nickname
-                    this.checkAndRegisterNickname(savedNickname);
+                    // Either profile not required, or we have complete data
+                    // Always send profile data if available (even if not required)
+                    this.checkAndRegisterNickname(savedNickname, savedAge, savedLocation, savedSex);
                 }
             } else {
                 // Show nickname selection modal
@@ -330,10 +326,16 @@ class RadioChatBox {
                 sessionId: this.sessionId
             };
             
-            // Add profile data if provided
-            if (age) registerPayload.age = age;
-            if (location) registerPayload.location = location;
-            if (sex) registerPayload.sex = sex;
+            // Add profile data if provided (not null and not empty string)
+            if (age !== null && age !== undefined && age !== '') {
+                registerPayload.age = age;
+            }
+            if (location !== null && location !== undefined && location !== '') {
+                registerPayload.location = location;
+            }
+            if (sex !== null && sex !== undefined && sex !== '') {
+                registerPayload.sex = sex;
+            }
             
             const registerResponse = await fetch(`${this.apiUrl}/api/register.php`, {
                 method: 'POST',
