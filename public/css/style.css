@@ -1491,13 +1491,21 @@ body.dark-theme .chat-header {
 }
 
 body.dark-theme .message {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.2);
     color: white;
 }
 
+body.dark-theme .message .message-text {
+    color: white !important;
+}
+
 body.dark-theme .message.own-message {
-    background: rgba(102, 126, 234, 0.4);
+    background: rgba(102, 126, 234, 0.5);
     border-left: 4px solid #667eea;
+}
+
+body.dark-theme .message.own-message .message-text {
+    color: white !important;
 }
 
 body.dark-theme .message-username {
@@ -1519,7 +1527,7 @@ body.dark-theme .chat-input {
 }
 
 body.dark-theme #message-input {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(50, 50, 80, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: white !important;
 }
