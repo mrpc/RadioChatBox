@@ -1,254 +1,176 @@
-# RadioChatBox 🎙️# RadioChatBox 🎙️
+# RadioChatBox 🎙️
 
+<div align="center">
 
+A scalable, real-time chat application designed for radio shows, podcasts, and live broadcasts.
 
-<div align="center">A scalable, real-time chat application designed for radio shows and live streaming. Handles 200-300+ concurrent users using Server-Sent Events (SSE), Redis, and PostgreSQL.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-blue)](https://www.php.net/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-blue)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-6.0%2B-red)](https://redis.io/)
 
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API](#-api-documentation) • [Contributing](#-contributing)
 
-
-A scalable, real-time chat application designed for radio shows, podcasts, and live broadcasts.## Features
-
-
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)✨ **Real-time messaging** using Server-Sent Events (SSE)  
-
-[![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-blue)](https://www.php.net/)⚡ **High performance** with Redis for message caching  
-
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-blue)](https://www.postgresql.org/)💾 **Persistent storage** with PostgreSQL for message logging  
-
-[![Redis](https://img.shields.io/badge/Redis-6.0%2B-red)](https://redis.io/)🎨 **Beautiful, responsive UI** with vanilla JavaScript  
-
-🔒 **Rate limiting** to prevent spam  
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API](#-api-documentation) • [Contributing](#-contributing)🚀 **Docker-ready** for easy deployment  
-
-📱 **Mobile-friendly** responsive design  
-
-</div>🌐 **CORS support** for embedding in any website  
-
-
-
----## Architecture
-
-
-
-## 🌟 Features- **Backend**: PHP 8.3+ with SSE support
-
-- **Cache**: Redis for real-time message distribution
-
-### Real-Time Communication- **Database**: PostgreSQL for permanent storage and analytics
-
-- **Server-Sent Events (SSE)** for instant message delivery without polling- **Frontend**: Vanilla JavaScript (no frameworks)
-
-- **Public chat rooms** for audience interaction- **Web Server**: Apache
-
-- **Private messaging** between users- **Deployment**: Docker Compose
-
-- **Photo sharing** in private conversations with auto-expiration
-
-- **Active user tracking** with live presence indicators## Quick Start
-
-
-
-### Flexible Chat Modes### Prerequisites
-
-- **Public Only**: Traditional chat room for broadcasts
-
-- **Private Only**: One-on-one conversations- Docker Desktop (Windows/Mac) or Docker + Docker Compose (Linux)
-
-- **Both**: Combined public and private messaging- Git
-
-
-
-### Moderation & Security### Installation
-
-- **Admin panel** with comprehensive moderation tools
-
-- **IP banning** with temporary or permanent durations1. **Clone the repository**
-
-- **Nickname blacklist** to reserve or block usernames   ```bash
-
-- **URL filtering** with customizable blacklist patterns   git clone https://github.com/mrpc/RadioChatBox.git
-
-- **Rate limiting** to prevent spam   cd RadioChatBox
-
-- **Automatic violation tracking** with auto-ban system   ```
-
-
-
-### User Experience2. **Copy environment configuration**
-
-- **Optional user profiles** (age, location, sex)   ```bash
-
-- **Emoji picker** with categorized emojis   cp .env.example .env
-
-- **Responsive design** for desktop and mobile   ```
-
-- **Collapsible sidebar** optimized for small screens
-
-- **Embeddable** widget for websites with customizable audio notifications3. **Start the application**
-
-- **Dark/light themes** (configurable)   ```bash
-
-   docker-compose up -d
-
-### Performance & Scalability   ```
-
-- **Redis caching** for high-performance message delivery
-
-- **PostgreSQL** for reliable message persistence4. **Access the chat**
-
-- **Indexed queries** optimized for large datasets   Open your browser and navigate to:
-
-- **Photo auto-cleanup** after 48 hours   ```
-
-- **Inactive user cleanup** to maintain accurate presence   http://localhost:98
-
-   ```
+</div>
 
 ---
 
-That's it! The chat is now running on port 98.
+## 🌟 Features
+
+### Real-Time Communication
+
+- **Server-Sent Events (SSE)** for instant message delivery without polling
+- **Public chat rooms** for audience interaction
+- **Private messaging** between users
+- **Photo sharing** in private conversations with auto-expiration
+- **Active user tracking** with live presence indicators
+
+### Flexible Chat Modes
+
+- **Public Only**: Traditional chat room for broadcasts
+- **Private Only**: One-on-one conversations
+- **Both**: Combined public and private messaging
+
+### Moderation & Security
+
+- **Admin panel** with comprehensive moderation tools
+- **IP banning** with temporary or permanent durations
+- **Nickname blacklist** to reserve or block usernames
+- **URL filtering** with customizable blacklist patterns
+- **Rate limiting** to prevent spam
+- **Automatic violation tracking** with auto-ban system
+
+### User Experience
+
+- **Optional user profiles** (age, location, sex)
+- **Emoji picker** with categorized emojis
+- **Responsive design** for desktop and mobile
+- **Collapsible sidebar** optimized for small screens
+- **Embeddable** widget for websites with customizable audio notifications
+- **Dark/light themes** (configurable)
+
+### Performance & Scalability
+
+- **Redis caching** for high-performance message delivery
+- **PostgreSQL** for reliable message persistence
+- **Indexed queries** optimized for large datasets
+- **Photo auto-cleanup** after 48 hours
+- **Inactive user cleanup** to maintain accurate presence
+
+---
 
 ## 🚀 Quick Start
 
-## Configuration
-
 ### Prerequisites
 
-- Docker & Docker ComposeEdit `.env` to customize settings:
-
+- Docker Desktop (Windows/Mac) or Docker + Docker Compose (Linux)
 - Git
 
-```env
+### Installation
 
-### Installation# Redis Configuration
-
-REDIS_HOST=redis
-
-1. **Clone the repository**REDIS_PORT=6379
-
+1. **Clone the repository**
    ```bash
+   git clone https://github.com/mrpc/RadioChatBox.git
+   cd RadioChatBox
+   ```
 
-   git clone https://github.com/mrpc/RadioChatBox.git# PostgreSQL Configuration
-
-   cd radiochatboxDB_HOST=postgres
-
-   ```DB_PORT=5432
-
-DB_NAME=radiochatbox
-
-2. **Configure environment**DB_USER=radiochatbox
-
-   ```bashDB_PASSWORD=radiochatbox_secret
-
+2. **Copy environment configuration**
+   ```bash
    cp .env.example .env
+   ```
 
-   # Edit .env with your settings (optional - defaults work for development)# Chat Configuration
+3. **Start the application**
+   ```bash
+   docker-compose up -d
+   ```
 
-   ```CHAT_MAX_MESSAGE_LENGTH=500
+4. **Access the chat**
+   
+   Open your browser and navigate to:
+   ```
+   http://localhost:98
+   ```
 
-CHAT_RATE_LIMIT_SECONDS=2
+That's it! The chat is now running on port 98.
 
-3. **Start the application**CHAT_HISTORY_LIMIT=100
-
-   ```bashCHAT_MESSAGE_TTL=3600
-
-   # Linux/Mac
-
-   ./start.sh# CORS (for embedding)
-
-ALLOWED_ORIGINS=http://localhost:98,https://yourradiosite.com
-
-   # Windows```
-
-   start.bat
-
-   ```## Embedding in Your Radio Website
-
-
-
-4. **Access the application**To embed the chat in your existing radio website:
-
-   - **Chat**: http://localhost:98
-
-   - **Admin Panel**: http://localhost:98/admin.html### Option 1: IFrame
-
-     - Default credentials: `admin` / `admin123` (change immediately!)
-
-```html
-
-That's it! The application will automatically:<iframe 
-
-- Start PostgreSQL, Redis, and Apache containers    src="http://your-server:98" 
-
-- Initialize the database schema    width="100%" 
-
-- Create upload directories    height="600px" 
-
-- Be ready for use    frameborder="0"
-
-    style="border-radius: 8px;"
-
----></iframe>
-
-```
+---
 
 ## 📋 Configuration
 
-### Option 2: Direct Integration
-
-### Environment Variables
-
-```html
-
-Edit `.env` to customize:<!-- Include CSS -->
-
-<link rel="stylesheet" href="http://your-server:98/css/style.css">
+Edit `.env` to customize settings:
 
 ```env
+# Redis Configuration
+REDIS_HOST=redis
+REDIS_PORT=6379
 
-# Database<!-- Chat Container -->
+# PostgreSQL Configuration
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=radiochatbox
+DB_USER=radiochatbox
+DB_PASSWORD=radiochatbox_secret
 
-POSTGRES_HOST=postgres<div id="chat-container">
+# Chat Configuration
+CHAT_MAX_MESSAGE_LENGTH=500
+CHAT_RATE_LIMIT_SECONDS=2
+CHAT_HISTORY_LIMIT=100
+CHAT_MESSAGE_TTL=3600
 
-POSTGRES_DB=radiochatbox    <!-- Chat UI will load here -->
+# CORS (for embedding)
+ALLOWED_ORIGINS=http://localhost:98,https://yourradiosite.com
+```
 
-POSTGRES_USER=radiochatbox</div>
+---
 
-POSTGRES_PASSWORD=radiochatbox_secure_password
+## 🎨 Embedding in Your Radio Website
+
+To embed the chat in your existing radio website:
+
+### Option 1: IFrame
+
+```html
+<iframe 
+    src="http://your-server:98" 
+    width="100%" 
+    height="600px" 
+    frameborder="0"
+    style="border-radius: 8px;">
+</iframe>
+```
+
+### Option 2: Direct Integration
+
+```html
+<!-- Include CSS -->
+<link rel="stylesheet" href="http://your-server:98/css/style.css">
+
+<!-- Chat Container -->
+<div id="chat-container">
+    <!-- Chat UI will load here -->
+</div>
 
 <!-- Include JavaScript -->
-
-# Redis<script src="http://your-server:98/js/chat.js"></script>
-
-REDIS_HOST=redis<script>
-
-REDIS_PORT=6379    // Initialize with your API URL
-
+<script src="http://your-server:98/js/chat.js"></script>
+<script>
+    // Initialize with your API URL
     const chat = new RadioChatBox('http://your-server:98');
-
-# Application</script>
-
-APP_PORT=98```
-
+</script>
 ```
 
 **Important**: Add your website domain to `ALLOWED_ORIGINS` in `.env` file.
 
-### Admin Settings
+---
 
-## API Endpoints
+## 📚 Admin Panel
 
 Configure via admin panel (http://localhost:98/admin.html):
 
-### POST `/api/send.php`
+- Default credentials: `admin` / `admin123` (change immediately!)
 
-| Setting | Description | Default |Send a new message to the chat.
-
+| Setting | Description | Default |
 |---------|-------------|---------|
-
-| Page Title | Browser tab title | RadioChatBox |**Request:**
+| Page Title | Browser tab title | RadioChatBox |
 
 | Chat Mode | `public`, `private`, or `both` | both |```json
 
