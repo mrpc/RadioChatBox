@@ -6,11 +6,10 @@ This guide explains how to deploy RadioChatBox to production with automatic depl
 
 ## Deployment Methods
 
-RadioChatBox supports three deployment methods:
+RadioChatBox supports two deployment methods:
 
 1. **Git Webhooks** (Recommended) - Simple, fast, works with all Git platforms
-2. **GitHub Actions** - Advanced CI/CD with automated testing
-3. **Manual Deployment** - Via SSH when needed
+2. **Manual Deployment** - Via SSH when needed
 
 ---
 
@@ -49,119 +48,8 @@ git push
 tail -f webhook.log deploy.log
 ```
 
----
 
-## Method 2: GitHub Actions (Advanced)
-
----
-
-## Method 2: GitHub Actions (Advanced)
-
-**Best for**: Teams needing automated testing before deployment, complex CI/CD pipelines
-
-**Advantages**:
-- ✅ Runs tests before deployment
-- ✅ Can run multiple jobs in parallel
-- ✅ Matrix testing across versions
-- ✅ Built-in artifact storage
-
-**Disadvantages**:
-- ❌ More complex setup
-- ❌ GitHub only
-- ❌ Usage limits (2000 minutes/month free)
-- ❌ Slower (queue + build time)
-
-### Prerequisites
-
-- Ubuntu/Debian server with Docker and Docker Compose installed
-- SSH access to your server
-- GitHub repository
-
-### Step 1: Prepare Your Server
-
-```bash
-# SSH into your server
-ssh user@your-server.com
-
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-
-# Install Docker Compose
-sudo apt-get update
-sudo apt-get install docker-compose-plugin
-
-# Create deployment directory
-sudo mkdir -p /var/www/radiochatbox
-sudo chown $USER:$USER /var/www/radiochatbox
-cd /var/www/radiochatbox
-
-# Clone repository
-git clone https://github.com/yourusername/RadioChatBox.git .
-
-# Copy and configure .env
-cp .env.example .env
-nano .env  # Edit with production values
-
-# Make deployment script executable
-chmod +x deploy.sh
-
-# Initial deployment
-./deploy.sh
-```
-
-### Step 2: Configure GitHub Secrets
-
-**IMPORTANT**: Add these as **Repository Secrets** (NOT environment variables).
-
-Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions** → Click **"New repository secret"**
-
-Add each of the following secrets individually:
-
-| Secret Name | Description | Example | Required |
-|------------|-------------|---------|----------|
-| `SSH_PRIVATE_KEY` | Private SSH key for server access | `-----BEGIN RSA PRIVATE KEY-----...` | ✅ Yes |
-| `SERVER_HOST` | Your server's IP or domain | `123.45.67.89` or `radio.example.com` | ✅ Yes |
-| `SERVER_USER` | SSH username | `deploy` or `ubuntu` | ✅ Yes |
-| `DEPLOY_PATH` | Full path to application | `/var/www/radiochatbox` | ✅ Yes |
-| `HEALTH_CHECK_URL` | Base URL for health checks | `https://radio.example.com` | ✅ Yes |
-| `SLACK_WEBHOOK` | Slack webhook for notifications | `https://hooks.slack.com/...` | ❌ Optional |
-
-**Note**: These are GitHub repository secrets, accessed in workflows as `${{ secrets.SECRET_NAME }}`. Do NOT add them as environment variables or commit them to your repository.
-
-### Step 3: Generate SSH Key for Deployment
-
-On your local machine:
-
-```bash
-# Generate deployment key
-ssh-keygen -t rsa -b 4096 -C "github-deploy" -f ~/.ssh/github_deploy_radiochatbox
-
-# Copy public key to server
-ssh-copy-id -i ~/.ssh/github_deploy_radiochatbox.pub user@your-server.com
-
-# Display private key (copy this to GitHub secret SSH_PRIVATE_KEY)
-cat ~/.ssh/github_deploy_radiochatbox
-```
-
-### Step 4: Test Automatic Deployment
-
-```bash
-# Make a small change
-echo "# Test deployment" >> README.md
-
-# Commit and push
-git add README.md
-git commit -m "Test automatic deployment"
-git push origin main
-
-# Watch deployment in GitHub Actions tab
-# Check your server logs: docker-compose logs -f
-```
-
----
-
-## Method 3: Manual Deployment
+## Method 2: Manual Deployment
 
 If you prefer manual deployment or want to test locally:
 
