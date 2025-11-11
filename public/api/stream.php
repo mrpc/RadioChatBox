@@ -18,9 +18,10 @@ header('X-Accel-Buffering: no'); // Disable nginx buffering
 // Disable output buffering
 if (ob_get_level()) ob_end_clean();
 
-// Prevent timeout
-set_time_limit(0);
-ini_set('max_execution_time', '0');
+// Set script timeout to 5 minutes for SSE connections
+// This prevents indefinite hangs while still allowing long-lived connections
+set_time_limit(300);
+ini_set('max_execution_time', '300');
 
 // Send initial comment to establish connection
 echo ": SSE connection established\n\n";
@@ -68,10 +69,21 @@ try {
         $channels[] = $prefix . 'chat:private_messages';
     }
     
+    // Check if client connection is still alive before subscribing
+    if (connection_aborted()) {
+        exit;
+    }
+    
     // Set Redis read timeout to prevent connection issues
     $redis->setOption(\Redis::OPT_READ_TIMEOUT, -1);
     
     $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix) {
+        // Check if client is still connected
+        if (connection_aborted()) {
+            // Unsubscribe and exit
+            return false;
+        }
+        
         if ($channel === $prefix . 'chat:updates') {
             // Check if it's a clear event
             $msgData = json_decode($message, true);

@@ -40,7 +40,12 @@ class Database
         if (self::$redis === null) {
             $config = Config::get('redis');
             self::$redis = new Redis();
-            self::$redis->connect($config['host'], $config['port']);
+            
+            // Set connection timeout to 2 seconds
+            self::$redis->connect($config['host'], $config['port'], 2.0);
+            
+            // Set read/write timeout to 3 seconds for normal operations
+            self::$redis->setOption(Redis::OPT_READ_TIMEOUT, 3);
         }
 
         return self::$redis;
@@ -54,7 +59,14 @@ class Database
     {
         $config = Config::get('redis');
         $redis = new Redis();
-        $redis->connect($config['host'], $config['port']);
+        
+        // Set connection timeout to 2 seconds
+        $redis->connect($config['host'], $config['port'], 2.0);
+        
+        // For subscribe, we want infinite read timeout (it's supposed to block)
+        // But we'll let stream.php handle its own timeout logic
+        $redis->setOption(Redis::OPT_READ_TIMEOUT, -1);
+        
         return $redis;
     }
     
