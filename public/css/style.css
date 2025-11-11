@@ -1495,8 +1495,9 @@ body.dark-theme .chat-header {
 }
 
 body.dark-theme .message {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.25);
     color: white;
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
 }
 
 body.dark-theme .message .message-text {
