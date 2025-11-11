@@ -185,8 +185,11 @@ body {
 .error-message {
     color: #ef4444;
     font-size: 14px;
-    min-height: 20px;
     margin-bottom: 10px;
+}
+
+.error-message:empty {
+    display: none;
 }
 
 #nickname-submit {
@@ -1765,6 +1768,11 @@ body.metal-theme .modal-content p {
 
 body.metal-theme .modal-content label {
     color: #aaaaaa;
+}
+
+body.metal-theme .readonly-field {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #ffffff !important;
 }
 
 body.metal-theme input[type="text"],
