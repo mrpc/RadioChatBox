@@ -1,0 +1,191 @@
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     RadioChatBox Auto-Deployment Flow                  │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                                                                            
+  Developer                    GitHub                    Production Server
+  ─────────                    ──────                    ─────────────────
+
+     │                            │                              │
+     │  1. git push origin main   │                              │
+     ├───────────────────────────>│                              │
+     │                            │                              │
+     │                            │  2. Trigger GitHub Actions   │
+     │                            │     Workflow                 │
+     │                            │                              │
+     │                            ├──────────┐                   │
+     │                            │          │                   │
+     │                            │  3. Run PHPUnit Tests        │
+     │                            │     - PostgreSQL Service     │
+     │                            │     - Redis Service          │
+     │                            │     - Run all tests          │
+     │                            │          │                   │
+     │                            │<─────────┘                   │
+     │                            │                              │
+     │                            │   Tests Passed ✅            │
+     │                            │                              │
+     │                            │  4. SSH to Production        │
+     │                            ├─────────────────────────────>│
+     │                            │                              │
+     │                            │  5. Execute deploy.sh        │
+     │                            │                              │
+     │                            │                    ┌─────────┴──────────┐
+     │                            │                    │                    │
+     │                            │                    │  Deployment Steps: │
+     │                            │                    │                    │
+     │                            │                    │  1. Backup DB      │
+     │                            │                    │  2. Git pull       │
+     │                            │                    │  3. Migrations     │
+     │                            │                    │  4. Composer deps  │
+     │                            │                    │  5. Rebuild Docker │
+     │                            │                    │  6. Start services │
+     │                            │                    │  7. Health check   │
+     │                            │                    │  8. Clear cache    │
+     │                            │                    │                    │
+     │                            │                    └─────────┬──────────┘
+     │                            │                              │
+     │                            │  6. Deployment Complete      │
+     │                            │<─────────────────────────────┤
+     │                            │                              │
+     │                            │  7. Health Check Verification│
+     │                            ├─────────────────────────────>│
+     │                            │                              │
+     │                            │  HTTP 200 OK ✅              │
+     │                            │<─────────────────────────────┤
+     │                            │                              │
+     │                            │  8. Send Notification        │
+     │                            ├──────────────┐               │
+     │                            │              │               │
+     │                            │   Slack/Discord (optional)   │
+     │                            │              │               │
+     │                            │<─────────────┘               │
+     │                            │                              │
+     │  9. Deployment Success! ✅ │                              │
+     │<───────────────────────────┤                              │
+     │                            │                              │
+     │                            │        Live Application      │
+     │                            │              │               │
+     │                            │              ▼               │
+     │                            │    ┌──────────────────┐      │
+     │                            │    │                  │      │
+     │  Users can access:         │    │  PostgreSQL DB   │      │
+     │  https://radio.example.com │    │  Redis Cache     │      │
+     │                            │    │  Apache/PHP      │      │
+     │                            │    │  SSE Streams     │      │
+     │                            │    │                  │      │
+     │                            │    └──────────────────┘      │
+     │                            │                              │
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Rollback Procedure                             │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  If deployment fails:
+
+  1. SSH to production server
+  2. git reset --hard <previous-commit>
+  3. Restore DB from backup in backups/
+  4. docker-compose up -d --force-recreate
+  5. Verify health check
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       Directory Structure on Server                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  /var/www/radiochatbox/
+  │
+  ├── .env                          # Production environment config
+  ├── deploy.sh                     # Deployment script (executable)
+  ├── deploy.log                    # Deployment log file
+  ├── docker-compose.yml            # Container orchestration
+  │
+  ├── backups/                      # Automatic database backups
+  │   ├── db_backup_20251111_140000.sql
+  │   ├── db_backup_20251110_140000.sql
+  │   └── ... (keeps last 7)
+  │
+  ├── database/
+  │   ├── init.sql                  # Initial schema
+  │   └── migrations/               # Database migrations
+  │       ├── 001_feature.sql
+  │       └── 002_bugfix.sql
+  │
+  ├── public/                       # Web root
+  │   ├── index.html
+  │   ├── admin.html
+  │   └── api/
+  │
+  ├── src/                          # PHP business logic
+  │   ├── ChatService.php
+  │   ├── Database.php
+  │   └── ...
+  │
+  └── vendor/                       # Composer dependencies
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          GitHub Secrets Required                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  Repository Settings → Secrets and variables → Actions
+
+  Required:
+  ─────────
+  SSH_PRIVATE_KEY     → SSH key for server access
+  SERVER_HOST         → Production server IP/domain
+  SERVER_USER         → SSH username
+  DEPLOY_PATH         → Path to app (/var/www/radiochatbox)
+  HEALTH_CHECK_URL    → Base URL (https://radio.example.com)
+
+  Optional:
+  ─────────
+  SLACK_WEBHOOK       → Slack notification webhook
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Production Architecture                            │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                         Internet
+                            │
+                            ▼
+                    ┌──────────────┐
+                    │   Nginx      │  Port 443 (HTTPS)
+                    │   (Reverse   │  SSL Termination
+                    │    Proxy)    │  Load Balancing
+                    └──────┬───────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │   Apache     │  Port 80 (Internal)
+                    │   PHP 8.3    │  RadioChatBox App
+                    │   SSE Server │
+                    └──────┬───────┘
+                           │
+                ┌──────────┴──────────┐
+                │                     │
+                ▼                     ▼
+         ┌────────────┐      ┌──────────────┐
+         │ PostgreSQL │      │    Redis     │
+         │  Database  │      │    Cache     │
+         │  Messages  │      │  Pub/Sub     │
+         │  Users     │      │  Sessions    │
+         └────────────┘      └──────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Monitoring Points                               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  ✓ Health endpoint:     GET /api/health.php
+  ✓ Container status:    docker-compose ps
+  ✓ Application logs:    docker-compose logs -f
+  ✓ Deployment logs:     tail -f deploy.log
+  ✓ Database backups:    ls -lh backups/
+  ✓ Disk space:          df -h
+  ✓ Redis memory:        docker exec radiochatbox_redis redis-cli INFO memory
+  ✓ Active connections:  netstat -an | grep 98
+```

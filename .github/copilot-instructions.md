@@ -50,6 +50,19 @@ docker exec radiochatbox_apache composer test-coverage  # With HTML coverage
 
 **Test Pattern**: Use Mockery for mocking Redis/PDO. See `tests/MessageFilterTest.php` for examples.
 
+### Production Deployment
+```bash
+./deploy.sh                             # Deploy to production (on server)
+```
+
+**Automatic deployment**: GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on every push to `main`:
+1. Runs PHPUnit tests with PostgreSQL + Redis services
+2. SSH to production server and runs `deploy.sh`
+3. Performs health check verification
+4. Sends Slack notification (optional)
+
+See `DEPLOYMENT.md` for complete setup guide.
+
 ### Database Changes
 1. Add migration SQL to `database/migrations/` (numbered: `001_description.sql`)
 2. Run: `docker exec radiochatbox_postgres psql -U radiochatbox -d radiochatbox -f /docker-entrypoint-initdb.d/migrations/001_description.sql`

@@ -270,6 +270,47 @@ docker exec radiochatbox_apache ./vendor/bin/phpunit
 
 ---
 
+## 🚀 Production Deployment
+
+RadioChatBox supports **automatic deployment** on every git push using GitHub Actions.
+
+### Quick Setup
+
+On your production server:
+
+```bash
+# Clone and run setup script
+git clone https://github.com/mrpc/RadioChatBox.git
+cd RadioChatBox
+./setup-production.sh
+```
+
+### Configure GitHub for Auto-Deploy
+
+1. **Add GitHub Secrets** (Settings → Secrets and variables → Actions):
+   - `SSH_PRIVATE_KEY` - SSH key for server access
+   - `SERVER_HOST` - Your server IP/domain
+   - `SERVER_USER` - SSH username
+   - `DEPLOY_PATH` - Path to application (e.g., `/var/www/radiochatbox`)
+   - `HEALTH_CHECK_URL` - Base URL for health checks
+
+2. **Push to trigger deployment**:
+   ```bash
+   git push origin main
+   # GitHub Actions will automatically:
+   # - Run tests
+   # - Deploy to server
+   # - Run health checks
+   ```
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for complete documentation including:
+- Nginx reverse proxy setup
+- SSL certificate configuration
+- Backup strategies
+- Monitoring and troubleshooting
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

@@ -5,6 +5,12 @@ composer.lock
 # Environment
 .env
 
+# Deployment
+backups/
+*.sql
+*.sql.gz
+deploy.log
+
 # Uploads
 /public/uploads/photos/*
 !/public/uploads/photos/.gitkeep
