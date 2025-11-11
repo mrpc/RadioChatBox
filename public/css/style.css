@@ -1432,6 +1432,10 @@ body.light-theme .message-time {
     color: #6b7280;
 }
 
+body.light-theme .message-text {
+    color: #1f2937 !important;
+}
+
 body.light-theme .message.own-message .message-username,
 body.light-theme .message.own-message .message-time {
     color: #1e40af;
@@ -1502,6 +1506,7 @@ body.dark-theme .message .message-text {
 body.dark-theme .message.own-message {
     background: rgba(102, 126, 234, 0.5);
     border-left: 4px solid #667eea;
+    color: white;
 }
 
 body.dark-theme .message.own-message .message-text {
@@ -1514,7 +1519,12 @@ body.dark-theme .message-username {
 }
 
 body.dark-theme .message-text {
-    color: white !important;
+    color: #ffffff !important;
+    font-weight: normal;
+}
+
+body.dark-theme div.message-text {
+    color: #ffffff !important;
 }
 
 body.dark-theme .message-time {
