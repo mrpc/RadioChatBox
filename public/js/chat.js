@@ -755,10 +755,14 @@ class RadioChatBox {
             this.eventSource.addEventListener('users', (e) => {
                 const data = JSON.parse(e.data);
                 
+                console.log('Received users event:', data);
+                
                 // Handle user kick event
                 if (data.type === 'user_kicked') {
+                    console.log('User kicked event received:', data.username);
                     if (data.username === this.currentUsername) {
                         // Current user was kicked
+                        console.log('Current user was kicked!');
                         alert('You have been kicked from the chat by an administrator.');
                         this.disconnect();
                         // Reload to show registration screen
