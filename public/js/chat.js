@@ -1917,11 +1917,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         sidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent bubbling to document click handler
-            // In embedded mode or mobile with mobile-open, close the sidebar
-            if ((window.chatBox.isEmbedded || window.chatBox.isMobile) && sidebar.classList.contains('mobile-open')) {
+            e.preventDefault(); // Prevent any default action
+            
+            // If sidebar is in mobile-open mode, always close it
+            if (sidebar.classList.contains('mobile-open')) {
                 sidebar.classList.remove('mobile-open');
             } else {
-                // Normal desktop toggle
+                // Normal desktop toggle for collapsed state
                 sidebar.classList.toggle('collapsed');
             }
         });
