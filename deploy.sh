@@ -116,6 +116,8 @@ redis-cli FLUSHDB || warning "Redis cache clear failed"
 # Set correct permissions
 log "Setting file permissions..."
 sudo chown -R www-data:www-data "$PROJECT_DIR"
+# Keep git directory owned by current user for future pulls
+sudo chown -R $USER:$USER "$PROJECT_DIR/.git"
 sudo chmod -R 755 "$WEB_ROOT"
 sudo chmod -R 775 "${PROJECT_DIR}/public/uploads"
 

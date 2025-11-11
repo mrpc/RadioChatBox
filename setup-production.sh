@@ -259,7 +259,9 @@ fi
 # Set permissions (DO THIS LAST)
 echo ""
 echo "Setting file permissions..."
+# Keep git directory owned by current user
 sudo chown -R www-data:www-data "$PROJECT_DIR"
+sudo chown -R $USER:$USER "$PROJECT_DIR/.git"
 sudo chmod -R 755 "$PROJECT_DIR/public"
 sudo mkdir -p "$PROJECT_DIR/public/uploads/photos"
 sudo chmod -R 775 "$PROJECT_DIR/public/uploads"
@@ -267,7 +269,6 @@ sudo chown -R www-data:www-data "$PROJECT_DIR/public/uploads"
 
 echo "✅ Permissions set"
 echo ""
-fi
 
 # Make deploy script executable
 chmod +x deploy.sh
