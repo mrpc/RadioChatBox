@@ -272,20 +272,38 @@ docker exec radiochatbox_apache ./vendor/bin/phpunit
 
 ## 🚀 Production Deployment
 
-RadioChatBox supports **automatic deployment** on every git push using GitHub Actions.
+RadioChatBox can be deployed on any server with Apache, PHP 8.3+, PostgreSQL, and Redis.
 
-### Quick Setup
+### Simple Installation (Project Already Cloned)
 
-On your production server:
+If you've already cloned the project to your server:
 
 ```bash
-# Clone and run setup script
+cd /path/to/RadioChatBox
+./install-production.sh
+```
+
+This script will:
+- ✅ Check prerequisites (PHP, PostgreSQL, Redis, Composer)
+- ✅ Create and configure database
+- ✅ Set up `.env` configuration
+- ✅ Install PHP dependencies
+- ✅ Configure Apache virtual host
+- ✅ Set correct file permissions
+
+### Full Server Setup (Fresh Server)
+
+For a fresh Ubuntu/Debian server that needs Apache, PHP, PostgreSQL, Redis installed:
+
+```bash
 git clone https://github.com/mrpc/RadioChatBox.git
 cd RadioChatBox
 ./setup-production.sh
 ```
 
-### Configure GitHub for Auto-Deploy
+### Automatic Deployment with GitHub Actions
+
+Configure GitHub to auto-deploy on every push:
 
 1. **Add GitHub Secrets** (Settings → Secrets and variables → Actions):
    - `SSH_PRIVATE_KEY` - SSH key for server access
@@ -299,13 +317,24 @@ cd RadioChatBox
    git push origin main
    # GitHub Actions will automatically:
    # - Run tests
-   # - Deploy to server
-   # - Run health checks
+   # - Deploy to server via SSH
+   # - Run database migrations
+   # - Reload Apache
+   # - Verify health checks
    ```
 
+### Manual Deployment
+
+To deploy updates manually:
+
+```bash
+cd /path/to/RadioChatBox
+./deploy.sh
+```
+
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for complete documentation including:
-- Nginx reverse proxy setup
-- SSL certificate configuration
+- SSL certificate setup with Let's Encrypt
+- Nginx reverse proxy configuration
 - Backup strategies
 - Monitoring and troubleshooting
 
