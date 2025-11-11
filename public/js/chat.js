@@ -1933,12 +1933,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const mobileSidebarToggle = document.getElementById('sidebar-toggle-mobile');
     
     if (mobileSidebarToggle && sidebar) {
-        console.log('Mobile toggle button found, isEmbedded:', window.chatBox.isEmbedded, 'isMobile:', window.chatBox.isMobile);
         mobileSidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent bubbling to document click handler
-            console.log('Mobile toggle clicked, current mobile-open:', sidebar.classList.contains('mobile-open'));
             sidebar.classList.toggle('mobile-open');
-            console.log('After toggle, mobile-open:', sidebar.classList.contains('mobile-open'));
         });
         
         // Close sidebar when clicking outside on mobile or embedded mode
