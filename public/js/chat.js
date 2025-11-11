@@ -231,10 +231,15 @@ class RadioChatBox {
             document.documentElement.style.setProperty('--brand-color', branding.color);
         }
         
-        // If there's a logo, you might want to display it somewhere
+        // Display logo if available
         if (branding.logo_url) {
-            // Store for later use
             this.brandLogoUrl = branding.logo_url;
+            const logoContainer = document.getElementById('brand-logo-container');
+            const logoImg = document.getElementById('brand-logo');
+            if (logoContainer && logoImg) {
+                logoImg.src = branding.logo_url;
+                logoContainer.style.display = 'block';
+            }
         }
     }
     

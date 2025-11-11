@@ -425,6 +425,16 @@ body {
     font-weight: 600;
 }
 
+#brand-logo-container {
+    display: flex;
+    align-items: center;
+}
+
+#brand-logo {
+    object-fit: contain;
+    height: auto;
+}
+
 #user-info {
     display: flex;
     align-items: center;
