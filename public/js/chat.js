@@ -1916,7 +1916,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         sidebarToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('collapsed');
+            // In embedded mode or mobile with mobile-open, close the sidebar
+            if ((window.chatBox.isEmbedded || window.chatBox.isMobile) && sidebar.classList.contains('mobile-open')) {
+                sidebar.classList.remove('mobile-open');
+            } else {
+                // Normal desktop toggle
+                sidebar.classList.toggle('collapsed');
+            }
         });
     }
     
@@ -1927,15 +1933,6 @@ document.addEventListener('DOMContentLoaded', () => {
         mobileSidebarToggle.addEventListener('click', () => {
             sidebar.classList.toggle('mobile-open');
         });
-        
-        // Also allow the desktop toggle button (inside sidebar) to close on mobile
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => {
-                if (window.chatBox.isMobile && sidebar.classList.contains('mobile-open')) {
-                    sidebar.classList.remove('mobile-open');
-                }
-            });
-        }
         
         // Close sidebar when clicking outside on mobile or embedded mode
         document.addEventListener('click', (e) => {
