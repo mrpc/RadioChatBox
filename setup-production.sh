@@ -60,15 +60,24 @@ echo ""
 if [ ! -f .env ]; then
     echo "Creating .env configuration file..."
     
+    # Prompt for database credentials
+    read -p "Database name [radiochatbox]: " DB_NAME_INPUT
+    DB_NAME=${DB_NAME_INPUT:-radiochatbox}
+    
+    read -p "Database user [radiochatbox]: " DB_USER_INPUT
+    DB_USER=${DB_USER_INPUT:-radiochatbox}
+    
     # Generate random password
     DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 24)
+    read -p "Database password [auto-generated]: " DB_PASS_INPUT
+    DB_PASS=${DB_PASS_INPUT:-$DB_PASS}
     
     cat > .env <<EOF
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=radiochatbox
-DB_USER=radiochatbox
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASS
 
 # Redis Configuration
@@ -89,6 +98,9 @@ EOF
     
     echo "✅ Created .env file"
     echo ""
+else
+    echo ".env file already exists. Using existing configuration."
+    echo ""
 fi
 
 # Source .env to get database config
@@ -96,21 +108,75 @@ source .env
 
 # Configure database
 echo "Setting up PostgreSQL database..."
-read -p "Create database '$DB_NAME'? (y/n): " CREATE_DB
-if [ "$CREATE_DB" = "y" ] || [ "$CREATE_DB" = "Y" ]; then
+echo "Database: $DB_NAME"
+echo "User: $DB_USER"
+echo ""
+read -p "Set up this database? (y/n): " SETUP_DB
+if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
     
     # Check if database exists
-    if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        echo "⚠️  Database '$DB_NAME' already exists. Skipping creation."
+    DB_EXISTS=$(sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME" && echo "yes" || echo "no")
+    
+    if [ "$DB_EXISTS" = "yes" ]; then
+        echo "⚠️  Database '$DB_NAME' already exists."
+        
+        # Check if database is empty
+        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | xargs)
+        
+        if [ "$TABLE_COUNT" -gt 0 ]; then
+            echo "⚠️  Database contains $TABLE_COUNT tables."
+            read -p "Re-import schema? This will DROP existing tables! (y/n): " REIMPORT
+            if [ "$REIMPORT" = "y" ] || [ "$REIMPORT" = "Y" ]; then
+                echo "Dropping existing tables and re-importing schema..."
+                # Copy SQL file to /tmp so postgres user can access it
+                TMP_SQL="/tmp/radiochatbox_init_$$.sql"
+                cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
+                chmod 644 "$TMP_SQL"
+                
+                sudo -u postgres psql -d "$DB_NAME" -f "$TMP_SQL"
+                
+                # Clean up temp file
+                rm -f "$TMP_SQL"
+                echo "✅ Schema re-imported"
+            else
+                echo "Skipping schema import."
+            fi
+        else
+            echo "Database is empty. Importing schema..."
+            # Copy SQL file to /tmp so postgres user can access it
+            TMP_SQL="/tmp/radiochatbox_init_$$.sql"
+            cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
+            chmod 644 "$TMP_SQL"
+            
+            sudo -u postgres psql -d "$DB_NAME" -f "$TMP_SQL"
+            
+            # Clean up temp file
+            rm -f "$TMP_SQL"
+            echo "✅ Schema imported"
+        fi
     else
         echo "Creating database and user..."
-        sudo -u postgres psql <<EOF
+        
+        # Check if user exists
+        USER_EXISTS=$(sudo -u postgres psql -t -c "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | xargs)
+        
+        if [ "$USER_EXISTS" = "1" ]; then
+            echo "User '$DB_USER' already exists. Creating database only..."
+            sudo -u postgres psql <<EOF
+CREATE DATABASE $DB_NAME;
+GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
+\c $DB_NAME
+GRANT ALL ON SCHEMA public TO $DB_USER;
+EOF
+        else
+            sudo -u postgres psql <<EOF
 CREATE DATABASE $DB_NAME;
 CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
 GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
 \c $DB_NAME
 GRANT ALL ON SCHEMA public TO $DB_USER;
 EOF
+        fi
         
         echo "Importing database schema..."
         # Copy SQL file to /tmp so postgres user can access it
@@ -124,13 +190,14 @@ EOF
         rm -f "$TMP_SQL"
         
         echo "✅ Database configured"
-        echo ""
-        echo "⚠️  Database credentials (saved in .env):"
-        echo "   Name: $DB_NAME"
-        echo "   User: $DB_USER"
-        echo "   Password: $DB_PASSWORD"
-        echo ""
     fi
+    
+    echo ""
+    echo "⚠️  Database credentials (saved in .env):"
+    echo "   Name: $DB_NAME"
+    echo "   User: $DB_USER"
+    echo "   Password: $DB_PASSWORD"
+    echo ""
 fi
 
 # Install composer dependencies
