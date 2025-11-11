@@ -764,6 +764,15 @@ class RadioChatBox {
                     if (data.username === this.username) {
                         // Current user was kicked
                         console.log('Current user was kicked!');
+                        
+                        // Clear all cookies and storage BEFORE showing alert
+                        this.setCookie('chatNickname', '', -1);
+                        this.setCookie('chatAge', '', -1);
+                        this.setCookie('chatLocation', '', -1);
+                        this.setCookie('chatSex', '', -1);
+                        this.setCookie('chatSessionId', '', -1);
+                        localStorage.clear();
+                        
                         alert('You have been kicked from the chat by an administrator.');
                         this.disconnect();
                         // Reload to show registration screen
