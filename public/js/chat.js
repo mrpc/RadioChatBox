@@ -754,8 +754,23 @@ class RadioChatBox {
 
             this.eventSource.addEventListener('users', (e) => {
                 const data = JSON.parse(e.data);
-                this.activeUsersCount.textContent = data.count;
-                this.renderActiveUsers(data.users);
+                
+                // Handle user kick event
+                if (data.type === 'user_kicked') {
+                    if (data.username === this.currentUsername) {
+                        // Current user was kicked
+                        alert('You have been kicked from the chat by an administrator.');
+                        this.disconnect();
+                        // Reload to show registration screen
+                        setTimeout(() => window.location.reload(), 1000);
+                    }
+                    // Refresh active users list for everyone
+                    this.loadActiveUsers();
+                } else if (data.count !== undefined && data.users !== undefined) {
+                    // Normal user list update
+                    this.activeUsersCount.textContent = data.count;
+                    this.renderActiveUsers(data.users);
+                }
             });
             
             this.eventSource.addEventListener('config', (e) => {

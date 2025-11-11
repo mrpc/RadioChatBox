@@ -21,6 +21,7 @@ if (!AdminAuth::authenticate()) {
 }
 
 $db = Database::getPDO();
+$redis = Database::getRedis();
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -34,11 +35,22 @@ try {
         
         $username = $data['username'];
         
-        // Remove from active users
+        // Remove from database
         $stmt = $db->prepare('DELETE FROM active_users WHERE username = ?');
         $result = $stmt->execute([$username]);
         
         if ($result) {
+            // Remove from Redis cache
+            $redis->hDel('chat:active_users', $username);
+            
+            // Notify clients that user was kicked
+            $notification = json_encode([
+                'type' => 'user_kicked',
+                'username' => $username,
+                'timestamp' => time()
+            ]);
+            $redis->publish('chat:user_updates', $notification);
+            
             echo json_encode(['success' => true, 'message' => 'User kicked successfully']);
         } else {
             http_response_code(500);
