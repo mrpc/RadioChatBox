@@ -1915,7 +1915,8 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebar.classList.add('collapsed');
         }
         
-        sidebarToggle.addEventListener('click', () => {
+        sidebarToggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent bubbling to document click handler
             // In embedded mode or mobile with mobile-open, close the sidebar
             if ((window.chatBox.isEmbedded || window.chatBox.isMobile) && sidebar.classList.contains('mobile-open')) {
                 sidebar.classList.remove('mobile-open');
@@ -1930,7 +1931,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const mobileSidebarToggle = document.getElementById('sidebar-toggle-mobile');
     
     if (mobileSidebarToggle && sidebar) {
-        mobileSidebarToggle.addEventListener('click', () => {
+        mobileSidebarToggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent bubbling to document click handler
             sidebar.classList.toggle('mobile-open');
         });
         
