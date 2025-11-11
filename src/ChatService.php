@@ -164,16 +164,17 @@ class ChatService
             }, $rows);
             
             // Repopulate Redis cache with messages from DB
-            // Use lPush to match how messages are normally stored (newest at position 0)
+            // DB returns DESC (newest first), we need to push them so newest is at position 0
+            // Use lPush which adds to the head, so push in reverse order (oldest first)
             if (!empty($messages)) {
-                // Push messages in reverse order (oldest first) so newest ends up at position 0
-                foreach ($messages as $msg) {
+                // Reverse so we push oldest first, making newest end up at position 0
+                foreach (array_reverse($messages) as $msg) {
                     $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($msg));
                 }
                 $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
             }
             
-            // Return in chronological order (oldest first) to match Redis behavior
+            // Return in chronological order (oldest first) to match getHistory() behavior
             return array_reverse($messages);
         } catch (PDOException $e) {
             error_log("Failed to load history from DB: " . $e->getMessage());
