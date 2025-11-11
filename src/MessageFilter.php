@@ -203,7 +203,8 @@ class MessageFilter
         try {
             // Try to get from Redis cache first
             $redis = Database::getRedis();
-            $cacheKey = 'url_blacklist_patterns';
+            $prefix = Database::getRedisPrefix();
+            $cacheKey = $prefix . 'url_blacklist_patterns';
             $cacheTTL = 300; // 5 minutes
             
             $cachedData = $redis->get($cacheKey);
@@ -259,7 +260,8 @@ class MessageFilter
     {
         try {
             $redis = Database::getRedis();
-            $key = "violations:spam_url:{$ipAddress}";
+            $prefix = Database::getRedisPrefix();
+            $key = $prefix . "violations:spam_url:{$ipAddress}";
             $violations = (int)$redis->get($key);
             
             // Increment violation counter
@@ -289,7 +291,7 @@ class MessageFilter
                     $stmt->execute([$ipAddress, $reason, $bannedUntil]);
                     
                     // Invalidate cache
-                    $redis->del('banned_ips');
+                    $redis->del(Database::getRedisPrefix() . 'banned_ips');
                     
                     error_log("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})");
                 }

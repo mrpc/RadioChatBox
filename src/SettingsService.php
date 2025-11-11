@@ -9,6 +9,7 @@ class SettingsService
 {
     private PDO $pdo;
     private Redis $redis;
+    private string $prefix;
     private const SETTINGS_CACHE_KEY = 'settings:all';
     private const CACHE_TTL = 300; // 5 minutes
 
@@ -16,6 +17,15 @@ class SettingsService
     {
         $this->pdo = Database::getPDO();
         $this->redis = Database::getRedis();
+        $this->prefix = Database::getRedisPrefix();
+    }
+
+    /**
+     * Prefix a Redis key with instance identifier
+     */
+    private function prefixKey(string $key): string
+    {
+        return $this->prefix . $key;
     }
 
     /**
@@ -33,7 +43,7 @@ class SettingsService
     public function getAll(): array
     {
         // Try cache first
-        $cached = $this->redis->get(self::SETTINGS_CACHE_KEY);
+        $cached = $this->redis->get($this->prefixKey(self::SETTINGS_CACHE_KEY));
         if ($cached !== false) {
             return json_decode($cached, true);
         }
@@ -47,7 +57,7 @@ class SettingsService
         }
 
         // Cache for future requests
-        $this->redis->setex(self::SETTINGS_CACHE_KEY, self::CACHE_TTL, json_encode($settings));
+        $this->redis->setex($this->prefixKey(self::SETTINGS_CACHE_KEY), self::CACHE_TTL, json_encode($settings));
 
         return $settings;
     }
@@ -93,7 +103,7 @@ class SettingsService
 
         if ($result) {
             // Invalidate cache
-            $this->redis->del(self::SETTINGS_CACHE_KEY);
+            $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
         }
 
         return $result;
@@ -124,7 +134,7 @@ class SettingsService
             $this->pdo->commit();
             
             // Invalidate cache
-            $this->redis->del(self::SETTINGS_CACHE_KEY);
+            $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
 
             return true;
         } catch (\Exception $e) {

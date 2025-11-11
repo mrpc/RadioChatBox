@@ -45,4 +45,15 @@ class Database
 
         return self::$redis;
     }
+    
+    /**
+     * Get Redis key prefix based on database name
+     * This ensures multiple instances don't interfere with each other
+     */
+    public static function getRedisPrefix(): string
+    {
+        $config = Config::get('database');
+        $dbName = $config['name'];
+        return "radiochatbox:{$dbName}:";
+    }
 }

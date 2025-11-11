@@ -92,7 +92,8 @@ class AdminAuth
     {
         try {
             $redis = Database::getRedis();
-            $key = "admin_auth_attempts:{$ipAddress}";
+            $prefix = Database::getRedisPrefix();
+            $key = $prefix . "admin_auth_attempts:{$ipAddress}";
             $attempts = (int)$redis->get($key);
             
             // Allow max 5 attempts per 15 minutes
@@ -111,7 +112,8 @@ class AdminAuth
     {
         try {
             $redis = Database::getRedis();
-            $key = "admin_auth_attempts:{$ipAddress}";
+            $prefix = Database::getRedisPrefix();
+            $key = $prefix . "admin_auth_attempts:{$ipAddress}";
             
             $redis->incr($key);
             $redis->expire($key, 900); // 15 minutes
@@ -127,7 +129,8 @@ class AdminAuth
     {
         try {
             $redis = Database::getRedis();
-            $key = "admin_auth_attempts:{$ipAddress}";
+            $prefix = Database::getRedisPrefix();
+            $key = $prefix . "admin_auth_attempts:{$ipAddress}";
             $redis->del($key);
         } catch (\Exception $e) {
             error_log("Failed to clear admin auth attempts: " . $e->getMessage());

@@ -88,7 +88,8 @@ try {
             'type' => 'private'
         ];
         
-        $redis->publish('chat:private_messages', json_encode($messageData));
+        $prefix = Database::getRedisPrefix();
+        $redis->publish($prefix . 'chat:private_messages', json_encode($messageData));
         
         echo json_encode([
             'success' => true,

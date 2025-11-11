@@ -9,6 +9,7 @@ class ChatService
 {
     private Redis $redis;
     private PDO $pdo;
+    private string $prefix;
     private const MESSAGES_KEY = 'chat:messages';
     private const PUBSUB_CHANNEL = 'chat:updates';
     private const RATE_LIMIT_PREFIX = 'ratelimit:';
@@ -19,6 +20,15 @@ class ChatService
     {
         $this->redis = Database::getRedis();
         $this->pdo = Database::getPDO();
+        $this->prefix = Database::getRedisPrefix();
+    }
+    
+    /**
+     * Add prefix to Redis key for multi-instance support
+     */
+    private function prefixKey(string $key): string
+    {
+        return $this->prefix . $key;
     }
 
     /**
@@ -66,14 +76,14 @@ class ChatService
         ];
 
         // Store in Redis (for real-time)
-        $this->redis->lPush(self::MESSAGES_KEY, json_encode($messageData));
-        $this->redis->lTrim(self::MESSAGES_KEY, 0, Config::get('chat')['history_limit'] - 1);
+        $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($messageData));
+        $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
         
         // Set TTL on the list
-        $this->redis->expire(self::MESSAGES_KEY, Config::get('chat')['message_ttl']);
+        $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), Config::get('chat')['message_ttl']);
 
         // Publish to subscribers
-        $this->redis->publish(self::PUBSUB_CHANNEL, json_encode($messageData));
+        $this->redis->publish($this->prefixKey(self::PUBSUB_CHANNEL), json_encode($messageData));
 
         // Store in PostgreSQL (for persistence)
         $this->storeMessageInDB($messageData);
@@ -87,7 +97,7 @@ class ChatService
     public function getHistory(int $limit = 50): array
     {
         $limit = min($limit, Config::get('chat')['history_limit']);
-        $messages = $this->redis->lRange(self::MESSAGES_KEY, 0, $limit - 1);
+        $messages = $this->redis->lRange($this->prefixKey(self::MESSAGES_KEY), 0, $limit - 1);
         
         $decodedMessages = array_map(function($msg) {
             return json_decode($msg, true);
@@ -132,7 +142,7 @@ class ChatService
         
         try {
             $cacheKey = 'settings:rate_limit';
-            $cached = $this->redis->get($cacheKey);
+            $cached = $this->redis->get($this->prefixKey($cacheKey));
             
             if ($cached !== false) {
                 $settings = json_decode($cached, true);
@@ -155,7 +165,7 @@ class ChatService
                 }
                 
                 // Cache for 5 minutes
-                $this->redis->setex($cacheKey, 300, json_encode([
+                $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode([
                     'messages' => $rateLimitMessages,
                     'window' => $rateLimitWindow
                 ]));
@@ -166,7 +176,7 @@ class ChatService
         }
         
         $key = self::RATE_LIMIT_PREFIX . $ipAddress;
-        $current = $this->redis->get($key);
+        $current = $this->redis->get($this->prefixKey($key));
         
         if ($current !== false && (int)$current >= $rateLimitMessages) {
             // Track repeated violations for auto-ban
@@ -175,8 +185,8 @@ class ChatService
         }
         
         // Increment counter
-        $this->redis->incr($key);
-        $this->redis->expire($key, $rateLimitWindow);
+        $this->redis->incr($this->prefixKey($key));
+        $this->redis->expire($this->prefixKey($key), $rateLimitWindow);
         
         return true;
     }
@@ -188,11 +198,11 @@ class ChatService
     {
         try {
             $key = "violations:{$violationType}:{$ipAddress}";
-            $violations = (int)$this->redis->get($key);
+            $violations = (int)$this->redis->get($this->prefixKey($key));
             
             // Increment violation counter
-            $this->redis->incr($key);
-            $this->redis->expire($key, 3600); // Track violations for 1 hour
+            $this->redis->incr($this->prefixKey($key));
+            $this->redis->expire($this->prefixKey($key), 3600); // Track violations for 1 hour
             
             $violations++; // Current violation count
             
@@ -210,7 +220,7 @@ class ChatService
                 $this->banIP($ipAddress, $reason, 'system', 1); // 1 day ban
                 
                 // Clear violation counter
-                $this->redis->del($key);
+                $this->redis->del($this->prefixKey($key));
                 
                 error_log("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})");
             } else {
@@ -495,9 +505,9 @@ class ChatService
     private function isIPBanned(string $ipAddress): bool
     {
         try {
-            // Try cache first
+                        // Try cache first
             $cacheKey = 'banned_ips';
-            $cached = $this->redis->get($cacheKey);
+            $cached = $this->redis->get($this->prefixKey($cacheKey));
             
             if ($cached !== false) {
                 $bannedIPs = json_decode($cached, true);
@@ -510,7 +520,7 @@ class ChatService
                 $bannedIPs = $stmt->fetchAll(PDO::FETCH_COLUMN);
                 
                 // Cache for 5 minutes
-                $this->redis->setex($cacheKey, 300, json_encode($bannedIPs));
+                $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($bannedIPs));
             }
             
             return in_array($ipAddress, $bannedIPs, true);
@@ -529,7 +539,7 @@ class ChatService
         try {
             // Try cache first
             $cacheKey = 'banned_nicknames';
-            $cached = $this->redis->get($cacheKey);
+            $cached = $this->redis->get($this->prefixKey($cacheKey));
             
             if ($cached !== false) {
                 $bannedNicknames = json_decode($cached, true);
@@ -539,7 +549,7 @@ class ChatService
                 $bannedNicknames = $stmt->fetchAll(PDO::FETCH_COLUMN);
                 
                 // Cache for 5 minutes
-                $this->redis->setex($cacheKey, 300, json_encode($bannedNicknames));
+                $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($bannedNicknames));
             }
             
             return in_array(strtolower($nickname), $bannedNicknames, true);
@@ -626,7 +636,7 @@ class ChatService
             
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del('banned_ips');
+                $this->redis->del($this->prefixKey('banned_ips'));
             }
             
             return $result;
@@ -647,7 +657,7 @@ class ChatService
             
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del('banned_ips');
+                $this->redis->del($this->prefixKey('banned_ips'));
             }
             
             return $result;
@@ -683,7 +693,7 @@ class ChatService
             
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del('banned_nicknames');
+                $this->redis->del($this->prefixKey('banned_nicknames'));
             }
             
             return $result;
@@ -704,7 +714,7 @@ class ChatService
             
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del('banned_nicknames');
+                $this->redis->del($this->prefixKey('banned_nicknames'));
             }
             
             return $result;

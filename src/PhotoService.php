@@ -13,6 +13,7 @@ class PhotoService
 {
     private PDO $pdo;
     private Redis $redis;
+    private string $prefix;
     private string $uploadDir;
     private int $maxFileSize; // bytes
     private array $allowedMimeTypes = [
@@ -35,6 +36,7 @@ class PhotoService
     {
         $this->pdo = Database::getPDO();
         $this->redis = Database::getRedis();
+        $this->prefix = Database::getRedisPrefix();
         $this->uploadDir = __DIR__ . '/../public/uploads/photos';
         
         // Get max size from settings (default 5MB)
@@ -45,6 +47,14 @@ class PhotoService
         if (!is_dir($this->uploadDir)) {
             mkdir($this->uploadDir, 0755, true);
         }
+    }
+
+    /**
+     * Prefix a Redis key with instance identifier
+     */
+    private function prefixKey(string $key): string
+    {
+        return $this->prefix . $key;
     }
 
     /**
@@ -134,7 +144,7 @@ class PhotoService
         ]);
 
         // Invalidate user cache
-        $this->redis->del("user_attachments:{$username}");
+        $this->redis->del($this->prefixKey("user_attachments:{$username}"));
 
         return [
             'attachment_id' => $attachmentId,
@@ -152,7 +162,7 @@ class PhotoService
      */
     public function getAttachment(string $attachmentId): ?array
     {
-        $cacheKey = "attachment:{$attachmentId}";
+        $cacheKey = $this->prefixKey("attachment:{$attachmentId}");
         
         // Try cache first
         $cached = $this->redis->get($cacheKey);
@@ -182,7 +192,7 @@ class PhotoService
      */
     public function getAttachmentsByUser(string $username): array
     {
-        $cacheKey = "user_attachments:{$username}";
+        $cacheKey = $this->prefixKey("user_attachments:{$username}");
         
         // Try cache first
         $cached = $this->redis->get($cacheKey);
@@ -402,7 +412,7 @@ class PhotoService
      */
     private function getSetting(string $key, $default)
     {
-        $cacheKey = "setting:{$key}";
+        $cacheKey = $this->prefixKey("setting:{$key}");
         
         // Try cache first
         $cached = $this->redis->get($cacheKey);

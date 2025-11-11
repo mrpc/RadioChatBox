@@ -11,11 +11,13 @@ class CleanupService
 {
     private PDO $pdo;
     private \Redis $redis;
+    private string $prefix;
 
     public function __construct()
     {
         $this->pdo = Database::getPDO();
         $this->redis = Database::getRedis();
+        $this->prefix = Database::getRedisPrefix();
     }
 
     /**
@@ -34,7 +36,7 @@ class CleanupService
             
             // Invalidate cache if any bans were removed
             if ($count > 0) {
-                $this->redis->del('banned_ips');
+                $this->redis->del($this->prefix . 'banned_ips');
                 error_log("Cleanup: Removed {$count} expired IP bans");
             }
             
