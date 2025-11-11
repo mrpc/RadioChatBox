@@ -22,7 +22,7 @@ The `webhook.php` file is already in your project. During setup, a webhook secre
 
 **Check your webhook secret:**
 ```bash
-cd /home/livechats/domains/app.livechats.gr/public_html
+cd /path/to/your/radiochatbox
 grep WEBHOOK_SECRET .env
 ```
 
@@ -37,31 +37,31 @@ WEBHOOK_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6
 
 The webhook handler needs to be accessible via HTTP(S). Add a symlink or make sure it's in your public directory:
 
-**Option A: Already in public_html** (recommended during setup)
+**Option A: Already in project root** (recommended during setup)
 ```bash
 # No action needed - webhook.php is at project root
 ```
 
 **Option B: Create symlink to public directory**
 ```bash
-cd /home/livechats/domains/app.livechats.gr/public_html/public
+cd /path/to/your/radiochatbox/public
 ln -s ../webhook.php webhook.php
 ```
 
 **Test accessibility:**
 ```bash
-curl -X POST https://app.livechats.gr/webhook.php
+curl -X POST https://your-domain.com/webhook.php
 # Should return: {"error":"Empty payload"}
 ```
 
 ### Step 3: Configure GitHub Webhook
 
-1. Go to your GitHub repository: `https://github.com/mrpc/RadioChatBox`
+1. Go to your GitHub repository: `https://github.com/YOUR_USERNAME/YOUR_REPO`
 
 2. Navigate to: **Settings** → **Webhooks** → **Add webhook**
 
 3. Fill in the form:
-   - **Payload URL**: `https://app.livechats.gr/webhook.php`
+   - **Payload URL**: `https://your-domain.com/webhook.php`
    - **Content type**: `application/json`
    - **Secret**: Paste your `WEBHOOK_SECRET` from `.env`
    - **Which events?**: Select "Just the push event"
@@ -85,10 +85,10 @@ git push origin main
 **Monitor deployment:**
 ```bash
 # Watch webhook log
-tail -f /home/livechats/domains/app.livechats.gr/public_html/webhook.log
+tail -f /path/to/your/radiochatbox/webhook.log
 
 # Watch deployment log
-tail -f /home/livechats/domains/app.livechats.gr/public_html/deploy.log
+tail -f /path/to/your/radiochatbox/deploy.log
 ```
 
 You should see:
@@ -104,7 +104,7 @@ You should see:
 ### GitLab
 
 1. Go to: **Settings** → **Webhooks**
-2. **URL**: `https://app.livechats.gr/webhook.php`
+2. **URL**: `https://your-domain.com/webhook.php`
 3. **Secret token**: Your `WEBHOOK_SECRET`
 4. **Trigger**: Check "Push events"
 5. **SSL verification**: Enable (if you have HTTPS)
@@ -112,7 +112,7 @@ You should see:
 ### Gitea
 
 1. Go to: **Settings** → **Webhooks** → **Add Webhook** → **Gitea**
-2. **Target URL**: `https://app.livechats.gr/webhook.php`
+2. **Target URL**: `https://your-domain.com/webhook.php`
 3. **Secret**: Your `WEBHOOK_SECRET`
 4. **Trigger On**: Push events
 5. **Active**: ✅
@@ -120,7 +120,7 @@ You should see:
 ### Bitbucket
 
 1. Go to: **Repository settings** → **Webhooks** → **Add webhook**
-2. **URL**: `https://app.livechats.gr/webhook.php`
+2. **URL**: `https://your-domain.com/webhook.php`
 3. **Triggers**: Repository push
 4. **Status**: Active
 
@@ -134,7 +134,7 @@ You should see:
 ```bash
 # Get free SSL certificate
 sudo apt-get install certbot python3-certbot-apache
-sudo certbot --apache -d app.livechats.gr
+sudo certbot --apache -d your-domain.com
 ```
 
 ### 2. Strong Webhook Secret
@@ -172,7 +172,7 @@ chmod 600 .env  # Secret file
 ```bash
 # Set up log rotation
 sudo tee /etc/logrotate.d/radiochatbox <<EOF
-/home/livechats/domains/app.livechats.gr/public_html/*.log {
+/path/to/your/radiochatbox/*.log {
     daily
     rotate 7
     compress
@@ -201,7 +201,7 @@ grep WEBHOOK_SECRET .env
 
 **Verify deploy.sh exists:**
 ```bash
-ls -la /home/livechats/domains/app.livechats.gr/public_html/deploy.sh
+ls -la /path/to/your/radiochatbox/deploy.sh
 chmod +x deploy.sh
 ```
 
@@ -347,11 +347,11 @@ If you previously set up GitHub Actions deployment:
 **Webhook not working?**
 
 1. Check logs: `tail -f webhook.log`
-2. Test manually: `curl -X POST https://app.livechats.gr/webhook.php`
+2. Test manually: `curl -X POST https://your-domain.com/webhook.php`
 3. Verify secret: `grep WEBHOOK_SECRET .env`
 4. Check GitHub Recent Deliveries for error details
 
-**GitHub Issues**: https://github.com/mrpc/RadioChatBox/issues
+**GitHub Issues**: https://github.com/YOUR_USERNAME/YOUR_REPO/issues
 
 ---
 

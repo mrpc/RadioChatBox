@@ -29,12 +29,12 @@ RadioChatBox supports two deployment methods:
 **Quick Start**:
 ```bash
 # 1. Setup server (webhook.php already included)
-cd /home/livechats/domains/app.livechats.gr/public_html
+cd /path/to/your/radiochatbox
 grep WEBHOOK_SECRET .env  # Copy this secret
 
 # 2. Add webhook in GitHub:
 #    Settings → Webhooks → Add webhook
-#    URL: https://app.livechats.gr/webhook.php
+#    URL: https://your-domain.com/webhook.php
 #    Secret: (paste WEBHOOK_SECRET)
 #    Content type: application/json
 #    Events: Just the push event
