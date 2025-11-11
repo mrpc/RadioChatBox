@@ -63,6 +63,20 @@ class Config
                 'message_ttl' => (int)(getenv('CHAT_MESSAGE_TTL') ?: 3600),
             ],
             'allowed_origins' => explode(',', getenv('ALLOWED_ORIGINS') ?: '*'),
+            'version' => getenv('APP_VERSION') ?: self::getAutoVersion(),
         ];
+    }
+
+    /**
+     * Generate automatic version based on file modification time
+     * Falls back to timestamp if style.css doesn't exist
+     */
+    private static function getAutoVersion(): string
+    {
+        $cssFile = __DIR__ . '/../public/css/style.css';
+        if (file_exists($cssFile)) {
+            return (string)filemtime($cssFile);
+        }
+        return (string)time();
     }
 }

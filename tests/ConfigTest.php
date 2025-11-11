@@ -43,4 +43,14 @@ class ConfigTest extends TestCase
         
         $this->assertNull($result);
     }
+
+    public function testGetVersionReturnsString()
+    {
+        $version = Config::get('version');
+        
+        $this->assertIsString($version);
+        $this->assertNotEmpty($version);
+        // Version should be numeric (timestamp)
+        $this->assertIsNumeric($version);
+    }
 }

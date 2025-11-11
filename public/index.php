@@ -12,7 +12,8 @@
     <meta property="og:type" id="og-type" content="website">
     <meta property="og:image" id="og-image" content="">
     <link rel="icon" id="favicon" type="image/x-icon" href="">
-    <link rel="stylesheet" href="css/style.css">
+    <!-- CSS with automatic cache-busting version based on file modification time -->
+    <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(__DIR__ . '/css/style.css'); ?>">
     <!-- Custom header scripts will be injected here -->
     <script id="custom-header-scripts"></script>
 </head>
