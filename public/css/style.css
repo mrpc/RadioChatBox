@@ -1519,16 +1519,16 @@ body.dark-theme .message-username {
     font-weight: 600;
 }
 
-body.dark-theme .message-text {
+body.dark-theme #messages-container .message-text {
     color: #1f2937 !important;
     font-weight: normal;
 }
 
-body.dark-theme div.message-text {
+body.dark-theme #messages-container div.message-text {
     color: #1f2937 !important;
 }
 
-body.dark-theme .message.own-message div.message-text {
+body.dark-theme #messages-container .message.own-message div.message-text {
     color: white !important;
 }
 
@@ -1571,19 +1571,19 @@ body.dark-theme #sidebar-header h3 {
 }
 
 body.dark-theme .user-item {
-    color: white;
+    color: white !important;
 }
 
 body.dark-theme .active-user {
-    color: white;
+    color: white !important;
 }
 
 body.dark-theme .active-user .user-name {
-    color: white;
+    color: white !important;
 }
 
 body.dark-theme .active-user .user-profile {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.7) !important;
 }
 
 body.dark-theme .user-item:hover,
