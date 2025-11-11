@@ -156,9 +156,10 @@ try {
         
         $db->commit();
         
-        // Invalidate settings cache in Redis
+        // Invalidate ALL settings caches in Redis
         $redis = Database::getRedis();
-        $redis->del('settings:rate_limit');
+        $redis->del('settings:all');  // Main settings cache
+        $redis->del('settings:rate_limit');  // Rate limit specific cache
         
         echo json_encode(['success' => true, 'message' => 'Settings updated successfully']);
         
