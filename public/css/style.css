@@ -1572,38 +1572,42 @@ body.metal-theme #chat-header {
 }
 
 body.metal-theme .message {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    border-left: 2px solid #333333;
+    border-left: 2px solid #555555;
 }
 
 body.metal-theme .message.own-message {
-    background: rgba(139, 0, 0, 0.15);
+    background: rgba(139, 0, 0, 0.3);
     border-left: 4px solid #8B0000;
 }
 
 body.metal-theme .message-username {
-    color: #D32F2F;
+    color: #FF5555;
     font-weight: 600;
 }
 
 body.metal-theme .message-time {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+body.metal-theme .message-text {
+    color: #ffffff !important;
 }
 
 body.metal-theme .chat-input {
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.7);
     border-top: 1px solid #8B0000;
 }
 
 body.metal-theme #message-input {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid #333333;
-    color: #ffffff;
+    background: rgba(30, 30, 30, 0.9);
+    border: 1px solid #555555;
+    color: #ffffff !important;
 }
 
 body.metal-theme #message-input::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.4);
 }
 
 body.metal-theme #message-input:focus {
