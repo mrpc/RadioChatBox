@@ -90,7 +90,15 @@ if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" 
     for migration in database/migrations/*.sql; do
         if [ -f "$migration" ]; then
             log "  Applying: $(basename $migration)"
-            sudo -u postgres psql -d "$DB_NAME" -f "$migration" || warning "Migration $(basename $migration) failed or already applied"
+            # Copy to /tmp so postgres user can access it
+            TMP_MIGRATION="/tmp/migration_$(basename $migration)_$$"
+            cp "$migration" "$TMP_MIGRATION"
+            chmod 644 "$TMP_MIGRATION"
+            
+            sudo -u postgres psql -d "$DB_NAME" -f "$TMP_MIGRATION" || warning "Migration $(basename $migration) failed or already applied"
+            
+            # Clean up
+            rm -f "$TMP_MIGRATION"
         fi
     done
 else

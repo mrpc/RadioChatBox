@@ -113,7 +113,15 @@ GRANT ALL ON SCHEMA public TO $DB_USER;
 EOF
         
         echo "Importing database schema..."
-        sudo -u postgres psql -d "$DB_NAME" -f "$PROJECT_DIR/database/init.sql"
+        # Copy SQL file to /tmp so postgres user can access it
+        TMP_SQL="/tmp/radiochatbox_init_$$.sql"
+        cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
+        chmod 644 "$TMP_SQL"
+        
+        sudo -u postgres psql -d "$DB_NAME" -f "$TMP_SQL"
+        
+        # Clean up temp file
+        rm -f "$TMP_SQL"
         
         echo "✅ Database configured"
         echo ""
