@@ -1130,6 +1130,23 @@ body.embedded-mode #sidebar {
     display: none;
 }
 
+/* Show mobile sidebar toggle button in embedded mode */
+body.embedded-mode #sidebar-toggle-mobile {
+    display: inline-flex !important;
+}
+
+/* When sidebar is shown in embedded mode, display it as overlay */
+body.embedded-mode #sidebar.mobile-open {
+    display: block;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px !important;
+    z-index: 999;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+}
+
 body.embedded-mode #chat-container {
     width: 100%;
 }
