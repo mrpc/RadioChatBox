@@ -204,11 +204,11 @@
         </div>
     </div>
 
-    <script src="js/countries.js"></script>
-    <script src="js/emojis.js"></script>
-    <script src="js/analytics.js"></script>
-    <script src="js/ads.js"></script>
-    <script src="js/chat.js?v=1.8"></script>
+    <script src="js/countries.js?v=<?php echo filemtime(__DIR__ . '/js/countries.js'); ?>"></script>
+    <script src="js/emojis.js?v=<?php echo filemtime(__DIR__ . '/js/emojis.js'); ?>"></script>
+    <script src="js/analytics.js?v=<?php echo filemtime(__DIR__ . '/js/analytics.js'); ?>"></script>
+    <script src="js/ads.js?v=<?php echo filemtime(__DIR__ . '/js/ads.js'); ?>"></script>
+    <script src="js/chat.js?v=<?php echo filemtime(__DIR__ . '/js/chat.js'); ?>"></script>
     <!-- Custom body scripts will be injected here -->
     <script id="custom-body-scripts"></script>
 </body>
