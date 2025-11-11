@@ -275,8 +275,8 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('rate_limit_messages', '10'),
     ('rate_limit_window', '60'),
     
-    -- Admin authentication
-    ('admin_password_hash', '$2y$10$OAI8SX4mAdBqNKTUeKMMZeg0RiwlVH6SKmsNMWQbHlq7Y.2nZEB1a'),
+    -- Admin authentication (default password: admin123 - CHANGE IN PRODUCTION!)
+    ('admin_password_hash', '$2y$10$ZUCvW9SmSpOUwPtWC.XzL.mA0piFBy.DM8TKPHvkWdd0CsG121vCC'),
     
     -- Chat settings
     ('color_scheme', 'dark'),

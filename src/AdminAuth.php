@@ -4,7 +4,7 @@ namespace RadioChatBox;
 
 class AdminAuth
 {
-    private const ADMIN_PASSWORD_HASH = '$2y$10$OAI8SX4mAdBqNKTUeKMMZeg0RiwlVH6SKmsNMWQbHlq7Y.2nZEB1a'; // password: password
+    private const ADMIN_PASSWORD_HASH = '$2y$10$ZUCvW9SmSpOUwPtWC.XzL.mA0piFBy.DM8TKPHvkWdd0CsG121vCC'; // password: admin123
     
     /**
      * Get admin password hash from database or fallback to constant

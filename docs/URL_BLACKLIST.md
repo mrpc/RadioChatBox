@@ -49,7 +49,7 @@ CREATE INDEX idx_url_blacklist_pattern ON url_blacklist(pattern);
 
 ### Accessing URL Blacklist Management
 1. Navigate to admin panel: `http://your-domain/admin.html`
-2. Login with admin password (default: `password`)
+2. Login with admin password (default: `admin123`)
 3. Click on "URL Blacklist" tab
 
 ### Managing Patterns
