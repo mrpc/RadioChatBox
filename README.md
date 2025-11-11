@@ -274,32 +274,22 @@ docker exec radiochatbox_apache ./vendor/bin/phpunit
 
 RadioChatBox can be deployed on any server with Apache, PHP 8.3+, PostgreSQL, and Redis.
 
-### Simple Installation (Project Already Cloned)
+### Quick Installation
 
-If you've already cloned the project to your server:
+If you've already cloned the project to your server with LAMP stack installed:
 
 ```bash
 cd /path/to/RadioChatBox
-./install-production.sh
+./setup-production.sh
 ```
 
 This script will:
-- ✅ Check prerequisites (PHP, PostgreSQL, Redis, Composer)
+- ✅ Check prerequisites (PHP 8.3+, PostgreSQL, Redis, Composer)
 - ✅ Create and configure database
 - ✅ Set up `.env` configuration
 - ✅ Install PHP dependencies
 - ✅ Configure Apache virtual host
 - ✅ Set correct file permissions
-
-### Full Server Setup (Fresh Server)
-
-For a fresh Ubuntu/Debian server that needs Apache, PHP, PostgreSQL, Redis installed:
-
-```bash
-git clone https://github.com/mrpc/RadioChatBox.git
-cd RadioChatBox
-./setup-production.sh
-```
 
 ### Automatic Deployment with GitHub Actions
 

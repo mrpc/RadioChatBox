@@ -1,15 +1,10 @@
 #!/bin/bash
 
 #############################################################################
-# Production Setup Script
+# RadioChatBox - Production Setup
 #
-# This script helps you set up RadioChatBox on a production server with
-# Apache, PHP, PostgreSQL, and Redis (no Docker required).
-#
-# Requirements:
-#   - Ubuntu/Debian server
-#   - sudo access
-#   - Git
+# This script sets up RadioChatBox on an existing LAMP stack.
+# Assumes Apache, PHP 8.3+, PostgreSQL, Redis are already installed.
 #
 # Usage: ./setup-production.sh
 #############################################################################
@@ -17,7 +12,7 @@
 set -e
 
 echo "========================================="
-echo "RadioChatBox Production Setup"
+echo "RadioChatBox Production Installation"
 echo "========================================="
 echo ""
 
@@ -28,116 +23,53 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # Check for required commands
-command -v git >/dev/null 2>&1 || { echo "❌ git is required but not installed. Aborting."; exit 1; }
+echo "Checking prerequisites..."
+command -v git >/dev/null 2>&1 || { echo "❌ git is required but not installed."; exit 1; }
+command -v php >/dev/null 2>&1 || { echo "❌ php is required but not installed."; exit 1; }
+command -v psql >/dev/null 2>&1 || { echo "❌ PostgreSQL (psql) is required but not installed."; exit 1; }
+command -v redis-cli >/dev/null 2>&1 || { echo "❌ Redis is required but not installed."; exit 1; }
+command -v composer >/dev/null 2>&1 || { echo "❌ Composer is required but not installed."; exit 1; }
 
-echo "✅ Prerequisites check passed"
-echo ""
-
-# Prompt for installation
-read -p "Do you want to install Apache, PHP 8.3, PostgreSQL, and Redis? (y/n): " INSTALL_DEPS
-if [ "$INSTALL_DEPS" = "y" ] || [ "$INSTALL_DEPS" = "Y" ]; then
-    echo ""
-    echo "Installing system dependencies..."
-    
-    # Update package list
-    sudo apt-get update
-    
-    # Install Apache
-    echo "Installing Apache..."
-    sudo apt-get install -y apache2
-    
-    # Install PHP 8.3 and extensions
-    echo "Installing PHP 8.3..."
-    sudo apt-get install -y software-properties-common
-    sudo add-apt-repository -y ppa:ondrej/php
-    sudo apt-get update
-    sudo apt-get install -y php8.3 php8.3-cli php8.3-fpm php8.3-pgsql php8.3-redis \
-        php8.3-gd php8.3-curl php8.3-mbstring php8.3-xml php8.3-zip php8.3-intl
-    
-    # Install PostgreSQL
-    echo "Installing PostgreSQL..."
-    sudo apt-get install -y postgresql postgresql-contrib
-    
-    # Install Redis
-    echo "Installing Redis..."
-    sudo apt-get install -y redis-server
-    
-    # Install Composer
-    echo "Installing Composer..."
-    curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
-    
-    # Enable Apache modules
-    echo "Enabling Apache modules..."
-    sudo a2enmod rewrite headers deflate expires proxy_fcgi setenvif
-    sudo a2enconf php8.3-fpm
-    
-    echo "✅ System dependencies installed"
-fi
-
-echo ""
-
-# Get deployment directory
-read -p "Enter deployment directory [/var/www/radiochatbox]: " DEPLOY_DIR
-DEPLOY_DIR=${DEPLOY_DIR:-/var/www/radiochatbox}
-
-echo ""
-echo "Creating deployment directory: $DEPLOY_DIR"
-sudo mkdir -p "$DEPLOY_DIR"
-sudo chown $USER:www-data "$DEPLOY_DIR"
-sudo chmod 775 "$DEPLOY_DIR"
-
-# Get repository URL
-read -p "Enter GitHub repository URL: " REPO_URL
-if [ -z "$REPO_URL" ]; then
-    echo "❌ Repository URL is required"
+# Check PHP version
+PHP_VERSION=$(php -r 'echo PHP_VERSION;')
+PHP_MAJOR=$(echo $PHP_VERSION | cut -d. -f1)
+PHP_MINOR=$(echo $PHP_VERSION | cut -d. -f2)
+if [ "$PHP_MAJOR" -lt 8 ] || { [ "$PHP_MAJOR" -eq 8 ] && [ "$PHP_MINOR" -lt 3 ]; }; then
+    echo "❌ PHP 8.3 or higher is required. Found: $PHP_VERSION"
     exit 1
 fi
 
+echo "✅ All prerequisites found"
+echo "   PHP: $PHP_VERSION"
 echo ""
-echo "Cloning repository..."
-cd "$DEPLOY_DIR"
-git clone "$REPO_URL" .
 
-# Configure database
-echo ""
-read -p "Configure PostgreSQL database? (y/n): " SETUP_DB
-if [ "$SETUP_DB" = "y" ] || [ "$SETUP_DB" = "Y" ]; then
-    DB_NAME="radiochatbox"
-    DB_USER="radiochatbox"
-    DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 24)
-    
-    echo "Creating PostgreSQL database and user..."
-    sudo -u postgres psql <<EOF
-CREATE DATABASE $DB_NAME;
-CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASS';
-GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
-\c $DB_NAME
-GRANT ALL ON SCHEMA public TO $DB_USER;
-EOF
-    
-    echo "Importing database schema..."
-    sudo -u postgres psql -d "$DB_NAME" -f "$DEPLOY_DIR/database/init.sql"
-    
-    echo "✅ Database configured"
-    echo ""
-    echo "⚠️  IMPORTANT: Save these database credentials:"
-    echo "   Database: $DB_NAME"
-    echo "   User: $DB_USER"
-    echo "   Password: $DB_PASS"
-    echo ""
+# Get current directory (project should already be cloned here)
+PROJECT_DIR=$(pwd)
+
+# Verify we're in the right directory
+if [ ! -f "composer.json" ] || [ ! -d "database" ]; then
+    echo "❌ This doesn't appear to be the RadioChatBox directory."
+    echo "   Please run this script from the project root."
+    exit 1
 fi
 
-# Configure .env
+echo "Installing in: $PROJECT_DIR"
 echo ""
-echo "Setting up environment configuration..."
+
+# Create .env if it doesn't exist
 if [ ! -f .env ]; then
+    echo "Creating .env configuration file..."
+    
+    # Generate random password
+    DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 24)
+    
     cat > .env <<EOF
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=${DB_NAME:-radiochatbox}
-DB_USER=${DB_USER:-radiochatbox}
-DB_PASSWORD=${DB_PASS:-change_me}
+DB_NAME=radiochatbox
+DB_USER=radiochatbox
+DB_PASSWORD=$DB_PASS
 
 # Redis Configuration
 REDIS_HOST=localhost
@@ -150,18 +82,72 @@ APP_DEBUG=false
 # CORS Configuration
 ALLOWED_ORIGINS=*
 
-# Admin Authentication
+# Admin Authentication (CHANGE THESE!)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 EOF
     
     echo "✅ Created .env file"
+    echo ""
 fi
 
-# Get domain name
-read -p "Enter your domain name (e.g., radio.example.com) [optional]: " DOMAIN_NAME
+# Source .env to get database config
+source .env
+
+# Configure database
+echo "Setting up PostgreSQL database..."
+read -p "Create database '$DB_NAME'? (y/n): " CREATE_DB
+if [ "$CREATE_DB" = "y" ] || [ "$CREATE_DB" = "Y" ]; then
+    
+    # Check if database exists
+    if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        echo "⚠️  Database '$DB_NAME' already exists. Skipping creation."
+    else
+        echo "Creating database and user..."
+        sudo -u postgres psql <<EOF
+CREATE DATABASE $DB_NAME;
+CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
+\c $DB_NAME
+GRANT ALL ON SCHEMA public TO $DB_USER;
+EOF
+        
+        echo "Importing database schema..."
+        sudo -u postgres psql -d "$DB_NAME" -f "$PROJECT_DIR/database/init.sql"
+        
+        echo "✅ Database configured"
+        echo ""
+        echo "⚠️  Database credentials (saved in .env):"
+        echo "   Name: $DB_NAME"
+        echo "   User: $DB_USER"
+        echo "   Password: $DB_PASSWORD"
+        echo ""
+    fi
+fi
+
+# Install composer dependencies
+echo "Installing PHP dependencies..."
+composer install --no-dev --optimize-autoloader
+
+echo "✅ Dependencies installed"
+echo ""
+
+# Set permissions
+echo "Setting file permissions..."
+sudo chown -R www-data:www-data "$PROJECT_DIR"
+sudo chmod -R 755 "$PROJECT_DIR/public"
+sudo mkdir -p "$PROJECT_DIR/public/uploads/photos"
+sudo chmod -R 775 "$PROJECT_DIR/public/uploads"
+sudo chown -R www-data:www-data "$PROJECT_DIR/public/uploads"
+
+echo "✅ Permissions set"
+echo ""
+
+# Get domain name for CORS
+read -p "Enter your domain name (e.g., radio.example.com) [press Enter to skip]: " DOMAIN_NAME
 if [ ! -z "$DOMAIN_NAME" ]; then
     sed -i "s|ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$DOMAIN_NAME,https://www.$DOMAIN_NAME|" .env
+    echo "✅ Updated CORS origins for $DOMAIN_NAME"
 fi
 
 # Configure Apache virtual host
@@ -175,9 +161,9 @@ if [ "$SETUP_APACHE" = "y" ] || [ "$SETUP_APACHE" = "Y" ]; then
     sudo tee "$VHOST_FILE" > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName ${DOMAIN_NAME:-localhost}
-    DocumentRoot $DEPLOY_DIR/public
+    DocumentRoot $PROJECT_DIR/public
 
-    <Directory $DEPLOY_DIR/public>
+    <Directory $PROJECT_DIR/public>
         Options -Indexes +FollowSymLinks
         AllowOverride All
         Require all granted
@@ -194,70 +180,50 @@ if [ "$SETUP_APACHE" = "y" ] || [ "$SETUP_APACHE" = "Y" ]; then
 </VirtualHost>
 EOF
     
-    # Enable site and restart Apache
+    # Enable site
     sudo a2ensite "${SITE_NAME}.conf"
+    
+    # Enable required Apache modules if not already enabled
+    sudo a2enmod rewrite headers deflate expires proxy_fcgi setenvif 2>/dev/null || true
+    
+    # Restart Apache
     sudo systemctl restart apache2
     
-    echo "✅ Apache virtual host configured"
+    echo "✅ Apache virtual host configured and enabled"
 fi
-
-# Install composer dependencies
-echo ""
-echo "Installing PHP dependencies..."
-composer install --no-dev --optimize-autoloader
-
-# Set permissions
-echo ""
-echo "Setting file permissions..."
-sudo chown -R www-data:www-data "$DEPLOY_DIR"
-sudo chmod -R 755 "$DEPLOY_DIR/public"
-sudo chmod -R 775 "$DEPLOY_DIR/public/uploads"
 
 # Make deploy script executable
 chmod +x deploy.sh
 
 echo ""
 echo "========================================="
-echo "✅ Setup Complete!"
+echo "✅ Installation Complete!"
 echo "========================================="
 echo ""
-echo "Next steps:"
+echo "What's next?"
 echo ""
-echo "1. Configure GitHub Secrets (in your repository settings):"
-echo "   - SSH_PRIVATE_KEY: Your SSH private key"
-echo "   - SERVER_HOST: $HOSTNAME"
-echo "   - SERVER_USER: $USER"
-echo "   - DEPLOY_PATH: $DEPLOY_DIR"
-if [ ! -z "$DOMAIN_NAME" ]; then
-    echo "   - HEALTH_CHECK_URL: https://$DOMAIN_NAME/api/health.php"
-else
-    echo "   - HEALTH_CHECK_URL: http://$HOSTNAME/api/health.php"
-fi
-echo ""
-echo "2. Generate SSH key for GitHub Actions:"
-echo "   ssh-keygen -t rsa -b 4096 -C 'github-deploy' -f ~/.ssh/github_deploy"
-echo "   ssh-copy-id -i ~/.ssh/github_deploy.pub $USER@$HOSTNAME"
-echo "   cat ~/.ssh/github_deploy  # Copy this to GitHub SSH_PRIVATE_KEY secret"
-echo ""
-echo "3. Change admin password (default: admin/admin123)"
+echo "1. Change admin password:"
 echo "   Edit .env and update ADMIN_USERNAME and ADMIN_PASSWORD"
 echo ""
 if [ ! -z "$DOMAIN_NAME" ]; then
-    echo "4. Set up SSL with Let's Encrypt:"
+    echo "2. Set up SSL with Let's Encrypt:"
     echo "   sudo apt-get install certbot python3-certbot-apache"
     echo "   sudo certbot --apache -d $DOMAIN_NAME"
     echo ""
-    echo "5. Access your application:"
+    echo "3. Access your application:"
     echo "   https://$DOMAIN_NAME"
     echo "   Admin: https://$DOMAIN_NAME/admin.html"
 else
-    echo "4. Access your application:"
-    echo "   http://$HOSTNAME"
-    echo "   Admin: http://$HOSTNAME/admin.html"
+    echo "2. Access your application:"
+    echo "   http://$(hostname -I | awk '{print $1}')"
+    echo "   Admin: http://$(hostname -I | awk '{print $1}')/admin.html"
 fi
 echo ""
-echo "6. Test deployment:"
-echo "   cd $DEPLOY_DIR && ./deploy.sh"
+echo "4. Set up automatic deployment (optional):"
+echo "   See .github/workflows/deploy.yml for GitHub Actions setup"
+echo ""
+echo "5. Test the deployment script:"
+echo "   ./deploy.sh"
 echo ""
 
 exit 0
