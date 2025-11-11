@@ -245,9 +245,14 @@
                 <div class="section">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h2 style="margin: 0;">Message History</h2>
-                        <button class="btn" onclick="clearPublicChat()" style="background: #ef4444; color: white;">
-                            🗑️ Clear Public Chat
-                        </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn" onclick="flushRedisCache()" style="background: #f59e0b; color: white;">
+                                🔄 Flush Redis Cache
+                            </button>
+                            <button class="btn" onclick="clearPublicChat()" style="background: #ef4444; color: white;">
+                                🗑️ Clear Public Chat
+                            </button>
+                        </div>
                     </div>
                     <div id="messages-table"></div>
                     <div class="pagination" id="messages-pagination"></div>
@@ -766,6 +771,34 @@
             } catch (error) {
                 console.error('Failed to clear chat:', error);
                 alert('Failed to clear chat');
+            }
+        }
+
+        async function flushRedisCache() {
+            if (!confirm('Are you sure you want to flush the Redis cache?\n\nThis will:\n- Clear all cached messages (will reload from database)\n- Clear all cached settings\n- Clear all rate limit counters\n- Clear all active user sessions\n\nUsers will need to reconnect.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/flush-redis.php', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Redis cache flushed successfully!\n\nCleared: ${data.keys_cleared} keys`);
+                    // Reload data since cache is now empty
+                    loadMessages(1);
+                    loadUsers();
+                    loadSettings();
+                } else {
+                    alert('Failed to flush Redis: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to flush Redis:', error);
+                alert('Failed to flush Redis cache');
             }
         }
 
