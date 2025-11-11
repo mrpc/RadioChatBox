@@ -140,18 +140,7 @@ composer install --no-dev --optimize-autoloader
 echo "✅ Dependencies installed"
 echo ""
 
-# Set permissions
-echo "Setting file permissions..."
-sudo chown -R www-data:www-data "$PROJECT_DIR"
-sudo chmod -R 755 "$PROJECT_DIR/public"
-sudo mkdir -p "$PROJECT_DIR/public/uploads/photos"
-sudo chmod -R 775 "$PROJECT_DIR/public/uploads"
-sudo chown -R www-data:www-data "$PROJECT_DIR/public/uploads"
-
-echo "✅ Permissions set"
-echo ""
-
-# Get domain name for CORS
+# Get domain name for CORS (BEFORE changing permissions)
 read -p "Enter your domain name (e.g., radio.example.com) [press Enter to skip]: " DOMAIN_NAME
 if [ ! -z "$DOMAIN_NAME" ]; then
     sed -i "s|ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$DOMAIN_NAME,https://www.$DOMAIN_NAME|" .env
@@ -198,6 +187,19 @@ EOF
     sudo systemctl restart apache2
     
     echo "✅ Apache virtual host configured and enabled"
+fi
+
+# Set permissions (DO THIS LAST)
+echo ""
+echo "Setting file permissions..."
+sudo chown -R www-data:www-data "$PROJECT_DIR"
+sudo chmod -R 755 "$PROJECT_DIR/public"
+sudo mkdir -p "$PROJECT_DIR/public/uploads/photos"
+sudo chmod -R 775 "$PROJECT_DIR/public/uploads"
+sudo chown -R www-data:www-data "$PROJECT_DIR/public/uploads"
+
+echo "✅ Permissions set"
+echo ""
 fi
 
 # Make deploy script executable
