@@ -1568,7 +1568,7 @@ body.metal-theme .chat-container {
 body.metal-theme #chat-header {
     background: #000000;
     color: #ffffff;
-    border-bottom: 2px solid #4CAF50;
+    border-bottom: 2px solid #8B0000;
 }
 
 body.metal-theme .message {
@@ -1578,12 +1578,12 @@ body.metal-theme .message {
 }
 
 body.metal-theme .message.own-message {
-    background: rgba(76, 175, 80, 0.15);
-    border-left: 4px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.15);
+    border-left: 4px solid #8B0000;
 }
 
 body.metal-theme .message-username {
-    color: #4CAF50;
+    color: #D32F2F;
     font-weight: 600;
 }
 
@@ -1593,7 +1593,7 @@ body.metal-theme .message-time {
 
 body.metal-theme .chat-input {
     background: rgba(0, 0, 0, 0.5);
-    border-top: 1px solid #4CAF50;
+    border-top: 1px solid #8B0000;
 }
 
 body.metal-theme #message-input {
@@ -1607,8 +1607,8 @@ body.metal-theme #message-input::placeholder {
 }
 
 body.metal-theme #message-input:focus {
-    border-color: #4CAF50;
-    box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+    border-color: #8B0000;
+    box-shadow: 0 0 5px rgba(139, 0, 0, 0.5);
 }
 
 body.metal-theme #sidebar {
@@ -1619,7 +1619,7 @@ body.metal-theme #sidebar {
 body.metal-theme #sidebar h3,
 body.metal-theme #sidebar-header h3 {
     color: #ffffff;
-    border-bottom: 2px solid #4CAF50;
+    border-bottom: 2px solid #8B0000;
 }
 
 body.metal-theme .user-item {
@@ -1628,8 +1628,8 @@ body.metal-theme .user-item {
 }
 
 body.metal-theme .user-item:hover {
-    background: rgba(76, 175, 80, 0.1);
-    border-left: 3px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.15);
+    border-left: 3px solid #8B0000;
 }
 
 body.metal-theme #status {
@@ -1639,26 +1639,26 @@ body.metal-theme #status {
 }
 
 body.metal-theme .btn {
-    background: #4CAF50;
-    color: #000000;
+    background: #8B0000;
+    color: #ffffff;
     font-weight: 600;
     border: none;
 }
 
 body.metal-theme .btn:hover {
-    background: #45a049;
-    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    background: #A00000;
+    box-shadow: 0 0 10px rgba(139, 0, 0, 0.7);
 }
 
 body.metal-theme .modal-content {
     background: #1a1a1a;
-    border: 2px solid #4CAF50;
+    border: 2px solid #8B0000;
     color: #ffffff;
 }
 
 body.metal-theme .modal-content h2 {
-    color: #4CAF50;
-    border-bottom: 2px solid #4CAF50;
+    color: #D32F2F;
+    border-bottom: 2px solid #8B0000;
     padding-bottom: 10px;
 }
 
@@ -1675,8 +1675,8 @@ body.metal-theme input[type="text"]:focus,
 body.metal-theme input[type="number"]:focus,
 body.metal-theme select:focus,
 body.metal-theme textarea:focus {
-    border-color: #4CAF50;
-    box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+    border-color: #8B0000;
+    box-shadow: 0 0 5px rgba(139, 0, 0, 0.5);
 }
 
 body.metal-theme .error-message {
@@ -1685,23 +1685,23 @@ body.metal-theme .error-message {
 }
 
 body.metal-theme #user-info {
-    background: rgba(76, 175, 80, 0.2);
-    border: 1px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.3);
+    border: 1px solid #8B0000;
 }
 
 body.metal-theme .icon-button {
     color: #ffffff;
-    background: rgba(76, 175, 80, 0.2);
+    background: rgba(139, 0, 0, 0.2);
 }
 
 body.metal-theme .icon-button:hover {
-    background: #4CAF50;
-    color: #000000;
+    background: #8B0000;
+    color: #ffffff;
 }
 
 body.metal-theme .private-message.sent {
-    background: rgba(76, 175, 80, 0.15);
-    border-left: 4px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.15);
+    border-left: 4px solid #8B0000;
 }
 
 body.metal-theme .private-message.received {
@@ -1710,25 +1710,25 @@ body.metal-theme .private-message.received {
 }
 
 body.metal-theme #active-users-count-container {
-    background: rgba(76, 175, 80, 0.2);
-    border: 1px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.3);
+    border: 1px solid #8B0000;
     color: #ffffff;
 }
 
 body.metal-theme .badge {
-    background: #4CAF50;
-    color: #000000;
+    background: #8B0000;
+    color: #ffffff;
 }
 
 body.metal-theme #private-chat-header {
     background: rgba(0, 0, 0, 0.8);
-    border-bottom: 2px solid #4CAF50;
+    border-bottom: 2px solid #8B0000;
     color: #ffffff;
 }
 
 body.metal-theme #conversations-panel {
     background: rgba(0, 0, 0, 0.95);
-    border-left: 2px solid #4CAF50;
+    border-left: 2px solid #8B0000;
 }
 
 body.metal-theme .conversation-item {
@@ -1738,29 +1738,29 @@ body.metal-theme .conversation-item {
 
 body.metal-theme .conversation-item:hover,
 body.metal-theme .conversation-item.active {
-    background: rgba(76, 175, 80, 0.15);
-    border-left: 3px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.15);
+    border-left: 3px solid #8B0000;
 }
 
 body.metal-theme .unread-count {
-    background: #4CAF50;
-    color: #000000;
+    background: #8B0000;
+    color: #ffffff;
 }
 
 body.metal-theme #send-button {
-    background: #4CAF50;
-    color: #000000;
+    background: #8B0000;
+    color: #ffffff;
     font-weight: 600;
 }
 
 body.metal-theme #send-button:hover {
-    background: #45a049;
-    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    background: #A00000;
+    box-shadow: 0 0 10px rgba(139, 0, 0, 0.7);
 }
 
 body.metal-theme #sidebar-header {
     background: rgba(0, 0, 0, 0.9);
-    border-bottom: 2px solid #4CAF50;
+    border-bottom: 2px solid #8B0000;
 }
 
 body.metal-theme #active-users-list {
@@ -1787,8 +1787,8 @@ body.metal-theme .active-user {
 
 body.metal-theme .active-user:hover,
 body.metal-theme .active-user.clickable:hover {
-    background: rgba(76, 175, 80, 0.15);
-    border-left: 3px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.2);
+    border-left: 3px solid #8B0000;
 }
 
 body.metal-theme .active-user .user-name {
@@ -1800,16 +1800,16 @@ body.metal-theme .active-user .user-profile {
 }
 
 body.metal-theme .active-user.user-male {
-    border-left-color: rgba(76, 175, 80, 0.3);
+    border-left-color: rgba(139, 0, 0, 0.3);
 }
 
 body.metal-theme .active-user.user-female {
-    border-left-color: rgba(76, 175, 80, 0.3);
+    border-left-color: rgba(139, 0, 0, 0.3);
 }
 
 body.metal-theme .active-user.current-user {
-    background: rgba(76, 175, 80, 0.2);
-    border-left: 3px solid #4CAF50;
+    background: rgba(139, 0, 0, 0.3);
+    border-left: 3px solid #8B0000;
 }
 
 
