@@ -72,6 +72,9 @@ if [ ! -f .env ]; then
     read -p "Database password [auto-generated]: " DB_PASS_INPUT
     DB_PASS=${DB_PASS_INPUT:-$DB_PASS}
     
+    # Generate webhook secret
+    WEBHOOK_SECRET=$(openssl rand -hex 32)
+    
     cat > .env <<EOF
 # Database Configuration
 DB_HOST=localhost
@@ -87,6 +90,10 @@ REDIS_PORT=6379
 # Application Configuration
 APP_ENV=production
 APP_DEBUG=false
+
+# Git Webhook Configuration (for auto-deployment)
+WEBHOOK_SECRET=$WEBHOOK_SECRET
+DEPLOY_BRANCH=main
 
 # CORS Configuration
 ALLOWED_ORIGINS=*

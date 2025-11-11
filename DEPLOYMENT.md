@@ -6,14 +6,70 @@ This guide explains how to deploy RadioChatBox to production with automatic depl
 
 ## Deployment Methods
 
-RadioChatBox supports two deployment methods:
+RadioChatBox supports three deployment methods:
 
-1. **Automatic Deployment** (via GitHub Actions) - Recommended
-2. **Manual Deployment** (via SSH)
+1. **Git Webhooks** (Recommended) - Simple, fast, works with all Git platforms
+2. **GitHub Actions** - Advanced CI/CD with automated testing
+3. **Manual Deployment** - Via SSH when needed
 
 ---
 
-## 1. Automatic Deployment Setup
+## Method 1: Git Webhooks (Recommended) ⭐
+
+**Best for**: Most users, simple deployment, all Git platforms
+
+**Advantages**:
+- ✅ Simple setup (no SSH keys in repository)
+- ✅ Works with GitHub, GitLab, Gitea, Bitbucket
+- ✅ Instant deployment (no queuing)
+- ✅ No usage limits
+- ✅ Direct server communication
+
+**See**: [📖 Complete Webhook Setup Guide](.github/WEBHOOK_DEPLOYMENT.md)
+
+**Quick Start**:
+```bash
+# 1. Setup server (webhook.php already included)
+cd /home/livechats/domains/app.livechats.gr/public_html
+grep WEBHOOK_SECRET .env  # Copy this secret
+
+# 2. Add webhook in GitHub:
+#    Settings → Webhooks → Add webhook
+#    URL: https://app.livechats.gr/webhook.php
+#    Secret: (paste WEBHOOK_SECRET)
+#    Content type: application/json
+#    Events: Just the push event
+
+# 3. Test
+echo "test" >> README.md
+git commit -am "Test webhook"
+git push
+
+# 4. Monitor
+tail -f webhook.log deploy.log
+```
+
+---
+
+## Method 2: GitHub Actions (Advanced)
+
+---
+
+## Method 2: GitHub Actions (Advanced)
+
+**Best for**: Teams needing automated testing before deployment, complex CI/CD pipelines
+
+**Advantages**:
+- ✅ Runs tests before deployment
+- ✅ Can run multiple jobs in parallel
+- ✅ Matrix testing across versions
+- ✅ Built-in artifact storage
+
+**Disadvantages**:
+- ❌ More complex setup
+- ❌ GitHub only
+- ❌ Usage limits (2000 minutes/month free)
+- ❌ Slower (queue + build time)
 
 ### Prerequisites
 
@@ -105,7 +161,7 @@ git push origin main
 
 ---
 
-## 2. Manual Deployment
+## Method 3: Manual Deployment
 
 If you prefer manual deployment or want to test locally:
 
