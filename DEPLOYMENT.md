@@ -56,16 +56,22 @@ chmod +x deploy.sh
 
 ### Step 2: Configure GitHub Secrets
 
-Go to your GitHub repository → Settings → Secrets and variables → Actions, and add:
+**IMPORTANT**: Add these as **Repository Secrets** (NOT environment variables).
 
-| Secret Name | Description | Example |
-|------------|-------------|---------|
-| `SSH_PRIVATE_KEY` | Private SSH key for server access | `-----BEGIN RSA PRIVATE KEY-----...` |
-| `SERVER_HOST` | Your server's IP or domain | `123.45.67.89` or `radio.example.com` |
-| `SERVER_USER` | SSH username | `deploy` or `ubuntu` |
-| `DEPLOY_PATH` | Full path to application | `/var/www/radiochatbox` |
-| `HEALTH_CHECK_URL` | Base URL for health checks | `https://radio.example.com` |
-| `SLACK_WEBHOOK` | (Optional) Slack webhook for notifications | `https://hooks.slack.com/...` |
+Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions** → Click **"New repository secret"**
+
+Add each of the following secrets individually:
+
+| Secret Name | Description | Example | Required |
+|------------|-------------|---------|----------|
+| `SSH_PRIVATE_KEY` | Private SSH key for server access | `-----BEGIN RSA PRIVATE KEY-----...` | ✅ Yes |
+| `SERVER_HOST` | Your server's IP or domain | `123.45.67.89` or `radio.example.com` | ✅ Yes |
+| `SERVER_USER` | SSH username | `deploy` or `ubuntu` | ✅ Yes |
+| `DEPLOY_PATH` | Full path to application | `/var/www/radiochatbox` | ✅ Yes |
+| `HEALTH_CHECK_URL` | Base URL for health checks | `https://radio.example.com` | ✅ Yes |
+| `SLACK_WEBHOOK` | Slack webhook for notifications | `https://hooks.slack.com/...` | ❌ Optional |
+
+**Note**: These are GitHub repository secrets, accessed in workflows as `${{ secrets.SECRET_NAME }}`. Do NOT add them as environment variables or commit them to your repository.
 
 ### Step 3: Generate SSH Key for Deployment
 
