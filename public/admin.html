@@ -435,10 +435,24 @@
                     <div class="form-group">
                         <label>Logo URL (optional)</label>
                         <input type="url" id="setting-logo-url" placeholder="https://example.com/logo.png">
+                        <div style="margin-top: 10px;">
+                            <label for="logo-upload" class="btn btn-secondary" style="cursor: pointer; display: inline-block;">
+                                📤 Upload Logo
+                            </label>
+                            <input type="file" id="logo-upload" accept="image/*" style="display: none;" onchange="uploadLogo('logo')">
+                            <span id="logo-upload-status" style="margin-left: 10px; color: #666;"></span>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Favicon URL (optional)</label>
                         <input type="url" id="setting-favicon-url" placeholder="https://example.com/favicon.ico">
+                        <div style="margin-top: 10px;">
+                            <label for="favicon-upload" class="btn btn-secondary" style="cursor: pointer; display: inline-block;">
+                                📤 Upload Favicon
+                            </label>
+                            <input type="file" id="favicon-upload" accept="image/*,.ico" style="display: none;" onchange="uploadLogo('favicon')">
+                            <span id="favicon-upload-status" style="margin-left: 10px; color: #666;"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -1352,6 +1366,68 @@
                 }
             } catch (error) {
                 console.error('Failed to load settings:', error);
+            }
+        }
+
+        async function uploadLogo(type) {
+            const inputId = type === 'favicon' ? 'favicon-upload' : 'logo-upload';
+            const statusId = type === 'favicon' ? 'favicon-upload-status' : 'logo-upload-status';
+            const urlInputId = type === 'favicon' ? 'setting-favicon-url' : 'setting-logo-url';
+            
+            const fileInput = document.getElementById(inputId);
+            const statusSpan = document.getElementById(statusId);
+            const urlInput = document.getElementById(urlInputId);
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            
+            // Validate file size (max 2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                alert('File too large. Maximum size is 2MB.');
+                fileInput.value = '';
+                return;
+            }
+            
+            statusSpan.textContent = 'Uploading...';
+            statusSpan.style.color = '#666';
+            
+            try {
+                const formData = new FormData();
+                formData.append('logo', file);
+                formData.append('type', type);
+                
+                const response = await fetch('/api/admin/upload-logo.php', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    urlInput.value = data.url;
+                    statusSpan.textContent = '✓ Uploaded';
+                    statusSpan.style.color = '#10b981';
+                    
+                    // Clear file input
+                    fileInput.value = '';
+                    
+                    // Clear status after 3 seconds
+                    setTimeout(() => {
+                        statusSpan.textContent = '';
+                    }, 3000);
+                } else {
+                    statusSpan.textContent = '✗ Failed: ' + (data.error || 'Unknown error');
+                    statusSpan.style.color = '#ef4444';
+                }
+            } catch (error) {
+                statusSpan.textContent = '✗ Error: ' + error.message;
+                statusSpan.style.color = '#ef4444';
             }
         }
 

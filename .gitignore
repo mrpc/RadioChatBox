@@ -14,6 +14,8 @@ deploy.log
 # Uploads
 /public/uploads/photos/*
 !/public/uploads/photos/.gitkeep
+/public/uploads/logos/*
+!/public/uploads/logos/.gitkeep
 
 # IDE
 .idea/
