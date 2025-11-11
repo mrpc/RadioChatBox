@@ -179,50 +179,6 @@ Configure via admin panel (http://localhost:98/admin.html):
 
 ---
 
-## � API Documentation
-
-### POST `/api/send.php`
-
-Send a new message to the chat.
-
-**Request:**
-```json
-{
-    "username": "DJ Mike",
-    "message": "Hello everyone!"
-}
-```
-
-**Response:**
-```json
-{
-    "success": true,
-    "message": {
-        "id": "msg_123456",
-        "username": "DJ Mike",
-        "message": "Hello everyone!",
-        "timestamp": 1699999999
-    }
-}
-```
-
-### GET `/api/history.php`
-
-Get recent message history.
-
-**Parameters:**
-- `limit` (optional): Number of messages to retrieve (default: 50, max: 100)
-
-**Response:**
-```json
-{
-    "success": true,
-    "messages": [...]
-}
-```
-
----
-
 ## 📚 Documentation
 
 ### Project Structure
