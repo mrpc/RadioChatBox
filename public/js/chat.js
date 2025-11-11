@@ -63,8 +63,26 @@ class RadioChatBox {
             const savedNickname = this.getCookie('chatNickname');
             
             if (savedNickname) {
-                // Verify nickname is still available
-                this.checkAndRegisterNickname(savedNickname);
+                // Check if profile is required
+                const requireProfile = this.settings?.require_profile === 'true';
+                
+                if (requireProfile) {
+                    // If profile is required, check if we have profile data saved
+                    const savedAge = this.getCookie('chatAge');
+                    const savedLocation = this.getCookie('chatLocation');
+                    const savedSex = this.getCookie('chatSex');
+                    
+                    if (savedAge && savedLocation && savedSex) {
+                        // We have complete profile data, verify and register
+                        this.checkAndRegisterNickname(savedNickname, savedAge, savedLocation, savedSex);
+                    } else {
+                        // Missing profile data, show modal to collect it
+                        this.showNicknameModal(savedNickname);
+                    }
+                } else {
+                    // Profile not required, just verify nickname
+                    this.checkAndRegisterNickname(savedNickname);
+                }
             } else {
                 // Show nickname selection modal
                 this.showNicknameModal();
@@ -334,6 +352,11 @@ class RadioChatBox {
             this.userProfile = { age, location, sex };
             this.setCookie('chatNickname', nickname);
             
+            // Save profile data in cookies if provided
+            if (age) this.setCookie('chatAge', age);
+            if (location) this.setCookie('chatLocation', location);
+            if (sex) this.setCookie('chatSex', sex);
+            
             // Track user registration
             if (window.analytics) {
                 window.analytics.trackUserRegistration(nickname);
@@ -349,7 +372,7 @@ class RadioChatBox {
         }
     }
 
-    showNicknameModal() {
+    showNicknameModal(prefillNickname = null) {
         const modal = document.getElementById('nickname-modal');
         const nicknameInput = document.getElementById('nickname-input');
         const ageInput = document.getElementById('age-input');
@@ -359,7 +382,20 @@ class RadioChatBox {
         const nicknameError = document.getElementById('nickname-error');
 
         modal.style.display = 'flex';
-        nicknameInput.focus();
+        
+        // Pre-fill nickname if provided
+        if (prefillNickname) {
+            nicknameInput.value = prefillNickname;
+            // Focus on first profile field if profile is required, otherwise nickname
+            const requireProfile = this.settings?.require_profile === 'true';
+            if (requireProfile && ageInput) {
+                ageInput.focus();
+            } else {
+                nicknameInput.focus();
+            }
+        } else {
+            nicknameInput.focus();
+        }
 
         const submitNickname = async () => {
             const nickname = nicknameInput.value.trim();

@@ -34,12 +34,28 @@ try {
         throw new InvalidArgumentException('Username and session ID are required');
     }
     
-    // Validate age if provided (18+ requirement)
-    if ($age !== null && ($age < 18 || $age > 120)) {
-        throw new InvalidArgumentException('Age must be between 18 and 120');
+    $chatService = new ChatService();
+    
+    // Check if profile is required
+    $requireProfile = $chatService->getSetting('require_profile', 'false') === 'true';
+    
+    if ($requireProfile) {
+        // Validate that all profile fields are provided
+        if (empty($age) || empty($location) || empty($sex)) {
+            throw new InvalidArgumentException('Age, location, and sex are required');
+        }
+        
+        // Validate age range
+        if ($age < 18 || $age > 120) {
+            throw new InvalidArgumentException('Age must be between 18 and 120');
+        }
+    } elseif ($age !== null) {
+        // Validate age if provided (even when not required)
+        if ($age < 18 || $age > 120) {
+            throw new InvalidArgumentException('Age must be between 18 and 120');
+        }
     }
     
-    $chatService = new ChatService();
     $success = $chatService->registerUser($username, $sessionId, $ipAddress, $age, $location, $sex);
     
     if (!$success) {
