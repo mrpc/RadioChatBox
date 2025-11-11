@@ -1,0 +1,313 @@
+#!/usr/bin/env php
+<?php
+/**
+ * RadioChatBox Stress Test
+ * 
+ * Tests concurrent users sending messages and receiving updates via SSE
+ * 
+ * Usage:
+ *   php tests/stress-test.php [users] [messages] [duration]
+ * 
+ * Examples:
+ *   php tests/stress-test.php 300         # 300 users, 10 messages each, 60s duration
+ *   php tests/stress-test.php 100 50      # 100 users, 50 messages each, 60s duration
+ *   php tests/stress-test.php 300 20 120  # 300 users, 20 messages, 120s duration
+ */
+
+// Configuration
+$baseUrl = getenv('TEST_URL') ?: 'http://localhost:98';
+$concurrentUsers = isset($argv[1]) ? (int)$argv[1] : 300;
+$messagesPerUser = isset($argv[2]) ? (int)$argv[2] : 10;
+$testDuration = isset($argv[3]) ? (int)$argv[3] : 60; // seconds
+
+// Statistics
+$stats = [
+    'users_registered' => 0,
+    'messages_sent' => 0,
+    'messages_failed' => 0,
+    'sse_connections' => 0,
+    'sse_failures' => 0,
+    'total_requests' => 0,
+    'errors' => [],
+    'start_time' => microtime(true),
+];
+
+echo "\n";
+echo "═══════════════════════════════════════════════════════\n";
+echo "  RadioChatBox Stress Test\n";
+echo "═══════════════════════════════════════════════════════\n";
+echo "  Base URL:        $baseUrl\n";
+echo "  Concurrent Users: $concurrentUsers\n";
+echo "  Messages/User:    $messagesPerUser\n";
+echo "  Test Duration:    {$testDuration}s\n";
+echo "═══════════════════════════════════════════════════════\n\n";
+
+// Test 1: Register users
+echo "[1/4] Registering $concurrentUsers users...\n";
+$users = [];
+$batchSize = 50; // Register in batches to avoid connection limits
+$batches = ceil($concurrentUsers / $batchSize);
+
+for ($batch = 0; $batch < $batches; $batch++) {
+    $batchStart = $batch * $batchSize;
+    $batchEnd = min($batchStart + $batchSize, $concurrentUsers);
+    
+    $multiRegister = curl_multi_init();
+    $curlHandles = [];
+
+    for ($i = $batchStart; $i < $batchEnd; $i++) {
+        $username = "StressUser" . str_pad($i, 4, '0', STR_PAD_LEFT);
+        $sessionId = uniqid('stress_', true);
+        
+        $users[$i] = [
+            'username' => $username,
+            'sessionId' => $sessionId,
+            'messageCount' => 0,
+        ];
+        
+        $ch = curl_init("$baseUrl/api/register.php");
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+                'username' => $username,
+                'sessionId' => $sessionId,
+                'age' => rand(18, 65),
+                'location' => 'US',
+                'sex' => ($i % 2 === 0) ? 'male' : 'female',
+            ]),
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+        ]);
+        
+        curl_multi_add_handle($multiRegister, $ch);
+        $curlHandles[$i] = $ch;
+    }
+
+    // Execute all registration requests for this batch
+    $running = null;
+    do {
+        curl_multi_exec($multiRegister, $running);
+        curl_multi_select($multiRegister);
+    } while ($running > 0);
+
+    // Check registration results
+    $registrationErrors = [];
+    foreach ($curlHandles as $i => $ch) {
+        $response = curl_multi_getcontent($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        
+        if ($httpCode === 200) {
+            $stats['users_registered']++;
+        } else {
+            $errorMsg = "User registration failed: {$users[$i]['username']} (HTTP $httpCode)";
+            if ($curlError) {
+                $errorMsg .= " - cURL error: $curlError";
+            }
+            if ($response) {
+                $errorMsg .= " - Response: " . substr($response, 0, 100);
+            }
+            $registrationErrors[] = $errorMsg;
+            $stats['errors'][] = $errorMsg;
+        }
+        
+        curl_multi_remove_handle($multiRegister, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($multiRegister);
+    
+    echo "\r   Batch " . ($batch + 1) . "/$batches: {$stats['users_registered']} / " . ($batchEnd) . " users registered";
+    usleep(50000); // 50ms between batches
+}
+
+echo "\n   ✓ Registered {$stats['users_registered']} / $concurrentUsers users\n";
+if ($stats['users_registered'] < $concurrentUsers && count($stats['errors']) > 0) {
+    echo "\n   Registration Errors (first 5):\n";
+    foreach (array_slice($stats['errors'], 0, 5) as $error) {
+        echo "   • $error\n";
+    }
+}
+echo "\n";
+
+if ($stats['users_registered'] < $concurrentUsers * 0.8) {
+    echo "   ✗ Less than 80% of users registered successfully. Aborting.\n\n";
+    exit(1);
+}
+
+// Test 2: Send messages concurrently
+echo "[2/4] Sending messages ($messagesPerUser messages per user)...\n";
+$startTime = microtime(true);
+$totalMessages = $concurrentUsers * $messagesPerUser;
+$progressInterval = max(1, floor($totalMessages / 20)); // Update progress every 5%
+
+for ($messageRound = 0; $messageRound < $messagesPerUser; $messageRound++) {
+    $multiSend = curl_multi_init();
+    $sendHandles = [];
+    
+    foreach ($users as $i => $user) {
+        $message = "Test message #{$messageRound} from {$user['username']} at " . date('H:i:s');
+        
+        $ch = curl_init("$baseUrl/api/send.php");
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+                'username' => $user['username'],
+                'sessionId' => $user['sessionId'],
+                'message' => $message,
+            ]),
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+        ]);
+        
+        curl_multi_add_handle($multiSend, $ch);
+        $sendHandles[$i] = $ch;
+    }
+    
+    // Execute all send requests
+    $running = null;
+    do {
+        curl_multi_exec($multiSend, $running);
+        curl_multi_select($multiSend);
+    } while ($running > 0);
+    
+    // Check send results
+    foreach ($sendHandles as $i => $ch) {
+        $response = curl_multi_getcontent($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $stats['total_requests']++;
+        
+        if ($httpCode === 200 || $httpCode === 201) {
+            $stats['messages_sent']++;
+            $users[$i]['messageCount']++;
+        } else {
+            $stats['messages_failed']++;
+            if (count($stats['errors']) < 10) { // Limit error collection
+                $stats['errors'][] = "Message send failed for {$users[$i]['username']} (HTTP $httpCode)";
+            }
+        }
+        
+        curl_multi_remove_handle($multiSend, $ch);
+        curl_close($ch);
+        
+        // Progress indicator
+        if (($stats['messages_sent'] + $stats['messages_failed']) % $progressInterval === 0) {
+            $progress = round((($stats['messages_sent'] + $stats['messages_failed']) / $totalMessages) * 100);
+            echo "\r   Progress: $progress% ({$stats['messages_sent']} sent, {$stats['messages_failed']} failed)";
+        }
+    }
+    
+    curl_multi_close($multiSend);
+    
+    // Small delay between rounds to avoid overwhelming the server
+    usleep(100000); // 100ms
+}
+
+$messageTime = microtime(true) - $startTime;
+echo "\n   ✓ Sent {$stats['messages_sent']} messages in " . round($messageTime, 2) . "s\n";
+echo "   ✓ Messages/second: " . round($stats['messages_sent'] / $messageTime, 2) . "\n\n";
+
+// Test 3: Test SSE connections
+echo "[3/4] Testing SSE (Server-Sent Events) connections...\n";
+echo "   Attempting to connect " . min(50, $concurrentUsers) . " SSE clients...\n";
+
+$sseTestCount = min(50, $concurrentUsers); // Limit SSE test to 50 clients
+$sseConnected = 0;
+
+for ($i = 0; $i < $sseTestCount; $i++) {
+    $ch = curl_init("$baseUrl/api/stream.php");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 2,
+        CURLOPT_WRITEFUNCTION => function($curl, $data) {
+            // Just verify we can connect and receive data
+            return strlen($data);
+        }
+    ]);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    
+    if ($httpCode === 200) {
+        $sseConnected++;
+    }
+    
+    curl_close($ch);
+}
+
+$stats['sse_connections'] = $sseConnected;
+$stats['sse_failures'] = $sseTestCount - $sseConnected;
+
+echo "   ✓ SSE connections: {$sseConnected} / {$sseTestCount}\n\n";
+
+// Test 4: Retrieve message history
+echo "[4/4] Testing message history retrieval...\n";
+$ch = curl_init("$baseUrl/api/history.php?limit=100");
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT => 10,
+]);
+
+$historyStart = microtime(true);
+$historyResponse = curl_exec($ch);
+$historyTime = microtime(true) - $historyStart;
+$historyCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+if ($historyCode === 200) {
+    $historyData = json_decode($historyResponse, true);
+    $messageCount = count($historyData['messages'] ?? []);
+    echo "   ✓ Retrieved $messageCount messages in " . round($historyTime * 1000, 2) . "ms\n\n";
+} else {
+    echo "   ✗ Failed to retrieve history (HTTP $historyCode)\n\n";
+}
+
+// Calculate final statistics
+$totalTime = microtime(true) - $stats['start_time'];
+$successRate = $stats['total_requests'] > 0 
+    ? round(($stats['messages_sent'] / $stats['total_requests']) * 100, 2) 
+    : 0;
+
+// Display results
+echo "═══════════════════════════════════════════════════════\n";
+echo "  Test Results\n";
+echo "═══════════════════════════════════════════════════════\n";
+echo "  Total Duration:      " . round($totalTime, 2) . "s\n";
+echo "  Users Registered:    {$stats['users_registered']} / $concurrentUsers\n";
+echo "  Messages Sent:       {$stats['messages_sent']} / $totalMessages\n";
+echo "  Messages Failed:     {$stats['messages_failed']}\n";
+echo "  Success Rate:        {$successRate}%\n";
+echo "  Throughput:          " . round($stats['messages_sent'] / $totalTime, 2) . " messages/sec\n";
+echo "  Avg Response Time:   " . round(($totalTime / $stats['total_requests']) * 1000, 2) . "ms\n";
+echo "  SSE Connections:     {$stats['sse_connections']} / {$sseTestCount}\n";
+echo "═══════════════════════════════════════════════════════\n";
+
+// Show errors if any
+if (!empty($stats['errors'])) {
+    echo "\n  Errors (first 10):\n";
+    foreach (array_slice($stats['errors'], 0, 10) as $error) {
+        echo "    • $error\n";
+    }
+}
+
+// Performance rating
+echo "\n  Performance Rating: ";
+if ($successRate >= 99 && $stats['sse_connections'] >= $sseTestCount * 0.9) {
+    echo "🌟 EXCELLENT\n";
+} elseif ($successRate >= 95 && $stats['sse_connections'] >= $sseTestCount * 0.8) {
+    echo "✅ GOOD\n";
+} elseif ($successRate >= 85) {
+    echo "⚠️  FAIR\n";
+} else {
+    echo "❌ POOR\n";
+}
+
+echo "\n";
+echo "  System can handle approximately:\n";
+echo "    • " . round($stats['messages_sent'] / $totalTime) . " messages per second\n";
+echo "    • " . $stats['users_registered'] . " concurrent users\n";
+echo "\n";
+
+// Exit code based on success
+exit($successRate >= 85 ? 0 : 1);
