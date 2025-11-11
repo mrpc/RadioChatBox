@@ -171,7 +171,8 @@ class ChatService
                 $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
             }
             
-            return $messages;
+            // Return in chronological order (oldest first) to match Redis behavior
+            return array_reverse($messages);
         } catch (PDOException $e) {
             error_log("Failed to load history from DB: " . $e->getMessage());
             return [];
