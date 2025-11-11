@@ -1759,6 +1759,14 @@ body.metal-theme .modal-content h2 {
     padding-bottom: 10px;
 }
 
+body.metal-theme .modal-content p {
+    color: #cccccc;
+}
+
+body.metal-theme .modal-content label {
+    color: #aaaaaa;
+}
+
 body.metal-theme input[type="text"],
 body.metal-theme input[type="number"],
 body.metal-theme select,
