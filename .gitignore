@@ -1,0 +1,32 @@
+# Dependencies
+/vendor/
+composer.lock
+
+# Environment
+.env
+
+# Uploads
+/public/uploads/photos/*
+!/public/uploads/photos/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Tests
+.phpunit.cache/
+coverage/
+
+# Docker
+.dockerignore

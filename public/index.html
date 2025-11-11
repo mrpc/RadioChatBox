@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">RadioChatBox - Live Chat</title>
+    <meta name="description" id="meta-description" content="Real-time chat for radio shows">
+    <meta name="keywords" id="meta-keywords" content="radio, chat, live">
+    <meta name="author" id="meta-author" content="">
+    <meta property="og:title" id="og-title" content="RadioChatBox">
+    <meta property="og:description" id="og-description" content="Real-time chat for radio shows">
+    <meta property="og:type" id="og-type" content="website">
+    <meta property="og:image" id="og-image" content="">
+    <link rel="icon" id="favicon" type="image/x-icon" href="">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Custom header scripts will be injected here -->
+    <script id="custom-header-scripts"></script>
+</head>
+<body>
+    <!-- Nickname Selection Modal -->
+    <div id="nickname-modal" class="modal">
+        <div class="modal-content">
+            <h2>Welcome to Live Chat!</h2>
+            <p>Please enter your details to get started:</p>
+            <input 
+                type="text" 
+                id="nickname-input" 
+                placeholder="Enter your nickname" 
+                maxlength="50"
+                autocomplete="off"
+                required
+            >
+            <div id="profile-fields" style="display: none;">
+                <input 
+                    type="number" 
+                    id="age-input" 
+                    placeholder="Age" 
+                    min="18"
+                    max="120"
+                    autocomplete="off"
+                    required
+                >
+                <select id="sex-input" required>
+                    <option value="">Select Sex</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+                <select id="location-input" required>
+                    <option value="">Select Country</option>
+                </select>
+            </div>
+            <div id="nickname-error" class="error-message"></div>
+            <button id="nickname-submit">Join Chat</button>
+        </div>
+    </div>
+
+    <!-- Profile Settings Modal -->
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <h2>Profile Settings</h2>
+            <p>Update your profile information:</p>
+            
+            <div class="profile-info">
+                <label>Nickname</label>
+                <input 
+                    type="text" 
+                    id="profile-nickname" 
+                    readonly
+                    class="readonly-field"
+                >
+            </div>
+            
+            <div id="profile-edit-fields" style="display: none;">
+                <div class="profile-info">
+                    <label>Age</label>
+                    <input 
+                        type="number" 
+                        id="profile-age" 
+                        min="18"
+                        max="120"
+                        required
+                    >
+                </div>
+                
+                <div class="profile-info">
+                    <label>Sex</label>
+                    <select id="profile-sex" required>
+                        <option value="">Select Sex</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </div>
+                
+                <div class="profile-info">
+                    <label>Country</label>
+                    <select id="profile-location" required>
+                        <option value="">Select Country</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="profile-error" class="error-message"></div>
+            
+            <div class="modal-buttons">
+                <button id="profile-save" class="btn-primary" style="display: none;">Save Changes</button>
+                <button id="profile-logout" class="btn-danger">Logout</button>
+                <button id="profile-close" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <!-- Sidebar with active users -->
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <h3>Active Users</h3>
+                <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Toggle sidebar">
+                    <span id="sidebar-toggle-icon">◀</span>
+                </button>
+            </div>
+            <div id="sidebar-content">
+                <div id="active-users-count-container">
+                    <span id="active-users-count">0</span> online
+                </div>
+                <div id="active-users-list"></div>
+            </div>
+        </div>
+
+        <!-- Main chat area -->
+        <div id="chat-container">
+            <div id="chat-header">
+                <h1>🎙️ Live Chat</h1>
+                <div id="user-info">
+                    <button id="sidebar-toggle-mobile" class="icon-button" title="Active Users">
+                        👥
+                    </button>
+                    <span id="current-username"></span>
+                    <button id="conversations-toggle" class="icon-button" title="Private Conversations">
+                        💬
+                        <span id="unread-badge" class="badge" style="display: none;">0</span>
+                    </button>
+                    <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
+                    <button id="change-nickname" class="icon-button" title="Profile & Settings">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M12 1v6m0 6v6m5.2-14.2l-4.2 4.2m0 6l-4.2 4.2M23 12h-6m-6 0H1m14.2 5.2l-4.2-4.2m0-6l-4.2-4.2" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="status">
+                    <span id="status-indicator" class="status-connecting"></span>
+                    <span id="status-text">Connecting...</span>
+                </div>
+            </div>
+
+            <div id="messages-container">
+                <div id="private-chat-header" style="display: none;">
+                    <span id="private-chat-with"></span>
+                    <button id="back-to-public" class="btn">← Back to Public Chat</button>
+                </div>
+                <div id="messages"></div>
+                <button id="scroll-to-bottom" title="Scroll to bottom">↓</button>
+            </div>
+
+            <div id="conversations-panel" style="display: none;">
+                <div class="conversations-header">
+                    <h3>💬 Private Conversations</h3>
+                    <button id="close-conversations" class="close-btn">✕</button>
+                </div>
+                <div id="conversations-list"></div>
+            </div>
+
+            <div id="chat-input-container">
+                <button id="emoji-button" class="emoji-toggle-btn" title="Emojis">😊</button>
+                <button id="photo-button" class="photo-btn" title="Upload Photo" style="display: none;">📷</button>
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    placeholder="Type your message..." 
+                    maxlength="500"
+                    autocomplete="off"
+                >
+                <button id="send-button">Send</button>
+                <input type="file" id="photo-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none;">
+            </div>
+            
+            <div id="emoji-picker" style="display: none;">
+                <div class="emoji-categories">
+                    <button class="emoji-category active" data-category="smileys">😀</button>
+                    <button class="emoji-category" data-category="gestures">👋</button>
+                    <button class="emoji-category" data-category="hearts">❤️</button>
+                    <button class="emoji-category" data-category="animals">🐶</button>
+                    <button class="emoji-category" data-category="food">🍕</button>
+                    <button class="emoji-category" data-category="activities">⚽</button>
+                    <button class="emoji-category" data-category="travel">✈️</button>
+                    <button class="emoji-category" data-category="objects">💡</button>
+                </div>
+                <div id="emoji-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/countries.js"></script>
+    <script src="js/emojis.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/ads.js"></script>
+    <script src="js/chat.js"></script>
+    <!-- Custom body scripts will be injected here -->
+    <script id="custom-body-scripts"></script>
+</body>
+</html>

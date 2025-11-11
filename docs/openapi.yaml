@@ -1,0 +1,527 @@
+openapi: 3.0.3
+info:
+  title: RadioChatBox API
+  description: |
+    Real-time chat API for radio shows using Server-Sent Events (SSE), Redis, and PostgreSQL.
+    
+    ## Features
+    - Real-time messaging via SSE
+    - Public and private chat modes
+    - Photo uploads in private messages
+    - User profiles with demographics
+    - Admin moderation panel
+    - Rate limiting and spam protection
+    
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    name: RadioChatBox
+    url: https://github.com/radiochatbox/radiochatbox
+
+servers:
+  - url: http://localhost:98/api
+    description: Local development server
+  - url: https://your-domain.com/api
+    description: Production server
+
+tags:
+  - name: chat
+    description: Public chat operations
+  - name: private
+    description: Private messaging
+  - name: users
+    description: User management
+  - name: photos
+    description: Photo uploads
+  - name: admin
+    description: Admin moderation (requires authentication)
+  - name: settings
+    description: Application settings
+
+paths:
+  /stream.php:
+    get:
+      tags: [chat]
+      summary: SSE stream for real-time updates
+      description: Server-Sent Events stream providing real-time chat messages, user updates, and system events
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Current user's nickname
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Session identifier
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: message
+                  data: {"id":"msg_123","username":"Alice","message":"Hello!","timestamp":1699999999}
+                  
+                  event: users
+                  data: {"count":5,"users":[{"username":"Alice"},{"username":"Bob"}]}
+
+  /send.php:
+    post:
+      tags: [chat]
+      summary: Send a public message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, message, sessionId]
+              properties:
+                username:
+                  type: string
+                  maxLength: 50
+                message:
+                  type: string
+                  maxLength: 500
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /history.php:
+    get:
+      tags: [chat]
+      summary: Get message history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Message history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /private-message.php:
+    get:
+      tags: [private]
+      summary: Get private conversation history
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: with_user
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Private message history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PrivateMessage'
+    
+    post:
+      tags: [private]
+      summary: Send a private message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_username, to_username, message, sessionId]
+              properties:
+                from_username:
+                  type: string
+                to_username:
+                  type: string
+                message:
+                  type: string
+                  maxLength: 500
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Private message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /upload-photo.php:
+    post:
+      tags: [photos]
+      summary: Upload a photo for private messaging
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo, username, recipient, sessionId]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG, GIF, WebP)
+                username:
+                  type: string
+                recipient:
+                  type: string
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Photo uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  attachment_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /settings.php:
+    get:
+      tags: [settings]
+      summary: Get public application settings
+      responses:
+        '200':
+          description: Application settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  settings:
+                    type: object
+                    properties:
+                      page_title:
+                        type: string
+                      color_scheme:
+                        type: string
+                      require_profile:
+                        type: string
+                      chat_mode:
+                        type: string
+                        enum: [public, private, both]
+                      allow_photo_uploads:
+                        type: string
+                      max_photo_size_mb:
+                        type: integer
+
+  /register.php:
+    post:
+      tags: [users]
+      summary: Register a new user/nickname
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, sessionId]
+              properties:
+                username:
+                  type: string
+                  maxLength: 50
+                sessionId:
+                  type: string
+                age:
+                  type: integer
+                  minimum: 18
+                  maximum: 120
+                sex:
+                  type: string
+                  enum: [male, female]
+                location:
+                  type: string
+      responses:
+        '200':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /heartbeat.php:
+    post:
+      tags: [users]
+      summary: Send heartbeat to maintain online status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, sessionId]
+              properties:
+                username:
+                  type: string
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Heartbeat received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /admin/messages.php:
+    get:
+      tags: [admin]
+      summary: Get all messages (with pagination)
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/clear-chat.php:
+    post:
+      tags: [admin]
+      summary: Clear all public messages
+      security:
+        - AdminAuth: []
+      responses:
+        '200':
+          description: Chat cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted_count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/ban-ip.php:
+    post:
+      tags: [admin]
+      summary: Ban an IP address
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip_address]
+              properties:
+                ip_address:
+                  type: string
+                reason:
+                  type: string
+                duration:
+                  type: integer
+                  description: Ban duration in hours (null for permanent)
+      responses:
+        '200':
+          description: IP banned successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/settings.php:
+    get:
+      tags: [admin]
+      summary: Get all settings including admin settings
+      security:
+        - AdminAuth: []
+      responses:
+        '200':
+          description: All settings
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    post:
+      tags: [admin]
+      summary: Update application settings
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Settings updated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: integer
+        ip:
+          type: string
+
+    PrivateMessage:
+      type: object
+      properties:
+        from_username:
+          type: string
+        to_username:
+          type: string
+        message:
+          type: string
+        attachment_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    PaginatedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Rate limit exceeded
+
+  securitySchemes:
+    AdminAuth:
+      type: http
+      scheme: basic
+      description: Basic authentication with admin credentials
