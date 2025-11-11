@@ -6,17 +6,16 @@
  * Receives webhook from GitHub/GitLab/Gitea and triggers deployment
  * 
  * Setup:
- * 1. Place this file in project root
- * 2. Make executable: chmod +x webhook.php
- * 3. Configure webhook secret in .env: WEBHOOK_SECRET=your-secret-key
- * 4. Add webhook URL in GitHub: https://yoursite.com/webhook.php
- * 5. Set content type: application/json
- * 6. Set secret to match WEBHOOK_SECRET
+ * 1. File is accessible at: https://yoursite.com/webhook.php
+ * 2. Configure webhook secret in .env: WEBHOOK_SECRET=your-secret-key
+ * 3. Add webhook URL in GitHub: https://yoursite.com/webhook.php
+ * 4. Set content type: application/json
+ * 5. Set secret to match WEBHOOK_SECRET
  */
 
 // Load configuration
-if (file_exists(__DIR__ . '/.env')) {
-    $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+if (file_exists(__DIR__ . '/../.env')) {
+    $lines = file(__DIR__ . '/../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         if (strpos(trim($line), '#') === 0) continue;
         if (strpos($line, '=') !== false) {
@@ -30,8 +29,8 @@ if (file_exists(__DIR__ . '/.env')) {
 
 // Configuration
 define('WEBHOOK_SECRET', getenv('WEBHOOK_SECRET') ?: '');
-define('DEPLOY_SCRIPT', __DIR__ . '/deploy.sh');
-define('LOG_FILE', __DIR__ . '/webhook.log');
+define('DEPLOY_SCRIPT', __DIR__ . '/../deploy.sh');
+define('LOG_FILE', __DIR__ . '/../webhook.log');
 define('ALLOWED_BRANCH', getenv('DEPLOY_BRANCH') ?: 'main');
 
 /**

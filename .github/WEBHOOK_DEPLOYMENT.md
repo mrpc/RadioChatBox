@@ -18,7 +18,7 @@ This guide explains how to set up automatic deployment using Git webhooks instea
 
 ### Step 1: Configure Your Server
 
-The `webhook.php` file is already in your project. During setup, a webhook secret was auto-generated in your `.env` file.
+The `webhook.php` file is located in the `public/` directory and is automatically web-accessible.
 
 **Check your webhook secret:**
 ```bash
@@ -33,20 +33,9 @@ WEBHOOK_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6
 
 **Copy this secret** - you'll need it for the webhook configuration.
 
-### Step 2: Make Webhook Accessible
+### Step 2: Verify Webhook Accessibility
 
-The webhook handler needs to be accessible via HTTP(S). Add a symlink or make sure it's in your public directory:
-
-**Option A: Already in project root** (recommended during setup)
-```bash
-# No action needed - webhook.php is at project root
-```
-
-**Option B: Create symlink to public directory**
-```bash
-cd /path/to/your/radiochatbox/public
-ln -s ../webhook.php webhook.php
-```
+The webhook handler is in the `public/` directory and accessible via HTTP(S):
 
 **Test accessibility:**
 ```bash
