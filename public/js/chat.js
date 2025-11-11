@@ -156,11 +156,13 @@ class RadioChatBox {
     
     applyColorScheme(scheme) {
         // Remove existing scheme classes
-        document.body.classList.remove('dark-theme', 'light-theme');
+        document.body.classList.remove('dark-theme', 'light-theme', 'metal-theme');
         
         // Add new scheme class
         if (scheme === 'light') {
             document.body.classList.add('light-theme');
+        } else if (scheme === 'metal') {
+            document.body.classList.add('metal-theme');
         } else {
             document.body.classList.add('dark-theme');
         }
