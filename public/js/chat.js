@@ -1035,9 +1035,9 @@ class RadioChatBox {
         
         this.privateChat.messages.forEach(msg => {
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message private-message';
-            
             const isFromMe = msg.from_username === this.username;
+            messageDiv.className = `message private-message ${isFromMe ? 'sent' : 'received'}`;
+            
             const timestamp = new Date(msg.created_at).toLocaleTimeString();
             
             let content = `
