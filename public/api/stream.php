@@ -67,6 +67,9 @@ try {
         $channels[] = $prefix . 'chat:private_messages';
     }
     
+    // Set Redis read timeout to prevent connection issues
+    $redis->setOption(\Redis::OPT_READ_TIMEOUT, -1);
+    
     $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix) {
         if ($channel === $prefix . 'chat:updates') {
             // Check if it's a clear event
@@ -97,7 +100,11 @@ try {
     });
 
 } catch (Exception $e) {
+    error_log("SSE Stream Error: " . $e->getMessage());
     echo "event: error\n";
     echo "data: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
     flush();
+    
+    // Try to reconnect after error
+    sleep(1);
 }
