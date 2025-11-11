@@ -760,7 +760,8 @@ class RadioChatBox {
                 // Handle user kick event
                 if (data.type === 'user_kicked') {
                     console.log('User kicked event received:', data.username);
-                    if (data.username === this.currentUsername) {
+                    console.log('Current username:', this.username);
+                    if (data.username === this.username) {
                         // Current user was kicked
                         console.log('Current user was kicked!');
                         alert('You have been kicked from the chat by an administrator.');
