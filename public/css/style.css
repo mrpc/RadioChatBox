@@ -1747,3 +1747,69 @@ body.metal-theme .unread-count {
     color: #000000;
 }
 
+body.metal-theme #send-button {
+    background: #4CAF50;
+    color: #000000;
+    font-weight: 600;
+}
+
+body.metal-theme #send-button:hover {
+    background: #45a049;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+}
+
+body.metal-theme #sidebar-header {
+    background: rgba(0, 0, 0, 0.9);
+    border-bottom: 2px solid #4CAF50;
+}
+
+body.metal-theme #active-users-list {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+body.metal-theme .user-item .user-name {
+    color: #ffffff;
+}
+
+body.metal-theme .user-item .user-details {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+body.metal-theme #sidebar-content {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+body.metal-theme .active-user {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 3px solid transparent;
+}
+
+body.metal-theme .active-user:hover,
+body.metal-theme .active-user.clickable:hover {
+    background: rgba(76, 175, 80, 0.15);
+    border-left: 3px solid #4CAF50;
+}
+
+body.metal-theme .active-user .user-name {
+    color: #ffffff;
+}
+
+body.metal-theme .active-user .user-profile {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+body.metal-theme .active-user.user-male {
+    border-left-color: rgba(76, 175, 80, 0.3);
+}
+
+body.metal-theme .active-user.user-female {
+    border-left-color: rgba(76, 175, 80, 0.3);
+}
+
+body.metal-theme .active-user.current-user {
+    background: rgba(76, 175, 80, 0.2);
+    border-left: 3px solid #4CAF50;
+}
+
+
