@@ -1496,12 +1496,12 @@ body.dark-theme .chat-header {
 
 body.dark-theme .message {
     background: rgba(255, 255, 255, 0.25);
-    color: white;
+    color: #1f2937;
     border-left: 3px solid rgba(255, 255, 255, 0.3);
 }
 
 body.dark-theme .message .message-text {
-    color: white !important;
+    color: #1f2937 !important;
 }
 
 body.dark-theme .message.own-message {
@@ -1520,12 +1520,16 @@ body.dark-theme .message-username {
 }
 
 body.dark-theme .message-text {
-    color: #ffffff !important;
+    color: #1f2937 !important;
     font-weight: normal;
 }
 
 body.dark-theme div.message-text {
-    color: #ffffff !important;
+    color: #1f2937 !important;
+}
+
+body.dark-theme .message.own-message div.message-text {
+    color: white !important;
 }
 
 body.dark-theme .message-time {
