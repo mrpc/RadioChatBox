@@ -27,6 +27,10 @@ RUN echo "upload_max_filesize = 50M" > /usr/local/etc/php/conf.d/uploads.ini \
 RUN pecl install redis \
     && docker-php-ext-enable redis
 
+# Install PCOV extension for code coverage (dev/testing only)
+RUN pecl install pcov \
+    && docker-php-ext-enable pcov
+
 # Enable Apache modules
 RUN a2enmod rewrite headers deflate expires
 
