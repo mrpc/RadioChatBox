@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 use RadioChatBox\CorsHandler;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Database;
+use RadioChatBox\Config;
 
 header('Content-Type: application/json');
 
@@ -31,7 +32,8 @@ try {
         $deletedCount = $stmt->rowCount();
         
         // Clear Redis cache to remove messages from history immediately
-        $redis->del('chat:messages');
+        $dbName = Config::get('database')['name'];
+        $redis->del($dbName . ':chat:messages');
         
         // Publish clear event to all connected clients via Redis
         $clearEvent = [
@@ -39,7 +41,7 @@ try {
             'timestamp' => time()
         ];
         
-        $redis->publish('chat:updates', json_encode($clearEvent));
+        $redis->publish($dbName . ':chat:updates', json_encode($clearEvent));
         
         echo json_encode([
             'success' => true,

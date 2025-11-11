@@ -98,12 +98,17 @@ class ChatService
         $limit = min($limit, Config::get('chat')['history_limit']);
         $messages = $this->redis->lRange($this->prefixKey(self::MESSAGES_KEY), 0, $limit - 1);
         
+        // If Redis is empty, fallback to PostgreSQL
+        if (empty($messages)) {
+            return $this->loadHistoryFromDB($limit);
+        }
+        
         $decodedMessages = array_map(function($msg) {
             return json_decode($msg, true);
         }, $messages);
         
         if (empty($decodedMessages)) {
-            return [];
+            return $this->loadHistoryFromDB($limit);
         }
         
         // Get all message IDs
@@ -128,6 +133,49 @@ class ChatService
         });
         
         return array_reverse(array_values($filteredMessages));
+    }
+
+    /**
+     * Load message history from PostgreSQL (fallback when Redis is empty)
+     */
+    private function loadHistoryFromDB(int $limit = 50): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT message_id, username, message, ip_address, created_at 
+                 FROM messages 
+                 WHERE is_deleted = false 
+                 ORDER BY created_at DESC 
+                 LIMIT :limit'
+            );
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Convert to the same format as Redis messages
+            $messages = array_map(function($row) {
+                return [
+                    'id' => $row['message_id'],
+                    'username' => $row['username'],
+                    'message' => $row['message'],
+                    'timestamp' => strtotime($row['created_at']),
+                    'ip' => $row['ip_address']
+                ];
+            }, $rows);
+            
+            // Repopulate Redis cache with messages from DB
+            if (!empty($messages)) {
+                foreach (array_reverse($messages) as $msg) {
+                    $this->redis->rPush($this->prefixKey(self::MESSAGES_KEY), json_encode($msg));
+                }
+                $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
+            }
+            
+            return $messages;
+        } catch (PDOException $e) {
+            error_log("Failed to load history from DB: " . $e->getMessage());
+            return [];
+        }
     }
 
     /**
