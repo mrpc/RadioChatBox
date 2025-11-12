@@ -1698,7 +1698,7 @@
             showLoginScreen();
         }
 
-        function switchTab(tabName) {
+        function switchTab(tabName, updateHistory = true) {
             // Update sidebar navigation
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
             const navItem = document.querySelector(`.nav-item[data-tab="${tabName}"]`);
@@ -1728,11 +1728,43 @@
             if (titles[tabName]) {
                 document.getElementById('page-title').textContent = titles[tabName].title;
                 document.getElementById('page-subtitle').textContent = titles[tabName].subtitle;
+                // Update browser title
+                document.title = `${titles[tabName].title} - Admin Panel`;
+            }
+            
+            // Update browser history
+            if (updateHistory) {
+                const url = new URL(window.location);
+                url.hash = tabName;
+                history.pushState({ tab: tabName }, '', url);
             }
             
             // Close mobile sidebar when switching tabs
             closeMobileSidebar();
         }
+        
+        // Handle browser back/forward navigation
+        window.addEventListener('popstate', function(event) {
+            if (event.state && event.state.tab) {
+                switchTab(event.state.tab, false);
+            } else {
+                // Handle hash-based navigation for initial load
+                const hash = window.location.hash.substring(1);
+                const tab = hash || 'dashboard';
+                switchTab(tab, false);
+            }
+        });
+        
+        // Load initial tab from URL hash on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const hash = window.location.hash.substring(1);
+            const initialTab = hash || 'dashboard';
+            // Replace state for initial load so back button works correctly
+            history.replaceState({ tab: initialTab }, '', window.location);
+            if (hash) {
+                switchTab(initialTab, false);
+            }
+        });
         
         function toggleMobileSidebar() {
             const sidebar = document.getElementById('sidebar');
