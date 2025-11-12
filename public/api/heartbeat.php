@@ -31,10 +31,12 @@ try {
     }
     
     $chatService = new ChatService();
-    $chatService->updateHeartbeat($username, $sessionId);
     
-    // Balance fake users after heartbeat (in case cleanup removed users)
+    // Balance fake users first
     $chatService->balanceFakeUsers();
+    
+    // Then update heartbeat (this will publish user update with correct count)
+    $chatService->updateHeartbeat($username, $sessionId);
     
     echo json_encode([
         'success' => true,

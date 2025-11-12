@@ -40,11 +40,11 @@ try {
         flush();
     }
 
-    // Send current active users
-    $activeUsers = $chatService->getActiveUsers();
-    $userCount = $chatService->getActiveUserCount();
+    // Send current active users (including fake users)
+    $allUsers = $chatService->getAllUsers();
+    $userCount = count($allUsers);
     echo "event: users\n";
-    echo "data: " . json_encode(['count' => $userCount, 'users' => $activeUsers]) . "\n\n";
+    echo "data: " . json_encode(['count' => $userCount, 'users' => $allUsers]) . "\n\n";
     flush();
 
     // Send chat mode

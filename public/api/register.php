@@ -66,7 +66,7 @@ try {
         exit;
     }
     
-    // Balance fake users after a new user joins
+    // Balance fake users after a new user joins (this will publish user update)
     $chatService->balanceFakeUsers();
     
     echo json_encode([

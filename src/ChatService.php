@@ -548,6 +548,9 @@ class ChatService
         $realUserCount = $this->getActiveUserCount();
         $fakeUserService = new FakeUserService();
         $fakeUserService->balanceFakeUsers($realUserCount);
+        
+        // Publish user update after balancing fake users
+        $this->publishUserUpdate();
     }
 
     /**
@@ -860,7 +863,8 @@ class ChatService
         try {
             $this->cleanupInactiveUsers();
             
-            $users = $this->getActiveUsers();
+            // Use getAllUsers() to include fake users
+            $users = $this->getAllUsers();
             $count = count($users);
             
             $updateData = json_encode([

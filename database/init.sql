@@ -12,6 +12,7 @@
 -- DROP EXISTING TABLES (for clean re-import)
 -- ============================================================================
 
+DROP TABLE IF EXISTS fake_users CASCADE;
 DROP TABLE IF EXISTS url_blacklist CASCADE;
 DROP TABLE IF EXISTS banned_nicknames CASCADE;
 DROP TABLE IF EXISTS banned_ips CASCADE;
@@ -81,6 +82,23 @@ CREATE TABLE IF NOT EXISTS active_users (
 CREATE INDEX idx_active_users_username ON active_users(username);
 CREATE INDEX idx_active_users_last_heartbeat ON active_users(last_heartbeat);
 CREATE INDEX idx_active_users_session_id ON active_users(session_id);
+
+-- Fake users (to fill chat when real user count is low)
+CREATE TABLE IF NOT EXISTS fake_users (
+    id SERIAL PRIMARY KEY,
+    nickname VARCHAR(50) NOT NULL UNIQUE,
+    age INTEGER CHECK (age >= 18 AND age <= 99),
+    sex VARCHAR(10) CHECK (sex IN ('male', 'female', 'other')),
+    location VARCHAR(100),
+    is_active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT valid_nickname CHECK (LENGTH(nickname) >= 3)
+);
+
+CREATE INDEX idx_fake_users_active ON fake_users(is_active);
+
+COMMENT ON TABLE fake_users IS 'Fake users that can be activated to fill the chat when real user count is low';
+COMMENT ON COLUMN fake_users.is_active IS 'Whether this fake user is currently shown in the user list';
 
 -- ============================================================================
 -- PRIVATE MESSAGING
@@ -285,6 +303,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('chat_mode', 'both'),
     ('allow_photo_uploads', 'true'),
     ('max_photo_size_mb', '5'),
+    ('minimum_users', '0'),
     
     -- SEO & Branding
     ('site_title', 'RadioChatBox - Real-time Chat'),
