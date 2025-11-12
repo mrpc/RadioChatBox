@@ -32,15 +32,19 @@
                 required
             >
             <div id="profile-fields" style="display: none;">
-                <input 
-                    type="number" 
-                    id="age-input" 
-                    placeholder="Age" 
-                    min="18"
-                    max="120"
-                    autocomplete="off"
-                    required
-                >
+                <select id="age-input" required></select>
+                    <script>
+                    // Populate age select (18-90) for registration
+                    document.addEventListener('DOMContentLoaded', function() {
+                        var ageSelect = document.getElementById('age-input');
+                        if (ageSelect) {
+                            ageSelect.innerHTML = '<option value="">Select Age</option>';
+                            for (var i = 18; i <= 90; i++) {
+                                ageSelect.innerHTML += '<option value="' + i + '">' + i + '</option>';
+                            }
+                        }
+                    });
+                    </script>
                 <select id="sex-input" required>
                     <option value="">Select Sex</option>
                     <option value="male">Male</option>

@@ -1164,7 +1164,7 @@
                     </div>
                     <div class="form-group">
                         <label>Age <span id="fake-age-required" style="color: #ef4444; display: none;">*</span></label>
-                        <input type="number" id="fake-age" placeholder="18-99" min="18" max="99">
+                        <select id="fake-age"></select>
                     </div>
                     <div class="form-group">
                         <label>Sex <span id="fake-sex-required" style="color: #ef4444; display: none;">*</span></label>
@@ -3258,6 +3258,14 @@
 
         // Initialize fake user form with country dropdown
         function initializeFakeUserForm() {
+                        // Populate age select (18-90)
+                        const ageSelect = document.getElementById('fake-age');
+                        if (ageSelect) {
+                            ageSelect.innerHTML = '<option value="">Select Age</option>';
+                            for (let i = 18; i <= 90; i++) {
+                                ageSelect.innerHTML += `<option value="${i}">${i}</option>`;
+                            }
+                        }
             const locationSelect = document.getElementById('fake-location');
             if (locationSelect && typeof COUNTRIES !== 'undefined' && Array.isArray(COUNTRIES)) {
                 locationSelect.innerHTML = '<option value="">Select Country</option>';
