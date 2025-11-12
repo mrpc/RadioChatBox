@@ -65,9 +65,10 @@ class Database
         // Set connection timeout to 0.5 seconds (500ms)
         $redis->connect($config['host'], $config['port'], 0.5);
         
-        // For subscribe, we want infinite read timeout (it's supposed to block)
-        // But we'll let stream.php handle its own timeout logic
-        $redis->setOption(Redis::OPT_READ_TIMEOUT, -1);
+        // Set initial read timeout to 30 seconds instead of infinite
+        // This prevents indefinite hangs if Redis becomes unresponsive
+        // stream.php can override this if needed for specific use cases
+        $redis->setOption(Redis::OPT_READ_TIMEOUT, 30);
         
         return $redis;
     }
