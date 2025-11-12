@@ -1,12 +1,16 @@
 <?php
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use RadioChatBox\CorsHandler;
-use RadioChatBox\ChatService;
+use RadioChatBox\AdminAuth;
+use RadioChatBox\FakeUserService;
 
 // Handle CORS
 CorsHandler::handle();
+
+// Require admin authentication
+AdminAuth::check();
 
 header('Content-Type: application/json');
 
@@ -23,22 +27,24 @@ try {
         throw new InvalidArgumentException('Invalid JSON');
     }
 
-    $username = $input['username'] ?? '';
-    $sessionId = $input['sessionId'] ?? '';
+    $id = $input['id'] ?? 0;
     
-    if (empty($username) || empty($sessionId)) {
-        throw new InvalidArgumentException('Username and session ID are required');
+    if (empty($id)) {
+        throw new InvalidArgumentException('ID is required');
     }
     
-    $chatService = new ChatService();
-    $chatService->updateHeartbeat($username, $sessionId);
+    $fakeUserService = new FakeUserService();
+    $fakeUser = $fakeUserService->toggleFakeUser($id);
     
-    // Balance fake users after heartbeat (in case cleanup removed users)
-    $chatService->balanceFakeUsers();
+    if (!$fakeUser) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Fake user not found']);
+        exit;
+    }
     
     echo json_encode([
         'success' => true,
-        'activeUsers' => count($chatService->getAllUsers())
+        'fake_user' => $fakeUser
     ]);
 
 } catch (InvalidArgumentException $e) {

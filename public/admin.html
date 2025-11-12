@@ -233,6 +233,7 @@
                 <button class="tab active" onclick="switchTab('messages')">Messages</button>
                 <button class="tab" onclick="switchTab('users')">Active Users</button>
                 <button class="tab" onclick="switchTab('inactive-users')">Inactive Users</button>
+                <button class="tab" onclick="switchTab('fake-users')">Fake Users</button>
                 <button class="tab" onclick="switchTab('ip-bans')">IP Bans</button>
                 <button class="tab" onclick="switchTab('nickname-bans')">Nickname Bans</button>
                 <button class="tab" onclick="switchTab('url-blacklist')">URL Blacklist</button>
@@ -283,6 +284,42 @@
                     <h2>User Details: <span id="inactive-user-details-name"></span></h2>
                     <button class="btn" onclick="closeInactiveUserDetails()" style="margin-bottom: 15px;">← Back to Inactive Users</button>
                     <div id="inactive-user-details-content"></div>
+                </div>
+            </div>
+
+            <!-- Fake Users Tab -->
+            <div id="fake-users-tab" class="tab-content">
+                <div class="section">
+                    <h2>Add Fake User</h2>
+                    <p style="color: #6b7280; margin-bottom: 15px;">Create fake users to make the chat look more active when there are few real users</p>
+                    <div class="form-group">
+                        <label>Nickname *</label>
+                        <input type="text" id="fake-nickname" placeholder="e.g., ChatBot123">
+                    </div>
+                    <div class="form-group">
+                        <label>Age (optional)</label>
+                        <input type="number" id="fake-age" placeholder="18-99" min="18" max="99">
+                    </div>
+                    <div class="form-group">
+                        <label>Sex (optional)</label>
+                        <select id="fake-sex">
+                            <option value="">Not specified</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Location (optional)</label>
+                        <input type="text" id="fake-location" placeholder="e.g., New York, USA">
+                    </div>
+                    <button class="btn" onclick="addFakeUser()">Add Fake User</button>
+                </div>
+
+                <div class="section">
+                    <h2>Fake Users List</h2>
+                    <p style="color: #6b7280; margin-bottom: 15px;">Toggle to activate/deactivate fake users. Active fake users appear in the user list.</p>
+                    <div id="fake-users-table"></div>
                 </div>
             </div>
 
@@ -406,6 +443,13 @@
                         <input type="number" id="setting-max-photo-size-mb" placeholder="5" min="1" max="50">
                         <small id="php-max-upload-hint" style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
                             Server maximum: 50 MB
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Minimum Users (Fake Users Feature)</label>
+                        <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            When real users are below this number, random fake users will be activated to fill the gap. Set to 0 to disable.
                         </small>
                     </div>
                 </div>
@@ -744,6 +788,7 @@
             loadNicknameBans();
             loadUsers();
             loadInactiveUsers();
+            loadFakeUsers();
             loadSettings();
             loadUrlBlacklist();
             loadPhotos();
@@ -919,6 +964,162 @@
                 }
             } catch (error) {
                 console.error('Failed to load nickname bans:', error);
+            }
+        }
+
+        // Fake Users Functions
+        async function loadFakeUsers() {
+            try {
+                const response = await fetch('/api/admin/list-fake-users.php', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const table = document.getElementById('fake-users-table');
+                    
+                    if (data.fake_users.length === 0) {
+                        table.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No fake users created yet. Add one above!</p>';
+                        return;
+                    }
+                    
+                    table.innerHTML = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nickname</th>
+                                    <th>Age</th>
+                                    <th>Sex</th>
+                                    <th>Location</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.fake_users.map(user => `
+                                    <tr>
+                                        <td>${escapeHtml(user.nickname)}</td>
+                                        <td>${user.age || 'N/A'}</td>
+                                        <td>${user.sex || 'N/A'}</td>
+                                        <td>${escapeHtml(user.location || 'N/A')}</td>
+                                        <td>
+                                            <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; ${user.is_active ? 'background: #10b981; color: white;' : 'background: #6b7280; color: white;'}">
+                                                ${user.is_active ? '🟢 Active' : '⚫ Inactive'}
+                                            </span>
+                                        </td>
+                                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                                        <td>
+                                            <button class="btn btn-secondary" onclick="toggleFakeUser(${user.id})" style="margin-right: 5px;">
+                                                ${user.is_active ? 'Deactivate' : 'Activate'}
+                                            </button>
+                                            <button class="btn btn-danger" onclick="deleteFakeUser(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')">Delete</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to load fake users:', error);
+            }
+        }
+
+        async function addFakeUser() {
+            const nickname = document.getElementById('fake-nickname').value.trim();
+            const age = document.getElementById('fake-age').value;
+            const sex = document.getElementById('fake-sex').value;
+            const location = document.getElementById('fake-location').value.trim();
+
+            if (!nickname) {
+                alert('Nickname is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/add-fake-user.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        nickname,
+                        age: age ? parseInt(age) : null,
+                        sex: sex || null,
+                        location: location || null
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Fake user added successfully');
+                    document.getElementById('fake-nickname').value = '';
+                    document.getElementById('fake-age').value = '';
+                    document.getElementById('fake-sex').value = '';
+                    document.getElementById('fake-location').value = '';
+                    loadFakeUsers();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to add fake user:', error);
+                alert('Failed to add fake user');
+            }
+        }
+
+        async function toggleFakeUser(id) {
+            try {
+                const response = await fetch('/api/admin/toggle-fake-user.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ id })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadFakeUsers();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to toggle fake user:', error);
+                alert('Failed to toggle fake user');
+            }
+        }
+
+        async function deleteFakeUser(id, nickname) {
+            if (!confirm(`Are you sure you want to delete fake user "${nickname}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/delete-fake-user.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ id })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Fake user deleted successfully');
+                    loadFakeUsers();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to delete fake user:', error);
+                alert('Failed to delete fake user');
             }
         }
 
@@ -1366,6 +1567,9 @@
                         hintElement.textContent = `Server maximum: ${phpMaxUpload} MB`;
                     }
                     
+                    // Minimum users (fake users feature)
+                    document.getElementById('setting-minimum-users').value = settings.minimum_users || '0';
+                    
                     document.getElementById('setting-rate-limit-messages').value = settings.rate_limit_messages || '10';
                     document.getElementById('setting-rate-limit-window').value = settings.rate_limit_window || '60';
                     
@@ -1488,6 +1692,7 @@
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 max_photo_size_mb: document.getElementById('setting-max-photo-size-mb').value,
+                minimum_users: document.getElementById('setting-minimum-users').value,
                 rate_limit_messages: document.getElementById('setting-rate-limit-messages').value,
                 rate_limit_window: document.getElementById('setting-rate-limit-window').value,
                 

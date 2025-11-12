@@ -66,6 +66,9 @@ try {
         exit;
     }
     
+    // Balance fake users after a new user joins
+    $chatService->balanceFakeUsers();
+    
     echo json_encode([
         'success' => true,
         'message' => 'User registered successfully'

@@ -494,7 +494,7 @@ class ChatService
     }
 
     /**
-     * Get count of active users
+     * Get count of active users (real users only, not fake)
      */
     public function getActiveUserCount(): int
     {
@@ -507,6 +507,47 @@ class ChatService
             error_log("Failed to get active user count: " . $e->getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Get all users including real and fake users
+     * This is what should be used for the active users list display
+     */
+    public function getAllUsers(): array
+    {
+        // Get real users
+        $realUsers = $this->getActiveUsers();
+        
+        // Get active fake users
+        $fakeUserService = new FakeUserService();
+        $fakeUsers = $fakeUserService->getActiveFakeUsers();
+        
+        // Transform fake users to match real user format
+        $formattedFakeUsers = array_map(function($user) {
+            return [
+                'username' => $user['nickname'],
+                'age' => $user['age'],
+                'sex' => $user['sex'],
+                'location' => $user['location'],
+                'is_fake' => true,
+                'joined_at' => null,
+                'last_heartbeat' => null
+            ];
+        }, $fakeUsers);
+        
+        // Combine and return
+        return array_merge($realUsers, $formattedFakeUsers);
+    }
+
+    /**
+     * Balance fake users based on current real user count
+     * Call this after user joins/leaves to maintain minimum user count
+     */
+    public function balanceFakeUsers(): void
+    {
+        $realUserCount = $this->getActiveUserCount();
+        $fakeUserService = new FakeUserService();
+        $fakeUserService->balanceFakeUsers($realUserCount);
     }
 
     /**

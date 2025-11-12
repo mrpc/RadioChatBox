@@ -1,12 +1,16 @@
 <?php
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use RadioChatBox\CorsHandler;
-use RadioChatBox\ChatService;
+use RadioChatBox\AdminAuth;
+use RadioChatBox\FakeUserService;
 
 // Handle CORS
 CorsHandler::handle();
+
+// Require admin authentication
+AdminAuth::check();
 
 header('Content-Type: application/json');
 
@@ -17,18 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 try {
-    $chatService = new ChatService();
-    
-    // Get all users (real + fake)
-    $allUsers = $chatService->getAllUsers();
-    
-    // Count only includes what's shown (real + active fake)
-    $count = count($allUsers);
+    $fakeUserService = new FakeUserService();
+    $fakeUsers = $fakeUserService->getAllFakeUsers();
     
     echo json_encode([
         'success' => true,
-        'count' => $count,
-        'users' => $allUsers
+        'fake_users' => $fakeUsers
     ]);
 
 } catch (Exception $e) {
