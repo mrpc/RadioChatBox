@@ -1739,6 +1739,15 @@
                 history.pushState({ tab: tabName }, '', url);
             }
             
+            // Auto-load data when switching to certain tabs
+            if (tabName === 'impersonate') {
+                refreshImpersonateConversations();
+            } else if (tabName === 'users') {
+                loadUsers();
+            } else if (tabName === 'dashboard') {
+                loadDashboardKPIs();
+            }
+            
             // Close mobile sidebar when switching tabs
             closeMobileSidebar();
         }
