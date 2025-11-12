@@ -3259,17 +3259,20 @@
         // Initialize fake user form with country dropdown
         function initializeFakeUserForm() {
             const locationSelect = document.getElementById('fake-location');
-            if (locationSelect && typeof COUNTRIES !== 'undefined') {
+            if (locationSelect && typeof COUNTRIES !== 'undefined' && Array.isArray(COUNTRIES)) {
+                locationSelect.innerHTML = '<option value="">Select Country</option>';
                 COUNTRIES.forEach(country => {
                     const option = document.createElement('option');
-                    option.value = `${country.flag} ${country.name}`;
+                    option.value = country.code;
                     option.textContent = `${country.flag} ${country.name}`;
-                    // Set Greece as default
                     if (country.code === 'GR') {
                         option.selected = true;
                     }
                     locationSelect.appendChild(option);
                 });
+            } else if (locationSelect) {
+                // Fallback if COUNTRIES is not loaded
+                locationSelect.innerHTML = '<option value="GR" selected>🇬🇷 Greece</option>';
             }
         }
 
