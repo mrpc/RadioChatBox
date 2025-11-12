@@ -7,7 +7,7 @@ composer.lock
 
 # Deployment
 backups/
-*.sql
+/*.sql
 *.sql.gz
 deploy.log
 
