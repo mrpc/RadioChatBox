@@ -27,12 +27,13 @@ try {
         }
 
         $fromUsername = $input['from_username'] ?? '';
+        $fromSessionId = $input['from_session_id'] ?? '';
         $toUsername = $input['to_username'] ?? '';
         $message = $input['message'] ?? '';
         $attachmentId = $input['attachment_id'] ?? null;
         
-        if (empty($fromUsername) || empty($toUsername)) {
-            throw new InvalidArgumentException('From username and to username are required');
+        if (empty($fromUsername) || empty($toUsername) || empty($fromSessionId)) {
+            throw new InvalidArgumentException('From username, to username, and session ID are required');
         }
         
         // Message is optional if there's an attachment
@@ -54,20 +55,22 @@ try {
         $fromUsername = MessageFilter::sanitizeForOutput(trim($fromUsername));
         $toUsername = MessageFilter::sanitizeForOutput(trim($toUsername));
         
-        // Check if recipient exists in active users
-        $stmt = $db->prepare("SELECT username FROM active_users WHERE username = ?");
+        // Check if recipient exists in active users and get their session_id
+        $stmt = $db->prepare("SELECT session_id FROM active_users WHERE username = ?");
         $stmt->execute([$toUsername]);
-        if (!$stmt->fetch()) {
+        $recipient = $stmt->fetch();
+        if (!$recipient) {
             throw new RuntimeException('Recipient is not online');
         }
+        $toSessionId = $recipient['session_id'];
         
-        // Store message
+        // Store message with session IDs
         $stmt = $db->prepare("
-            INSERT INTO private_messages (from_username, to_username, message, attachment_id, created_at)
-            VALUES (?, ?, ?, ?, NOW())
+            INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())
             RETURNING id, created_at
         ");
-        $stmt->execute([$fromUsername, $toUsername, $message, $attachmentId]);
+        $stmt->execute([$fromUsername, $fromSessionId, $toUsername, $toSessionId, $message, $attachmentId]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         // Get attachment info if present
@@ -100,39 +103,41 @@ try {
     } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Get private message history
         $username = $_GET['username'] ?? '';
+        $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
         
-        if (empty($username)) {
-            throw new InvalidArgumentException('Username is required');
+        if (empty($username) || empty($sessionId)) {
+            throw new InvalidArgumentException('Username and session ID are required');
         }
         
         if ($withUser) {
-            // Get conversation with specific user
+            // Get conversation with specific user - only for current session
             $stmt = $db->prepare("
                 SELECT pm.*, 
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
                        a.mime_type, a.width, a.height
                 FROM private_messages pm
                 LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
-                WHERE (pm.from_username = ? AND pm.to_username = ?) 
-                   OR (pm.from_username = ? AND pm.to_username = ?)
+                WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?) 
+                    OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
                 ORDER BY pm.created_at ASC
                 LIMIT 100
             ");
-            $stmt->execute([$username, $withUser, $withUser, $username]);
+            $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
         } else {
-            // Get all recent private messages
+            // Get all recent private messages for current session only
             $stmt = $db->prepare("
                 SELECT pm.*,
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
                        a.mime_type, a.width, a.height
                 FROM private_messages pm
                 LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
-                WHERE pm.from_username = ? OR pm.to_username = ?
+                WHERE (pm.from_username = ? AND pm.from_session_id = ?) 
+                   OR (pm.to_username = ? AND pm.to_session_id = ?)
                 ORDER BY pm.created_at DESC
                 LIMIT 50
             ");
-            $stmt->execute([$username, $username]);
+            $stmt->execute([$username, $sessionId, $username, $sessionId]);
         }
         
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);

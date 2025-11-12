@@ -974,7 +974,7 @@ class RadioChatBox {
         
         // Load conversation history
         try {
-            const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&with_user=${encodeURIComponent(username)}`);
+            const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&with_user=${encodeURIComponent(username)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -1550,8 +1550,8 @@ class RadioChatBox {
         try {
             const payload = {
                 from_username: this.username,
-                to_username: toUsername,
-                sessionId: this.sessionId
+                from_session_id: this.sessionId,
+                to_username: toUsername
             };
             
             if (attachmentId) {
@@ -1715,7 +1715,7 @@ class RadioChatBox {
     
     async loadAllConversations() {
         try {
-            const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}`);
+            const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
