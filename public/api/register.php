@@ -61,8 +61,8 @@ try {
     $success = $chatService->registerUser($username, $sessionId, $ipAddress, $age, $location, $sex);
     
     if (!$success) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Unable to register user. You may be banned.']);
+        http_response_code(409);
+        echo json_encode(['error' => 'Username is already taken or you are banned.']);
         exit;
     }
     

@@ -382,6 +382,29 @@ class ChatService
             return false;
         }
         
+        // Check if username matches an admin username
+        $stmt = $this->pdo->prepare(
+            'SELECT username FROM admin_users WHERE username = :username'
+        );
+        $stmt->execute(['username' => $username]);
+        if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
+            error_log("Registration blocked: username '{$username}' is reserved (admin account)");
+            return false;
+        }
+        
+        // Check if username is already taken by another session
+        $stmt = $this->pdo->prepare(
+            'SELECT session_id FROM active_users WHERE username = :username'
+        );
+        $stmt->execute(['username' => $username]);
+        $existingUser = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        if ($existingUser && $existingUser['session_id'] !== $sessionId) {
+            // Username is taken by another active session
+            error_log("Registration blocked: username '{$username}' is already taken by another user");
+            return false;
+        }
+        
         try {
             // Insert or update active user
             $stmt = $this->pdo->prepare(
