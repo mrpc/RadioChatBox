@@ -2380,7 +2380,7 @@
                                         <td>${escapeHtml(user.username)}</td>
                                         ${isRootOrOwner ? `<td>${user.is_fake ? '<span style="color: #f59e0b;">Fake</span>' : '<span style="color: #10b981;">Real</span>'}</td>` : ''}
                                         <td>${user.joined_at ? new Date(user.joined_at).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
-                                        <td>${user.last_heartbeat ? new Date(user.last_heartbeat * 1000).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
+                                        <td>${user.last_heartbeat ? new Date(user.last_heartbeat).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
                                         <td>
                                             <button class="btn" onclick="viewUserDetails(\`${user.username.replace(/`/g, '\\`')}\`)">View Details</button>
                                             <button class="btn btn-danger" onclick="kickUser(\`${user.username.replace(/`/g, '\\`')}\`)">Kick</button>
