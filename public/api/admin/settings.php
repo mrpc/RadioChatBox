@@ -116,17 +116,7 @@ try {
         $db->beginTransaction();
         
         foreach ($data as $key => $value) {
-            if ($key === 'admin_password' && !empty($value)) {
-                // Hash the new password
-                $hash = password_hash($value, PASSWORD_DEFAULT);
-                $stmt = $db->prepare("
-                    INSERT INTO settings (setting_key, setting_value, updated_at) 
-                    VALUES ('admin_password_hash', ?, NOW())
-                    ON CONFLICT (setting_key) 
-                    DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
-                ");
-                $stmt->execute([$hash]);
-            } elseif ($key === 'max_photo_size_mb') {
+            if ($key === 'max_photo_size_mb') {
                 // Validate against PHP's upload_max_filesize
                 $requestedSize = (int)$value;
                 if ($requestedSize > $phpMaxUploadBytes) {

@@ -5,12 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Changelog
+## [Unreleased]
 
-All notable changes to RadioChatBox will be documented in this file.
+### Added
+- Admin user management system with role-based access control (RBAC)
+  - Four user roles: Root, Administrator, Moderator, Simple User
+  - Username/password authentication replacing legacy password-only system
+  - CRUD operations for admin users via UI and API
+  - Granular permission system (8 permissions mapped to roles)
+  - 24-hour Redis session caching
+  - User list caching with 5-minute TTL
+- Unit test suite for UserService (23 tests)
+- Test infrastructure with Database mocking support
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Changed
+- Admin authentication now requires username:password format (Bearer header)
+- User list API responses cached for 5 minutes
+
+### Removed
+- Legacy admin password-only authentication
+- Admin password field from Settings UI
 
 ## [1.0.0] - 2025-11-11
 

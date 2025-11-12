@@ -83,4 +83,35 @@ class Database
         $dbName = $config['name'];
         return "radiochatbox:{$dbName}:";
     }
+    
+    // ========================================================================
+    // TEST HELPER METHODS - Only use in tests!
+    // ========================================================================
+    
+    /**
+     * Set a mock PDO instance for testing
+     * @param PDO|null $pdo Mock PDO instance
+     */
+    public static function setPDO(?PDO $pdo): void
+    {
+        self::$pdo = $pdo;
+    }
+    
+    /**
+     * Set a mock Redis instance for testing
+     * @param Redis|null $redis Mock Redis instance
+     */
+    public static function setRedis(?Redis $redis): void
+    {
+        self::$redis = $redis;
+    }
+    
+    /**
+     * Reset singleton instances (for testing)
+     */
+    public static function reset(): void
+    {
+        self::$pdo = null;
+        self::$redis = null;
+    }
 }

@@ -33,12 +33,15 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 
 ### Moderation & Security
 
+- **Role-based admin users** with 4 permission levels (Root, Administrator, Moderator, Simple User)
 - **Admin panel** with comprehensive moderation tools
+- **User management** - create, edit, and delete admin accounts
 - **IP banning** with temporary or permanent durations
 - **Nickname blacklist** to reserve or block usernames
 - **URL filtering** with customizable blacklist patterns
 - **Rate limiting** to prevent spam
 - **Automatic violation tracking** with auto-ban system
+- **Session-based authentication** with 24-hour Redis caching
 
 ### User Experience
 
@@ -164,9 +167,38 @@ To embed the chat in your existing radio website:
 
 ## 📚 Admin Panel
 
-Configure via admin panel (http://localhost:98/admin.html):
+Access at http://localhost:98/admin.html
 
-- Default credentials: `admin` / `admin123` (change immediately!)
+### Authentication
+
+- **Default credentials**: `admin` / `admin123` ⚠️ **Change immediately!**
+- Login format: Username and password (not just password)
+
+### User Roles
+
+The system supports four hierarchical roles with different permission levels:
+
+| Role | Permissions | Use Case |
+|------|-------------|----------|
+| **Root** 🔴 | Full access to everything, can create/delete all users | System administrators |
+| **Administrator** 🟠 | Full access except creating/deleting root users | Trusted moderators |
+| **Moderator** 🟡 | Read-only access to messages, bans, blacklists | Content moderators |
+| **Simple User** ⚫ | No admin panel access | Reserved for future features |
+
+### Managing Admin Users
+
+1. Go to the **Admin Users** tab
+2. Create new users with username, password, email (optional), and role
+3. Edit users to change passwords, roles, or disable accounts
+4. Delete users (cannot delete yourself or, if you're not root, root users)
+
+**API Endpoints:**
+- `GET /api/admin/users.php` - List all admin users
+- `POST /api/admin/create-user.php` - Create new user
+- `POST /api/admin/update-user.php` - Update existing user
+- `DELETE /api/admin/delete-user.php` - Delete user
+
+### Configuration Settings
 
 | Setting | Description | Default |
 |---------|-------------|---------|

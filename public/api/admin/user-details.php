@@ -63,15 +63,18 @@ try {
     $stmt->execute([$username]);
     $activeSession = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // Get private messages sent
-    $stmt = $db->prepare("
-        SELECT * FROM private_messages 
-        WHERE from_username = ? OR to_username = ?
-        ORDER BY created_at DESC
-        LIMIT 50
-    ");
-    $stmt->execute([$username, $username]);
-    $privateMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Get private messages sent (only for root and administrator)
+    $privateMessages = [];
+    if (AdminAuth::hasPermission('view_private_messages')) {
+        $stmt = $db->prepare("
+            SELECT * FROM private_messages 
+            WHERE from_username = ? OR to_username = ?
+            ORDER BY created_at DESC
+            LIMIT 50
+        ");
+        $stmt->execute([$username, $username]);
+        $privateMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
     
     echo json_encode([
         'success' => true,
