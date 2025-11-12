@@ -2134,6 +2134,10 @@
                     const option = document.createElement('option');
                     option.value = `${country.flag} ${country.name}`;
                     option.textContent = `${country.flag} ${country.name}`;
+                    // Set Greece as default
+                    if (country.code === 'GR') {
+                        option.selected = true;
+                    }
                     locationSelect.appendChild(option);
                 });
             }
