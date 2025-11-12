@@ -18,10 +18,10 @@ header('X-Accel-Buffering: no'); // Disable nginx buffering
 // Disable output buffering
 if (ob_get_level()) ob_end_clean();
 
-// Set script timeout to 5 minutes for SSE connections
-// This prevents indefinite hangs while still allowing long-lived connections
-set_time_limit(300);
-ini_set('max_execution_time', '300');
+// Set script timeout to 120 seconds to account for Cloudflare limits
+// Cloudflare free plan has 100 second timeout, we disconnect at 90s
+set_time_limit(120);
+ini_set('max_execution_time', '120');
 
 // Send initial comment to establish connection
 echo ": SSE connection established\n\n";
@@ -79,12 +79,15 @@ try {
     $redis->setOption(\Redis::OPT_READ_TIMEOUT, 30);
     
     $startTime = time();
-    $maxRuntime = 270; // Run for 4.5 minutes, then disconnect to force clean reconnect
+    // Cloudflare free plan timeout: 100 seconds
+    // Cloudflare paid plan timeout: 600 seconds (10 minutes)
+    // Set to 90 seconds to safely stay under Cloudflare free plan limit
+    $maxRuntime = 90;
     
     $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix, &$startTime, $maxRuntime) {
-        // Check if we've exceeded max runtime - force reconnect for fresh connection
+        // Check if we've exceeded max runtime - force reconnect before Cloudflare timeout
         if (time() - $startTime > $maxRuntime) {
-            return false; // Unsubscribe
+            return false; // Unsubscribe - browser will auto-reconnect
         }
         
         // Check if client is still connected
@@ -92,9 +95,10 @@ try {
             return false; // Unsubscribe
         }
         
-        // Send periodic ping to keep connection alive (every 30 seconds)
-        if (time() - $lastPing > 30) {
-            echo ": ping\n\n";
+        // Send periodic ping to keep connection alive (every 25 seconds)
+        // Cloudflare expects some data flow to keep connection open
+        if (time() - $lastPing > 25) {
+            echo ": ping " . time() . "\n\n";
             flush();
             $lastPing = time();
         }
