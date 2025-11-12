@@ -76,6 +76,7 @@ try {
             'chat_mode',
             'allow_photo_uploads',
             'max_photo_size_mb',
+            'minimum_users',
             // SEO & Branding
             'site_title',
             'site_description',
