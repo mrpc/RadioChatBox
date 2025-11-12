@@ -520,6 +520,12 @@ body {
     gap: 2px;
 }
 
+/* Center content when messages container has centered placeholder */
+#messages > div[style*="justify-content: center"] {
+    width: 100%;
+    align-self: center;
+}
+
 /* Scroll to bottom button */
 #scroll-to-bottom {
     position: absolute;
