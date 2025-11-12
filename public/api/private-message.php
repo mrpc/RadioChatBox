@@ -55,14 +55,26 @@ try {
         $fromUsername = MessageFilter::sanitizeForOutput(trim($fromUsername));
         $toUsername = MessageFilter::sanitizeForOutput(trim($toUsername));
         
-        // Check if recipient exists in active users and get their session_id
+        // Check if recipient exists in active users or is an active fake user
         $stmt = $db->prepare("SELECT session_id FROM active_users WHERE username = ?");
         $stmt->execute([$toUsername]);
         $recipient = $stmt->fetch();
+        
         if (!$recipient) {
-            throw new RuntimeException('Recipient is not online');
+            // Check if it's an active fake user
+            $stmt = $db->prepare("SELECT nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE");
+            $stmt->execute([$toUsername]);
+            $fakeUser = $stmt->fetch();
+            
+            if ($fakeUser) {
+                // Create a fake session ID for the fake user
+                $toSessionId = 'fake_' . md5($toUsername);
+            } else {
+                throw new RuntimeException('Recipient is not online');
+            }
+        } else {
+            $toSessionId = $recipient['session_id'];
         }
-        $toSessionId = $recipient['session_id'];
         
         // Store message with session IDs
         $stmt = $db->prepare("
