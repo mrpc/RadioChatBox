@@ -39,8 +39,8 @@ try {
 
     $pdo = Database::getPDO();
     
-    // Delete the message
-    $stmt = $pdo->prepare("DELETE FROM messages WHERE id = ?");
+    // Mark the message as deleted (soft delete) instead of actually deleting it
+    $stmt = $pdo->prepare("UPDATE messages SET is_deleted = true WHERE message_id = ?");
     $stmt->execute([$messageId]);
     
     if ($stmt->rowCount() === 0) {
@@ -53,6 +53,17 @@ try {
     $redis = Database::getRedis();
     $prefix = Database::getRedisPrefix();
     
+    // Remove from Redis cache - need to find and remove the JSON string containing this message_id
+    $messages = $redis->lRange($prefix . 'chat:messages', 0, -1);
+    foreach ($messages as $msgJson) {
+        $msg = json_decode($msgJson, true);
+        if (isset($msg['id']) && $msg['id'] === $messageId) {
+            // Remove from Redis list
+            $redis->lRem($prefix . 'chat:messages', $msgJson, 1);
+            break;
+        }
+    }
+    
     $deleteEvent = [
         'type' => 'message_deleted',
         'message_id' => $messageId,
@@ -61,9 +72,6 @@ try {
     
     $redis->publish($prefix . 'chat:updates', json_encode($deleteEvent));
 
-    // Also remove from Redis cache if present
-    $redis->lRem($prefix . 'chat:messages', $messageId, 0);
-
     echo json_encode([
         'success' => true,
         'message' => 'Message deleted successfully'
@@ -71,6 +79,11 @@ try {
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Failed to delete message']);
+    echo json_encode([
+        'error' => 'Failed to delete message',
+        'debug' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+    ]);
     error_log('Delete message error: ' . $e->getMessage());
 }

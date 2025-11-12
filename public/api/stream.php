@@ -104,13 +104,25 @@ try {
         }
         
         if ($channel === $prefix . 'chat:updates') {
-            // Check if it's a clear event
+            // Check if it's a special event type
             $msgData = json_decode($message, true);
-            if (isset($msgData['type']) && $msgData['type'] === 'clear') {
-                echo "event: clear\n";
-                echo "data: " . $message . "\n\n";
-                flush();
+            if (isset($msgData['type'])) {
+                if ($msgData['type'] === 'clear') {
+                    echo "event: clear\n";
+                    echo "data: " . $message . "\n\n";
+                    flush();
+                } elseif ($msgData['type'] === 'message_deleted') {
+                    echo "event: message_deleted\n";
+                    echo "data: " . $message . "\n\n";
+                    flush();
+                } else {
+                    // Unknown type, send as regular message
+                    echo "event: message\n";
+                    echo "data: " . $message . "\n\n";
+                    flush();
+                }
             } else {
+                // Regular message
                 echo "event: message\n";
                 echo "data: " . $message . "\n\n";
                 flush();

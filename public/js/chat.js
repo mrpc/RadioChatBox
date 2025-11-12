@@ -93,7 +93,9 @@ class RadioChatBox {
     
     async loadSettings() {
         try {
-            const response = await fetch(`${this.apiUrl}/api/settings.php`);
+            const response = await fetch(`${this.apiUrl}/api/settings.php?t=${Date.now()}`, {
+                cache: 'no-cache'
+            });
             const data = await response.json();
             
             if (data.success) {
@@ -138,7 +140,10 @@ class RadioChatBox {
                 
                 // Apply color scheme
                 if (this.settings.color_scheme) {
+                    console.log('Applying color scheme from settings:', this.settings.color_scheme); // Debug
                     this.applyColorScheme(this.settings.color_scheme);
+                } else {
+                    console.log('No color_scheme in settings, using default'); // Debug
                 }
                 
                 // Show profile fields if required
@@ -1304,7 +1309,7 @@ class RadioChatBox {
         // Check if user is admin
         const isAdmin = localStorage.getItem('isAdmin') === 'true';
         const deleteButton = isAdmin ? `
-            <button class="delete-message-btn" onclick="chat.deleteMessage(${messageData.id}, this)" title="Delete message">
+            <button class="delete-message-btn" data-message-id="${messageData.id}" title="Delete message">
                 🗑️
             </button>
         ` : '';
@@ -1317,6 +1322,17 @@ class RadioChatBox {
             </div>
             <div class="message-text">${this.escapeHtml(messageData.message)}</div>
         `;
+
+        // Add event listener for delete button if admin
+        if (isAdmin) {
+            const deleteBtn = messageDiv.querySelector('.delete-message-btn');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', (e) => {
+                    const msgId = e.target.getAttribute('data-message-id');
+                    this.deleteMessage(msgId, e.target);
+                });
+            }
+        }
 
         this.messagesContainer.appendChild(messageDiv);
         
@@ -1463,17 +1479,23 @@ class RadioChatBox {
     }
 
     async deleteMessage(messageId, button) {
+        console.log('Delete clicked:', messageId, 'Button:', button); // Debug
+        
         if (!confirm('Delete this message?')) {
             return;
         }
 
         const adminToken = localStorage.getItem('adminToken');
+        console.log('Admin token:', adminToken ? 'Present' : 'Missing'); // Debug
+        
         if (!adminToken) {
             alert('Admin authentication required');
             return;
         }
 
         try {
+            console.log('Sending delete request for message:', messageId); // Debug
+            
             const response = await fetch(`${this.apiUrl}/api/admin/delete-message.php`, {
                 method: 'POST',
                 headers: {
@@ -1484,6 +1506,7 @@ class RadioChatBox {
             });
 
             const data = await response.json();
+            console.log('Delete response:', response.status, data); // Debug
 
             if (response.ok && data.success) {
                 // Remove message from UI immediately

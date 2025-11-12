@@ -134,7 +134,8 @@ class SettingsService
             $this->pdo->commit();
             
             // Invalidate cache
-            $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
+            $cacheKey = $this->prefixKey(self::SETTINGS_CACHE_KEY);
+            $this->redis->del($cacheKey);
 
             return true;
         } catch (\Exception $e) {

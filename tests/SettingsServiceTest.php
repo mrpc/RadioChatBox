@@ -131,4 +131,82 @@ class SettingsServiceTest extends TestCase
         $this->assertArrayHasKey('provider', $analytics);
         $this->assertArrayHasKey('tracking_id', $analytics);
     }
+
+    /**
+     * Test that cache is properly invalidated when settings are updated
+     * This ensures that theme changes and other settings appear immediately
+     */
+    public function testCacheInvalidationAfterSettingsUpdate()
+    {
+        $testKey = 'color_scheme';
+        $originalValue = $this->settingsService->get($testKey, 'light');
+        
+        // Step 1: Get initial value (this caches it)
+        $cachedValue1 = $this->settingsService->get($testKey);
+        $this->assertEquals($originalValue, $cachedValue1);
+        
+        // Step 2: Update to a different value
+        $newValue = $originalValue === 'light' ? 'dark' : 'light';
+        $result = $this->settingsService->set($testKey, $newValue);
+        $this->assertTrue($result);
+        
+        // Step 3: Verify cache was invalidated and new value is returned
+        $cachedValue2 = $this->settingsService->get($testKey);
+        $this->assertEquals($newValue, $cachedValue2, 'Cache should be invalidated after setting update');
+        $this->assertNotEquals($cachedValue1, $cachedValue2, 'Value should have changed');
+        
+        // Step 4: Update multiple settings at once
+        $anotherNewValue = $newValue === 'light' ? 'metal' : 'light';
+        $result = $this->settingsService->setMultiple([
+            $testKey => $anotherNewValue,
+            'page_title' => 'Test Title ' . time()
+        ]);
+        $this->assertTrue($result);
+        
+        // Step 5: Verify cache was invalidated after batch update
+        $cachedValue3 = $this->settingsService->get($testKey);
+        $this->assertEquals($anotherNewValue, $cachedValue3, 'Cache should be invalidated after setMultiple');
+        $this->assertNotEquals($cachedValue2, $cachedValue3, 'Value should have changed after setMultiple');
+        
+        // Restore original value
+        $this->settingsService->set($testKey, $originalValue);
+    }
+
+    /**
+     * Test that Redis cache key uses proper prefix
+     * This prevents the bug where cache invalidation fails due to missing prefix
+     */
+    public function testRedisCacheKeyUsesProperPrefix()
+    {
+        $testKey = 'test_cache_prefix_' . time();
+        $testValue = 'prefix_test_value';
+        
+        // Set a value
+        $this->settingsService->set($testKey, $testValue);
+        
+        // Get it back (this should use cached value)
+        $retrieved = $this->settingsService->get($testKey);
+        $this->assertEquals($testValue, $retrieved);
+        
+        // Verify the cache key exists in Redis with proper prefix
+        $redis = \RadioChatBox\Database::getRedis();
+        $prefix = \RadioChatBox\Database::getRedisPrefix();
+        $cacheKey = $prefix . 'settings:all';
+        
+        $exists = $redis->exists($cacheKey);
+        $this->assertTrue((bool)$exists, "Cache key should exist with proper prefix: $cacheKey");
+        
+        // Update the setting
+        $newValue = 'new_prefix_test_value';
+        $this->settingsService->set($testKey, $newValue);
+        
+        // Verify cache was deleted (it will be recreated on next get)
+        // Note: Cache is recreated immediately by getAll() after setMultiple()
+        // So we verify the value changed instead
+        $retrieved2 = $this->settingsService->get($testKey);
+        $this->assertEquals($newValue, $retrieved2, 'Cache should reflect updated value');
+        
+        // Cleanup
+        $this->settingsService->set($testKey, null);
+    }
 }
