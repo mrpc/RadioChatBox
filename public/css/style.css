@@ -619,14 +619,14 @@ body {
 .message.private-message.sent {
     background: #dbeafe;
     border: 2px solid #60a5fa;
-    margin-left: 20%;
+    align-self: flex-end;
 }
 
 /* Private message received - align left, yellow */
 .message.private-message.received {
     background: #fef3c7;
     border: 2px solid #fbbf24;
-    margin-right: 20%;
+    align-self: flex-start;
 }
 
 .message.own-message .message-username {

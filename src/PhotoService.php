@@ -118,6 +118,10 @@ class PhotoService
 
         // Get final file size
         $fileSize = filesize($filePath);
+        
+        if ($fileSize === false) {
+            throw new \RuntimeException('Failed to save image file');
+        }
 
         // Save to database
         $stmt = $this->pdo->prepare("

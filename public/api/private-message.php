@@ -133,7 +133,7 @@ try {
                 WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?) 
                     OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
                 ORDER BY pm.created_at ASC
-                LIMIT 100
+                LIMIT 500
             ");
             $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
         } else {

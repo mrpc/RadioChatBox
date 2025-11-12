@@ -42,10 +42,18 @@ try {
     $impersonateAs = $input['impersonate_as'] ?? '';
     $toUsername = $input['to_username'] ?? '';
     $message = $input['message'] ?? '';
+    $attachmentId = $input['attachment_id'] ?? null;
     
-    if (empty($impersonateAs) || empty($toUsername) || empty($message)) {
+    if (empty($impersonateAs) || empty($toUsername)) {
         http_response_code(400);
-        echo json_encode(['error' => 'Impersonate username, recipient, and message are required']);
+        echo json_encode(['error' => 'Impersonate username and recipient are required']);
+        exit;
+    }
+
+    // Message is optional if there's an attachment
+    if (empty($message) && empty($attachmentId)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Either message or attachment is required']);
         exit;
     }
 
@@ -53,7 +61,7 @@ try {
     $redis = Database::getRedis();
     
     // Verify the impersonation target is a fake user
-    $stmt = $pdo->prepare("SELECT id, username FROM fake_users WHERE username = ? AND is_active = TRUE");
+    $stmt = $pdo->prepare("SELECT id, nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE");
     $stmt->execute([$impersonateAs]);
     $fakeUser = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -76,21 +84,30 @@ try {
     
     // Filter message
     $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'admin';
-    $filterResult = MessageFilter::filterPrivateMessage($message, $ipAddress);
-    $message = $filterResult['filtered'];
-    $message = MessageFilter::sanitizeForOutput(trim($message));
+    if (!empty($message)) {
+        $filterResult = MessageFilter::filterPrivateMessage($message, $ipAddress);
+        $message = $filterResult['filtered'];
+        $message = MessageFilter::sanitizeForOutput(trim($message));
+    }
     
     // Create a fake session ID for the fake user (consistent per fake user)
     $fakeSessionId = 'fake_' . md5($impersonateAs);
     
     // Store message in database
     $stmt = $pdo->prepare("
-        INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
-        VALUES (?, ?, ?, ?, ?, NOW())
+        INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
         RETURNING id, created_at
     ");
-    $stmt->execute([$impersonateAs, $fakeSessionId, $toUsername, $recipient['session_id'], $message]);
+    $stmt->execute([$impersonateAs, $fakeSessionId, $toUsername, $recipient['session_id'], $message, $attachmentId]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Get attachment info if present
+    $attachmentData = null;
+    if ($attachmentId) {
+        $photoService = new \RadioChatBox\PhotoService();
+        $attachmentData = $photoService->getAttachment($attachmentId);
+    }
     
     // Publish to Redis for real-time delivery
     $messageData = [
@@ -98,7 +115,7 @@ try {
         'from_username' => $impersonateAs,
         'to_username' => $toUsername,
         'message' => $message,
-        'attachment' => null,
+        'attachment' => $attachmentData,
         'timestamp' => strtotime($result['created_at']),
         'type' => 'private'
     ];
@@ -117,6 +134,10 @@ try {
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Failed to send message']);
+    echo json_encode([
+        'error' => 'Failed to send message',
+        'debug' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+    ]);
     error_log('Impersonate send error: ' . $e->getMessage());
 }

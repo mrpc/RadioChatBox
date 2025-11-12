@@ -4,6 +4,11 @@
  * Handles photo uploads for private messages
  */
 
+// Enable error display for debugging
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 use RadioChatBox\CorsHandler;
@@ -54,6 +59,11 @@ try {
     echo json_encode(['error' => $e->getMessage()]);
 } catch (\Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Failed to upload photo']);
+    echo json_encode([
+        'error' => 'Failed to upload photo',
+        'debug' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+    ]);
     error_log("Photo upload error: " . $e->getMessage());
 }
