@@ -60,31 +60,35 @@ class RadioChatBox {
     init() {
         // Load settings first
         this.loadSettings().then(() => {
-            // Check if user has a saved nickname
-            const savedNickname = this.getCookie('chatNickname');
-            
-            if (savedNickname) {
-                // Try to get saved profile data
-                const savedAge = this.getCookie('chatAge');
-                const savedLocation = this.getCookie('chatLocation');
-                const savedSex = this.getCookie('chatSex');
-                
-                // Check if profile is required
-                const requireProfile = this.settings?.require_profile === 'true';
-                
-                if (requireProfile && (!savedAge || !savedLocation || !savedSex)) {
-                    // Profile is required but we don't have complete data - show modal
-                    this.showNicknameModal(savedNickname);
-                } else {
-                    // Either profile not required, or we have complete data
-                    // Always send profile data if available (even if not required)
-                    this.checkAndRegisterNickname(savedNickname, savedAge, savedLocation, savedSex);
-                }
-            } else {
-                // Show nickname selection modal
-                this.showNicknameModal();
-            }
+            this.proceedWithNormalLogin();
         });
+    }
+    
+    proceedWithNormalLogin() {
+        // Check if user has a saved nickname
+        const savedNickname = this.getCookie('chatNickname');
+        
+        if (savedNickname) {
+            // Try to get saved profile data
+            const savedAge = this.getCookie('chatAge');
+            const savedLocation = this.getCookie('chatLocation');
+            const savedSex = this.getCookie('chatSex');
+            
+            // Check if profile is required
+            const requireProfile = this.settings?.require_profile === 'true';
+            
+            if (requireProfile && (!savedAge || !savedLocation || !savedSex)) {
+                // Profile is required but we don't have complete data - show modal
+                this.showNicknameModal(savedNickname);
+            } else {
+                // Either profile not required, or we have complete data
+                // Always send profile data if available (even if not required)
+                this.checkAndRegisterNickname(savedNickname, savedAge, savedLocation, savedSex);
+            }
+        } else {
+            // Show nickname selection modal
+            this.showNicknameModal();
+        }
     }
     
     async loadSettings() {
@@ -408,6 +412,41 @@ class RadioChatBox {
         const nicknameSubmit = document.getElementById('nickname-submit');
         const nicknameError = document.getElementById('nickname-error');
         const profileFields = document.getElementById('profile-fields');
+
+        // Check if user is logged in as admin and show quick-join option
+        const adminToken = localStorage.getItem('adminToken');
+        if (adminToken && !prefillNickname) {
+            const username = adminToken.split(':')[0];
+            if (username) {
+                // Create admin quick-join notice
+                let adminNotice = document.getElementById('admin-quick-join-notice');
+                if (!adminNotice) {
+                    adminNotice = document.createElement('div');
+                    adminNotice.id = 'admin-quick-join-notice';
+                    adminNotice.style.cssText = 'background: #667eea; color: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; text-align: center;';
+                    adminNotice.innerHTML = `
+                        <p style="margin: 0 0 10px 0; font-size: 14px;">👋 You're logged in as admin <strong>${username}</strong></p>
+                        <button id="admin-quick-join-btn" style="background: white; color: #667eea; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
+                            Join Chat as ${username}
+                        </button>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; opacity: 0.9;">or enter a different nickname below</p>
+                    `;
+                    // Insert before the nickname input
+                    nicknameInput.parentElement.insertBefore(adminNotice, nicknameInput);
+                }
+                
+                // Add click handler for quick-join button
+                const quickJoinBtn = document.getElementById('admin-quick-join-btn');
+                if (quickJoinBtn) {
+                    quickJoinBtn.onclick = async () => {
+                        quickJoinBtn.disabled = true;
+                        quickJoinBtn.textContent = 'Joining...';
+                        await this.checkAndRegisterNickname(username, null, null, null);
+                        quickJoinBtn.disabled = false;
+                    };
+                }
+            }
+        }
 
         // Show/hide profile fields based on setting
         const requireProfile = this.settings?.require_profile === 'true';
