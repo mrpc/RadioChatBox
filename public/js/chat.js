@@ -8,8 +8,9 @@ class RadioChatBox {
         this.apiUrl = apiUrl;
         this.eventSource = null;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectDelay = 1000;
+        this.maxReconnectAttempts = 999; // Essentially unlimited
+        this.reconnectDelay = 2000; // Start with 2 second delay
+        this.maxReconnectDelay = 30000; // Max 30 seconds between retries
         this.sessionId = this.getOrCreateSessionId();
         this.username = null;
         this.heartbeatInterval = null;
@@ -848,9 +849,10 @@ class RadioChatBox {
         }
 
         this.reconnectAttempts++;
-        const delay = this.reconnectDelay * this.reconnectAttempts;
+        // Exponential backoff with max delay
+        const delay = Math.min(this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1), this.maxReconnectDelay);
 
-        this.updateStatus('connecting', `Reconnecting in ${delay / 1000}s...`);
+        this.updateStatus('connecting', `Reconnecting in ${Math.round(delay / 1000)}s...`);
 
         setTimeout(() => {
             console.log(`Reconnection attempt ${this.reconnectAttempts}`);

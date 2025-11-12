@@ -74,14 +74,29 @@ try {
         exit;
     }
     
-    // Set Redis read timeout to prevent connection issues
-    $redis->setOption(\Redis::OPT_READ_TIMEOUT, -1);
+    // Set Redis read timeout with periodic ping check
+    // We use a timeout so we can periodically check connection and send pings
+    $redis->setOption(\Redis::OPT_READ_TIMEOUT, 30);
     
-    $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix) {
+    $startTime = time();
+    $maxRuntime = 270; // Run for 4.5 minutes, then disconnect to force clean reconnect
+    
+    $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix, &$startTime, $maxRuntime) {
+        // Check if we've exceeded max runtime - force reconnect for fresh connection
+        if (time() - $startTime > $maxRuntime) {
+            return false; // Unsubscribe
+        }
+        
         // Check if client is still connected
         if (connection_aborted()) {
-            // Unsubscribe and exit
-            return false;
+            return false; // Unsubscribe
+        }
+        
+        // Send periodic ping to keep connection alive (every 30 seconds)
+        if (time() - $lastPing > 30) {
+            echo ": ping\n\n";
+            flush();
+            $lastPing = time();
         }
         
         if ($channel === $prefix . 'chat:updates') {
@@ -114,10 +129,24 @@ try {
 
 } catch (Exception $e) {
     error_log("SSE Stream Error: " . $e->getMessage());
-    echo "event: error\n";
-    echo "data: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
-    flush();
     
-    // Try to reconnect after error
-    sleep(1);
+    // Check if it's a Redis timeout (expected behavior for periodic pings)
+    if (strpos($e->getMessage(), 'read error on connection') !== false) {
+        // This is expected when using read timeout for ping mechanism
+        // Connection will be re-established by client
+    } else {
+        // Actual error - send to client
+        echo "event: error\n";
+        echo "data: " . json_encode(['error' => 'Connection error']) . "\n\n";
+        flush();
+    }
+} finally {
+    // Clean up Redis connection
+    if (isset($redis)) {
+        try {
+            $redis->close();
+        } catch (Exception $e) {
+            // Ignore close errors
+        }
+    }
 }
