@@ -869,6 +869,7 @@
                 if (response.ok) {
                     authToken = credentials;
                     localStorage.setItem('adminToken', credentials);
+                    localStorage.setItem('isAdmin', 'true'); // Flag for frontend moderation
                     errorDiv.textContent = '';
                     showAdminPanel();
                 } else if (response.status === 403) {
@@ -884,6 +885,7 @@
         function logout() {
             authToken = null;
             localStorage.removeItem('adminToken');
+            localStorage.removeItem('isAdmin'); // Remove admin flag
             showLoginScreen();
         }
 

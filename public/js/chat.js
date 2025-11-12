@@ -827,6 +827,11 @@ class RadioChatBox {
                 this.handleChatClear();
             });
 
+            this.eventSource.addEventListener('message_deleted', (e) => {
+                const data = JSON.parse(e.data);
+                this.handleMessageDeleted(data.message_id);
+            });
+
             this.eventSource.addEventListener('error', (e) => {
                 console.error('SSE error:', e);
                 this.updateStatus('disconnected', 'Disconnected');
@@ -1148,6 +1153,12 @@ class RadioChatBox {
             this.messagesContainer.appendChild(noticeDiv);
         }
     }
+
+    handleMessageDeleted(messageId) {
+        // Find and remove the message from UI by data-message-id attribute
+        const messages = this.messagesContainer.querySelectorAll(`.message[data-message-id="${messageId}"]`);
+        messages.forEach(msg => msg.remove());
+    }
     
     playNotificationSound() {
         // Create a simple beep sound using Web Audio API
@@ -1190,6 +1201,7 @@ class RadioChatBox {
         const messageDiv = document.createElement('div');
         const isOwnMessage = messageData.username === this.username;
         messageDiv.className = `message ${isOwnMessage ? 'own-message' : ''}`;
+        messageDiv.dataset.messageId = messageData.id; // Add message ID for deletion
         
         // Check if we should group this message with previous ones
         const messagesInContainer = this.messagesContainer.children;
@@ -1239,10 +1251,19 @@ class RadioChatBox {
             minute: '2-digit'
         });
 
+        // Check if user is admin
+        const isAdmin = localStorage.getItem('isAdmin') === 'true';
+        const deleteButton = isAdmin ? `
+            <button class="delete-message-btn" onclick="chat.deleteMessage(${messageData.id}, this)" title="Delete message">
+                🗑️
+            </button>
+        ` : '';
+
         messageDiv.innerHTML = `
             <div class="message-header">
                 <span class="message-username">${this.escapeHtml(messageData.username)}</span>
                 <span class="message-time">${timeString}</span>
+                ${deleteButton}
             </div>
             <div class="message-text">${this.escapeHtml(messageData.message)}</div>
         `;
@@ -1389,6 +1410,44 @@ class RadioChatBox {
     scrollToBottom() {
         const container = this.messagesContainer.parentElement;
         container.scrollTop = container.scrollHeight;
+    }
+
+    async deleteMessage(messageId, button) {
+        if (!confirm('Delete this message?')) {
+            return;
+        }
+
+        const adminToken = localStorage.getItem('adminToken');
+        if (!adminToken) {
+            alert('Admin authentication required');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiUrl}/api/admin/delete-message.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                },
+                body: JSON.stringify({ message_id: messageId })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Remove message from UI immediately
+                const messageDiv = button.closest('.message');
+                if (messageDiv) {
+                    messageDiv.remove();
+                }
+            } else {
+                alert(data.error || 'Failed to delete message');
+            }
+        } catch (error) {
+            console.error('Delete error:', error);
+            alert('Failed to delete message');
+        }
     }
 
     escapeHtml(text) {
@@ -1906,6 +1965,7 @@ class RadioChatBox {
 // Initialize chat when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.chatBox = new RadioChatBox();
+    window.chat = window.chatBox; // Alias for delete button onclick
     
     // Setup sidebar toggle for desktop
     const sidebarToggle = document.getElementById('sidebar-toggle');
