@@ -41,20 +41,29 @@ history.back() → calls switchTab() with previous tab from state
 **Files Modified**:
 - `public/admin.html` - Updated `switchTab()` function, added event listeners
 
-### 3. Clean URL Rewrite ✅
+### 3. Clean URL Structure ✅
 **Problem**: Admin panel URL showed `/admin.html` which looks unprofessional.
 
 **Solution**: 
-- Added Apache rewrite rule: `/admin` → `/admin.html`
-- Rule is transparent to user (URL bar shows `/admin`)
-- No redirect, just internal rewrite
+- Moved `admin.html` to `/public/admin/index.html`
+- Apache automatically serves `index.html` when accessing `/admin/` directory
+- No rewrite rule needed - cleaner and more standard approach
 
 **Files Modified**:
-- `apache/site.conf` - Added `RewriteRule ^/admin$ /admin.html [L]`
+- `public/admin.html` → `public/admin/index.html` (moved)
+- `apache/site.conf` - Removed previous rewrite rule (no longer needed)
 
-**Post-Deployment**: 
-- Requires Apache restart to apply: `docker-compose restart apache` ✅
-- Production servers will need Apache/nginx configuration update
+**Benefits**:
+- Standard directory structure (follows convention)
+- URL is simply `/admin` or `/admin/`
+- No special Apache configuration required
+- Easier to add more admin-related files in the future
+
+**Additional Fix**:
+- Fixed "1/1/1970" timestamp display for fake users in Users tab
+- Added "Type" column to distinguish Real vs Fake users
+- Null timestamps now show "N/A" instead of epoch zero date
+- Last heartbeat now properly converted from Unix timestamp to JavaScript Date
 
 ## Testing Checklist
 
@@ -65,8 +74,11 @@ history.back() → calls switchTab() with previous tab from state
 - [x] URL hash updates when switching tabs
 - [x] Direct URL access with hash loads correct tab (e.g., /admin#settings)
 - [x] Browser title updates with current tab name
-- [x] `/admin` URL loads admin.html (rewrite works)
+- [x] `/admin` URL loads admin panel (directory index)
 - [x] Apache container restarted successfully
+- [x] Fake users show "N/A" for timestamps instead of "1/1/1970"
+- [x] Real users show proper date/time formatting
+- [x] Type column distinguishes Real vs Fake users
 
 ## Browser History Examples
 
