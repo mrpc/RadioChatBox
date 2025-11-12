@@ -103,4 +103,45 @@ class ChatServiceTest extends TestCase
         $this->assertStringContainsString($dbName, $prefix1);
         $this->assertEquals("radiochatbox:{$dbName}:", $prefix1);
     }
+
+    public function testRegisterUserRejectsAdminUsername()
+    {
+        // Try to register with an admin username
+        $result = $this->chatService->registerUser(
+            'admin',
+            'test_session_' . time(),
+            '127.0.0.1'
+        );
+        
+        $this->assertFalse($result, 'Should reject registration with admin username');
+    }
+
+    public function testRegisterUserRejectsDuplicateActiveUsername()
+    {
+        $username = 'phpunit_test_' . uniqid() . '_' . time();
+        $sessionId1 = 'session1_' . uniqid();
+        $sessionId2 = 'session2_' . uniqid();
+        
+        // Register first user
+        $result1 = $this->chatService->registerUser($username, $sessionId1, '127.0.0.1');
+        $this->assertTrue($result1, 'First registration should succeed');
+        
+        // Try to register with same username but different session
+        $result2 = $this->chatService->registerUser($username, $sessionId2, '127.0.0.2');
+        $this->assertFalse($result2, 'Should reject duplicate username from different session');
+    }
+
+    public function testRegisterUserAllowsSameSessionToReregister()
+    {
+        $username = 'phpunit_test_' . uniqid() . '_' . time();
+        $sessionId = 'session_' . uniqid();
+        
+        // Register user
+        $result1 = $this->chatService->registerUser($username, $sessionId, '127.0.0.1');
+        $this->assertTrue($result1, 'First registration should succeed');
+        
+        // Same session can re-register (e.g., after page refresh)
+        $result2 = $this->chatService->registerUser($username, $sessionId, '127.0.0.1');
+        $this->assertTrue($result2, 'Same session should be able to re-register');
+    }
 }
