@@ -439,10 +439,48 @@ class RadioChatBox {
                 const quickJoinBtn = document.getElementById('admin-quick-join-btn');
                 if (quickJoinBtn) {
                     quickJoinBtn.onclick = async () => {
-                        quickJoinBtn.disabled = true;
-                        quickJoinBtn.textContent = 'Joining...';
-                        await this.checkAndRegisterNickname(username, null, null, null);
-                        quickJoinBtn.disabled = false;
+                        const originalText = quickJoinBtn.textContent;
+                        try {
+                            quickJoinBtn.disabled = true;
+                            quickJoinBtn.textContent = 'Joining...';
+                            
+                            // Check if nickname is available first
+                            const checkResponse = await fetch(`${this.apiUrl}/api/check-nickname.php`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ nickname: username, sessionId: this.sessionId })
+                            });
+                            
+                            const checkData = await checkResponse.json();
+                            
+                            if (!checkData.available) {
+                                // Username is taken or session already registered
+                                // Check if it's the same session
+                                const savedNickname = this.getCookie('chatNickname');
+                                if (savedNickname === username) {
+                                    // Same session, just proceed
+                                    this.username = username;
+                                    this.hideNicknameModal();
+                                    this.initializeChat();
+                                    return;
+                                }
+                                
+                                // Different session has this username
+                                alert(`Username "${username}" is already taken. Please logout from other sessions or use a different nickname.`);
+                                quickJoinBtn.disabled = false;
+                                quickJoinBtn.textContent = originalText;
+                                return;
+                            }
+                            
+                            // Username available, proceed with registration
+                            await this.checkAndRegisterNickname(username, null, null, null);
+                            
+                        } catch (error) {
+                            console.error('Admin quick-join failed:', error);
+                            alert('Failed to join chat. Please try again or use a different nickname.');
+                            quickJoinBtn.disabled = false;
+                            quickJoinBtn.textContent = originalText;
+                        }
                     };
                 }
             }
