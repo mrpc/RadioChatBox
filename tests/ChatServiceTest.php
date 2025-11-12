@@ -144,4 +144,128 @@ class ChatServiceTest extends TestCase
         $result2 = $this->chatService->registerUser($username, $sessionId, '127.0.0.1');
         $this->assertTrue($result2, 'Same session should be able to re-register');
     }
+
+    public function testPrivateMessageSessionIsolation()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create two different sessions with same username
+        $username = 'phpunit_pm_test_' . uniqid();
+        $session1 = 'session1_' . uniqid();
+        $session2 = 'session2_' . uniqid();
+        $recipientUsername = 'recipient_' . uniqid();
+        $recipientSession = 'recipient_session_' . uniqid();
+        
+        // Register both users (session1 and recipient)
+        $this->chatService->registerUser($username, $session1, '127.0.0.1');
+        $this->chatService->registerUser($recipientUsername, $recipientSession, '127.0.0.2');
+        
+        // Session 1 sends a private message
+        $stmt = $pdo->prepare("
+            INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([$username, $session1, $recipientUsername, $recipientSession, 'Secret message from session1']);
+        
+        // Session 2 logs in with same username (different person)
+        $this->chatService->registerUser($username, $session2, '127.0.0.3');
+        
+        // Session 2 queries for messages - should NOT see session 1's messages
+        $stmt = $pdo->prepare("
+            SELECT * FROM private_messages 
+            WHERE (from_username = ? AND from_session_id = ?) 
+               OR (to_username = ? AND to_session_id = ?)
+        ");
+        $stmt->execute([$username, $session2, $username, $session2]);
+        $session2Messages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $this->assertEmpty($session2Messages, 'Session 2 should not see session 1 private messages');
+        
+        // Session 1 should still be able to see its own messages
+        $stmt->execute([$username, $session1, $username, $session1]);
+        $session1Messages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $this->assertCount(1, $session1Messages, 'Session 1 should see its own message');
+        $this->assertEquals('Secret message from session1', $session1Messages[0]['message']);
+    }
+
+    public function testPrivateMessageConversationSessionScoped()
+    {
+        $pdo = Database::getPDO();
+        
+        $user1 = 'user1_' . uniqid();
+        $user2 = 'user2_' . uniqid();
+        $session1 = 'session1_' . uniqid();
+        $session2 = 'session2_' . uniqid();
+        
+        // Register both users
+        $this->chatService->registerUser($user1, $session1, '127.0.0.1');
+        $this->chatService->registerUser($user2, $session2, '127.0.0.2');
+        
+        // Create conversation
+        $stmt = $pdo->prepare("
+            INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([$user1, $session1, $user2, $session2, 'Hello from user1']);
+        $stmt->execute([$user2, $session2, $user1, $session1, 'Hi user1!']);
+        
+        // Query conversation for user1's session - should see both messages
+        $stmt = $pdo->prepare("
+            SELECT * FROM private_messages
+            WHERE (from_username = ? AND from_session_id = ? AND to_username = ?)
+               OR (from_username = ? AND to_username = ? AND to_session_id = ?)
+            ORDER BY created_at ASC
+        ");
+        $stmt->execute([$user1, $session1, $user2, $user2, $user1, $session1]);
+        $messages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $this->assertCount(2, $messages, 'Should see full conversation');
+        $this->assertEquals('Hello from user1', $messages[0]['message']);
+        $this->assertEquals('Hi user1!', $messages[1]['message']);
+    }
+
+    public function testPrivateMessageOldMessagesNotVisibleToNewSessions()
+    {
+        $pdo = Database::getPDO();
+        
+        $username = 'legacy_user_' . uniqid();
+        $oldSession = 'old_session_' . uniqid();
+        $newSession = 'new_session_' . uniqid();
+        $recipient = 'recipient_' . uniqid();
+        $recipientSession = 'recipient_session_' . uniqid();
+        
+        // Register users with old session
+        $this->chatService->registerUser($username, $oldSession, '127.0.0.1');
+        $this->chatService->registerUser($recipient, $recipientSession, '127.0.0.2');
+        
+        // Old session sends messages
+        $stmt = $pdo->prepare("
+            INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([$username, $oldSession, $recipient, $recipientSession, 'Message 1']);
+        $stmt->execute([$username, $oldSession, $recipient, $recipientSession, 'Message 2']);
+        $stmt->execute([$username, $oldSession, $recipient, $recipientSession, 'Message 3']);
+        
+        // User logs out and different person logs in with same username (new session)
+        $this->chatService->registerUser($username, $newSession, '127.0.0.4');
+        
+        // New session queries for messages
+        $stmt = $pdo->prepare("
+            SELECT * FROM private_messages
+            WHERE (from_username = ? AND from_session_id = ?)
+               OR (to_username = ? AND to_session_id = ?)
+        ");
+        $stmt->execute([$username, $newSession, $username, $newSession]);
+        $newSessionMessages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $this->assertEmpty($newSessionMessages, 'New session should have no access to old messages');
+        
+        // Old session should still see its messages if queried
+        $stmt->execute([$username, $oldSession, $username, $oldSession]);
+        $oldSessionMessages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $this->assertCount(3, $oldSessionMessages, 'Old session data should still exist');
+    }
 }
