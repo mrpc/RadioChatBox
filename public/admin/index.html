@@ -1364,7 +1364,7 @@
                             Server maximum: 50 MB
                         </small>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="setting-minimum-users-group">
                         <label>Minimum Users (Fake Users Feature)</label>
                         <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
                         <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
@@ -2357,23 +2357,28 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    const isRootOrOwner = currentUserRole === 'root' || currentUserRole === 'owner';
+                    
+                    // Filter users based on role
+                    const displayUsers = isRootOrOwner ? data.users : data.users.filter(u => !u.is_fake);
+                    
                     const table = document.getElementById('users-table');
                     table.innerHTML = `
                         <table>
                             <thead>
                                 <tr>
                                     <th>Username</th>
-                                    <th>Type</th>
+                                    ${isRootOrOwner ? '<th>Type</th>' : ''}
                                     <th>Joined At</th>
                                     <th>Last Heartbeat</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${data.users.map(user => `
+                                ${displayUsers.map(user => `
                                     <tr>
                                         <td>${escapeHtml(user.username)}</td>
-                                        <td>${user.is_fake ? '<span style="color: #f59e0b;">Fake</span>' : '<span style="color: #10b981;">Real</span>'}</td>
+                                        ${isRootOrOwner ? `<td>${user.is_fake ? '<span style="color: #f59e0b;">Fake</span>' : '<span style="color: #10b981;">Real</span>'}</td>` : ''}
                                         <td>${user.joined_at ? new Date(user.joined_at).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
                                         <td>${user.last_heartbeat ? new Date(user.last_heartbeat * 1000).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
                                         <td>
@@ -3271,6 +3276,10 @@
             const adminUsersNav = document.getElementById('nav-admin-users');
             const settingsNav = document.getElementById('nav-settings');
             const impersonateNav = document.getElementById('nav-impersonate');
+            const fakeUsersNav = document.querySelector('.nav-item[data-tab="fake-users"]');
+            const fakeUsersKpi = document.querySelector('.kpi-card:has(#kpi-fake-users)');
+            const manageFakeUsersBtn = document.querySelector('button[onclick*="fake-users"]');
+            const minimumUsersGroup = document.getElementById('setting-minimum-users-group');
             
             // Update user role display
             document.getElementById('user-role').textContent = role;
@@ -3279,9 +3288,24 @@
                 if (adminUsersNav) adminUsersNav.style.display = 'none';
                 if (settingsNav) settingsNav.style.display = 'none';
                 if (impersonateNav) impersonateNav.style.display = 'none';
+                if (fakeUsersNav) fakeUsersNav.style.display = 'none';
+                if (fakeUsersKpi) fakeUsersKpi.style.display = 'none';
+                if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
+                if (minimumUsersGroup) minimumUsersGroup.style.display = 'none';
             } else if (role === 'root' || role === 'owner') {
-                // Show impersonate nav for root/owner
+                // Show all features for root/owner
                 if (impersonateNav) impersonateNav.style.display = 'flex';
+                if (fakeUsersNav) fakeUsersNav.style.display = 'flex';
+                if (fakeUsersKpi) fakeUsersKpi.style.display = 'block';
+                if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'flex';
+                if (minimumUsersGroup) minimumUsersGroup.style.display = 'block';
+            } else {
+                // Hide fake users features for admin/administrator role
+                if (fakeUsersNav) fakeUsersNav.style.display = 'none';
+                if (fakeUsersKpi) fakeUsersKpi.style.display = 'none';
+                if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
+                if (impersonateNav) impersonateNav.style.display = 'none';
+                if (minimumUsersGroup) minimumUsersGroup.style.display = 'none';
             }
         }
 
