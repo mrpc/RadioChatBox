@@ -4,7 +4,14 @@
  */
 
 class RadioChatBox {
+        // ...existing methods...
     constructor(apiUrl = '') {
+            // Store original title for notification reset
+            this.originalTitle = document.title;
+            this.titleNotificationActive = false;
+            this.titleNotificationTimeout = null;
+            // Listen for tab focus to clear notification
+            window.addEventListener('focus', () => this.clearTitleNotification());
         this.apiUrl = apiUrl;
         this.eventSource = null;
         this.reconnectAttempts = 0;
@@ -1185,6 +1192,7 @@ class RadioChatBox {
         // Play sound for new messages from others
         if (messageData.username !== this.username && this.soundEnabled) {
             this.playNotificationSound();
+            this.showTitleNotification('💬 New message!');
         }
     }
     
@@ -1612,6 +1620,34 @@ class RadioChatBox {
         // Update conversations list
         const displayText = messageData.message || (messageData.attachment ? '[Photo]' : '');
         this.updateConversation(otherUser, displayText, isFromMe);
+
+        // Show tab notification if not from self
+        if (!isFromMe) {
+            this.showTitleNotification('🔒 New private message!');
+        
+        }
+
+        RadioChatBox.prototype.showTitleNotification = function(text) {
+            if (this.titleNotificationActive) return;
+            this.titleNotificationActive = true;
+            this.originalTitle = document.title;
+            document.title = `${text} ${this.originalTitle}`;
+            if (this.titleNotificationTimeout) clearTimeout(this.titleNotificationTimeout);
+            this.titleNotificationTimeout = setTimeout(() => {
+                this.clearTitleNotification();
+            }, 10000);
+        };
+
+        RadioChatBox.prototype.clearTitleNotification = function() {
+            if (this.titleNotificationActive) {
+                document.title = this.originalTitle;
+                this.titleNotificationActive = false;
+            }
+            if (this.titleNotificationTimeout) {
+                clearTimeout(this.titleNotificationTimeout);
+                this.titleNotificationTimeout = null;
+            }
+        };
         
         // If in private chat mode, only show messages for current conversation
         if (this.privateChat.active) {
@@ -2033,27 +2069,44 @@ class RadioChatBox {
         input.setSelectionRange(newPos, newPos);
         input.focus();
     }
+    showTitleNotification(text) {
+        if (this.titleNotificationActive) return;
+        this.titleNotificationActive = true;
+        this.originalTitle = document.title;
+        document.title = `${text} ${this.originalTitle}`;
+        if (this.titleNotificationTimeout) clearTimeout(this.titleNotificationTimeout);
+        this.titleNotificationTimeout = setTimeout(() => {
+            this.clearTitleNotification();
+        }, 10000);
+    }
+
+    clearTitleNotification() {
+        if (this.titleNotificationActive) {
+            document.title = this.originalTitle;
+            this.titleNotificationActive = false;
+        }
+        if (this.titleNotificationTimeout) {
+            clearTimeout(this.titleNotificationTimeout);
+            this.titleNotificationTimeout = null;
+        }
+    }
 }
 
 // Initialize chat when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.chatBox = new RadioChatBox();
     window.chat = window.chatBox; // Alias for delete button onclick
-    
     // Setup sidebar toggle for desktop
     const sidebarToggle = document.getElementById('sidebar-toggle');
     const sidebar = document.getElementById('sidebar');
-    
     if (sidebarToggle && sidebar) {
         // Auto-collapse on embedded mode (not mobile - mobile uses different button)
         if (window.chatBox.isEmbedded && !window.chatBox.isMobile) {
             sidebar.classList.add('collapsed');
         }
-        
         sidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent bubbling to document click handler
             e.preventDefault(); // Prevent any default action
-            
             // If sidebar is in mobile-open mode, always close it
             if (sidebar.classList.contains('mobile-open')) {
                 sidebar.classList.remove('mobile-open');
@@ -2063,16 +2116,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    
     // Setup mobile sidebar toggle
     const mobileSidebarToggle = document.getElementById('sidebar-toggle-mobile');
-    
     if (mobileSidebarToggle && sidebar) {
         mobileSidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent bubbling to document click handler
             sidebar.classList.toggle('mobile-open');
         });
-        
         // Close sidebar when clicking outside on mobile or embedded mode
         document.addEventListener('click', (e) => {
             if ((window.chatBox.isMobile || window.chatBox.isEmbedded) && 
