@@ -33,7 +33,7 @@ try {
     $pdo = Database::getPDO();
     
     // Get all active fake users
-    $stmt = $pdo->prepare("SELECT id, username FROM fake_users WHERE is_active = TRUE ORDER BY username");
+    $stmt = $pdo->prepare("SELECT id, nickname FROM fake_users WHERE is_active = TRUE ORDER BY nickname");
     $stmt->execute();
     $fakeUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -51,7 +51,7 @@ try {
             ORDER BY pm.created_at DESC
             LIMIT 50
         ");
-        $stmt->execute([$fakeUser['username']]);
+        $stmt->execute([$fakeUser['nickname']]);
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         if (!empty($messages)) {
@@ -69,8 +69,8 @@ try {
                 $senders[$msg['from_username']]['unread_count']++;
             }
             
-            $conversations[$fakeUser['username']] = [
-                'fake_user' => $fakeUser['username'],
+            $conversations[$fakeUser['nickname']] = [
+                'fake_user' => $fakeUser['nickname'],
                 'total_messages' => count($messages),
                 'senders' => array_values($senders),
                 'recent_messages' => array_slice($messages, 0, 10)
@@ -80,7 +80,7 @@ try {
     
     echo json_encode([
         'success' => true,
-        'fake_users' => array_map(fn($u) => $u['username'], $fakeUsers),
+        'fake_users' => array_map(fn($u) => $u['nickname'], $fakeUsers),
         'conversations' => $conversations
     ]);
 
