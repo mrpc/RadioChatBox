@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use RadioChatBox\CorsHandler;
 use RadioChatBox\SettingsService;
@@ -20,9 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 try {
     // Verify admin authentication
-    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
-    
-    if (!AdminAuth::verify($authHeader)) {
+    if (!AdminAuth::verify()) {
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Unauthorized']);
         exit;
