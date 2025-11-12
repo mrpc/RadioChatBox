@@ -1883,12 +1883,12 @@
                 }
                 
                 // Load IP bans
-                const bansResponse = await fetch('/api/admin/ip-bans.php', {
+                const bansResponse = await fetch('/api/admin/ban-ip.php', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const bansData = await bansResponse.json();
                 if (bansData.success) {
-                    document.getElementById('kpi-ip-bans').textContent = bansData.bans.length;
+                    document.getElementById('kpi-ip-bans').textContent = bansData.banned_ips.length;
                 }
             } catch (error) {
                 console.error('Failed to load dashboard KPIs:', error);
@@ -3267,9 +3267,11 @@
                             }
                         }
             const locationSelect = document.getElementById('fake-location');
+            console.log('COUNTRIES:', typeof COUNTRIES, COUNTRIES);
             if (locationSelect && typeof COUNTRIES !== 'undefined' && Array.isArray(COUNTRIES)) {
                 locationSelect.innerHTML = '<option value="">Select Country</option>';
-                COUNTRIES.forEach(country => {
+                COUNTRIES.forEach((country, idx) => {
+                    console.log('Adding country', idx, country);
                     const option = document.createElement('option');
                     option.value = country.code;
                     option.textContent = `${country.flag} ${country.name}`;
@@ -4108,9 +4110,9 @@
             }
         });
     </script>
-    <script src="js/countries.js"></script>
+    <!-- Ensure countries.js is loaded first -->
+    <script src="/js/countries.js"></script>
     <script>
-        // Initialize after countries.js loads
         document.addEventListener('DOMContentLoaded', function() {
             initializeFakeUserForm();
         });
