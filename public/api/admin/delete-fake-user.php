@@ -9,10 +9,12 @@ use RadioChatBox\FakeUserService;
 // Handle CORS
 CorsHandler::handle();
 
-// Require admin authentication
-AdminAuth::check();
-
 header('Content-Type: application/json');
+
+// Check authentication
+if (!AdminAuth::verify()) {
+    AdminAuth::unauthorized();
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'DELETE' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

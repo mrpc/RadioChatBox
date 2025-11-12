@@ -292,26 +292,30 @@
                 <div class="section">
                     <h2>Add Fake User</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Create fake users to make the chat look more active when there are few real users</p>
+                    <p id="fake-user-profile-note" style="color: #ef4444; margin-bottom: 15px; display: none;">
+                        ⚠️ Profile fields (Age, Sex, Country) are required because "Require Profile" is enabled in settings.
+                    </p>
                     <div class="form-group">
-                        <label>Nickname *</label>
-                        <input type="text" id="fake-nickname" placeholder="e.g., ChatBot123">
+                        <label>Nickname <span style="color: #ef4444;">*</span></label>
+                        <input type="text" id="fake-nickname" placeholder="e.g., ChatBot123" required minlength="3" maxlength="50">
                     </div>
                     <div class="form-group">
-                        <label>Age (optional)</label>
+                        <label>Age <span id="fake-age-required" style="color: #ef4444; display: none;">*</span></label>
                         <input type="number" id="fake-age" placeholder="18-99" min="18" max="99">
                     </div>
                     <div class="form-group">
-                        <label>Sex (optional)</label>
+                        <label>Sex <span id="fake-sex-required" style="color: #ef4444; display: none;">*</span></label>
                         <select id="fake-sex">
                             <option value="">Not specified</option>
                             <option value="male">Male</option>
                             <option value="female">Female</option>
-                            <option value="other">Other</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Location (optional)</label>
-                        <input type="text" id="fake-location" placeholder="e.g., New York, USA">
+                        <label>Country <span id="fake-location-required" style="color: #ef4444; display: none;">*</span></label>
+                        <select id="fake-location">
+                            <option value="">Select Country</option>
+                        </select>
                     </div>
                     <button class="btn" onclick="addFakeUser()">Add Fake User</button>
                 </div>
@@ -1028,12 +1032,35 @@
 
         async function addFakeUser() {
             const nickname = document.getElementById('fake-nickname').value.trim();
-            const age = document.getElementById('fake-age').value;
-            const sex = document.getElementById('fake-sex').value;
-            const location = document.getElementById('fake-location').value.trim();
+            const ageInput = document.getElementById('fake-age');
+            const age = ageInput.value;
+            const sexSelect = document.getElementById('fake-sex');
+            const sex = sexSelect.value;
+            const locationSelect = document.getElementById('fake-location');
+            const location = locationSelect.value;
 
+            // Validate nickname
             if (!nickname) {
                 alert('Nickname is required');
+                return;
+            }
+
+            if (nickname.length < 3) {
+                alert('Nickname must be at least 3 characters');
+                return;
+            }
+
+            // Check if profile fields are required
+            if (ageInput.required || sexSelect.required || locationSelect.required) {
+                if (!age || !sex || !location) {
+                    alert('Age, Sex, and Country are required when "Require Profile" is enabled in settings');
+                    return;
+                }
+            }
+
+            // Validate age if provided
+            if (age && (parseInt(age) < 18 || parseInt(age) > 99)) {
+                alert('Age must be between 18 and 99');
                 return;
             }
 
@@ -1554,6 +1581,9 @@
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
+                    
+                    // Update fake user form requirements based on require_profile
+                    updateFakeUserFormRequirements(settings.require_profile === 'true');
                     
                     // Set photo size with PHP limit
                     const photoSizeInput = document.getElementById('setting-max-photo-size-mb');
@@ -2090,6 +2120,55 @@
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
+
+        // Initialize fake user form with country dropdown
+        function initializeFakeUserForm() {
+            const locationSelect = document.getElementById('fake-location');
+            if (locationSelect && typeof COUNTRIES !== 'undefined') {
+                COUNTRIES.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = `${country.flag} ${country.name}`;
+                    option.textContent = `${country.flag} ${country.name}`;
+                    locationSelect.appendChild(option);
+                });
+            }
+        }
+
+        // Update form based on require_profile setting
+        function updateFakeUserFormRequirements(requireProfile) {
+            const ageInput = document.getElementById('fake-age');
+            const sexSelect = document.getElementById('fake-sex');
+            const locationSelect = document.getElementById('fake-location');
+            const profileNote = document.getElementById('fake-user-profile-note');
+            const ageRequired = document.getElementById('fake-age-required');
+            const sexRequired = document.getElementById('fake-sex-required');
+            const locationRequired = document.getElementById('fake-location-required');
+
+            if (requireProfile) {
+                ageInput.required = true;
+                sexSelect.required = true;
+                locationSelect.required = true;
+                profileNote.style.display = 'block';
+                ageRequired.style.display = 'inline';
+                sexRequired.style.display = 'inline';
+                locationRequired.style.display = 'inline';
+            } else {
+                ageInput.required = false;
+                sexSelect.required = false;
+                locationSelect.required = false;
+                profileNote.style.display = 'none';
+                ageRequired.style.display = 'none';
+                sexRequired.style.display = 'none';
+                locationRequired.style.display = 'none';
+            }
+        }
+    </script>
+    <script src="js/countries.js"></script>
+    <script>
+        // Initialize after countries.js loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFakeUserForm();
+        });
     </script>
 </body>
 </html>
