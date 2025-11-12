@@ -344,7 +344,19 @@ class ChatService
         // Clean up inactive users first
         $this->cleanupInactiveUsers();
         
-        // Check in database
+        // Check if this is an admin username
+        $stmt = $this->pdo->prepare(
+            'SELECT username FROM admin_users WHERE username = :username'
+        );
+        $stmt->execute(['username' => $nickname]);
+        $isAdminUsername = $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
+        
+        // If it's an admin username, always allow (admins can have multiple sessions)
+        if ($isAdminUsername) {
+            return true;
+        }
+        
+        // For regular users, check if username is taken by another session
         $stmt = $this->pdo->prepare(
             'SELECT session_id FROM active_users WHERE LOWER(username) = LOWER(:username)'
         );
@@ -383,35 +395,43 @@ class ChatService
         }
         
         // Check if username matches an admin username
+        // Note: We now ALLOW admins to use their admin username in chat
+        // This check is kept for reference but is no longer blocking
+        $isAdminUsername = false;
         $stmt = $this->pdo->prepare(
             'SELECT username FROM admin_users WHERE username = :username'
         );
         $stmt->execute(['username' => $username]);
         if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
-            error_log("Registration blocked: username '{$username}' is reserved (admin account)");
-            return false;
+            $isAdminUsername = true;
+            // Admins are allowed to join chat with their admin username
+            // No error log needed as this is expected behavior
         }
         
-        // Check if username is already taken by another session
-        $stmt = $this->pdo->prepare(
-            'SELECT session_id FROM active_users WHERE username = :username'
-        );
-        $stmt->execute(['username' => $username]);
-        $existingUser = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
-        if ($existingUser && $existingUser['session_id'] !== $sessionId) {
-            // Username is taken by another active session
-            error_log("Registration blocked: username '{$username}' is already taken by another user");
-            return false;
+        // For admin usernames, allow multiple sessions (different devices)
+        // For regular users, enforce one session per username
+        if (!$isAdminUsername) {
+            // Check if username is already taken by another session
+            $stmt = $this->pdo->prepare(
+                'SELECT session_id FROM active_users WHERE username = :username'
+            );
+            $stmt->execute(['username' => $username]);
+            $existingUser = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($existingUser && $existingUser['session_id'] !== $sessionId) {
+                // Username is taken by another active session
+                error_log("Registration blocked: username '{$username}' is already taken by another user");
+                return false;
+            }
         }
         
         try {
             // Insert or update active user
+            // Note: ON CONFLICT now uses (username, session_id) to allow multiple sessions for admin users
             $stmt = $this->pdo->prepare(
                 'INSERT INTO active_users (username, session_id, ip_address, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, NOW(), NOW())
-                 ON CONFLICT (username) DO UPDATE SET
-                     session_id = :session_id,
+                 ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
                      last_heartbeat = NOW()'
             );
