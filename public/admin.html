@@ -244,6 +244,7 @@
                 <button class="tab" onclick="switchTab('inactive-users')">Inactive Users</button>
                 <button class="tab" onclick="switchTab('admin-users')" id="tab-admin-users">Admin Users</button>
                 <button class="tab" onclick="switchTab('fake-users')">Fake Users</button>
+                <button class="tab" onclick="switchTab('impersonate')" id="tab-impersonate" style="display:none;">👤 Impersonate</button>
                 <button class="tab" onclick="switchTab('ip-bans')">IP Bans</button>
                 <button class="tab" onclick="switchTab('nickname-bans')">Nickname Bans</button>
                 <button class="tab" onclick="switchTab('url-blacklist')">URL Blacklist</button>
@@ -430,6 +431,58 @@
                     <h2>Fake Users List</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Toggle to activate/deactivate fake users. Active fake users appear in the user list.</p>
                     <div id="fake-users-table"></div>
+                </div>
+            </div>
+
+            <!-- Impersonation Tab (Root/Owner only) -->
+            <div id="impersonate-tab" class="tab-content">
+                <div class="section">
+                    <h2>👤 Impersonate Fake Users</h2>
+                    <p style="color: #6b7280; margin-bottom: 20px;">
+                        Reply to users who message your fake users. Only root/owner can access this feature.
+                    </p>
+                    
+                    <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Select Fake User to Impersonate</label>
+                            <select id="impersonate-select" onchange="loadImpersonateConversation()">
+                                <option value="">-- Select a fake user --</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: flex-end;">
+                            <button class="btn" onclick="refreshImpersonateConversations()" style="background: #10b981;">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="impersonate-no-conversations" style="text-align: center; padding: 40px; color: #9ca3af;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">💬</div>
+                        <p>No messages to fake users yet</p>
+                        <p style="font-size: 14px;">When users send private messages to fake users, they'll appear here.</p>
+                    </div>
+
+                    <div id="impersonate-conversations" style="display: none;">
+                        <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <h3 style="margin: 0 0 10px 0; color: #374151;">Conversations</h3>
+                            <div id="impersonate-senders-list"></div>
+                        </div>
+
+                        <div id="impersonate-selected-conversation" style="display: none;">
+                            <div style="background: #eff6ff; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                                <strong>Chatting with: <span id="impersonate-current-sender"></span></strong>
+                            </div>
+                            
+                            <div id="impersonate-messages" style="max-height: 400px; overflow-y: auto; background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Reply as <strong id="impersonate-as-name"></strong></label>
+                                <textarea id="impersonate-message" rows="3" placeholder="Type your message..."></textarea>
+                            </div>
+                            <button class="btn" onclick="sendImpersonateMessage()">Send Reply</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -2305,10 +2358,15 @@
             // Hide Admin Users tab for moderators
             const adminUsersTab = document.getElementById('tab-admin-users');
             const settingsTab = document.getElementById('tab-settings');
+            const impersonateTab = document.getElementById('tab-impersonate');
             
             if (role === 'moderator') {
                 if (adminUsersTab) adminUsersTab.style.display = 'none';
                 if (settingsTab) settingsTab.style.display = 'none';
+                if (impersonateTab) impersonateTab.style.display = 'none';
+            } else if (role === 'root' || role === 'owner') {
+                // Show impersonate tab for root/owner
+                if (impersonateTab) impersonateTab.style.display = 'inline-block';
             }
         }
 
@@ -2575,6 +2633,164 @@
             } catch (error) {
                 console.error('Failed to delete admin user:', error);
                 alert('Failed to delete admin user');
+            }
+        }
+
+        // Impersonation functions
+        let impersonateData = {};
+        let currentImpersonateAs = '';
+        let currentSender = '';
+
+        async function refreshImpersonateConversations() {
+            try {
+                const response = await fetch('/api/admin/impersonate-conversations.php', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    impersonateData = data;
+                    
+                    // Populate fake users dropdown
+                    const select = document.getElementById('impersonate-select');
+                    select.innerHTML = '<option value="">-- Select a fake user --</option>';
+                    
+                    data.fake_users.forEach(fakeUser => {
+                        const option = document.createElement('option');
+                        option.value = fakeUser;
+                        option.textContent = fakeUser;
+                        
+                        // Show message count if any
+                        if (data.conversations[fakeUser]) {
+                            option.textContent += ` (${data.conversations[fakeUser].total_messages} messages)`;
+                        }
+                        
+                        select.appendChild(option);
+                    });
+
+                    // Show/hide no conversations message
+                    const hasConversations = Object.keys(data.conversations).length > 0;
+                    document.getElementById('impersonate-no-conversations').style.display = 
+                        hasConversations ? 'none' : 'block';
+                    document.getElementById('impersonate-conversations').style.display = 
+                        hasConversations ? 'block' : 'none';
+                }
+            } catch (error) {
+                console.error('Failed to load impersonate conversations:', error);
+            }
+        }
+
+        function loadImpersonateConversation() {
+            const select = document.getElementById('impersonate-select');
+            const fakeUser = select.value;
+            
+            if (!fakeUser) {
+                document.getElementById('impersonate-selected-conversation').style.display = 'none';
+                return;
+            }
+
+            currentImpersonateAs = fakeUser;
+            const conversation = impersonateData.conversations[fakeUser];
+            
+            if (!conversation) {
+                document.getElementById('impersonate-selected-conversation').style.display = 'none';
+                return;
+            }
+
+            // Display senders list
+            const sendersList = document.getElementById('impersonate-senders-list');
+            sendersList.innerHTML = '';
+            
+            conversation.senders.forEach(sender => {
+                const senderDiv = document.createElement('div');
+                senderDiv.style.cssText = 'padding: 10px; margin: 5px 0; background: white; border-radius: 6px; cursor: pointer; border: 2px solid transparent;';
+                senderDiv.innerHTML = `
+                    <strong>${sender.username}</strong>
+                    <span style="color: #6b7280; font-size: 13px; margin-left: 10px;">${sender.unread_count} message(s)</span>
+                    <div style="color: #9ca3af; font-size: 12px; margin-top: 5px;">${sender.last_message.substring(0, 50)}...</div>
+                `;
+                senderDiv.onclick = () => selectSender(fakeUser, sender.username);
+                sendersList.appendChild(senderDiv);
+            });
+        }
+
+        async function selectSender(fakeUser, senderUsername) {
+            currentSender = senderUsername;
+            document.getElementById('impersonate-current-sender').textContent = senderUsername;
+            document.getElementById('impersonate-as-name').textContent = fakeUser;
+            document.getElementById('impersonate-selected-conversation').style.display = 'block';
+
+            // Load full conversation
+            try {
+                const response = await fetch(`/api/private-message.php?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=fake_${btoa(fakeUser)}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+
+                if (data.success && data.messages) {
+                    const messagesDiv = document.getElementById('impersonate-messages');
+                    messagesDiv.innerHTML = '';
+                    
+                    data.messages.forEach(msg => {
+                        const msgDiv = document.createElement('div');
+                        const isFromFake = msg.from_username === fakeUser;
+                        msgDiv.style.cssText = `padding: 10px; margin: 8px 0; border-radius: 8px; ${isFromFake ? 'background: #dbeafe; text-align: right;' : 'background: #f3f4f6;'}`;
+                        msgDiv.innerHTML = `
+                            <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">
+                                <strong>${msg.from_username}</strong> • ${new Date(msg.created_at).toLocaleString()}
+                            </div>
+                            <div>${msg.message || ''}</div>
+                        `;
+                        messagesDiv.appendChild(msgDiv);
+                    });
+                    
+                    // Scroll to bottom
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Failed to load conversation:', error);
+            }
+        }
+
+        async function sendImpersonateMessage() {
+            const message = document.getElementById('impersonate-message').value.trim();
+            
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+
+            if (!currentImpersonateAs || !currentSender) {
+                alert('Please select a conversation first');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/impersonate-send.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        impersonate_as: currentImpersonateAs,
+                        to_username: currentSender,
+                        message: message
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('impersonate-message').value = '';
+                    // Reload conversation
+                    selectSender(currentImpersonateAs, currentSender);
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to send message'));
+                }
+            } catch (error) {
+                console.error('Failed to send impersonate message:', error);
+                alert('Failed to send message');
             }
         }
     </script>
