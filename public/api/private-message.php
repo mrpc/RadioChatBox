@@ -124,13 +124,24 @@ try {
             $withUser = mb_convert_encoding($withUser, 'UTF-8', 'auto');
         }
 
+        // Normalize to NFC to match DB storage (requires intl extension)
+        if (class_exists('Normalizer')) {
+            $username = \Normalizer::normalize($username, \Normalizer::FORM_C);
+            if ($withUser !== null) {
+                $withUser = \Normalizer::normalize($withUser, \Normalizer::FORM_C);
+            }
+        }
+
         if (empty($username) || empty($sessionId)) {
             throw new InvalidArgumentException('Username and session ID are required');
         }
 
+        $debugSql = '';
+        $debugParams = [];
+
         if ($withUser) {
             // Get conversation with specific user - only for current session
-            $stmt = $db->prepare("
+            $debugSql = "
                 SELECT pm.*, 
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
                        a.mime_type, a.width, a.height
@@ -140,11 +151,12 @@ try {
                     OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
                 ORDER BY pm.created_at ASC
                 LIMIT 500
-            ");
-            $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
+            ";
+            $debugParams = [$username, $sessionId, $withUser, $withUser, $username, $sessionId];
+            $stmt = $db->prepare($debugSql);
+            $stmt->execute($debugParams);
         } else {
-            // Get all recent private messages for current session only
-            $stmt = $db->prepare("
+            $debugSql = "
                 SELECT pm.*,
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
                        a.mime_type, a.width, a.height
@@ -154,10 +166,12 @@ try {
                    OR (pm.to_username = ? AND pm.to_session_id = ?)
                 ORDER BY pm.created_at DESC
                 LIMIT 50
-            ");
-            $stmt->execute([$username, $sessionId, $username, $sessionId]);
+            ";
+            $debugParams = [$username, $sessionId, $username, $sessionId];
+            $stmt = $db->prepare($debugSql);
+            $stmt->execute($debugParams);
         }
-        
+
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Format attachment data for each message
@@ -186,7 +200,9 @@ try {
             'messages' => $messages,
             'debug' => [
                 'username' => $username,
-                'withUser' => $withUser
+                'withUser' => $withUser,
+                'sql' => $debugSql,
+                'params' => $debugParams
             ]
         ]);
         
