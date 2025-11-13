@@ -369,3 +369,127 @@ COMMENT ON COLUMN attachments.file_size IS 'File size in bytes';
 -- Note: Run this script as postgres superuser
 -- The script will grant all necessary permissions to the database owner
 -- Usage: psql -U postgres -d YOUR_DATABASE -f init.sql
+
+
+-- Migration: Admin Users with Role-Based Access Control
+-- Created: 2025-11-12
+-- Description: Creates admin_users table with hierarchical roles for admin panel access
+
+-- Create enum type for user roles
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admin_role') THEN
+        CREATE TYPE admin_role AS ENUM ('root', 'administrator', 'moderator', 'simple_user');
+    END IF;
+END $$;
+
+-- Admin users table
+CREATE TABLE IF NOT EXISTS admin_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role admin_role NOT NULL DEFAULT 'simple_user',
+    email VARCHAR(255),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP,
+    created_by INTEGER REFERENCES admin_users(id),
+    CONSTRAINT username_length CHECK (LENGTH(username) >= 3),
+    CONSTRAINT valid_email CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+);
+
+CREATE INDEX idx_admin_users_username ON admin_users(username);
+CREATE INDEX idx_admin_users_role ON admin_users(role);
+CREATE INDEX idx_admin_users_is_active ON admin_users(is_active);
+
+COMMENT ON TABLE admin_users IS 'Admin panel users with role-based access control';
+
+-- Insert default root user (username: admin, password: admin123)
+INSERT INTO admin_users (username, password_hash, role, email, is_active) VALUES 
+    ('admin', '$2y$10$ZUCvW9SmSpOUwPtWC.XzL.mA0piFBy.DM8TKPHvkWdd0CsG121vCC', 'root', NULL, TRUE)
+ON CONFLICT (username) DO NOTHING;
+
+-- Auto-update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_admin_users_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_admin_users_updated_at
+BEFORE UPDATE ON admin_users
+FOR EACH ROW
+EXECUTE FUNCTION update_admin_users_updated_at();
+
+
+-- Migration: Add session isolation to private messages
+-- This prevents users from seeing private messages from previous users with the same username
+
+-- Add session_id columns to private_messages
+ALTER TABLE private_messages 
+ADD COLUMN IF NOT EXISTS from_session_id VARCHAR(255),
+ADD COLUMN IF NOT EXISTS to_session_id VARCHAR(255);
+
+-- Create indexes for session-based queries
+CREATE INDEX IF NOT EXISTS idx_private_messages_from_session ON private_messages(from_username, from_session_id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_to_session ON private_messages(to_username, to_session_id);
+
+-- Add comment explaining the change
+COMMENT ON COLUMN private_messages.from_session_id IS 'Session ID of sender - ensures message isolation between different users using same username';
+COMMENT ON COLUMN private_messages.to_session_id IS 'Session ID of recipient - ensures message isolation between different users using same username';
+
+-- Note: Existing messages without session_id will not be visible to new sessions
+-- This is intentional for privacy - old messages are orphaned when users log out
+
+
+-- Migration: Add user_id columns for future registered user support
+-- Currently system uses session-based anonymous users, but this prepares for proper user accounts
+
+-- Add user_id columns to private_messages
+ALTER TABLE private_messages 
+ADD COLUMN IF NOT EXISTS from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+ADD COLUMN IF NOT EXISTS to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+-- Add user_id column to messages (public chat)
+ALTER TABLE messages
+ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+-- Create indexes for user-based queries
+CREATE INDEX IF NOT EXISTS idx_private_messages_from_user ON private_messages(from_user_id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_to_user ON private_messages(to_user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
+
+-- Add comments explaining the design
+COMMENT ON COLUMN private_messages.from_user_id IS 'User ID of sender if logged in as registered user (NULL for anonymous/session-only users)';
+COMMENT ON COLUMN private_messages.to_user_id IS 'User ID of recipient if logged in as registered user (NULL for anonymous/session-only users)';
+COMMENT ON COLUMN messages.user_id IS 'User ID if message sent by registered user (NULL for anonymous/session-only users)';
+
+-- Note: This is nullable and optional
+-- Current flow: username + session_id (anonymous users)
+-- Future flow: username + session_id + user_id (registered users)
+-- Registered users will have persistent user_id that survives across sessions
+-- Anonymous users will continue to use session_id only
+
+
+-- Migration 004: Allow admin users to have multiple simultaneous sessions
+-- Regular users still limited to one session per username
+-- Admins can join from multiple devices
+
+-- Remove the UNIQUE constraint on username
+ALTER TABLE active_users DROP CONSTRAINT IF EXISTS active_users_username_key;
+
+-- Add a composite unique constraint on (username, session_id) instead
+-- This allows same username from different sessions
+ALTER TABLE active_users ADD CONSTRAINT active_users_username_session_unique UNIQUE (username, session_id);
+
+-- Update the index since username is no longer unique by itself
+-- The existing index is still useful for lookups
+-- Keep idx_active_users_username for fast username lookups
+
+-- Note: The application logic in ChatService.php has been updated to:
+-- 1. Allow admin usernames to register (no longer blocked)
+-- 2. Allow admin usernames to have multiple active sessions
+-- 3. Regular users still enforced to one session per username
