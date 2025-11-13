@@ -38,3 +38,6 @@ coverage/
 
 # Docker
 .dockerignore
+
+# Adminer
+/public/adminer.php
