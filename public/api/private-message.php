@@ -118,6 +118,7 @@ try {
         $username = urldecode($username);
         $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
+        $withUser = urldecode($withUser);
         
         if (empty($username) || empty($sessionId)) {
             throw new InvalidArgumentException('Username and session ID are required');
@@ -178,7 +179,11 @@ try {
         
         echo json_encode([
             'success' => true,
-            'messages' => $messages
+            'messages' => $messages,
+            'debug' => [
+                'username' => $username,
+                'withUser' => $withUser
+            ]
         ]);
         
     } else {
