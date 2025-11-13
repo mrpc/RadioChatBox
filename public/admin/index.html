@@ -1340,6 +1340,82 @@
                     <h2>Current Nickname Bans</h2>
                     <div id="nickname-bans-table"></div>
                 </div>
+
+                <!-- Kicked Users Section -->
+                <div class="section">
+                    <h2>Kicked Users (Session Bans)</h2>
+                    <button class="btn btn-outline" onclick="loadKickedUsers()" style="margin-bottom:10px;">🔄 Refresh</button>
+                    <div id="kicked-users-table"></div>
+                </div>
+            <script>
+            // --- Kicked Users ---
+            async function loadKickedUsers() {
+                const table = document.getElementById('kicked-users-table');
+                table.innerHTML = '<div style="color:#6b7280;padding:20px;">Loading kicked users...</div>';
+                try {
+                    const response = await fetch('/api/admin/list-kicked-users.php', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    const data = await response.json();
+                    if (data.kicked_sessions && data.kicked_sessions.length > 0) {
+                        table.innerHTML = `
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Session ID</th>
+                                        <th>Reason</th>
+                                        <th>Kicked At</th>
+                                        <th>Expires In</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.kicked_sessions.map(session => `
+                                        <tr>
+                                            <td>${escapeHtml(session.username || 'Unknown')}</td>
+                                            <td style="font-size:12px;">${escapeHtml(session.session_id)}</td>
+                                            <td>${escapeHtml(session.reason || 'N/A')}</td>
+                                            <td>${session.kicked_at ? new Date(session.kicked_at * 1000).toLocaleString() : 'N/A'}</td>
+                                            <td>${session.expires_in > 0 ? formatDuration(session.expires_in) : 'Expired'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                    } else {
+                        table.innerHTML = '<div style="color:#6b7280;padding:20px;">No kicked users currently.</div>';
+                    }
+                } catch (e) {
+                    table.innerHTML = '<div style="color:#ef4444;padding:20px;">Failed to load kicked users.</div>';
+                }
+            }
+
+            // Helper to format seconds as human readable
+            function formatDuration(seconds) {
+                if (seconds <= 0) return 'Expired';
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = seconds % 60;
+                let out = '';
+                if (h) out += h + 'h ';
+                if (m) out += m + 'm ';
+                if (s || (!h && !m)) out += s + 's';
+                return out.trim();
+            }
+
+            // Auto-refresh kicked users every 60s
+            setInterval(() => {
+                const tab = document.querySelector('.tab-content.active');
+                if (tab && tab.id === 'nickname-bans-tab') loadKickedUsers();
+            }, 60000);
+
+            // Load on tab switch
+            const origSwitchTab = switchTab;
+            switchTab = function(tabName, updateHistory = true) {
+                origSwitchTab(tabName, updateHistory);
+                if (tabName === 'nickname-bans') loadKickedUsers();
+            }
+            </script>
             </div>
 
             <!-- URL Blacklist Tab -->
