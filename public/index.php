@@ -123,11 +123,11 @@
                     <span id="sidebar-toggle-icon">◀</span>
                 </button>
             </div>
-            <div id="sidebar-content">
+            <div id="sidebar-content" style="display: flex; flex-direction: column; height: 100%; min-height: 0;">
                 <div id="active-users-count-container">
                     <span id="active-users-count">0</span> online
                 </div>
-                <div id="active-users-list" style="overflow-y: auto;"></div>
+                <div id="active-users-list" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; height: auto;"></div>
             </div>
         </div>
 
