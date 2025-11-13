@@ -1027,6 +1027,7 @@ class RadioChatBox {
         const inputContainer = document.getElementById('chat-input-container');
         if (inputContainer) {
             inputContainer.style.display = 'flex';
+            inputContainer.classList.add('visibleChatInput');
         }
         if (this.messageInput) {
             this.messageInput.disabled = false;
@@ -1583,11 +1584,13 @@ class RadioChatBox {
             // Hide input container completely
             if (inputContainer) {
                 inputContainer.style.display = 'none';
+                inputContainer.classList.remove('visibleChatInput');
             }
         } else if (this.privateChat.active) {
             // In a private chat - always show input (even in private-only mode)
             if (inputContainer) {
                 inputContainer.style.display = 'flex';
+                inputContainer.classList.add('visibleChatInput');
             }
             if (this.messageInput) {
                 this.messageInput.disabled = false;
