@@ -1580,12 +1580,23 @@ class RadioChatBox {
                     </div>
                 `;
             }
-            
             // Hide input container completely
             if (inputContainer) {
                 inputContainer.style.display = 'none';
             }
-        } else if (!this.privateChat.active) {
+        } else if (this.privateChat.active) {
+            // In a private chat - always show input (even in private-only mode)
+            if (inputContainer) {
+                inputContainer.style.display = 'flex';
+            }
+            if (this.messageInput) {
+                this.messageInput.disabled = false;
+                this.messageInput.placeholder = `Send private message to ${this.privateChat.withUser || ''}...`;
+            }
+            if (this.sendButton) {
+                this.sendButton.disabled = false;
+            }
+        } else {
             // Show and enable input for public chat or both modes
             if (inputContainer) {
                 inputContainer.style.display = 'flex';
@@ -1596,11 +1607,6 @@ class RadioChatBox {
             }
             if (this.sendButton) {
                 this.sendButton.disabled = false;
-            }
-        } else {
-            // In a private chat - always show input
-            if (inputContainer) {
-                inputContainer.style.display = 'flex';
             }
         }
         
