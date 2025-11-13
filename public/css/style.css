@@ -985,7 +985,7 @@ body {
     }
 
 /* Force chat input always visible and fixed at bottom on mobile */
-    #chat-input-container .visibleChatInput {
+    #chat-input-container {
         display: flex !important;
         position: fixed;
         left: 0;
