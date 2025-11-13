@@ -213,7 +213,7 @@ try {
                 'username' => $username,
                 'withUser' => $withUser,
                 'params' => $debugParams,
-                'sql_ready' => debug_sql_with_params($debugSql, $debugParams)
+                'sql_ready' => str_replace(array('\n', '  '), ' ', debug_sql_with_params($debugSql, $debugParams))
             ]
         ]);
         
