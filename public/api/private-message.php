@@ -115,15 +115,19 @@ try {
     } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Get private message history
         $username = $_GET['username'] ?? '';
-        $username = urldecode($username);
         $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
-        $withUser = urldecode($withUser);
-        
+
+        // Convert to UTF-8 if not already (handles non-latin input robustly)
+        $username = mb_convert_encoding($username, 'UTF-8', 'auto');
+        if ($withUser !== null) {
+            $withUser = mb_convert_encoding($withUser, 'UTF-8', 'auto');
+        }
+
         if (empty($username) || empty($sessionId)) {
             throw new InvalidArgumentException('Username and session ID are required');
         }
-        
+
         if ($withUser) {
             // Get conversation with specific user - only for current session
             $stmt = $db->prepare("
