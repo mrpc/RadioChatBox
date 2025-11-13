@@ -115,44 +115,18 @@ try {
     } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Get private message history
         $username = $_GET['username'] ?? '';
+        $username = json_decode('"' . $username . '"');
         $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
-
-        // Convert to UTF-8 if not already (handles non-latin input robustly)
-        $username = mb_convert_encoding($username, 'UTF-8', 'auto');
-        if ($withUser !== null) {
-            $withUser = mb_convert_encoding($withUser, 'UTF-8', 'auto');
-        }
-
-        // Normalize to NFC to match DB storage (requires intl extension)
-        if (class_exists('Normalizer')) {
-            $username = \Normalizer::normalize($username, \Normalizer::FORM_C);
-            if ($withUser !== null) {
-                $withUser = \Normalizer::normalize($withUser, \Normalizer::FORM_C);
-            }
-        }
-
+        $withUser = json_decode('"' . $withUser . '"');
+        
         if (empty($username) || empty($sessionId)) {
             throw new InvalidArgumentException('Username and session ID are required');
         }
-
-        $debugSql = '';
-        $debugParams = [];
-
-        // Helper for debug: Inline parameters into SQL for copy-paste (for dev only)
-        function debug_sql_with_params($sql, $params) {
-            foreach ($params as $param) {
-                // Escape single quotes for SQL
-                $escaped = str_replace("'", "''", $param);
-                // Replace first occurrence of ?
-                $sql = preg_replace('/\?/', "'" . $escaped . "'", $sql, 1);
-            }
-            return $sql;
-        }
-
+        
         if ($withUser) {
             // Get conversation with specific user - only for current session
-            $debugSql = "
+            $stmt = $db->prepare("
                 SELECT pm.*, 
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
                        a.mime_type, a.width, a.height
@@ -162,12 +136,11 @@ try {
                     OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
                 ORDER BY pm.created_at ASC
                 LIMIT 500
-            ";
-            $debugParams = [$username, $sessionId, $withUser, $withUser, $username, $sessionId];
-            $stmt = $db->prepare($debugSql);
-            $stmt->execute($debugParams);
+            ");
+            $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
         } else {
-            $debugSql = "
+            // Get all recent private messages for current session only
+            $stmt = $db->prepare("
                 SELECT pm.*,
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
                        a.mime_type, a.width, a.height
@@ -177,12 +150,10 @@ try {
                    OR (pm.to_username = ? AND pm.to_session_id = ?)
                 ORDER BY pm.created_at DESC
                 LIMIT 50
-            ";
-            $debugParams = [$username, $sessionId, $username, $sessionId];
-            $stmt = $db->prepare($debugSql);
-            $stmt->execute($debugParams);
+            ");
+            $stmt->execute([$username, $sessionId, $username, $sessionId]);
         }
-
+        
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Format attachment data for each message
@@ -211,9 +182,7 @@ try {
             'messages' => $messages,
             'debug' => [
                 'username' => $username,
-                'withUser' => $withUser,
-                'params' => $debugParams,
-                'sql_ready' => str_replace(array('\n', '  '), ' ', debug_sql_with_params($debugSql, $debugParams))
+                'touser' => $withUser
             ]
         ]);
         
