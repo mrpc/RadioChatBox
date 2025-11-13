@@ -139,6 +139,17 @@ try {
         $debugSql = '';
         $debugParams = [];
 
+        // Helper for debug: Inline parameters into SQL for copy-paste (for dev only)
+        function debug_sql_with_params($sql, $params) {
+            foreach ($params as $param) {
+                // Escape single quotes for SQL
+                $escaped = str_replace("'", "''", $param);
+                // Replace first occurrence of ?
+                $sql = preg_replace('/\?/', "'" . $escaped . "'", $sql, 1);
+            }
+            return $sql;
+        }
+
         if ($withUser) {
             // Get conversation with specific user - only for current session
             $debugSql = "
@@ -201,8 +212,8 @@ try {
             'debug' => [
                 'username' => $username,
                 'withUser' => $withUser,
-                'sql' => $debugSql,
-                'params' => $debugParams
+                'params' => $debugParams,
+                'sql_ready' => debug_sql_with_params($debugSql, $debugParams)
             ]
         ]);
         
