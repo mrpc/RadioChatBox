@@ -127,7 +127,7 @@
                 <div id="active-users-count-container">
                     <span id="active-users-count">0</span> online
                 </div>
-                <div id="active-users-list" style="overflow-y: auto; max-height: 60vh;"></div>
+                <div id="active-users-list" style="overflow-y: auto;"></div>
             </div>
         </div>
 
