@@ -115,6 +115,7 @@ try {
     } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Get private message history
         $username = $_GET['username'] ?? '';
+        $username = urldecode($username);
         $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
         
