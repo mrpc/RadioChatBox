@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Emoji support for older Windows versions (Windows 7, 8, early Windows 10)
+  - Integrated Twemoji library for consistent emoji rendering across all platforms
+  - Automatic conversion of Unicode emojis to SVG images
+  - Applied to all UI elements: messages, emoji picker, conversation previews, buttons
+  - Comprehensive CSS styling for inline emoji display
+  - Documentation in docs/EMOJI_SUPPORT.md and docs/EMOJI_TESTING.md
 - Admin user management system with role-based access control (RBAC)
   - Four user roles: Root, Administrator, Moderator, Simple User
   - Username/password authentication replacing legacy password-only system

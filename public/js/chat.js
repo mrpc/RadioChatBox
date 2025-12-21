@@ -1208,6 +1208,14 @@ class RadioChatBox {
             
             messageDiv.innerHTML = content;
             this.messagesContainer.appendChild(messageDiv);
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(messageDiv, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
         });
         
         this.scrollToBottom();
@@ -1226,6 +1234,14 @@ class RadioChatBox {
         messages.forEach(msg => {
             this.addMessageToUI(msg, false);
         });
+        
+        // Parse emojis with Twemoji for older Windows support (entire container for efficiency)
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(this.messagesContainer, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
 
         this.scrollToBottom();
     }
@@ -1263,6 +1279,14 @@ class RadioChatBox {
             noticeDiv.style.fontStyle = 'italic';
             noticeDiv.innerHTML = '🗑️ Chat has been cleared by an administrator';
             this.messagesContainer.appendChild(noticeDiv);
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(noticeDiv, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
         }
     }
 
@@ -1306,6 +1330,14 @@ class RadioChatBox {
         if (soundBtn) {
             soundBtn.textContent = this.soundEnabled ? '🔔' : '🔕';
             soundBtn.title = this.soundEnabled ? 'Sound On (click to mute)' : 'Sound Off (click to unmute)';
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(soundBtn, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
         }
     }
 
@@ -1392,6 +1424,14 @@ class RadioChatBox {
         }
 
         this.messagesContainer.appendChild(messageDiv);
+        
+        // Parse emojis with Twemoji for older Windows support
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(messageDiv, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
         
         if (animate) {
             this.scrollToBottom();
@@ -1762,6 +1802,15 @@ class RadioChatBox {
             
             messageDiv.innerHTML = content;
             this.messagesContainer.appendChild(messageDiv);
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(messageDiv, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
+            
             this.scrollToBottom();
         }
         
@@ -2005,6 +2054,14 @@ class RadioChatBox {
                 </div>
             `;
         }).join('');
+        
+        // Parse emojis with Twemoji for older Windows support
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(this.conversationsList, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
     }
     
     openConversation(username) {
@@ -2110,6 +2167,14 @@ class RadioChatBox {
             });
             emojiGrid.appendChild(btn);
         });
+        
+        // Parse emojis with Twemoji for older Windows support
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(emojiGrid, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
     }
     
     insertEmoji(emoji) {

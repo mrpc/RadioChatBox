@@ -47,6 +47,7 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 
 - **Optional user profiles** (age, location, sex)
 - **Emoji picker** with categorized emojis
+- **Universal emoji support** using Twemoji library for older Windows versions (Windows 7/8/10)
 - **Responsive design** for desktop and mobile
 - **Collapsible sidebar** optimized for small screens
 - **Embeddable** widget for websites with customizable audio notifications

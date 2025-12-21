@@ -14,6 +14,8 @@
     <link rel="icon" id="favicon" type="image/x-icon" href="">
     <!-- CSS with automatic cache-busting version based on file modification time -->
     <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(__DIR__ . '/css/style.css'); ?>">
+    <!-- Twemoji library for emoji support on older Windows versions -->
+    <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
     <!-- Custom header scripts will be injected here -->
     <script id="custom-header-scripts"></script>
 </head>
