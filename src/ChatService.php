@@ -34,7 +34,7 @@ class ChatService
     /**
      * Post a new message to the chat
      */
-    public function postMessage(string $username, string $message, string $ipAddress, string $sessionId = ''): array
+    public function postMessage(string $username, string $message, string $ipAddress, string $sessionId = '', ?string $replyTo = null): array
     {
         // Validate inputs
         if (empty($username) || empty($message)) {
@@ -65,6 +65,12 @@ class ChatService
         if (!$this->checkRateLimit($ipAddress)) {
             throw new \RuntimeException('Rate limit exceeded. Please wait before sending another message.');
         }
+        
+        // Validate reply_to if provided
+        $replyData = null;
+        if (!empty($replyTo)) {
+            $replyData = $this->getReplyMessageData($replyTo);
+        }
 
         // Create message object
         $messageData = [
@@ -73,6 +79,8 @@ class ChatService
             'message' => $message,
             'timestamp' => time(),
             'ip' => $ipAddress,
+            'reply_to' => $replyTo,
+            'reply_data' => $replyData,
         ];
 
         // Store in Redis (for real-time)
@@ -142,10 +150,12 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT message_id, username, message, ip_address, created_at 
-                 FROM messages 
-                 WHERE is_deleted = false 
-                 ORDER BY created_at DESC 
+                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.reply_to,
+                        r.username as reply_username, r.message as reply_message
+                 FROM messages m
+                 LEFT JOIN messages r ON m.reply_to = r.message_id
+                 WHERE m.is_deleted = false 
+                 ORDER BY m.created_at DESC 
                  LIMIT :limit'
             );
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -154,13 +164,24 @@ class ChatService
             
             // Convert to the same format as Redis messages
             $messages = array_map(function($row) {
-                return [
+                $msg = [
                     'id' => $row['message_id'],
                     'username' => $row['username'],
                     'message' => $row['message'],
                     'timestamp' => strtotime($row['created_at']),
-                    'ip' => $row['ip_address']
+                    'ip' => $row['ip_address'],
+                    'reply_to' => $row['reply_to'],
                 ];
+                
+                // Add reply data if exists
+                if (!empty($row['reply_to']) && !empty($row['reply_username'])) {
+                    $msg['reply_data'] = [
+                        'username' => $row['reply_username'],
+                        'message' => mb_substr($row['reply_message'], 0, 100),
+                    ];
+                }
+                
+                return $msg;
             }, $rows);
             
             // Repopulate Redis cache with messages from DB
@@ -290,8 +311,8 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'INSERT INTO messages (message_id, username, message, ip_address, created_at) 
-                 VALUES (:message_id, :username, :message, :ip_address, :created_at)'
+                'INSERT INTO messages (message_id, username, message, ip_address, created_at, reply_to) 
+                 VALUES (:message_id, :username, :message, :ip_address, :created_at, :reply_to)'
             );
 
             $stmt->execute([
@@ -300,11 +321,50 @@ class ChatService
                 'message' => $messageData['message'],
                 'ip_address' => $messageData['ip'],
                 'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
+                'reply_to' => $messageData['reply_to'] ?? null,
             ]);
         } catch (\PDOException $e) {
             // Log error but don't fail the request
             error_log("Failed to store message in database: " . $e->getMessage());
         }
+    }
+    
+    /**
+     * Get reply message data for quoting
+     */
+    private function getReplyMessageData(string $messageId): ?array
+    {
+        try {
+            // First check Redis cache
+            $messages = $this->redis->lRange($this->prefixKey(self::MESSAGES_KEY), 0, -1);
+            foreach ($messages as $msg) {
+                $decoded = json_decode($msg, true);
+                if (isset($decoded['id']) && $decoded['id'] === $messageId) {
+                    return [
+                        'username' => $decoded['username'],
+                        'message' => mb_substr($decoded['message'], 0, 100), // Truncate to 100 chars for quote
+                    ];
+                }
+            }
+            
+            // Fallback to database
+            $stmt = $this->pdo->prepare(
+                'SELECT username, message FROM messages WHERE message_id = :message_id AND is_deleted = false LIMIT 1'
+            );
+            $stmt->execute(['message_id' => $messageId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($row) {
+                return [
+                    'username' => $row['username'],
+                    'message' => mb_substr($row['message'], 0, 100), // Truncate to 100 chars for quote
+                ];
+            }
+        } catch (\PDOException $e) {
+            error_log("Failed to get reply message data: " . $e->getMessage());
+        }
+        
+        return null;
     }
 
     /**

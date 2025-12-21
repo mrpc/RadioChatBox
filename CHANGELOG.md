@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Message reply feature for public chat
+  - Reply button on all messages to quote and reference previous messages
+  - Visual quote display showing original username and truncated message
+  - Reply preview above input field when composing a reply
+  - Database support for message threading with reply_to column
+  - Styled reply quotes with theme-specific colors (dark, light, metal)
+  - Mobile-responsive reply UI
+  - Reply data included in message history from database
 - Emoji support for older Windows versions (Windows 7, 8, early Windows 10)
   - Integrated Twemoji library for consistent emoji rendering across all platforms
   - Automatic conversion of Unicode emojis to SVG images

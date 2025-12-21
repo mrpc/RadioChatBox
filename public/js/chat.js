@@ -48,6 +48,14 @@ class RadioChatBox {
             messages: []
         };
         
+        // Reply state
+        this.replyState = {
+            active: false,
+            messageId: null,
+            username: null,
+            message: null
+        };
+        
         // Conversations tracking
         this.conversations = new Map(); // Map of username -> { lastMessage, unreadCount, timestamp }
         this.conversationsPanelOpen = false;
@@ -1436,14 +1444,42 @@ class RadioChatBox {
                 🗑️
             </button>
         ` : '';
+        
+        // Add reply button for all messages
+        const replyButton = msgId ? `
+            <button class="reply-message-btn" data-message-id="${msgId}" title="Reply to this message">
+                ↩️
+            </button>
+        ` : '';
+        
+        // Build reply quote HTML if this is a reply
+        let replyQuoteHTML = '';
+        if (messageData.reply_data && messageData.reply_data.username) {
+            const truncatedMessage = messageData.reply_data.message.length > 50 
+                ? messageData.reply_data.message.substring(0, 50) + '...'
+                : messageData.reply_data.message;
+            replyQuoteHTML = `
+                <div class="reply-quote">
+                    <div class="reply-quote-bar"></div>
+                    <div class="reply-quote-content">
+                        <span class="reply-quote-username">${this.escapeHtml(messageData.reply_data.username)}</span>
+                        <span class="reply-quote-message">${this.escapeHtml(truncatedMessage)}</span>
+                    </div>
+                </div>
+            `;
+        }
 
         messageDiv.innerHTML = `
             <div class="message-header">
                 <span class="message-username">${this.escapeHtml(messageData.username)}</span>
                 <span class="message-time">${timeString}</span>
+            </div>
+            ${replyQuoteHTML}
+            <div class="message-text">${this.escapeHtml(messageData.message)}</div>
+            <div class="message-actions">
+                ${replyButton}
                 ${deleteButton}
             </div>
-            <div class="message-text">${this.escapeHtml(messageData.message)}</div>
         `;
 
         // Add event listener for delete button if admin
@@ -1457,6 +1493,16 @@ class RadioChatBox {
                     this.deleteMessage(msgId, button || e.target);
                 });
             }
+        }
+        
+        // Add event listener for reply button
+        const replyBtn = messageDiv.querySelector('.reply-message-btn');
+        if (replyBtn) {
+            replyBtn.addEventListener('click', (e) => {
+                const button = e.target.closest('.reply-message-btn');
+                const msgId = button ? button.getAttribute('data-message-id') : null;
+                this.setReplyState(msgId, messageData.username, messageData.message);
+            });
         }
 
         this.messagesContainer.appendChild(messageDiv);
@@ -1654,16 +1700,23 @@ class RadioChatBox {
                 }
             } else {
                 // Send public message
+                const messagePayload = {
+                    username: this.username,
+                    message: message,
+                    sessionId: this.sessionId
+                };
+                
+                // Include reply_to if replying
+                if (this.replyState.active && this.replyState.messageId) {
+                    messagePayload.replyTo = this.replyState.messageId;
+                }
+                
                 const response = await fetch(`${this.apiUrl}/api/send.php`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        username: this.username,
-                        message: message,
-                        sessionId: this.sessionId
-                    })
+                    body: JSON.stringify(messagePayload)
                 });
 
                 const data = await response.json();
@@ -1671,6 +1724,9 @@ class RadioChatBox {
                 if (!response.ok) {
                     throw new Error(data.error || 'Failed to send message');
                 }
+                
+                // Clear reply state after sending
+                this.clearReplyState();
                 
                 // Track analytics event
                 if (window.analytics) {
@@ -1754,6 +1810,81 @@ class RadioChatBox {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    /**
+     * Set reply state when user clicks reply button
+     */
+    setReplyState(messageId, username, message) {
+        this.replyState = {
+            active: true,
+            messageId: messageId,
+            username: username,
+            message: message
+        };
+        this.showReplyPreview();
+        // Focus the input
+        if (this.messageInput) {
+            this.messageInput.focus();
+        }
+    }
+    
+    /**
+     * Clear reply state
+     */
+    clearReplyState() {
+        this.replyState = {
+            active: false,
+            messageId: null,
+            username: null,
+            message: null
+        };
+        this.hideReplyPreview();
+    }
+    
+    /**
+     * Show reply preview above input
+     */
+    showReplyPreview() {
+        // Remove existing preview if any
+        this.hideReplyPreview();
+        
+        const truncatedMessage = this.replyState.message.length > 50 
+            ? this.replyState.message.substring(0, 50) + '...'
+            : this.replyState.message;
+        
+        const previewDiv = document.createElement('div');
+        previewDiv.className = 'reply-preview';
+        previewDiv.innerHTML = `
+            <div class="reply-preview-content">
+                <div class="reply-preview-bar"></div>
+                <div class="reply-preview-text">
+                    <div class="reply-preview-label">Replying to <strong>${this.escapeHtml(this.replyState.username)}</strong></div>
+                    <div class="reply-preview-message">${this.escapeHtml(truncatedMessage)}</div>
+                </div>
+                <button class="reply-preview-close" title="Cancel reply">✕</button>
+            </div>
+        `;
+        
+        // Add close button handler
+        const closeBtn = previewDiv.querySelector('.reply-preview-close');
+        closeBtn.addEventListener('click', () => this.clearReplyState());
+        
+        // Insert before the input container
+        const inputContainer = document.getElementById('chat-input-container');
+        if (inputContainer) {
+            inputContainer.parentElement.insertBefore(previewDiv, inputContainer);
+        }
+    }
+    
+    /**
+     * Hide reply preview
+     */
+    hideReplyPreview() {
+        const existingPreview = document.querySelector('.reply-preview');
+        if (existingPreview) {
+            existingPreview.remove();
+        }
     }
 
     disconnect() {
