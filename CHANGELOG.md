@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Granular permission system (8 permissions mapped to roles)
   - 24-hour Redis session caching
   - User list caching with 5-minute TTL
+- localStorage-first session management for iframe embedding
+  - Works even when third-party cookies are blocked
+  - Partitioned Cookies (CHIPS) support for Chrome 114+, Edge 114+
+  - Automatic fallback to traditional cookies for older browsers
+  - Stateless PHP backend with client-side session management
 - Unit test suite for UserService (23 tests)
 - Test infrastructure with Database mocking support
 

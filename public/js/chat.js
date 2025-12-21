@@ -322,13 +322,51 @@ class RadioChatBox {
     }
 
     getOrCreateSessionId() {
-        // Use cookie instead of sessionStorage so it's shared across tabs
-        let sessionId = this.getCookie('chatSessionId');
+        // Use localStorage first (works in iframes), fallback to cookies
+        let sessionId = this.getStorage('chatSessionId');
         if (!sessionId) {
             sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            this.setCookie('chatSessionId', sessionId, 365); // Store for 1 year
+            this.setStorage('chatSessionId', sessionId);
         }
         return sessionId;
+    }
+
+    // Modern storage method - uses localStorage first (works in iframes), falls back to cookies
+    getStorage(name) {
+        // Try localStorage first (works even in iframes when third-party cookies are blocked)
+        try {
+            const value = localStorage.getItem(name);
+            if (value !== null) return value;
+        } catch (e) {
+            // localStorage not available (rare case)
+        }
+        
+        // Fallback to cookies
+        return this.getCookie(name);
+    }
+
+    setStorage(name, value) {
+        // Try localStorage first
+        try {
+            localStorage.setItem(name, value);
+            // Also set cookie as backup for cross-tab sync
+            this.setCookie(name, value, 365);
+            return true;
+        } catch (e) {
+            // localStorage not available or full - use cookies only
+            this.setCookie(name, value, 365);
+            return false;
+        }
+    }
+
+    removeStorage(name) {
+        // Remove from both storage mechanisms
+        try {
+            localStorage.removeItem(name);
+        } catch (e) {
+            // Ignore
+        }
+        this.setCookie(name, '', -1);
     }
 
     getCookie(name) {
@@ -340,7 +378,16 @@ class RadioChatBox {
 
     setCookie(name, value, days = 365) {
         const expires = new Date(Date.now() + days * 864e5).toUTCString();
-        document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax`;
+        // Use SameSite=None; Secure for third-party iframe context
+        // Falls back to SameSite=Lax if not in HTTPS
+        const isSecure = window.location.protocol === 'https:';
+        const sameSite = isSecure ? 'None; Secure' : 'Lax';
+        
+        // Add Partitioned attribute for CHIPS (Cookies Having Independent Partitioned State)
+        // This allows cookies to work in third-party contexts when properly partitioned
+        const partitioned = isSecure ? '; Partitioned' : '';
+        
+        document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=${sameSite}${partitioned}`;
     }
 
     async checkAndRegisterNickname(nickname, age = null, location = null, sex = null) {
@@ -393,12 +440,12 @@ class RadioChatBox {
             // Success! Set username and initialize chat
             this.username = nickname;
             this.userProfile = { age, location, sex };
-            this.setCookie('chatNickname', nickname);
+            this.setStorage('chatNickname', nickname);
             
-            // Save profile data in cookies if provided
-            if (age) this.setCookie('chatAge', age);
-            if (location) this.setCookie('chatLocation', location);
-            if (sex) this.setCookie('chatSex', sex);
+            // Save profile data in storage if provided
+            if (age) this.setStorage('chatAge', age);
+            if (location) this.setStorage('chatLocation', location);
+            if (sex) this.setStorage('chatSex', sex);
             
             // Track user registration
             if (window.analytics) {
@@ -669,10 +716,10 @@ class RadioChatBox {
             const data = await response.json();
 
             if (data.success) {
-                // Update cookies with new profile data
-                this.setCookie('chatAge', age);
-                this.setCookie('chatLocation', location);
-                this.setCookie('chatSex', sex);
+                // Update storage with new profile data
+                this.setStorage('chatAge', age);
+                this.setStorage('chatLocation', location);
+                this.setStorage('chatSex', sex);
                 
                 // Update local profile object
                 this.userProfile = { age, location, sex };
@@ -707,11 +754,12 @@ class RadioChatBox {
     
     logout() {
         this.disconnect();
-        this.setCookie('chatNickname', '', -1); // Delete nickname cookie
-        this.setCookie('chatAge', '', -1); // Delete age cookie
-        this.setCookie('chatLocation', '', -1); // Delete location cookie
-        this.setCookie('chatSex', '', -1); // Delete sex cookie
-        localStorage.clear(); // Clear any stored settings
+        this.removeStorage('chatNickname'); // Delete nickname from storage
+        this.removeStorage('chatAge'); // Delete age from storage
+        this.removeStorage('chatLocation'); // Delete location from storage
+        this.removeStorage('chatSex'); // Delete sex from storage
+        this.removeStorage('chatSessionId'); // Delete session ID from storage
+        localStorage.clear(); // Clear any other stored settings
         location.reload();
     }
 

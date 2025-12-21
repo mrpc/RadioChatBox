@@ -142,6 +142,8 @@ To embed the chat in your existing radio website:
 </iframe>
 ```
 
+**Note:** RadioChatBox uses localStorage for session management, which works perfectly in iframes even when third-party cookies are blocked. For modern browsers (Chrome 114+, Edge 114+), it also supports Partitioned Cookies (CHIPS) as a backup mechanism.
+
 ### Option 2: Direct Integration
 
 ```html
