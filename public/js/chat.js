@@ -1399,8 +1399,6 @@ class RadioChatBox {
 
         // Check if user is admin
         const isAdmin = localStorage.getItem('isAdmin') === 'true';
-        // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
-        const msgId = messageData.id || messageData.message_id;
         const deleteButton = isAdmin && msgId ? `
             <button class="delete-message-btn" data-message-id="${msgId}" title="Delete message">
                 🗑️
