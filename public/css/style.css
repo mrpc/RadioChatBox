@@ -1392,8 +1392,9 @@ body.embedded-mode #emoji-picker {
     width: 340px;
     max-width: calc(100vw - 40px);
     min-width: 280px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 20px;
+    right: auto;
+    transform: none;
 }
 
 body.embedded-mode .emoji-toggle-btn {
