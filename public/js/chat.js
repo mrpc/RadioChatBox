@@ -172,6 +172,9 @@ class RadioChatBox {
                 
                 // Update photo upload button visibility
                 this.updatePhotoButtonVisibility();
+
+                // Initialize now playing polling if configured
+                this.initNowPlaying();
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -308,6 +311,44 @@ class RadioChatBox {
                     oldScript.parentNode.replaceChild(newScriptTag, oldScript);
                 });
             }
+        }
+    }
+
+    initNowPlaying() {
+        try {
+            const urlSet = !!(this.settings && this.settings.radio_status_url && this.settings.radio_status_url.trim() !== '');
+            const el = document.getElementById('now-playing');
+            if (!urlSet || !el) {
+                if (el) el.style.display = 'none';
+                return;
+            }
+
+            // Immediately fetch once, then poll
+            this.updateNowPlaying();
+            if (!this._nowPlayingInterval) {
+                this._nowPlayingInterval = setInterval(() => this.updateNowPlaying(), 15000);
+            }
+        } catch (e) {
+            // Non-fatal
+            console.warn('initNowPlaying error', e);
+        }
+    }
+
+    async updateNowPlaying() {
+        const el = document.getElementById('now-playing');
+        if (!el) return;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/now-playing.php?t=${Date.now()}`, { cache: 'no-cache' });
+            const data = await resp.json();
+            if (data && data.success && data.nowPlaying && data.nowPlaying.active && data.nowPlaying.display) {
+                el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
+        } catch (e) {
+            // hide on error
+            el.style.display = 'none';
         }
     }
     

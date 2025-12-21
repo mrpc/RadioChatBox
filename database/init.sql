@@ -331,7 +331,9 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('ads_main_bottom', ''),
     ('ads_chat_sidebar', ''),
     ('ads_refresh_interval', '30'),
-    ('ads_refresh_enabled', 'false')
+    ('ads_refresh_enabled', 'false'),
+    -- Radio Stream Status (Icecast/Shoutcast JSON URL)
+    ('radio_status_url', '')
 ON CONFLICT (setting_key) DO NOTHING;
 
 -- Reserved nicknames

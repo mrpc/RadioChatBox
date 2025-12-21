@@ -139,7 +139,7 @@
                 <div id="brand-logo-container" style="display: none;">
                     <img id="brand-logo" src="" alt="Logo" style="max-height: 50px; max-width: 200px; margin-right: 10px;">
                 </div>
-                <h1>🎙️ Live Chat</h1>
+                <h1>🎙️ Live Chat <span id="now-playing" class="now-playing" style="display: none;"></span></h1>
                 <div id="user-info">
                     <button id="sidebar-toggle-mobile" class="icon-button" title="Active Users">
                         👥

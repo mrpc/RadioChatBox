@@ -211,6 +211,7 @@ The system supports four hierarchical roles with different permission levels:
 | Allow Photo Uploads | Enable photo sharing in private messages | true |
 | Max Photo Size | Maximum upload size in MB | 5 MB |
 | Rate Limit | Messages per time window | 10 per 60s |
+| Stream Status URL | Icecast/Shoutcast status JSON URL. When set, the chat header shows the current song/artist. | (empty) |
 
 ---
 
@@ -274,6 +275,7 @@ Full API documentation is available in OpenAPI 3.0 format: [`docs/openapi.yaml`]
 | `/api/stream.php` | GET | SSE stream for real-time updates |
 | `/api/send.php` | POST | Send a public message |
 | `/api/history.php` | GET | Get message history |
+| `/api/now-playing.php` | GET | Current radio song/artist (if configured) |
 | `/api/register.php` | POST | Register username |
 | `/api/settings.php` | GET | Get public settings |
 

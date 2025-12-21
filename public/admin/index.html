@@ -920,11 +920,7 @@
                                 </div>
                                 <div class="kpi-icon primary">👥</div>
                             </div>
-                            <div class="kpi-value" id="kpi-active-users">-</div>
-                            <div class="kpi-change neutral">Real-time count</div>
-                        </div>
-                        
-                        <div class="kpi-card">
+                    
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Messages Today</div>
@@ -1458,6 +1454,11 @@
                     <div class="form-group">
                         <label>Page Title</label>
                         <input type="text" id="setting-page-title" placeholder="RadioChatBox">
+                    </div>
+                    <div class="form-group">
+                        <label>Stream Status JSON URL (Icecast/Shoutcast)</label>
+                        <input type="url" id="setting-radio-status-url" placeholder="https://example.com/status-json.xsl">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">If set, the chat header shows the current song/artist.</small>
                     </div>
                     <div class="form-group">
                         <label>Color Scheme</label>
@@ -2799,6 +2800,7 @@
                 if (data.success) {
                     const settings = data.settings;
                     document.getElementById('setting-page-title').value = settings.page_title || 'RadioChatBox';
+                    document.getElementById('setting-radio-status-url').value = settings.radio_status_url || '';
                     document.getElementById('setting-color-scheme').value = settings.color_scheme || 'dark';
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
@@ -2939,6 +2941,7 @@
             
             const settings = {
                 page_title: document.getElementById('setting-page-title').value,
+                radio_status_url: document.getElementById('setting-radio-status-url').value,
                 color_scheme: document.getElementById('setting-color-scheme').value,
                 chat_mode: document.getElementById('setting-chat-mode').value,
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
