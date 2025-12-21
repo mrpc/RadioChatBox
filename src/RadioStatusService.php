@@ -156,10 +156,12 @@ class RadioStatusService
 
     private function stripBitrate(string $s): string
     {
-        // Remove common bitrate patterns like [45k], (128kbps), 192k, etc.
-        $s = preg_replace('/\s*\[\s*\d+k(?:bps)?\s*\]/i', '', $s);
-        $s = preg_replace('/\s*\(\s*\d+k(?:bps)?\s*\)/i', '', $s);
-        $s = preg_replace('/\s+\d+k(?:bps)?$/i', '', $s);
+        // Remove bracketed/parenthesized numbers with letters (bitrate, sample rate, etc.)
+        // Patterns: [45k], [44T], [128kbps], (192), etc.
+        $s = preg_replace('/\s*\[\s*\d+[a-z]*\s*\]/i', '', $s);
+        $s = preg_replace('/\s*\(\s*\d+[a-z]*\s*\)/i', '', $s);
+        // Also strip trailing digits with letters (e.g. "192k" or "44T" at end)
+        $s = preg_replace('/\s+\d+[a-z]*$/i', '', $s);
         return trim($s);
     }
 
