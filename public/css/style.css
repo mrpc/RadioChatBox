@@ -2130,6 +2130,19 @@ body.metal-theme .reply-preview-close:hover {
     color: rgba(255, 255, 255, 0.9);
 }
 
+body.metal-theme .reply-message-btn,
+body.metal-theme .delete-message-btn {
+    color: #ff4444;
+}
+
+body.metal-theme .reply-message-btn:hover {
+    background: rgba(139, 0, 0, 0.3);
+}
+
+body.metal-theme .delete-message-btn:hover {
+    background: rgba(139, 0, 0, 0.3);
+}
+
 body.metal-theme .chat-input {
     background: rgba(0, 0, 0, 0.7);
     border-top: 1px solid #8B0000;
