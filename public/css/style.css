@@ -1236,18 +1236,6 @@ img.emoji {
         max-width: 20px;
     }
 
-    .emoji-item {
-        font-size: 20px;
-        padding: 4px;
-        width: 36px;
-        height: 36px;
-    }
-    
-    .emoji-item img.emoji {
-        height: 20px;
-        width: 20px;
-    }
-
     /* Conversations panel */
     #conversations-panel {
         width: 90%;
@@ -1401,8 +1389,9 @@ body.embedded-mode #scroll-to-bottom {
 }
 
 body.embedded-mode #emoji-picker {
-    width: 100%;
+    width: 340px;
     max-width: calc(100vw - 40px);
+    min-width: 280px;
     left: 50%;
     transform: translateX(-50%);
 }
