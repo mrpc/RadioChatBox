@@ -101,21 +101,8 @@ composer install --no-dev --optimize-autoloader || error "Composer install faile
 log "Clearing Redis cache..."
 redis-cli FLUSHDB || warning "Redis cache clear failed"
 
-# Set correct permissions
-log "Setting file permissions..."
-# With PHP-FPM, files should be owned by current user
-sudo chown -R $USER:$USER "$PROJECT_DIR"
-sudo chmod -R 755 "$WEB_ROOT"
-sudo chmod -R 775 "${PROJECT_DIR}/public/uploads"
 
-# Restart Apache
-log "Reloading Apache..."
-sudo systemctl reload apache2 || sudo systemctl reload httpd || warning "Apache reload failed"
-
-# Wait for service to be ready
-log "Waiting for service to start..."
-sleep 2
-
+]
 # Health check
 log "Running health check..."
 HEALTH_URL="http://localhost/api/health.php"
@@ -141,7 +128,6 @@ log "Summary:"
 log "  - Code updated from Git"
 log "  - Migrations applied (if any)"
 log "  - Dependencies updated"
-log "  - Apache reloaded"
 log "  - Health check passed"
 log ""
 log "Next steps:"
