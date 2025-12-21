@@ -925,21 +925,26 @@ body {
 .emoji-item {
     background: transparent;
     border: none;
-    font-size: 28px;
-    padding: 8px;
+    font-size: 24px;
+    padding: 6px;
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.2s;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
 }
 
 .emoji-item:hover {
     background: #f3f4f6;
-    transform: scale(1.3);
+    transform: scale(1.2);
 }
 
 .emoji-item:active {
-    transform: scale(1.1);
+    transform: scale(1.05);
 }
 
 /* Twemoji support for older Windows versions */
@@ -957,10 +962,10 @@ img.emoji {
     width: 1.3em;
 }
 
-/* Twemoji in emoji picker */
+/* Twemoji in emoji picker - fixed size */
 .emoji-item img.emoji {
-    height: 1.5em;
-    width: 1.5em;
+    height: 24px;
+    width: 24px;
     margin: 0;
     vertical-align: middle;
 }
@@ -1159,8 +1164,15 @@ img.emoji {
     }
 
     .emoji-item {
-        font-size: 24px;
-        padding: 6px;
+        font-size: 20px;
+        padding: 4px;
+        width: 36px;
+        height: 36px;
+    }
+    
+    .emoji-item img.emoji {
+        height: 20px;
+        width: 20px;
     }
 
     /* Conversations panel */
