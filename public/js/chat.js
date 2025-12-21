@@ -73,13 +73,13 @@ class RadioChatBox {
     
     proceedWithNormalLogin() {
         // Check if user has a saved nickname
-        const savedNickname = this.getCookie('chatNickname');
+        const savedNickname = this.getStorage('chatNickname');
         
         if (savedNickname) {
             // Try to get saved profile data
-            const savedAge = this.getCookie('chatAge');
-            const savedLocation = this.getCookie('chatLocation');
-            const savedSex = this.getCookie('chatSex');
+            const savedAge = this.getStorage('chatAge');
+            const savedLocation = this.getStorage('chatLocation');
+            const savedSex = this.getStorage('chatSex');
             
             // Check if profile is required
             const requireProfile = this.settings?.require_profile === 'true';
@@ -900,12 +900,12 @@ class RadioChatBox {
                         // Current user was kicked
                         console.log('Current user was kicked!');
                         
-                        // Clear all cookies and storage BEFORE showing alert
-                        this.setCookie('chatNickname', '', -1);
-                        this.setCookie('chatAge', '', -1);
-                        this.setCookie('chatLocation', '', -1);
-                        this.setCookie('chatSex', '', -1);
-                        this.setCookie('chatSessionId', '', -1);
+                        // Clear all storage (both localStorage and cookies)
+                        this.removeStorage('chatNickname');
+                        this.removeStorage('chatAge');
+                        this.removeStorage('chatLocation');
+                        this.removeStorage('chatSex');
+                        this.removeStorage('chatSessionId');
                         localStorage.clear();
                         
                         alert('You have been kicked from the chat by an administrator.');
