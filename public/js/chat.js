@@ -1475,10 +1475,12 @@ class RadioChatBox {
                 <span class="message-time">${timeString}</span>
             </div>
             ${replyQuoteHTML}
-            <div class="message-text">${this.escapeHtml(messageData.message)}</div>
-            <div class="message-actions">
-                ${replyButton}
-                ${deleteButton}
+            <div class="message-body">
+                <div class="message-text">${this.escapeHtml(messageData.message)}</div>
+                <div class="message-actions">
+                    ${replyButton}
+                    ${deleteButton}
+                </div>
             </div>
         `;
 

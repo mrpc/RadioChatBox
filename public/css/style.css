@@ -573,8 +573,7 @@ body {
 .message {
     display: flex;
     flex-direction: column;
-    padding: 10px 14px 10px 14px;
-    padding-right: 60px; /* Space for action buttons */
+    padding: 10px 14px;
     background: white;
     border-radius: 8px 8px 8px 2px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -664,24 +663,33 @@ body {
     position: relative;
 }
 
-/* Message actions container - always visible */
+/* Message body - flex row for text and actions */
+.message-body {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.message-text {
+    flex: 1;
+    color: #374151;
+    font-size: 15px;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+/* Message actions container - inline with text */
 .message-actions {
-    position: absolute;
-    top: 6px;
-    right: 6px;
     display: flex;
     gap: 2px;
     opacity: 0;
     transition: opacity 0.2s;
-    z-index: 10;
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 
 .message:hover .message-actions {
     opacity: 1;
-}
-
-.message {
-    position: relative; /* Make sure absolute positioning works */
 }
 
 .reply-message-btn {
@@ -860,13 +868,6 @@ body {
 .message-time {
     font-size: 12px;
     color: #9ca3af;
-}
-
-.message-text {
-    color: #374151;
-    font-size: 15px;
-    line-height: 1.5;
-    word-wrap: break-word;
 }
 
 .message-photo {
