@@ -1481,9 +1481,103 @@ class RadioChatBox {
         separator.innerHTML = `<span>${label}</span>`;
         this.messagesContainer.appendChild(separator);
     }
+    
+    convertEmoticonsToEmojis(text) {
+        // Map of common emoticons to their emoji equivalents
+        const emoticonMap = [
+            // Happy/Smiling faces
+            { pattern: /:-\)/g, emoji: '🙂' },
+            { pattern: /:\)/g, emoji: '🙂' },
+            { pattern: /=\)/g, emoji: '🙂' },
+            { pattern: /:-D/g, emoji: '😃' },
+            { pattern: /:D/g, emoji: '😃' },
+            { pattern: /=D/g, emoji: '😃' },
+            { pattern: /xD/gi, emoji: '😆' },
+            { pattern: /XD/g, emoji: '😆' },
+            
+            // Winking
+            { pattern: /;-\)/g, emoji: '😉' },
+            { pattern: /;\)/g, emoji: '😉' },
+            
+            // Sad faces
+            { pattern: /:-\(/g, emoji: '🙁' },
+            { pattern: /:\(/g, emoji: '🙁' },
+            { pattern: /=\(/g, emoji: '🙁' },
+            { pattern: /:-\[/g, emoji: '😞' },
+            { pattern: /:\[/g, emoji: '😞' },
+            
+            // Tongue out
+            { pattern: /:-[pP]/g, emoji: '😛' },
+            { pattern: /:[pP]/g, emoji: '😛' },
+            { pattern: /:-[bB]/g, emoji: '😛' },
+            
+            // Love/Hearts
+            { pattern: /<3/g, emoji: '❤️' },
+            { pattern: /<\/3/g, emoji: '💔' },
+            
+            // Cool/Sunglasses
+            { pattern: /8-\)/g, emoji: '😎' },
+            { pattern: /B-\)/gi, emoji: '😎' },
+            
+            // Surprised/Shocked
+            { pattern: /:-[oO]/g, emoji: '😮' },
+            { pattern: /:[oO]/g, emoji: '😮' },
+            
+            // Crying
+            { pattern: /:'-\(/g, emoji: '😢' },
+            { pattern: /:'\(/g, emoji: '😢' },
+            { pattern: /;-;/g, emoji: '😢' },
+            { pattern: /T_T/g, emoji: '😭' },
+            { pattern: /T-T/g, emoji: '😭' },
+            
+            // Laughing
+            { pattern: /:-\|/g, emoji: '😐' },
+            { pattern: /:\|/g, emoji: '😐' },
+            
+            // Kiss
+            { pattern: /:-\*/g, emoji: '😘' },
+            { pattern: /:\*/g, emoji: '😘' },
+            
+            // Angel
+            { pattern: /O:-\)/g, emoji: '😇' },
+            { pattern: /O:\)/g, emoji: '😇' },
+            
+            // Devil
+            { pattern: />:-\)/g, emoji: '😈' },
+            { pattern: />:\)/g, emoji: '😈' },
+            
+            // Confused
+            { pattern: /:-\//g, emoji: '😕' },
+            { pattern: /:\//g, emoji: '😕' },
+            { pattern: /:-\\/g, emoji: '😕' },
+            { pattern: /:\\/g, emoji: '😕' },
+            
+            // Thinking
+            { pattern: /:-\?/g, emoji: '🤔' },
+            { pattern: /:\?/g, emoji: '🤔' },
+            
+            // Thumbs up/down
+            { pattern: /\(y\)/gi, emoji: '👍' },
+            { pattern: /\(n\)/gi, emoji: '👎' }
+        ];
+        
+        let result = text;
+        
+        // Apply each emoticon replacement
+        emoticonMap.forEach(({ pattern, emoji }) => {
+            result = result.replace(pattern, emoji);
+        });
+        
+        return result;
+    }
 
     async sendMessage() {
-        const message = this.messageInput.value.trim();
+        let message = this.messageInput.value.trim();
+        
+        // Convert emoticons to emojis
+        if (message) {
+            message = this.convertEmoticonsToEmojis(message);
+        }
 
         // Check if we have a photo or message
         if (!message && !this.selectedPhoto) {
