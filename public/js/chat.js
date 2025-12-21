@@ -1419,8 +1419,10 @@ class RadioChatBox {
             const deleteBtn = messageDiv.querySelector('.delete-message-btn');
             if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
-                    const msgId = e.target.getAttribute('data-message-id');
-                    this.deleteMessage(msgId, e.target);
+                    // Find the button element (in case click target is the emoji/image inside)
+                    const button = e.target.closest('.delete-message-btn');
+                    const msgId = button ? button.getAttribute('data-message-id') : null;
+                    this.deleteMessage(msgId, button || e.target);
                 });
             }
         }
