@@ -573,13 +573,15 @@ body {
 .message {
     display: flex;
     flex-direction: column;
-    padding: 10px 14px;
+    padding: 10px 14px 10px 14px;
+    padding-right: 60px; /* Space for action buttons */
     background: white;
     border-radius: 8px 8px 8px 2px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     animation: slideIn 0.2s ease;
     max-width: 75%;
     margin-bottom: 2px;
+    position: relative;
 }
 
 .message.first-in-group {
@@ -665,12 +667,13 @@ body {
 /* Message actions container - always visible */
 .message-actions {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 6px;
+    right: 6px;
     display: flex;
-    gap: 4px;
+    gap: 2px;
     opacity: 0;
     transition: opacity 0.2s;
+    z-index: 10;
 }
 
 .message:hover .message-actions {
