@@ -863,7 +863,9 @@ body {
     position: absolute;
     bottom: 80px;
     left: 20px;
-    width: 320px;
+    width: 340px;
+    max-width: 340px;
+    min-width: 340px;
     max-height: 400px;
     background: white;
     border-radius: 12px;
@@ -871,6 +873,8 @@ body {
     overflow: hidden;
     z-index: 100;
     animation: slideUp 0.2s ease;
+    display: flex;
+    flex-direction: column;
 }
 
 @keyframes slideUp {
@@ -888,20 +892,26 @@ body {
     display: flex;
     border-bottom: 1px solid #e5e7eb;
     background: #f9fafb;
-    padding: 8px;
-    gap: 4px;
+    padding: 6px;
+    gap: 2px;
     overflow-x: auto;
+    flex-shrink: 0;
 }
 
 .emoji-category {
     background: transparent;
     border: none;
-    font-size: 24px;
-    padding: 8px 12px;
+    font-size: 20px;
+    padding: 6px 8px;
     cursor: pointer;
     border-radius: 6px;
     transition: background 0.2s;
     flex-shrink: 0;
+    min-width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .emoji-category:hover {
@@ -910,16 +920,22 @@ body {
 
 .emoji-category.active {
     background: #667eea;
-    transform: scale(1.1);
+}
+
+.emoji-category img.emoji {
+    height: 20px;
+    width: 20px;
 }
 
 #emoji-grid {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
+    grid-template-columns: repeat(8, 40px);
     gap: 4px;
     padding: 12px;
     max-height: 300px;
     overflow-y: auto;
+    overflow-x: hidden;
+    justify-content: center;
 }
 
 .emoji-item {
@@ -1155,12 +1171,27 @@ img.emoji {
     /* Emoji picker adjustments */
     #emoji-picker {
         bottom: 60px;
+        width: 280px;
+        max-width: 280px;
+        min-width: 280px;
         max-height: 250px;
     }
 
     #emoji-grid {
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(6, 36px);
         max-height: 180px;
+    }
+    
+    .emoji-category {
+        font-size: 18px;
+        padding: 4px 6px;
+        min-width: 32px;
+        height: 32px;
+    }
+    
+    .emoji-category img.emoji {
+        height: 18px;
+        width: 18px;
     }
 
     .emoji-item {
