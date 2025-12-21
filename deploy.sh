@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="${PROJECT_DIR}/backups"
+
 LOG_FILE="${PROJECT_DIR}/deploy.log"
 WEB_ROOT="${PROJECT_DIR}/public"
 
@@ -65,18 +65,6 @@ fi
 # Load environment variables
 source .env 2>/dev/null || warning "Could not load .env file"
 
-# Create backup directory if it doesn't exist
-mkdir -p "$BACKUP_DIR"
-
-# Backup database
-log "Creating database backup..."
-BACKUP_FILE="${BACKUP_DIR}/db_backup_$(date +%Y%m%d_%H%M%S).sql"
-sudo -u postgres pg_dump "$DB_NAME" > "$BACKUP_FILE" 2>/dev/null || warning "Database backup failed (may be first deployment)"
-log "Database backed up to: $BACKUP_FILE"
-
-# Keep only last 7 backups
-log "Cleaning old backups (keeping last 7)..."
-ls -t "${BACKUP_DIR}"/db_backup_*.sql 2>/dev/null | tail -n +8 | xargs -r rm
 
 # Pull latest code
 log "Pulling latest code from repository..."
@@ -151,7 +139,6 @@ log "========================================="
 log ""
 log "Summary:"
 log "  - Code updated from Git"
-log "  - Database backed up to: $BACKUP_FILE"
 log "  - Migrations applied (if any)"
 log "  - Dependencies updated"
 log "  - Apache reloaded"
