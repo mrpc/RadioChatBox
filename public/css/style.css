@@ -2133,6 +2133,7 @@ body.metal-theme .reply-preview-close:hover {
 body.metal-theme .reply-message-btn,
 body.metal-theme .delete-message-btn {
     color: #ff4444;
+    filter: hue-rotate(320deg) brightness(1.1);
 }
 
 body.metal-theme .reply-message-btn:hover {
