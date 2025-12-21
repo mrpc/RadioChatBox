@@ -61,14 +61,64 @@ class RadioChatBox {
         this.activeUsersContainer = null;
         this.activeUsersCount = null;
 
+        // Setup postMessage listener for cross-origin iframe communication
+        this.setupPostMessageListener();
+
         this.init();
     }
 
     init() {
         // Load settings first
         this.loadSettings().then(() => {
-            this.proceedWithNormalLogin();
+            // Try to get sessionId from parent if in iframe
+            if (this.isEmbedded) {
+                this.requestSessionIdFromParent();
+            } else {
+                this.proceedWithNormalLogin();
+            }
         });
+    }
+
+    requestSessionIdFromParent() {
+        // Listen for response from parent
+        const timeout = setTimeout(() => {
+            console.log('No response from parent, using local sessionId');
+            this.proceedWithNormalLogin();
+        }, 1000); // Wait 1 second for parent response
+
+        const handleParentMessage = (event) => {
+            // Security: Only accept messages from parent
+            if (event.origin !== window.location.origin && !this.isMessageFromParent(event)) {
+                return;
+            }
+
+            if (event.data.type === 'radiochatbox:sessionId') {
+                clearTimeout(timeout);
+                window.removeEventListener('message', handleParentMessage);
+                
+                if (event.data.sessionId) {
+                    // Parent provided sessionId - use it
+                    this.setStorage('chatSessionId', event.data.sessionId);
+                    console.log('Using parent sessionId:', event.data.sessionId);
+                }
+                this.proceedWithNormalLogin();
+            }
+        };
+
+        window.addEventListener('message', handleParentMessage, false);
+
+        // Request sessionId from parent
+        if (window.parent !== window) {
+            window.parent.postMessage({
+                type: 'radiochatbox:requestSessionId',
+                source: 'radiochatbox-iframe'
+            }, '*');
+        }
+    }
+
+    isMessageFromParent(event) {
+        // Simple heuristic: check if message has radiochatbox type
+        return event.data && event.data.type && event.data.type.includes('radiochatbox');
     }
     
     proceedWithNormalLogin() {
@@ -351,6 +401,12 @@ class RadioChatBox {
             localStorage.setItem(name, value);
             // Also set cookie as backup for cross-tab sync
             this.setCookie(name, value, 365);
+            
+            // Broadcast sessionId changes to iframes if in parent page
+            if (name === 'chatSessionId' && window.self === window.top) {
+                this.broadcastSessionIdToIframes(value);
+            }
+            
             return true;
         } catch (e) {
             // localStorage not available or full - use cookies only
@@ -367,6 +423,42 @@ class RadioChatBox {
             // Ignore
         }
         this.setCookie(name, '', -1);
+    }
+
+    setupPostMessageListener() {
+        // Listen for postMessage events from iframes or parent
+        window.addEventListener('message', (event) => {
+            if (!event.data || !event.data.type) return;
+
+            // Handle iframe requesting sessionId
+            if (event.data.type === 'radiochatbox:requestSessionId') {
+                // Only respond if we're in the parent page (not an iframe)
+                if (window.self === window.top) {
+                    const sessionId = this.getStorage('chatSessionId');
+                    if (event.source) {
+                        event.source.postMessage({
+                            type: 'radiochatbox:sessionId',
+                            sessionId: sessionId
+                        }, '*');
+                    }
+                }
+            }
+        }, false);
+    }
+
+    broadcastSessionIdToIframes(sessionId) {
+        // Broadcast current sessionId to all iframes
+        const iframes = document.querySelectorAll('iframe');
+        iframes.forEach(iframe => {
+            try {
+                iframe.contentWindow.postMessage({
+                    type: 'radiochatbox:sessionId',
+                    sessionId: sessionId
+                }, '*');
+            } catch (e) {
+                // Cross-origin iframe - will handle via postMessage request instead
+            }
+        });
     }
 
     getCookie(name) {
