@@ -1345,7 +1345,9 @@ class RadioChatBox {
         const messageDiv = document.createElement('div');
         const isOwnMessage = messageData.username === this.username;
         messageDiv.className = `message ${isOwnMessage ? 'own-message' : ''}`;
-        messageDiv.dataset.messageId = messageData.id; // Add message ID for deletion
+        // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
+        const msgId = messageData.id || messageData.message_id;
+        messageDiv.dataset.messageId = msgId;
         
         // Check if we should group this message with previous ones
         const messagesInContainer = this.messagesContainer.children;
@@ -1397,8 +1399,10 @@ class RadioChatBox {
 
         // Check if user is admin
         const isAdmin = localStorage.getItem('isAdmin') === 'true';
-        const deleteButton = isAdmin ? `
-            <button class="delete-message-btn" data-message-id="${messageData.id}" title="Delete message">
+        // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
+        const msgId = messageData.id || messageData.message_id;
+        const deleteButton = isAdmin && msgId ? `
+            <button class="delete-message-btn" data-message-id="${msgId}" title="Delete message">
                 🗑️
             </button>
         ` : '';
