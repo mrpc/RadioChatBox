@@ -360,13 +360,20 @@ class RadioChatBox {
     }
 
     removeStorage(name) {
-        // Remove from both storage mechanisms
+        // Remove from localStorage
         try {
             localStorage.removeItem(name);
         } catch (e) {
             // Ignore
         }
-        this.setCookie(name, '', -1);
+        
+        // Remove cookies from all possible paths
+        // Try root path
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+        // Try with Secure and Partitioned (for HTTPS)
+        if (window.location.protocol === 'https:') {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=None; Secure; Partitioned`;
+        }
     }
 
     getCookie(name) {
@@ -754,14 +761,35 @@ class RadioChatBox {
     
     logout() {
         this.disconnect();
-        this.removeStorage('chatNickname'); // Delete nickname from storage
-        this.removeStorage('chatAge'); // Delete age from storage
-        this.removeStorage('chatLocation'); // Delete location from storage
-        this.removeStorage('chatSex'); // Delete sex from storage
-        this.removeStorage('chatSessionId'); // Delete session ID from storage
-        localStorage.clear(); // Clear any other stored settings
         
-        // Small delay to ensure storage is cleared before reload
+        // Remove individual storage items
+        this.removeStorage('chatNickname');
+        this.removeStorage('chatAge');
+        this.removeStorage('chatLocation');
+        this.removeStorage('chatSex');
+        this.removeStorage('chatSessionId');
+        
+        // Clear all localStorage
+        try {
+            localStorage.clear();
+        } catch (e) {
+            console.error('Failed to clear localStorage:', e);
+        }
+        
+        // Clear all cookies by setting them to empty with past date
+        document.cookie.split(';').forEach(c => {
+            const eqPos = c.indexOf('=');
+            const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+            if (name && name.startsWith('chat')) {
+                // Remove cookie with various attributes
+                document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+                if (window.location.protocol === 'https:') {
+                    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=None; Secure`;
+                }
+            }
+        });
+        
+        // Reload page after ensuring storage is cleared
         setTimeout(() => {
             location.reload();
         }, 100);
