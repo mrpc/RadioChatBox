@@ -66,31 +66,39 @@ fi
 source .env 2>/dev/null || warning "Could not load .env file"
 
 
+# Control whether to run database migrations (default: skip)
+# Set RUN_MIGRATIONS=true in the environment or .env to enable.
+RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
+
 # Pull latest code
 log "Pulling latest code from repository..."
 git fetch origin
 git reset --hard origin/main || error "Failed to pull latest code"
 
-# Check for migrations
-log "Checking for database migrations..."
-if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" ]; then
-    log "Running database migrations..."
-    for migration in database/migrations/*.sql; do
-        if [ -f "$migration" ]; then
-            log "  Applying: $(basename $migration)"
-            # Copy to /tmp so postgres user can access it
-            TMP_MIGRATION="/tmp/migration_$(basename $migration)_$$"
-            cp "$migration" "$TMP_MIGRATION"
-            chmod 644 "$TMP_MIGRATION"
-            
-            sudo -u postgres psql -d "$DB_NAME" -f "$TMP_MIGRATION" || warning "Migration $(basename $migration) failed or already applied"
-            
-            # Clean up
-            rm -f "$TMP_MIGRATION"
-        fi
-    done
+# Check for migrations (skipped by default)
+if [ "$RUN_MIGRATIONS" = "true" ]; then
+    log "Checking for database migrations..."
+    if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" ]; then
+        log "Running database migrations..."
+        for migration in database/migrations/*.sql; do
+            if [ -f "$migration" ]; then
+                log "  Applying: $(basename $migration)"
+                # Copy to /tmp so postgres user can access it
+                TMP_MIGRATION="/tmp/migration_$(basename $migration)_$$"
+                cp "$migration" "$TMP_MIGRATION"
+                chmod 644 "$TMP_MIGRATION"
+
+                sudo -u postgres psql -d "$DB_NAME" -f "$TMP_MIGRATION" || warning "Migration $(basename $migration) failed or already applied"
+
+                # Clean up
+                rm -f "$TMP_MIGRATION"
+            fi
+        done
+    else
+        log "No migrations found"
+    fi
 else
-    log "No migrations found"
+    log "Skipping database migrations (RUN_MIGRATIONS=false)"
 fi
 
 # Install/update composer dependencies
