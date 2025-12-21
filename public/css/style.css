@@ -983,7 +983,13 @@ img.emoji {
 
 /* Twemoji in message text */
 .message-text img.emoji {
-    height: 1.3e !important;
+    height: 1.3em;
+    width: 1.3em;
+}
+
+/* Twemoji in emoji picker - fixed size */
+.emoji-item img.emoji {
+    height: 24px !important;
     width: 24px !important;
     min-height: 24px;
     max-height: 24px;
@@ -992,13 +998,7 @@ img.emoji {
     margin: 0;
     padding: 0;
     vertical-align: middle;
-    flex-shrink: 0
-/* Twemoji in emoji picker - fixed size */
-.emoji-item img.emoji {
-    height: 24px;
-    width: 24px;
-    margin: 0;
-    vertical-align: middle;
+    flex-shrink: 0;
 }
 
 /* Scrollbar styling */
