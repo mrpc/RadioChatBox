@@ -1261,12 +1261,14 @@ class RadioChatBox {
             const isFromMe = msg.from_username === this.username;
             messageDiv.className = `message private-message ${isFromMe ? 'sent' : 'received'}`;
             
-            const timestamp = new Date(msg.created_at).toLocaleTimeString();
+            const timestamp = new Date(msg.created_at);
+            const timeString = timestamp.toLocaleTimeString();
+            const fullDate = timestamp.toLocaleString();
             
             let content = `
                 <div class="message-header">
                     <strong class="message-username">${this.escapeHtml(isFromMe ? 'You' : msg.from_username)}</strong>
-                    <span class="message-time">${timestamp}</span>
+                    <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
                 </div>
             `;
             
@@ -1477,6 +1479,7 @@ class RadioChatBox {
             hour: '2-digit',
             minute: '2-digit'
         });
+        const fullDate = timestamp.toLocaleString();
 
         // Check if user is admin
         const isAdmin = localStorage.getItem('isAdmin') === 'true';
@@ -1513,7 +1516,7 @@ class RadioChatBox {
         messageDiv.innerHTML = `
             <div class="message-header">
                 <span class="message-username">${this.escapeHtml(messageData.username)}</span>
-                <span class="message-time">${timeString}</span>
+                <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
             </div>
             ${replyQuoteHTML}
             <div class="message-body">
