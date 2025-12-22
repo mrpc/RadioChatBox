@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="${PROJECT_DIR}/backups"
+
 LOG_FILE="${PROJECT_DIR}/deploy.log"
 WEB_ROOT="${PROJECT_DIR}/public"
 
@@ -65,44 +65,40 @@ fi
 # Load environment variables
 source .env 2>/dev/null || warning "Could not load .env file"
 
-# Create backup directory if it doesn't exist
-mkdir -p "$BACKUP_DIR"
 
-# Backup database
-log "Creating database backup..."
-BACKUP_FILE="${BACKUP_DIR}/db_backup_$(date +%Y%m%d_%H%M%S).sql"
-sudo -u postgres pg_dump "$DB_NAME" > "$BACKUP_FILE" 2>/dev/null || warning "Database backup failed (may be first deployment)"
-log "Database backed up to: $BACKUP_FILE"
-
-# Keep only last 7 backups
-log "Cleaning old backups (keeping last 7)..."
-ls -t "${BACKUP_DIR}"/db_backup_*.sql 2>/dev/null | tail -n +8 | xargs -r rm
+# Control whether to run database migrations (default: skip)
+# Set RUN_MIGRATIONS=true in the environment or .env to enable.
+RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 
 # Pull latest code
 log "Pulling latest code from repository..."
 git fetch origin
 git reset --hard origin/main || error "Failed to pull latest code"
 
-# Check for migrations
-log "Checking for database migrations..."
-if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" ]; then
-    log "Running database migrations..."
-    for migration in database/migrations/*.sql; do
-        if [ -f "$migration" ]; then
-            log "  Applying: $(basename $migration)"
-            # Copy to /tmp so postgres user can access it
-            TMP_MIGRATION="/tmp/migration_$(basename $migration)_$$"
-            cp "$migration" "$TMP_MIGRATION"
-            chmod 644 "$TMP_MIGRATION"
-            
-            sudo -u postgres psql -d "$DB_NAME" -f "$TMP_MIGRATION" || warning "Migration $(basename $migration) failed or already applied"
-            
-            # Clean up
-            rm -f "$TMP_MIGRATION"
-        fi
-    done
+# Check for migrations (skipped by default)
+if [ "$RUN_MIGRATIONS" = "true" ]; then
+    log "Checking for database migrations..."
+    if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" ]; then
+        log "Running database migrations..."
+        for migration in database/migrations/*.sql; do
+            if [ -f "$migration" ]; then
+                log "  Applying: $(basename $migration)"
+                # Copy to /tmp so postgres user can access it
+                TMP_MIGRATION="/tmp/migration_$(basename $migration)_$$"
+                cp "$migration" "$TMP_MIGRATION"
+                chmod 644 "$TMP_MIGRATION"
+
+                sudo -u postgres psql -d "$DB_NAME" -f "$TMP_MIGRATION" || warning "Migration $(basename $migration) failed or already applied"
+
+                # Clean up
+                rm -f "$TMP_MIGRATION"
+            fi
+        done
+    else
+        log "No migrations found"
+    fi
 else
-    log "No migrations found"
+    log "Skipping database migrations (RUN_MIGRATIONS=false)"
 fi
 
 # Install/update composer dependencies
@@ -113,21 +109,8 @@ composer install --no-dev --optimize-autoloader || error "Composer install faile
 log "Clearing Redis cache..."
 redis-cli FLUSHDB || warning "Redis cache clear failed"
 
-# Set correct permissions
-log "Setting file permissions..."
-# With PHP-FPM, files should be owned by current user
-sudo chown -R $USER:$USER "$PROJECT_DIR"
-sudo chmod -R 755 "$WEB_ROOT"
-sudo chmod -R 775 "${PROJECT_DIR}/public/uploads"
 
-# Restart Apache
-log "Reloading Apache..."
-sudo systemctl reload apache2 || sudo systemctl reload httpd || warning "Apache reload failed"
-
-# Wait for service to be ready
-log "Waiting for service to start..."
-sleep 2
-
+]
 # Health check
 log "Running health check..."
 HEALTH_URL="http://localhost/api/health.php"
@@ -151,10 +134,8 @@ log "========================================="
 log ""
 log "Summary:"
 log "  - Code updated from Git"
-log "  - Database backed up to: $BACKUP_FILE"
 log "  - Migrations applied (if any)"
 log "  - Dependencies updated"
-log "  - Apache reloaded"
 log "  - Health check passed"
 log ""
 log "Next steps:"

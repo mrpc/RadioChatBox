@@ -47,6 +47,7 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 
 - **Optional user profiles** (age, location, sex)
 - **Emoji picker** with categorized emojis
+- **Universal emoji support** using Twemoji library for older Windows versions (Windows 7/8/10)
 - **Responsive design** for desktop and mobile
 - **Collapsible sidebar** optimized for small screens
 - **Embeddable** widget for websites with customizable audio notifications
@@ -142,6 +143,8 @@ To embed the chat in your existing radio website:
 </iframe>
 ```
 
+**Note:** RadioChatBox uses localStorage for session management, which works perfectly in iframes even when third-party cookies are blocked. For modern browsers (Chrome 114+, Edge 114+), it also supports Partitioned Cookies (CHIPS) as a backup mechanism.
+
 ### Option 2: Direct Integration
 
 ```html
@@ -208,6 +211,7 @@ The system supports four hierarchical roles with different permission levels:
 | Allow Photo Uploads | Enable photo sharing in private messages | true |
 | Max Photo Size | Maximum upload size in MB | 5 MB |
 | Rate Limit | Messages per time window | 10 per 60s |
+| Stream Status URL | Icecast/Shoutcast status JSON URL. When set, the chat header shows the current song/artist. | (empty) |
 
 ---
 
@@ -271,6 +275,7 @@ Full API documentation is available in OpenAPI 3.0 format: [`docs/openapi.yaml`]
 | `/api/stream.php` | GET | SSE stream for real-time updates |
 | `/api/send.php` | POST | Send a public message |
 | `/api/history.php` | GET | Get message history |
+| `/api/now-playing.php` | GET | Current radio song/artist (if configured) |
 | `/api/register.php` | POST | Register username |
 | `/api/settings.php` | GET | Get public settings |
 

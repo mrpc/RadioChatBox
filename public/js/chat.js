@@ -48,6 +48,14 @@ class RadioChatBox {
             messages: []
         };
         
+        // Reply state
+        this.replyState = {
+            active: false,
+            messageId: null,
+            username: null,
+            message: null
+        };
+        
         // Conversations tracking
         this.conversations = new Map(); // Map of username -> { lastMessage, unreadCount, timestamp }
         this.conversationsPanelOpen = false;
@@ -73,13 +81,13 @@ class RadioChatBox {
     
     proceedWithNormalLogin() {
         // Check if user has a saved nickname
-        const savedNickname = this.getCookie('chatNickname');
+        const savedNickname = this.getStorage('chatNickname');
         
         if (savedNickname) {
             // Try to get saved profile data
-            const savedAge = this.getCookie('chatAge');
-            const savedLocation = this.getCookie('chatLocation');
-            const savedSex = this.getCookie('chatSex');
+            const savedAge = this.getStorage('chatAge');
+            const savedLocation = this.getStorage('chatLocation');
+            const savedSex = this.getStorage('chatSex');
             
             // Check if profile is required
             const requireProfile = this.settings?.require_profile === 'true';
@@ -164,6 +172,9 @@ class RadioChatBox {
                 
                 // Update photo upload button visibility
                 this.updatePhotoButtonVisibility();
+
+                // Initialize now playing polling if configured
+                this.initNowPlaying();
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -302,6 +313,44 @@ class RadioChatBox {
             }
         }
     }
+
+    initNowPlaying() {
+        try {
+            const urlSet = !!(this.settings && this.settings.radio_status_url && this.settings.radio_status_url.trim() !== '');
+            const el = document.getElementById('now-playing');
+            if (!urlSet || !el) {
+                if (el) el.style.display = 'none';
+                return;
+            }
+
+            // Immediately fetch once, then poll
+            this.updateNowPlaying();
+            if (!this._nowPlayingInterval) {
+                this._nowPlayingInterval = setInterval(() => this.updateNowPlaying(), 15000);
+            }
+        } catch (e) {
+            // Non-fatal
+            console.warn('initNowPlaying error', e);
+        }
+    }
+
+    async updateNowPlaying() {
+        const el = document.getElementById('now-playing');
+        if (!el) return;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/now-playing.php?t=${Date.now()}`, { cache: 'no-cache' });
+            const data = await resp.json();
+            if (data && data.success && data.nowPlaying && data.nowPlaying.active && data.nowPlaying.display) {
+                el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
+        } catch (e) {
+            // hide on error
+            el.style.display = 'none';
+        }
+    }
     
     populateCountryDropdown() {
         const locationSelect = document.getElementById('location-input');
@@ -322,13 +371,58 @@ class RadioChatBox {
     }
 
     getOrCreateSessionId() {
-        // Use cookie instead of sessionStorage so it's shared across tabs
-        let sessionId = this.getCookie('chatSessionId');
+        // Use localStorage first (works in iframes), fallback to cookies
+        let sessionId = this.getStorage('chatSessionId');
         if (!sessionId) {
             sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            this.setCookie('chatSessionId', sessionId, 365); // Store for 1 year
+            this.setStorage('chatSessionId', sessionId);
         }
         return sessionId;
+    }
+
+    // Modern storage method - uses localStorage first (works in iframes), falls back to cookies
+    getStorage(name) {
+        // Try localStorage first (works even in iframes when third-party cookies are blocked)
+        try {
+            const value = localStorage.getItem(name);
+            if (value !== null) return value;
+        } catch (e) {
+            // localStorage not available (rare case)
+        }
+        
+        // Fallback to cookies
+        return this.getCookie(name);
+    }
+
+    setStorage(name, value) {
+        // Try localStorage first
+        try {
+            localStorage.setItem(name, value);
+            // Also set cookie as backup for cross-tab sync
+            this.setCookie(name, value, 365);
+            return true;
+        } catch (e) {
+            // localStorage not available or full - use cookies only
+            this.setCookie(name, value, 365);
+            return false;
+        }
+    }
+
+    removeStorage(name) {
+        // Remove from localStorage
+        try {
+            localStorage.removeItem(name);
+        } catch (e) {
+            // Ignore
+        }
+        
+        // Remove cookies from all possible paths
+        // Try root path
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+        // Try with Secure and Partitioned (for HTTPS)
+        if (window.location.protocol === 'https:') {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=None; Secure; Partitioned`;
+        }
     }
 
     getCookie(name) {
@@ -340,7 +434,16 @@ class RadioChatBox {
 
     setCookie(name, value, days = 365) {
         const expires = new Date(Date.now() + days * 864e5).toUTCString();
-        document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax`;
+        // Use SameSite=None; Secure for third-party iframe context
+        // Falls back to SameSite=Lax if not in HTTPS
+        const isSecure = window.location.protocol === 'https:';
+        const sameSite = isSecure ? 'None; Secure' : 'Lax';
+        
+        // Add Partitioned attribute for CHIPS (Cookies Having Independent Partitioned State)
+        // This allows cookies to work in third-party contexts when properly partitioned
+        const partitioned = isSecure ? '; Partitioned' : '';
+        
+        document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=${sameSite}${partitioned}`;
     }
 
     async checkAndRegisterNickname(nickname, age = null, location = null, sex = null) {
@@ -393,12 +496,12 @@ class RadioChatBox {
             // Success! Set username and initialize chat
             this.username = nickname;
             this.userProfile = { age, location, sex };
-            this.setCookie('chatNickname', nickname);
+            this.setStorage('chatNickname', nickname);
             
-            // Save profile data in cookies if provided
-            if (age) this.setCookie('chatAge', age);
-            if (location) this.setCookie('chatLocation', location);
-            if (sex) this.setCookie('chatSex', sex);
+            // Save profile data in storage if provided
+            if (age) this.setStorage('chatAge', age);
+            if (location) this.setStorage('chatLocation', location);
+            if (sex) this.setStorage('chatSex', sex);
             
             // Track user registration
             if (window.analytics) {
@@ -669,10 +772,10 @@ class RadioChatBox {
             const data = await response.json();
 
             if (data.success) {
-                // Update cookies with new profile data
-                this.setCookie('chatAge', age);
-                this.setCookie('chatLocation', location);
-                this.setCookie('chatSex', sex);
+                // Update storage with new profile data
+                this.setStorage('chatAge', age);
+                this.setStorage('chatLocation', location);
+                this.setStorage('chatSex', sex);
                 
                 // Update local profile object
                 this.userProfile = { age, location, sex };
@@ -707,12 +810,38 @@ class RadioChatBox {
     
     logout() {
         this.disconnect();
-        this.setCookie('chatNickname', '', -1); // Delete nickname cookie
-        this.setCookie('chatAge', '', -1); // Delete age cookie
-        this.setCookie('chatLocation', '', -1); // Delete location cookie
-        this.setCookie('chatSex', '', -1); // Delete sex cookie
-        localStorage.clear(); // Clear any stored settings
-        location.reload();
+        
+        // Remove individual storage items
+        this.removeStorage('chatNickname');
+        this.removeStorage('chatAge');
+        this.removeStorage('chatLocation');
+        this.removeStorage('chatSex');
+        this.removeStorage('chatSessionId');
+        
+        // Clear all localStorage
+        try {
+            localStorage.clear();
+        } catch (e) {
+            console.error('Failed to clear localStorage:', e);
+        }
+        
+        // Clear all cookies by setting them to empty with past date
+        document.cookie.split(';').forEach(c => {
+            const eqPos = c.indexOf('=');
+            const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+            if (name && name.startsWith('chat')) {
+                // Remove cookie with various attributes
+                document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+                if (window.location.protocol === 'https:') {
+                    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=None; Secure`;
+                }
+            }
+        });
+        
+        // Reload page after ensuring storage is cleared
+        setTimeout(() => {
+            location.reload();
+        }, 100);
     }
 
     initializeChat() {
@@ -852,12 +981,12 @@ class RadioChatBox {
                         // Current user was kicked
                         console.log('Current user was kicked!');
                         
-                        // Clear all cookies and storage BEFORE showing alert
-                        this.setCookie('chatNickname', '', -1);
-                        this.setCookie('chatAge', '', -1);
-                        this.setCookie('chatLocation', '', -1);
-                        this.setCookie('chatSex', '', -1);
-                        this.setCookie('chatSessionId', '', -1);
+                        // Clear all storage (both localStorage and cookies)
+                        this.removeStorage('chatNickname');
+                        this.removeStorage('chatAge');
+                        this.removeStorage('chatLocation');
+                        this.removeStorage('chatSex');
+                        this.removeStorage('chatSessionId');
                         localStorage.clear();
                         
                         alert('You have been kicked from the chat by an administrator.');
@@ -1132,12 +1261,14 @@ class RadioChatBox {
             const isFromMe = msg.from_username === this.username;
             messageDiv.className = `message private-message ${isFromMe ? 'sent' : 'received'}`;
             
-            const timestamp = new Date(msg.created_at).toLocaleTimeString();
+            const timestamp = new Date(msg.created_at);
+            const timeString = timestamp.toLocaleTimeString();
+            const fullDate = timestamp.toLocaleString();
             
             let content = `
                 <div class="message-header">
                     <strong class="message-username">${this.escapeHtml(isFromMe ? 'You' : msg.from_username)}</strong>
-                    <span class="message-time">${timestamp}</span>
+                    <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
                 </div>
             `;
             
@@ -1160,6 +1291,14 @@ class RadioChatBox {
             
             messageDiv.innerHTML = content;
             this.messagesContainer.appendChild(messageDiv);
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(messageDiv, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
         });
         
         this.scrollToBottom();
@@ -1178,6 +1317,14 @@ class RadioChatBox {
         messages.forEach(msg => {
             this.addMessageToUI(msg, false);
         });
+        
+        // Parse emojis with Twemoji for older Windows support (entire container for efficiency)
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(this.messagesContainer, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
 
         this.scrollToBottom();
     }
@@ -1215,6 +1362,14 @@ class RadioChatBox {
             noticeDiv.style.fontStyle = 'italic';
             noticeDiv.innerHTML = '🗑️ Chat has been cleared by an administrator';
             this.messagesContainer.appendChild(noticeDiv);
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(noticeDiv, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
         }
     }
 
@@ -1258,6 +1413,14 @@ class RadioChatBox {
         if (soundBtn) {
             soundBtn.textContent = this.soundEnabled ? '🔔' : '🔕';
             soundBtn.title = this.soundEnabled ? 'Sound On (click to mute)' : 'Sound Off (click to unmute)';
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(soundBtn, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
         }
     }
 
@@ -1265,7 +1428,9 @@ class RadioChatBox {
         const messageDiv = document.createElement('div');
         const isOwnMessage = messageData.username === this.username;
         messageDiv.className = `message ${isOwnMessage ? 'own-message' : ''}`;
-        messageDiv.dataset.messageId = messageData.id; // Add message ID for deletion
+        // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
+        const msgId = messageData.id || messageData.message_id;
+        messageDiv.dataset.messageId = msgId;
         
         // Check if we should group this message with previous ones
         const messagesInContainer = this.messagesContainer.children;
@@ -1314,22 +1479,53 @@ class RadioChatBox {
             hour: '2-digit',
             minute: '2-digit'
         });
+        const fullDate = timestamp.toLocaleString();
 
         // Check if user is admin
         const isAdmin = localStorage.getItem('isAdmin') === 'true';
-        const deleteButton = isAdmin ? `
-            <button class="delete-message-btn" data-message-id="${messageData.id}" title="Delete message">
+        const deleteButton = isAdmin && msgId ? `
+            <button class="delete-message-btn" data-message-id="${msgId}" title="Delete message">
                 🗑️
             </button>
         ` : '';
+        
+        // Add reply button for all messages
+        const replyButton = msgId ? `
+            <button class="reply-message-btn" data-message-id="${msgId}" title="Reply to this message">
+                ↩️
+            </button>
+        ` : '';
+        
+        // Build reply quote HTML if this is a reply
+        let replyQuoteHTML = '';
+        if (messageData.reply_data && messageData.reply_data.username) {
+            const truncatedMessage = messageData.reply_data.message.length > 50 
+                ? messageData.reply_data.message.substring(0, 50) + '...'
+                : messageData.reply_data.message;
+            replyQuoteHTML = `
+                <div class="reply-quote">
+                    <div class="reply-quote-bar"></div>
+                    <div class="reply-quote-content">
+                        <span class="reply-quote-username">${this.escapeHtml(messageData.reply_data.username)}</span>
+                        <span class="reply-quote-message">${this.escapeHtml(truncatedMessage)}</span>
+                    </div>
+                </div>
+            `;
+        }
 
         messageDiv.innerHTML = `
             <div class="message-header">
                 <span class="message-username">${this.escapeHtml(messageData.username)}</span>
-                <span class="message-time">${timeString}</span>
-                ${deleteButton}
+                <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
             </div>
-            <div class="message-text">${this.escapeHtml(messageData.message)}</div>
+            ${replyQuoteHTML}
+            <div class="message-body">
+                <div class="message-text">${this.escapeHtml(messageData.message)}</div>
+                <div class="message-actions">
+                    ${replyButton}
+                    ${deleteButton}
+                </div>
+            </div>
         `;
 
         // Add event listener for delete button if admin
@@ -1337,13 +1533,33 @@ class RadioChatBox {
             const deleteBtn = messageDiv.querySelector('.delete-message-btn');
             if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
-                    const msgId = e.target.getAttribute('data-message-id');
-                    this.deleteMessage(msgId, e.target);
+                    // Find the button element (in case click target is the emoji/image inside)
+                    const button = e.target.closest('.delete-message-btn');
+                    const msgId = button ? button.getAttribute('data-message-id') : null;
+                    this.deleteMessage(msgId, button || e.target);
                 });
             }
         }
+        
+        // Add event listener for reply button
+        const replyBtn = messageDiv.querySelector('.reply-message-btn');
+        if (replyBtn) {
+            replyBtn.addEventListener('click', (e) => {
+                const button = e.target.closest('.reply-message-btn');
+                const msgId = button ? button.getAttribute('data-message-id') : null;
+                this.setReplyState(msgId, messageData.username, messageData.message);
+            });
+        }
 
         this.messagesContainer.appendChild(messageDiv);
+        
+        // Parse emojis with Twemoji for older Windows support
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(messageDiv, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
         
         if (animate) {
             this.scrollToBottom();
@@ -1393,9 +1609,103 @@ class RadioChatBox {
         separator.innerHTML = `<span>${label}</span>`;
         this.messagesContainer.appendChild(separator);
     }
+    
+    convertEmoticonsToEmojis(text) {
+        // Map of common emoticons to their emoji equivalents
+        const emoticonMap = [
+            // Happy/Smiling faces
+            { pattern: /:-\)/g, emoji: '🙂' },
+            { pattern: /:\)/g, emoji: '🙂' },
+            { pattern: /=\)/g, emoji: '🙂' },
+            { pattern: /:-D/g, emoji: '😃' },
+            { pattern: /:D/g, emoji: '😃' },
+            { pattern: /=D/g, emoji: '😃' },
+            { pattern: /xD/gi, emoji: '😆' },
+            { pattern: /XD/g, emoji: '😆' },
+            
+            // Winking
+            { pattern: /;-\)/g, emoji: '😉' },
+            { pattern: /;\)/g, emoji: '😉' },
+            
+            // Sad faces
+            { pattern: /:-\(/g, emoji: '🙁' },
+            { pattern: /:\(/g, emoji: '🙁' },
+            { pattern: /=\(/g, emoji: '🙁' },
+            { pattern: /:-\[/g, emoji: '😞' },
+            { pattern: /:\[/g, emoji: '😞' },
+            
+            // Tongue out
+            { pattern: /:-[pP]/g, emoji: '😛' },
+            { pattern: /:[pP]/g, emoji: '😛' },
+            { pattern: /:-[bB]/g, emoji: '😛' },
+            
+            // Love/Hearts
+            { pattern: /<3/g, emoji: '❤️' },
+            { pattern: /<\/3/g, emoji: '💔' },
+            
+            // Cool/Sunglasses
+            { pattern: /8-\)/g, emoji: '😎' },
+            { pattern: /B-\)/gi, emoji: '😎' },
+            
+            // Surprised/Shocked
+            { pattern: /:-[oO]/g, emoji: '😮' },
+            { pattern: /:[oO]/g, emoji: '😮' },
+            
+            // Crying
+            { pattern: /:'-\(/g, emoji: '😢' },
+            { pattern: /:'\(/g, emoji: '😢' },
+            { pattern: /;-;/g, emoji: '😢' },
+            { pattern: /T_T/g, emoji: '😭' },
+            { pattern: /T-T/g, emoji: '😭' },
+            
+            // Laughing
+            { pattern: /:-\|/g, emoji: '😐' },
+            { pattern: /:\|/g, emoji: '😐' },
+            
+            // Kiss
+            { pattern: /:-\*/g, emoji: '😘' },
+            { pattern: /:\*/g, emoji: '😘' },
+            
+            // Angel
+            { pattern: /O:-\)/g, emoji: '😇' },
+            { pattern: /O:\)/g, emoji: '😇' },
+            
+            // Devil
+            { pattern: />:-\)/g, emoji: '😈' },
+            { pattern: />:\)/g, emoji: '😈' },
+            
+            // Confused
+            { pattern: /:-\//g, emoji: '😕' },
+            { pattern: /:\//g, emoji: '😕' },
+            { pattern: /:-\\/g, emoji: '😕' },
+            { pattern: /:\\/g, emoji: '😕' },
+            
+            // Thinking
+            { pattern: /:-\?/g, emoji: '🤔' },
+            { pattern: /:\?/g, emoji: '🤔' },
+            
+            // Thumbs up/down
+            { pattern: /\(y\)/gi, emoji: '👍' },
+            { pattern: /\(n\)/gi, emoji: '👎' }
+        ];
+        
+        let result = text;
+        
+        // Apply each emoticon replacement
+        emoticonMap.forEach(({ pattern, emoji }) => {
+            result = result.replace(pattern, emoji);
+        });
+        
+        return result;
+    }
 
     async sendMessage() {
-        const message = this.messageInput.value.trim();
+        let message = this.messageInput.value.trim();
+        
+        // Convert emoticons to emojis
+        if (message) {
+            message = this.convertEmoticonsToEmojis(message);
+        }
 
         // Check if we have a photo or message
         if (!message && !this.selectedPhoto) {
@@ -1436,16 +1746,23 @@ class RadioChatBox {
                 }
             } else {
                 // Send public message
+                const messagePayload = {
+                    username: this.username,
+                    message: message,
+                    sessionId: this.sessionId
+                };
+                
+                // Include reply_to if replying
+                if (this.replyState.active && this.replyState.messageId) {
+                    messagePayload.replyTo = this.replyState.messageId;
+                }
+                
                 const response = await fetch(`${this.apiUrl}/api/send.php`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        username: this.username,
-                        message: message,
-                        sessionId: this.sessionId
-                    })
+                    body: JSON.stringify(messagePayload)
                 });
 
                 const data = await response.json();
@@ -1453,6 +1770,9 @@ class RadioChatBox {
                 if (!response.ok) {
                     throw new Error(data.error || 'Failed to send message');
                 }
+                
+                // Clear reply state after sending
+                this.clearReplyState();
                 
                 // Track analytics event
                 if (window.analytics) {
@@ -1536,6 +1856,81 @@ class RadioChatBox {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    /**
+     * Set reply state when user clicks reply button
+     */
+    setReplyState(messageId, username, message) {
+        this.replyState = {
+            active: true,
+            messageId: messageId,
+            username: username,
+            message: message
+        };
+        this.showReplyPreview();
+        // Focus the input
+        if (this.messageInput) {
+            this.messageInput.focus();
+        }
+    }
+    
+    /**
+     * Clear reply state
+     */
+    clearReplyState() {
+        this.replyState = {
+            active: false,
+            messageId: null,
+            username: null,
+            message: null
+        };
+        this.hideReplyPreview();
+    }
+    
+    /**
+     * Show reply preview above input
+     */
+    showReplyPreview() {
+        // Remove existing preview if any
+        this.hideReplyPreview();
+        
+        const truncatedMessage = this.replyState.message.length > 50 
+            ? this.replyState.message.substring(0, 50) + '...'
+            : this.replyState.message;
+        
+        const previewDiv = document.createElement('div');
+        previewDiv.className = 'reply-preview';
+        previewDiv.innerHTML = `
+            <div class="reply-preview-content">
+                <div class="reply-preview-bar"></div>
+                <div class="reply-preview-text">
+                    <div class="reply-preview-label">Replying to <strong>${this.escapeHtml(this.replyState.username)}</strong></div>
+                    <div class="reply-preview-message">${this.escapeHtml(truncatedMessage)}</div>
+                </div>
+                <button class="reply-preview-close" title="Cancel reply">✕</button>
+            </div>
+        `;
+        
+        // Add close button handler
+        const closeBtn = previewDiv.querySelector('.reply-preview-close');
+        closeBtn.addEventListener('click', () => this.clearReplyState());
+        
+        // Insert before the input container
+        const inputContainer = document.getElementById('chat-input-container');
+        if (inputContainer) {
+            inputContainer.parentElement.insertBefore(previewDiv, inputContainer);
+        }
+    }
+    
+    /**
+     * Hide reply preview
+     */
+    hideReplyPreview() {
+        const existingPreview = document.querySelector('.reply-preview');
+        if (existingPreview) {
+            existingPreview.remove();
+        }
     }
 
     disconnect() {
@@ -1714,6 +2109,15 @@ class RadioChatBox {
             
             messageDiv.innerHTML = content;
             this.messagesContainer.appendChild(messageDiv);
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(messageDiv, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
+            
             this.scrollToBottom();
         }
         
@@ -1957,6 +2361,14 @@ class RadioChatBox {
                 </div>
             `;
         }).join('');
+        
+        // Parse emojis with Twemoji for older Windows support
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(this.conversationsList, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
     }
     
     openConversation(username) {
@@ -2062,6 +2474,14 @@ class RadioChatBox {
             });
             emojiGrid.appendChild(btn);
         });
+        
+        // Parse emojis with Twemoji for older Windows support
+        if (typeof twemoji !== 'undefined') {
+            twemoji.parse(emojiGrid, {
+                folder: 'svg',
+                ext: '.svg'
+            });
+        }
     }
     
     insertEmoji(emoji) {

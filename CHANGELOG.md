@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Message reply feature for public chat
+  - Reply button on all messages to quote and reference previous messages
+  - Visual quote display showing original username and truncated message
+  - Reply preview above input field when composing a reply
+  - Database support for message threading with reply_to column
+  - Styled reply quotes with theme-specific colors (dark, light, metal)
+  - Mobile-responsive reply UI
+  - Reply data included in message history from database
+- Emoji support for older Windows versions (Windows 7, 8, early Windows 10)
+  - Integrated Twemoji library for consistent emoji rendering across all platforms
+  - Automatic conversion of Unicode emojis to SVG images
+  - Applied to all UI elements: messages, emoji picker, conversation previews, buttons
+  - Comprehensive CSS styling for inline emoji display
+  - Documentation in docs/EMOJI_SUPPORT.md and docs/EMOJI_TESTING.md
 - Admin user management system with role-based access control (RBAC)
   - Four user roles: Root, Administrator, Moderator, Simple User
   - Username/password authentication replacing legacy password-only system
@@ -15,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Granular permission system (8 permissions mapped to roles)
   - 24-hour Redis session caching
   - User list caching with 5-minute TTL
+- localStorage-first session management for iframe embedding
+  - Works even when third-party cookies are blocked
+  - Partitioned Cookies (CHIPS) support for Chrome 114+, Edge 114+
+  - Automatic fallback to traditional cookies for older browsers
+  - Stateless PHP backend with client-side session management
 - Unit test suite for UserService (23 tests)
 - Test infrastructure with Database mocking support
 

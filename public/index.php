@@ -14,6 +14,8 @@
     <link rel="icon" id="favicon" type="image/x-icon" href="">
     <!-- CSS with automatic cache-busting version based on file modification time -->
     <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(__DIR__ . '/css/style.css'); ?>">
+    <!-- Twemoji library for emoji support on older Windows versions -->
+    <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
     <!-- Custom header scripts will be injected here -->
     <script id="custom-header-scripts"></script>
 </head>
@@ -137,7 +139,7 @@
                 <div id="brand-logo-container" style="display: none;">
                     <img id="brand-logo" src="" alt="Logo" style="max-height: 50px; max-width: 200px; margin-right: 10px;">
                 </div>
-                <h1>🎙️ Live Chat</h1>
+                <h1>🎙️ Live Chat <span id="now-playing" class="now-playing" style="display: none;"></span></h1>
                 <div id="user-info">
                     <button id="sidebar-toggle-mobile" class="icon-button" title="Active Users">
                         👥

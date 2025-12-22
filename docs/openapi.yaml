@@ -136,6 +136,40 @@ paths:
                     items:
                       $ref: '#/components/schemas/Message'
 
+  /now-playing.php:
+    get:
+      tags: [chat]
+      summary: Get current radio now-playing info
+      description: Returns the current song/artist parsed from the configured Icecast/Shoutcast status JSON URL. Disabled if no URL is set.
+      responses:
+        '200':
+          description: Now playing info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  nowPlaying:
+                    type: object
+                    properties:
+                      active:
+                        type: boolean
+                        description: Whether now-playing is available
+                        example: true
+                      display:
+                        type: string
+                        nullable: true
+                        description: Combined display string (e.g. "Artist - Title")
+                        example: "Daft Punk - Harder Better Faster Stronger"
+                      artist:
+                        type: string
+                        nullable: true
+                      title:
+                        type: string
+                        nullable: true
   /private-message.php:
     get:
       tags: [private]

@@ -194,7 +194,14 @@ $stmt->execute(['username' => $username]);
 
 For future enhancement (not currently implemented):
 - Consider adding CSRF tokens for admin panel
-- Use SameSite cookie attributes
+
+### 5. Session Management
+
+**Client-side storage** (stateless PHP backend):
+- Primary: **localStorage** (works in iframes, not affected by third-party cookie blocking)
+- Backup: **Partitioned Cookies (CHIPS)** for Chrome 114+, Edge 114+ with `SameSite=None; Secure; Partitioned`
+- Fallback: Traditional cookies with `SameSite=None; Secure` for HTTPS or `SameSite=Lax` for HTTP
+- PHP backend does not use cookies or sessions (HTTP Basic Auth for admin only)
 
 ---
 

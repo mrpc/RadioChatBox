@@ -77,6 +77,8 @@ try {
             'allow_photo_uploads',
             'max_photo_size_mb',
             'minimum_users',
+            // Radio stream status (Icecast/Shoutcast)
+            'radio_status_url',
             // SEO & Branding
             'site_title',
             'site_description',

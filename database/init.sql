@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS messages (
     message TEXT NOT NULL,
     ip_address VARCHAR(45) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    is_deleted BOOLEAN DEFAULT FALSE
+    is_deleted BOOLEAN DEFAULT FALSE,
+    reply_to VARCHAR(255) DEFAULT NULL
 );
 
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
@@ -52,6 +53,9 @@ CREATE INDEX idx_messages_username ON messages(username);
 CREATE INDEX idx_messages_ip_address ON messages(ip_address);
 CREATE INDEX idx_messages_message_id ON messages(message_id);
 CREATE INDEX idx_messages_active_recent ON messages(is_deleted, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX idx_messages_reply_to ON messages(reply_to);
+
+COMMENT ON COLUMN messages.reply_to IS 'References the message_id of the parent message being replied to';
 
 -- Users table for tracking and moderation
 CREATE TABLE IF NOT EXISTS users (
@@ -327,7 +331,9 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('ads_main_bottom', ''),
     ('ads_chat_sidebar', ''),
     ('ads_refresh_interval', '30'),
-    ('ads_refresh_enabled', 'false')
+    ('ads_refresh_enabled', 'false'),
+    -- Radio Stream Status (Icecast/Shoutcast JSON URL)
+    ('radio_status_url', '')
 ON CONFLICT (setting_key) DO NOTHING;
 
 -- Reserved nicknames

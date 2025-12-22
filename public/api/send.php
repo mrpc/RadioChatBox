@@ -28,6 +28,7 @@ try {
     $username = $input['username'] ?? '';
     $message = $input['message'] ?? '';
     $sessionId = $input['sessionId'] ?? '';
+    $replyTo = $input['replyTo'] ?? null;
     
     // Check if public chat is allowed
     $chatService = new ChatService();
@@ -46,7 +47,7 @@ try {
     // Get client IP
     $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     
-    $result = $chatService->postMessage($username, $message, $ipAddress, $sessionId);
+    $result = $chatService->postMessage($username, $message, $ipAddress, $sessionId, $replyTo);
     
     echo json_encode([
         'success' => true,

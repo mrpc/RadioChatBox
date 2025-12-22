@@ -1,5 +1,12 @@
 # RadioChatBox - AI Coding Agent Instructions
 
+## AI Coding Agent Guidelines
+
+**IMPORTANT**: Do NOT create new markdown (.md) documentation files unless explicitly requested by the user. Instead:
+- Update existing documentation (README.md, CHANGELOG.md, etc.)
+- Add inline code comments for complex logic
+- Update relevant existing docs in `docs/` directory
+
 ## Project Overview
 
 RadioChatBox is a real-time chat application for radio shows built with PHP 8.3, PostgreSQL, Redis, and Server-Sent Events (SSE). The architecture emphasizes **stateless PHP with Redis pub/sub** for real-time messaging instead of WebSockets.
