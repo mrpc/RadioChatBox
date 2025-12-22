@@ -91,10 +91,22 @@ class RadioStatusService
             $ice = $data['icestats'];
             $source = null;
             if (isset($ice['source'])) {
-                $source = $ice['source'];
+                $sources = $ice['source'];
                 // Source may be array or object
-                if (is_array($source) && isset($source[0])) {
-                    $source = $source[0];
+                if (!is_array($sources) || !isset($sources[0])) {
+                    // Single source object
+                    $source = $sources;
+                } else {
+                    // Multiple sources - prioritize /live if it has listeners
+                    $source = $sources[0]; // default to first
+                    foreach ($sources as $s) {
+                        if (is_array($s) && isset($s['listenurl']) && 
+                            str_contains($s['listenurl'], '/live') && 
+                            isset($s['listeners']) && $s['listeners'] > 0) {
+                            $source = $s;
+                            break;
+                        }
+                    }
                 }
             }
             if (is_array($source)) {
