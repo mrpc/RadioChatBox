@@ -40,8 +40,9 @@ try {
     $search = $_GET['search'] ?? '';
     
     // Get user profile
-    $stmt = $db->prepare("SELECT * FROM user_profiles WHERE username = ? ORDER BY created_at DESC LIMIT 1");
-    $stmt->execute([$username]);
+    $stmt = $db->prepare("SELECT * FROM user_profiles WHERE username = :username ORDER BY created_at DESC LIMIT 1");
+    $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+    $stmt->execute();
     $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Get total message count for this user (with search filter if provided)
@@ -49,16 +50,19 @@ try {
         $stmt = $db->prepare("
             SELECT COUNT(*) 
             FROM messages 
-            WHERE username = ? AND message ILIKE ?
+            WHERE username = :username AND message ILIKE :search
         ");
-        $stmt->execute([$username, '%' . $search . '%']);
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+        $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
+        $stmt->execute();
     } else {
         $stmt = $db->prepare("
             SELECT COUNT(*) 
             FROM messages 
-            WHERE username = ?
+            WHERE username = :username
         ");
-        $stmt->execute([$username]);
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+        $stmt->execute();
     }
     $totalMessages = (int)$stmt->fetchColumn();
     $totalPages = ceil($totalMessages / $limit);
@@ -98,15 +102,17 @@ try {
     $stmt = $db->prepare("
         SELECT DISTINCT ip_address, first_seen
         FROM user_activity 
-        WHERE username = ?
+        WHERE username = :username
         ORDER BY first_seen DESC
     ");
-    $stmt->execute([$username]);
+    $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+    $stmt->execute();
     $ipAddresses = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Get active session info
-    $stmt = $db->prepare("SELECT * FROM sessions WHERE username = ?");
-    $stmt->execute([$username]);
+    $stmt = $db->prepare("SELECT * FROM sessions WHERE username = :username");
+    $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+    $stmt->execute();
     $activeSession = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Get private messages count and paginated results (only for root and administrator)
@@ -118,22 +124,24 @@ try {
         $stmt = $db->prepare("
             SELECT COUNT(*) 
             FROM private_messages 
-            WHERE from_username = ? OR to_username = ?
+            WHERE from_username = :username OR to_username = :username
         ");
-        $stmt->execute([$username, $username]);
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+        $stmt->execute();
         $totalPrivateMessages = (int)$stmt->fetchColumn();
         $privateMessagesPages = ceil($totalPrivateMessages / $limit);
         
         // Get paginated private messages
         $stmt = $db->prepare("
             SELECT * FROM private_messages 
-            WHERE from_username = ? OR to_username = ?
+            WHERE from_username = :username OR to_username = :username
             ORDER BY created_at DESC
             LIMIT :limit OFFSET :offset
         ");
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute([$username, $username]);
+        $stmt->execute();
         $privateMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
