@@ -18,10 +18,9 @@ header('X-Accel-Buffering: no'); // Disable nginx buffering
 // Disable output buffering
 if (ob_get_level()) ob_end_clean();
 
-// Set script timeout for long-running SSE connections
-    // If behind Cloudflare without bypass, reduce to 90 seconds
-    set_time_limit(620);
-    ini_set('max_execution_time', '620');
+// Set script timeout to 120 seconds to account for Cloudflare limits
+// Cloudflare free plan has 100 second timeout, we disconnect at 95s
+    ini_set('max_execution_time', '120');
 
 // Send initial comment to establish connection
 echo ": SSE connection established\n\n";
@@ -80,10 +79,9 @@ try {
     $redis->setOption(\Redis::OPT_READ_TIMEOUT, 20);
     
     $startTime = time();
-    // SSE connection max runtime
-    // Set to 600 seconds (10 minutes) when Cloudflare is bypassed via page rule
-    // If you're behind Cloudflare without bypass, reduce this to 90 seconds
-    $maxRuntime = 600;
+    // Cloudflare free plan has 100 second timeout for HTTP connections
+    // Force reconnect at 95 seconds to avoid Cloudflare killing the connection
+    $maxRuntime = 95;
     
     // Main loop - keeps reconnecting to Redis on timeout to send pings
     while (time() - $startTime < $maxRuntime && !connection_aborted()) {

@@ -356,31 +356,6 @@ Configure your Git platform (GitHub/GitLab/Gitea) to auto-deploy on every push:
    # - Reload Apache
    ```
 
-### Cloudflare Configuration (Important!)
-
-If you use Cloudflare, you **must** bypass the proxy for the SSE endpoint to avoid 100-second timeouts:
-
-#### Option 1: Page Rule (Recommended)
-
-1. **Go to** Cloudflare Dashboard → Your Domain → Rules → Page Rules
-2. **Create Page Rule** with URL pattern: `yourdomain.com/api/stream.php`
-3. **Add Setting**: "Cache Level" → "Bypass"
-4. **Add Setting**: "Disable Performance" (this bypasses Cloudflare proxy)
-5. **Save and Deploy**
-
-#### Option 2: DNS-Only Subdomain
-
-1. **Create subdomain**: `stream.yourdomain.com`
-2. **Set DNS record** to **gray cloud** ☁️ (DNS only, not proxied)
-3. **Update chat configuration** to use `https://stream.yourdomain.com/api/stream.php`
-
-#### Without Cloudflare Bypass
-
-If you cannot bypass Cloudflare:
-- Edit [public/api/stream.php](public/api/stream.php#L85)
-- Change `$maxRuntime = 600;` to `$maxRuntime = 90;`
-- This forces reconnection every 90 seconds (before Cloudflare's 100s timeout)
-
 ### Manual Deployment
 
 To deploy updates manually:
