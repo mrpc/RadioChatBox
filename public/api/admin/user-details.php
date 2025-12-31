@@ -69,25 +69,28 @@ try {
             SELECT m.*, u.ip_address 
             FROM messages m
             LEFT JOIN user_activity u ON m.username = u.username
-            WHERE m.username = ? AND m.message ILIKE ?
+            WHERE m.username = :username AND m.message ILIKE :search
             ORDER BY m.created_at DESC
             LIMIT :limit OFFSET :offset
         ");
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+        $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute([$username, '%' . $search . '%']);
+        $stmt->execute();
     } else {
         $stmt = $db->prepare("
             SELECT m.*, u.ip_address 
             FROM messages m
             LEFT JOIN user_activity u ON m.username = u.username
-            WHERE m.username = ?
+            WHERE m.username = :username
             ORDER BY m.created_at DESC
             LIMIT :limit OFFSET :offset
         ");
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute([$username]);
+        $stmt->execute();
     }
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
