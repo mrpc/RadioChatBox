@@ -809,6 +809,22 @@ class RadioChatBox {
     }
     
     logout() {
+        // Call logout API to remove session from database
+        const sessionId = this.getStorage('chatSessionId');
+        if (sessionId) {
+            fetch(`${this.apiUrl}/api/logout.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    sessionId: sessionId
+                })
+            }).catch(err => {
+                console.error('Logout API error:', err);
+            });
+        }
+        
         this.disconnect();
         
         // Remove individual storage items

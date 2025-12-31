@@ -338,6 +338,39 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /logout.php:
+    post:
+      tags: [users]
+      summary: Logout user and remove their session
+      description: Removes user session from database, allowing immediate re-login with same nickname
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
+                  description: Session ID of the user to logout
+      responses:
+        '200':
+          description: User logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /heartbeat.php:
     post:
       tags: [users]

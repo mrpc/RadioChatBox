@@ -539,6 +539,32 @@ class ChatService
     }
 
     /**
+     * Logout user and remove their session
+     */
+    public function logoutUser(string $sessionId): bool
+    {
+        try {
+            // Delete session from database
+            $stmt = $this->pdo->prepare(
+                'DELETE FROM sessions WHERE session_id = :session_id'
+            );
+            
+            $result = $stmt->execute(['session_id' => $sessionId]);
+            
+            // Remove from Redis cache
+            $this->redis->hDel(self::ACTIVE_USERS_KEY, $sessionId);
+            
+            // Publish user update after logout
+            $this->publishUserUpdate();
+            
+            return $result;
+        } catch (\PDOException $e) {
+            error_log("Failed to logout user: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Update user heartbeat
      */
     public function updateHeartbeat(string $username, string $sessionId): bool
