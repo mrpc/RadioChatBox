@@ -38,6 +38,8 @@
             background: var(--gray-100);
             min-height: 100vh;
             color: var(--gray-800);
+            margin: 0;
+            padding: 0;
         }
 
         /* Sidebar Navigation */
@@ -455,21 +457,6 @@
             border-color: #667eea;
         }
 
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
-        }
-
-        .login-container h2 {
-            text-align: center;
-            color: #667eea;
-            margin-bottom: 30px;
-        }
-
         .error {
             color: #ef4444;
             font-size: 14px;
@@ -555,6 +542,15 @@
             padding: 48px 40px;
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Login Screen */
+        .login-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
         }
 
         .login-logo {
@@ -774,17 +770,19 @@
                 <h1>📻 RadioChatBox</h1>
                 <p>Admin Dashboard</p>
             </div>
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" id="admin-username" placeholder="Enter your username" autocomplete="username">
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="admin-password" placeholder="Enter your password" autocomplete="current-password">
-            </div>
-            <button class="btn btn-primary" style="width: 100%; padding: 14px;" onclick="login()">
-                🔐 Sign In
-            </button>
+            <form onsubmit="event.preventDefault(); login();">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="admin-username" placeholder="Enter your username" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="admin-password" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 14px;">
+                    🔐 Sign In
+                </button>
+            </form>
             <button class="btn btn-secondary" style="width: 100%; padding: 14px; margin-top: 10px;" onclick="goBackToChat()">
                 ← Back to Chat
             </button>
@@ -793,22 +791,6 @@
     </div>
 
     <!-- Admin Panel -->
-    <div id="login-screen" style="display: none;">
-        <div class="login-container">
-            <h2>🎙️ Admin Login</h2>
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" id="admin-username" placeholder="Enter username" value="admin">
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="admin-password" placeholder="Enter password">
-            </div>
-            <button class="btn btn-success" style="width: 100%;" onclick="login()">Login</button>
-            <div id="login-error" class="error"></div>
-        </div>
-    </div>
-
     <div id="admin-panel" class="admin-panel">
         <!-- Sidebar Overlay for Mobile -->
         <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
@@ -1840,14 +1822,16 @@
         }
 
         function showLoginScreen() {
-            document.getElementById('login-screen').style.display = 'block';
+            document.getElementById('login-screen').style.display = 'flex';
             document.getElementById('admin-panel').style.display = 'none';
+            document.getElementById('admin-panel').classList.remove('active');
         }
 
-        function showAdminPanel() {
+        async function showAdminPanel() {
             document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('admin-panel').style.display = 'block';
             document.getElementById('admin-panel').classList.add('active');
-            loadAllData();
+            await loadAllData();
         }
 
         async function login() {
@@ -1922,7 +1906,7 @@
                 });
                 
                 errorDiv.textContent = '';
-                showAdminPanel();
+                await showAdminPanel();
             } catch (error) {
                 errorDiv.textContent = 'Login failed: ' + error.message;
             }
@@ -2138,19 +2122,19 @@
         async function loadAllData() {
             await loadCurrentUser();  // Load current user first to determine role
             await loadDashboardKPIs(); // Load dashboard metrics
-            loadMessages();
-            loadIPBans();
-            loadNicknameBans();
-            loadUsers();
-            loadInactiveUsers();
-            loadFakeUsers();
-            loadSettings();
-            loadUrlBlacklist();
-            loadPhotos();
+            await loadMessages();
+            await loadIPBans();
+            await loadNicknameBans();
+            await loadUsers();
+            await loadInactiveUsers();
+            await loadFakeUsers();
+            await loadSettings();
+            await loadUrlBlacklist();
+            await loadPhotos();
             
             // Only load admin users if user has permission
             if (currentUserRole !== 'moderator') {
-                loadAdminUsers();
+                await loadAdminUsers();
             }
         }
 
