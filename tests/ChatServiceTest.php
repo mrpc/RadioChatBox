@@ -268,4 +268,182 @@ class ChatServiceTest extends TestCase
         
         $this->assertCount(3, $oldSessionMessages, 'Old session data should still exist');
     }
+
+    public function testGuestCannotUseRegisteredUsername()
+    {
+        // Ensure 'admin' user exists (from init.sql)
+        $pdo = Database::getPDO();
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = 'admin'");
+        $stmt->execute();
+        $adminUser = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($adminUser, 'Admin user should exist in database');
+
+        // Try to register as guest with 'admin' username (without authentication)
+        $guestSession = 'guest_session_' . uniqid();
+        $result = $this->chatService->registerUser('admin', $guestSession, '127.0.0.1');
+        
+        $this->assertFalse($result, 'Guest should not be able to use registered username');
+    }
+
+    public function testGuestCannotCheckAvailabilityOfRegisteredUsername()
+    {
+        // Check if 'admin' username is available as guest
+        $guestSession = 'guest_session_' . uniqid();
+        $available = $this->chatService->isNicknameAvailable('admin', $guestSession);
+        
+        $this->assertFalse($available, 'Registered username should not be available to guests');
+    }
+
+    public function testAuthenticatedUserCanUseTheirRegisteredUsername()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create a test user
+        $testUsername = 'testuser_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO users (username, password_hash, role, is_active) 
+             VALUES (:username, :password_hash, 'simple_user', TRUE) 
+             RETURNING id"
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'password_hash' => password_hash('testpass', PASSWORD_DEFAULT)
+        ]);
+        $userId = $stmt->fetchColumn();
+        $this->assertNotEmpty($userId, 'Test user should be created');
+
+        // Create an authenticated session for this user
+        $authSession = 'auth_session_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+             VALUES (:username, :session_id, '127.0.0.1', :user_id, NOW(), NOW())"
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'session_id' => $authSession,
+            'user_id' => $userId
+        ]);
+
+        // Now test that this authenticated session can use the registered username
+        $available = $this->chatService->isNicknameAvailable($testUsername, $authSession);
+        $this->assertTrue($available, 'Authenticated user should be able to use their own username');
+
+        // Test that registration works for authenticated user
+        $result = $this->chatService->registerUser($testUsername, $authSession, '127.0.0.1');
+        $this->assertTrue($result, 'Authenticated user should be able to register with their username');
+
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM sessions WHERE session_id = :session_id");
+        $stmt->execute(['session_id' => $authSession]);
+        $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+        $stmt->execute(['id' => $userId]);
+    }
+
+    public function testAuthenticatedUserCanHaveMultipleSessions()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create a test user
+        $testUsername = 'testuser_multi_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO users (username, password_hash, role, is_active) 
+             VALUES (:username, :password_hash, 'simple_user', TRUE) 
+             RETURNING id"
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'password_hash' => password_hash('testpass', PASSWORD_DEFAULT)
+        ]);
+        $userId = $stmt->fetchColumn();
+
+        // Create first authenticated session
+        $authSession1 = 'auth_session1_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+             VALUES (:username, :session_id, '127.0.0.1', :user_id, NOW(), NOW())"
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'session_id' => $authSession1,
+            'user_id' => $userId
+        ]);
+
+        // Register from first session
+        $result1 = $this->chatService->registerUser($testUsername, $authSession1, '127.0.0.1');
+        $this->assertTrue($result1, 'First session should register successfully');
+
+        // Create second authenticated session (simulating different device)
+        $authSession2 = 'auth_session2_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+             VALUES (:username, :session_id, '127.0.0.2', :user_id, NOW(), NOW())"
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'session_id' => $authSession2,
+            'user_id' => $userId
+        ]);
+
+        // Register from second session - should succeed for authenticated user
+        $result2 = $this->chatService->registerUser($testUsername, $authSession2, '127.0.0.2');
+        $this->assertTrue($result2, 'Authenticated user should be able to have multiple sessions');
+
+        // Verify both sessions exist
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM sessions WHERE username = :username");
+        $stmt->execute(['username' => $testUsername]);
+        $count = $stmt->fetchColumn();
+        $this->assertEquals(2, $count, 'Both sessions should exist for authenticated user');
+
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt->execute(['username' => $testUsername]);
+        $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+        $stmt->execute(['id' => $userId]);
+    }
+
+    public function testGuestCannotUseFakeUserNickname()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create a test fake user
+        $fakeNickname = 'fakeuser_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO fake_users (nickname, age, sex, location, is_active) 
+             VALUES (:nickname, 25, 'male', 'Virtual City', FALSE)"
+        );
+        $stmt->execute(['nickname' => $fakeNickname]);
+
+        // Try to register as guest with this fake user nickname
+        $guestSession = 'guest_session_' . uniqid();
+        $result = $this->chatService->registerUser($fakeNickname, $guestSession, '127.0.0.1');
+        
+        $this->assertFalse($result, 'Guest should not be able to use fake user nickname');
+
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM fake_users WHERE nickname = :nickname");
+        $stmt->execute(['nickname' => $fakeNickname]);
+    }
+
+    public function testGuestCannotCheckAvailabilityOfFakeUserNickname()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create a test fake user
+        $fakeNickname = 'fakeuser_avail_' . uniqid();
+        $stmt = $pdo->prepare(
+            "INSERT INTO fake_users (nickname, age, sex, location, is_active) 
+             VALUES (:nickname, 30, 'female', 'Virtual Town', TRUE)"
+        );
+        $stmt->execute(['nickname' => $fakeNickname]);
+
+        // Check if fake user nickname is available as guest
+        $guestSession = 'guest_session_' . uniqid();
+        $available = $this->chatService->isNicknameAvailable($fakeNickname, $guestSession);
+        
+        $this->assertFalse($available, 'Fake user nickname should not be available to guests');
+
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM fake_users WHERE nickname = :nickname");
+        $stmt->execute(['nickname' => $fakeNickname]);
+    }
 }

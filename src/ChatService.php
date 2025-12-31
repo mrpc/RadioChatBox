@@ -395,6 +395,35 @@ class ChatService
     }
 
     /**
+     * Check if a session is authenticated as a specific registered user
+     * 
+     * @param string $username The username to check
+     * @param string $sessionId The session ID to verify
+     * @return bool True if the session is authenticated as this user
+     */
+    private function isSessionAuthenticatedAsUser(string $username, string $sessionId): bool
+    {
+        try {
+            // Check if this session has a user_id matching the registered username
+            $stmt = $this->pdo->prepare(
+                'SELECT s.user_id, u.username 
+                 FROM sessions s 
+                 INNER JOIN users u ON s.user_id = u.id 
+                 WHERE s.session_id = :session_id AND u.username = :username'
+            );
+            $stmt->execute([
+                'session_id' => $sessionId,
+                'username' => $username
+            ]);
+            
+            return $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
+        } catch (\PDOException $e) {
+            error_log("Failed to check session authentication: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Check if nickname is already taken by an active user
      */
     public function isNicknameAvailable(string $nickname, string $sessionId = ''): bool
@@ -404,19 +433,36 @@ class ChatService
         // Clean up inactive sessions first
         $this->cleanupInactiveSessions();
         
-        // Check if this is an authenticated username
+        // Check if this is a registered username
         $stmt = $this->pdo->prepare(
-            'SELECT username FROM users WHERE username = :username'
+            'SELECT id, username FROM users WHERE username = :username'
         );
         $stmt->execute(['username' => $nickname]);
-        $isAuthenticatedUsername = $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
+        $registeredUser = $stmt->fetch(\PDO::FETCH_ASSOC);
         
-        // If it's an authenticated username, always allow (authenticated users can have multiple sessions)
-        if ($isAuthenticatedUsername) {
-            return true;
+        // If it's a registered username, only allow if the session is authenticated as that user
+        if ($registeredUser !== false) {
+            // Check if this session is authenticated as this user
+            if (empty($sessionId)) {
+                return false; // No session provided, cannot authenticate
+            }
+            
+            return $this->isSessionAuthenticatedAsUser($nickname, $sessionId);
         }
         
-        // For regular users, check if username is taken by another session
+        // Check if this is a fake user nickname (guests cannot use fake user nicknames)
+        $stmt = $this->pdo->prepare(
+            'SELECT id, nickname FROM fake_users WHERE nickname = :nickname'
+        );
+        $stmt->execute(['nickname' => $nickname]);
+        $fakeUser = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        // If it's a fake user nickname, deny it for guests
+        if ($fakeUser !== false) {
+            return false;
+        }
+        
+        // For non-registered nicknames, check if taken by another session
         $stmt = $this->pdo->prepare(
             'SELECT session_id FROM sessions WHERE LOWER(username) = LOWER(:username)'
         );
@@ -454,24 +500,35 @@ class ChatService
             return false;
         }
         
-        // Check if username matches an authenticated username
-        // Note: We now ALLOW authenticated users to use their username in chat
-        // This check is kept for reference but is no longer blocking
-        $isAuthenticatedUsername = false;
+        // Check if username matches a registered user account
         $stmt = $this->pdo->prepare(
-            'SELECT username FROM users WHERE username = :username'
+            'SELECT id, username FROM users WHERE username = :username'
         );
         $stmt->execute(['username' => $username]);
-        if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
-            $isAuthenticatedUsername = true;
-            // Authenticated users are allowed to join chat with their username
-            // No error log needed as this is expected behavior
-        }
+        $registeredUser = $stmt->fetch(\PDO::FETCH_ASSOC);
         
-        // For authenticated usernames, allow multiple sessions (different devices)
-        // For regular users, enforce one session per username
-        if (!$isAuthenticatedUsername) {
-            // Check if username is already taken by another session
+        if ($registeredUser !== false) {
+            // This is a registered username - verify session is authenticated as this user
+            if (!$this->isSessionAuthenticatedAsUser($username, $sessionId)) {
+                error_log("Registration blocked: username '{$username}' is a registered account and session {$sessionId} is not authenticated as this user");
+                return false;
+            }
+            // Authenticated users are allowed to have multiple sessions (different devices)
+            // Continue to registration below
+        } else {
+            // Check if username matches a fake user nickname
+            $stmt = $this->pdo->prepare(
+                'SELECT id, nickname FROM fake_users WHERE nickname = :username'
+            );
+            $stmt->execute(['username' => $username]);
+            $fakeUser = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($fakeUser !== false) {
+                // Guests cannot use fake user nicknames
+                error_log("Registration blocked: username '{$username}' is a fake user nickname");
+                return false;
+            }
+            // For non-registered usernames, enforce one session per username
             $stmt = $this->pdo->prepare(
                 'SELECT session_id FROM sessions WHERE username = :username'
             );
