@@ -464,6 +464,16 @@ class RadioChatBox {
             const data = await resp.json();
             if (data && data.success && data.nowPlaying && data.nowPlaying.active && data.nowPlaying.display) {
                 el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
+                
+                // If admin and listeners count is available, add title attribute for hover
+                if (this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole)) {
+                    if (data.nowPlaying.listeners !== null && data.nowPlaying.listeners !== undefined) {
+                        el.title = `${data.nowPlaying.listeners} listener${data.nowPlaying.listeners === 1 ? '' : 's'}`;
+                    }
+                } else {
+                    el.removeAttribute('title');
+                }
+                
                 el.style.display = 'block';
             } else {
                 el.style.display = 'none';

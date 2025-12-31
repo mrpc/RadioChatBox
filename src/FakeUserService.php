@@ -149,8 +149,24 @@ class FakeUserService
             return;
         }
 
+        // If minimum_users is set, use radio listener count as baseline if available
+        $baselineCount = $realUserCount;
+        if ($minUsers > 0) {
+            try {
+                $radioService = new \RadioChatBox\RadioStatusService();
+                $nowPlaying = $radioService->getNowPlaying();
+                if ($nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {
+                    // Use the greater of realUserCount or listener count as baseline
+                    $baselineCount = max($realUserCount, $nowPlaying['listeners']);
+                }
+            } catch (\Exception $e) {
+                // If radio service fails, fall back to realUserCount
+                error_log("Failed to get radio listeners for fake user balancing: " . $e->getMessage());
+            }
+        }
+
         // Calculate how many fake users we need
-        $fakeUsersNeeded = max(0, $minUsers - $realUserCount);
+        $fakeUsersNeeded = max(0, $minUsers - $baselineCount);
         $currentActiveFake = $this->countActiveFakeUsers();
 
         if ($fakeUsersNeeded === $currentActiveFake) {

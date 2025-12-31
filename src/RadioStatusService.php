@@ -25,7 +25,7 @@ class RadioStatusService
 
     /**
      * Fetch now playing info, cached for short TTL.
-     * @return array{active:bool, display:string|null, artist:string|null, title:string|null}
+     * @return array{active:bool, display:string|null, artist:string|null, title:string|null, listeners:int|null}
      */
     public function getNowPlaying(): array
     {
@@ -36,6 +36,7 @@ class RadioStatusService
                 'display' => null,
                 'artist' => null,
                 'title' => null,
+                'listeners' => null,
             ];
         }
 
@@ -85,6 +86,7 @@ class RadioStatusService
         $artist = null;
         $title = null;
         $display = null;
+        $listeners = null;
 
         // Try Icecast structure
         if (isset($data['icestats'])) {
@@ -110,6 +112,10 @@ class RadioStatusService
                 }
             }
             if (is_array($source)) {
+                // Extract listener count
+                if (isset($source['listeners']) && is_numeric($source['listeners'])) {
+                    $listeners = (int)$source['listeners'];
+                }
                 // Common field: 'title' contains "Artist - Title"
                 if (!empty($source['title']) && is_string($source['title'])) {
                     $display = $this->stripBitrate(trim($source['title']));
@@ -130,6 +136,17 @@ class RadioStatusService
                         $display = $title;
                     }
                 }
+            }
+        }
+
+        // Try to extract listeners from common Shoutcast fields if not found
+        if ($listeners === null) {
+            if (isset($data['listeners']) && is_numeric($data['listeners'])) {
+                $listeners = (int)$data['listeners'];
+            } elseif (isset($data['currentlisteners']) && is_numeric($data['currentlisteners'])) {
+                $listeners = (int)$data['currentlisteners'];
+            } elseif (isset($data['stream']) && is_array($data['stream']) && isset($data['stream']['listeners'])) {
+                $listeners = (int)$data['stream']['listeners'];
             }
         }
 
@@ -163,6 +180,7 @@ class RadioStatusService
             'display' => $active ? $display : null,
             'artist' => $artist,
             'title' => $title,
+            'listeners' => $listeners,
         ];
     }
 
