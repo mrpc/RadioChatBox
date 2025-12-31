@@ -79,14 +79,18 @@ try {
     $redis->setOption(\Redis::OPT_READ_TIMEOUT, 30);
     
     $startTime = time();
-    // Cloudflare free plan timeout: 100 seconds
-    // Cloudflare paid plan timeout: 600 seconds (10 minutes)
-    // Set to 90 seconds to safely stay under Cloudflare free plan limit
-    $maxRuntime = 90;
+    // With periodic pings every 25 seconds, connection stays alive indefinitely
+    // Keep a very long timeout (10 minutes) just as a safety measure
+    // This prevents indefinite hanging in case of edge cases
+    $maxRuntime = 600; // 10 minutes
     
     $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix, &$startTime, $maxRuntime) {
         // Check if we've exceeded max runtime - force reconnect before Cloudflare timeout
         if (time() - $startTime > $maxRuntime) {
+            // Send a reconnect signal before closing
+            echo "event: reconnect\n";
+            echo "data: " . json_encode(['reason' => 'timeout']) . "\n\n";
+            flush();
             return false; // Unsubscribe - browser will auto-reconnect
         }
         

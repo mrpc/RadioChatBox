@@ -20,6 +20,7 @@ class RadioChatBox {
         this.maxReconnectDelay = 30000; // Max 30 seconds between retries
         this.sessionId = this.getOrCreateSessionId();
         this.username = null;
+        this.lastMessageId = null; // Track last received message ID for catch-up on reconnect
         this.heartbeatInterval = null;
         this.soundEnabled = localStorage.getItem('chatSoundEnabled') !== 'false'; // default to true
         this.chatMode = 'both'; // Default chat mode, will be updated from server
@@ -1041,6 +1042,12 @@ class RadioChatBox {
                 const data = JSON.parse(e.data);
                 this.handleMessageDeleted(data.message_id);
             });
+            
+            this.eventSource.addEventListener('reconnect', (e) => {
+                console.log('Server requested reconnect');
+                this.eventSource.close();
+                this.reconnect();
+            });
 
             this.eventSource.addEventListener('error', (e) => {
                 console.error('SSE error:', e);
@@ -1072,7 +1079,89 @@ class RadioChatBox {
         setTimeout(() => {
             console.log(`Reconnection attempt ${this.reconnectAttempts}`);
             this.connect();
+            
+            // After reconnecting, wait a bit for SSE to send history, then fetch missed messages
+            // This ensures we have the latest lastMessageId from the initial SSE history
+            setTimeout(() => {
+                this.fetchMissedMessages();
+            }, 500);
         }, delay);
+    }
+
+    async fetchMissedMessages() {
+        try {
+            // If in private chat, reload the entire conversation
+            if (this.privateChat.active && this.privateChat.withUser) {
+                const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&with_user=${encodeURIComponent(this.privateChat.withUser)}`);
+                const data = await response.json();
+                
+                if (data.success && data.messages) {
+                    const oldCount = this.privateChat.messages.length;
+                    
+                    // Check if there are new messages from the other user (not from me)
+                    const lastOldTimestamp = this.getLastPrivateMessageTimestamp();
+                    const newMessagesFromOther = data.messages.filter(msg => {
+                        const msgTimestamp = new Date(msg.created_at).getTime();
+                        return msgTimestamp > lastOldTimestamp && msg.from_username !== this.username;
+                    });
+                    
+                    // Replace with fresh data from server
+                    this.privateChat.messages = data.messages;
+                    this.renderPrivateMessages();
+                    
+                    const newCount = this.privateChat.messages.length;
+                    if (newCount > oldCount) {
+                        // Play notification sound if there are new messages from the other user
+                        if (newMessagesFromOther.length > 0 && this.soundEnabled) {
+                            this.playNotificationSound();
+                            this.showTitleNotification('🔒 New private message!');
+                        }
+                    }
+                }
+            } else {
+                // Fetch missed public messages
+                const response = await fetch(`${this.apiUrl}/api/history.php`);
+                const data = await response.json();
+                
+                if (data.success && data.messages) {
+                    // Find messages newer than the last one we saw
+                    const newMessages = data.messages.filter(msg => {
+                        const msgId = parseInt(msg.id || msg.message_id || 0);
+                        return msgId > this.lastMessageId;
+                    });
+                    
+                    // Add missed messages to UI
+                    newMessages.forEach(msg => {
+                        // Don't add if already in UI
+                        const msgId = msg.id || msg.message_id;
+                        if (!this.messagesContainer.querySelector(`[data-message-id="${msgId}"]`)) {
+                            this.addMessageToUI(msg, false);
+                        }
+                    });
+                    
+                    if (newMessages.length > 0) {
+                        console.log(`Fetched ${newMessages.length} missed public messages`);
+                        
+                        // Play notification sound for missed public messages from others
+                        const messagesFromOthers = newMessages.filter(msg => msg.username !== this.username);
+                        if (messagesFromOthers.length > 0 && this.soundEnabled) {
+                            this.playNotificationSound();
+                            this.showTitleNotification('💬 New message!');
+                        }
+                        
+                        this.scrollToBottom();
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch missed messages:', error);
+        }
+    }
+    
+    getLastPrivateMessageTimestamp() {
+        if (this.privateChat.messages.length === 0) return 0;
+        const lastMsg = this.privateChat.messages[this.privateChat.messages.length - 1];
+        return new Date(lastMsg.created_at).getTime();
     }
 
     startHeartbeat() {
@@ -1341,6 +1430,14 @@ class RadioChatBox {
             this.addMessageToUI(msg, false);
         });
         
+        // Track the highest message ID from history
+        messages.forEach(msg => {
+            const msgIdNum = parseInt(msg.id || msg.message_id || 0);
+            if (msgIdNum > (this.lastMessageId || 0)) {
+                this.lastMessageId = msgIdNum;
+            }
+        });
+        
         // Parse emojis with Twemoji for older Windows support (entire container for efficiency)
         if (typeof twemoji !== 'undefined') {
             twemoji.parse(this.messagesContainer, {
@@ -1454,6 +1551,12 @@ class RadioChatBox {
         // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
         const msgId = messageData.id || messageData.message_id;
         messageDiv.dataset.messageId = msgId;
+        
+        // Track the highest message ID we've seen
+        const msgIdNum = parseInt(msgId || 0);
+        if (msgIdNum > (this.lastMessageId || 0)) {
+            this.lastMessageId = msgIdNum;
+        }
         
         // Check if we should group this message with previous ones
         const messagesInContainer = this.messagesContainer.children;
