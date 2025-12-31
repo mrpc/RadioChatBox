@@ -184,6 +184,9 @@ class RadioChatBox {
                         const savedSex = this.getStorage('chatSex');
                         this.userProfile = { age: savedAge, location: savedLocation, sex: savedSex };
                         
+                        // Update now playing to show listener count for admins
+                        this.updateNowPlaying();
+                        
                         this.initializeChat();
                         return;
                     } else {
@@ -937,6 +940,9 @@ class RadioChatBox {
             if (window.analytics && typeof window.analytics.trackUserLogin === 'function') {
                 window.analytics.trackUserLogin(this.username);
             }
+            
+            // Update now playing to show listener count for admins
+            this.updateNowPlaying();
             
             this.hideNicknameModal();
             this.initializeChat();
