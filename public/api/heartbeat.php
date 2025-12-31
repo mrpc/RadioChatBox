@@ -38,9 +38,13 @@ try {
     // Then update heartbeat (this will publish user update with correct count)
     $chatService->updateHeartbeat($username, $sessionId);
     
+    // Get session info to return user_id for validation
+    $sessionInfo = $chatService->getSessionInfo($username, $sessionId);
+    
     echo json_encode([
         'success' => true,
-        'activeUsers' => count($chatService->getAllUsers())
+        'activeUsers' => count($chatService->getAllUsers()),
+        'user_id' => $sessionInfo['user_id'] ?? null
     ]);
 
 } catch (InvalidArgumentException $e) {

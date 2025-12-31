@@ -652,6 +652,31 @@ class ChatService
     }
 
     /**
+     * Get session information for validation
+     */
+    public function getSessionInfo(string $username, string $sessionId): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT username, session_id, user_id, ip_address, last_heartbeat 
+                 FROM sessions 
+                 WHERE username = :username AND session_id = :session_id'
+            );
+            
+            $stmt->execute([
+                'username' => $username,
+                'session_id' => $sessionId,
+            ]);
+            
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $result ?: null;
+        } catch (\PDOException $e) {
+            error_log("Failed to get session info: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Get list of active users
      */
     public function getActiveUsers(): array

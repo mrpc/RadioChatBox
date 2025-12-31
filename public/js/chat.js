@@ -150,7 +150,7 @@ class RadioChatBox {
         this.showNicknameModal();
     }
     
-    proceedWithNormalLogin() {
+    async proceedWithNormalLogin() {
         // Check if user has a saved nickname
         const savedNickname = this.getStorage('chatNickname');
         const savedUserId = this.getStorage('userId');
@@ -158,19 +158,51 @@ class RadioChatBox {
         if (savedNickname) {
             // Check if this is an authenticated user (has userId from login)
             if (savedUserId) {
-                // Authenticated user - restore session directly without re-registering
-                this.username = savedNickname;
-                this.userId = savedUserId;
-                this.userRole = this.getStorage('userRole');
-                
-                // Get profile data if available
-                const savedAge = this.getStorage('chatAge');
-                const savedLocation = this.getStorage('chatLocation');
-                const savedSex = this.getStorage('chatSex');
-                this.userProfile = { age: savedAge, location: savedLocation, sex: savedSex };
-                
-                this.initializeChat();
-                return;
+                // Authenticated user - verify session is still valid on server
+                try {
+                    const response = await fetch(`${this.apiUrl}/api/heartbeat.php`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: savedNickname,
+                            sessionId: this.sessionId
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    // Check if session is still linked to this user
+                    if (response.ok && data.success && data.user_id == savedUserId) {
+                        // Session is valid and still linked to this user
+                        this.username = savedNickname;
+                        this.userId = savedUserId;
+                        this.userRole = this.getStorage('userRole');
+                        
+                        // Get profile data if available
+                        const savedAge = this.getStorage('chatAge');
+                        const savedLocation = this.getStorage('chatLocation');
+                        const savedSex = this.getStorage('chatSex');
+                        this.userProfile = { age: savedAge, location: savedLocation, sex: savedSex };
+                        
+                        this.initializeChat();
+                        return;
+                    } else {
+                        // Session invalid or user_id mismatch - clear stored data and show login
+                        console.warn('Session validation failed - user_id mismatch or session expired');
+                        this.setStorage('chatNickname', null);
+                        this.setStorage('userId', null);
+                        this.setStorage('userRole', null);
+                        this.showNicknameModal();
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Session validation failed:', error);
+                    // On error, fall through to normal login flow
+                    this.setStorage('chatNickname', null);
+                    this.setStorage('userId', null);
+                    this.showNicknameModal();
+                    return;
+                }
             }
             
             // Guest user - go through normal registration flow
