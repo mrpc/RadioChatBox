@@ -1864,23 +1864,65 @@
             const credentials = `${username}:${password}`;
             
             try {
-                const response = await fetch('/api/admin/messages.php?limit=1', {
+                // First, verify admin credentials
+                const adminResponse = await fetch('/api/admin/messages.php?limit=1', {
                     headers: {
                         'Authorization': `Bearer ${credentials}`
                     }
                 });
 
-                if (response.ok) {
-                    authToken = credentials;
-                    localStorage.setItem('adminToken', credentials);
-                    localStorage.setItem('isAdmin', 'true'); // Flag for frontend moderation
-                    errorDiv.textContent = '';
-                    showAdminPanel();
-                } else if (response.status === 403) {
-                    errorDiv.textContent = 'Access denied: Your role does not allow admin panel access';
-                } else {
-                    errorDiv.textContent = 'Invalid username or password';
+                if (!adminResponse.ok) {
+                    if (adminResponse.status === 403) {
+                        errorDiv.textContent = 'Access denied: Your role does not allow admin panel access';
+                    } else {
+                        errorDiv.textContent = 'Invalid username or password';
+                    }
+                    return;
                 }
+
+                // Now authenticate in the chat system and set up chat session
+                const sessionId = 'chat_session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                
+                const loginResponse = await fetch('/api/login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username, 
+                        password,
+                        sessionId
+                    })
+                });
+
+                const loginData = await loginResponse.json();
+                
+                if (!loginResponse.ok || !loginData.success) {
+                    errorDiv.textContent = loginData.error || 'Login failed';
+                    return;
+                }
+
+                // Success! Set both admin and chat session data
+                authToken = credentials;
+                localStorage.setItem('adminToken', credentials);
+                localStorage.setItem('isAdmin', 'true');
+                
+                // Also set up chat session data so user is logged into chat too
+                localStorage.setItem('chatNickname', loginData.user.username);
+                localStorage.setItem('userId', loginData.user.id);
+                localStorage.setItem('chatSessionId', sessionId);
+                localStorage.setItem('userRole', loginData.user.role);
+                
+                // Also set cookies for fallback/iframe compatibility
+                const chatKeys = ['chatNickname', 'userId', 'chatSessionId', 'userRole'];
+                chatKeys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    document.cookie = `${key}=${value}; path=/; SameSite=Lax`;
+                    if (window.location.protocol === 'https:') {
+                        document.cookie = `${key}=${value}; path=/; SameSite=None; Secure; Partitioned`;
+                    }
+                });
+                
+                errorDiv.textContent = '';
+                showAdminPanel();
             } catch (error) {
                 errorDiv.textContent = 'Login failed: ' + error.message;
             }
