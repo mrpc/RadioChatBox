@@ -684,8 +684,10 @@ class ChatService
         $this->cleanupInactiveSessions();
         
         try {
+            // Use DISTINCT ON to get only one row per username (PostgreSQL specific)
+            // This ensures users logged in from multiple devices/browsers only appear once
             $stmt = $this->pdo->query(
-                'SELECT 
+                'SELECT DISTINCT ON (a.username)
                     a.username, 
                     a.joined_at, 
                     a.last_heartbeat,
@@ -694,7 +696,7 @@ class ChatService
                     p.sex
                  FROM sessions a
                  LEFT JOIN user_profiles p ON a.username = p.username
-                 ORDER BY a.joined_at ASC'
+                 ORDER BY a.username, a.joined_at ASC'
             );
             
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
