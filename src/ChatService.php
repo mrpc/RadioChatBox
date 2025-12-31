@@ -658,9 +658,10 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT username, session_id, user_id, ip_address, last_heartbeat 
-                 FROM sessions 
-                 WHERE username = :username AND session_id = :session_id'
+                'SELECT s.username, s.session_id, s.user_id, s.ip_address, s.last_heartbeat, u.role as user_role
+                 FROM sessions s
+                 LEFT JOIN users u ON s.user_id = u.id
+                 WHERE s.username = :username AND s.session_id = :session_id'
             );
             
             $stmt->execute([

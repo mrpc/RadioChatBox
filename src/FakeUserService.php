@@ -145,39 +145,39 @@ class FakeUserService
         
         error_log("[balanceFakeUsers] Starting with realUserCount: $realUserCount, minUsers setting: $minUsers");
         
-        // If minimum is 0 or disabled, deactivate all fake users
-        if ($minUsers <= 0) {
-            $this->deactivateAllFakeUsers();
-            error_log("[balanceFakeUsers] Minimum users is 0, deactivating all fake users");
-            return;
-        }
-
-        // If minimum_users is set, use radio listener count as baseline if available
-        $baselineCount = $realUserCount;
-        if ($minUsers > 0) {
-            try {
-                $radioService = new \RadioChatBox\RadioStatusService();
-                $nowPlaying = $radioService->getNowPlaying();
-                error_log("[balanceFakeUsers] Radio service response: " . json_encode($nowPlaying));
-                
-                if ($nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {
-                    // Use the greater of realUserCount or listener count as baseline
-                    $baselineCount = max($realUserCount, $nowPlaying['listeners']);
-                    error_log("[balanceFakeUsers] Using radio listeners. Real users: $realUserCount, Radio listeners: {$nowPlaying['listeners']}, Baseline: $baselineCount");
-                } else {
-                    error_log("[balanceFakeUsers] No radio listeners or null, using real user count: $realUserCount");
-                }
-            } catch (\Exception $e) {
-                // If radio service fails, fall back to realUserCount
-                error_log("[balanceFakeUsers] Failed to get radio listeners: " . $e->getMessage());
+        // Try to get radio listener count first (preferred target)
+        $targetUserCount = null;
+        $radioListeners = null;
+        try {
+            $radioService = new \RadioChatBox\RadioStatusService();
+            $nowPlaying = $radioService->getNowPlaying();
+            error_log("[balanceFakeUsers] Radio service response: " . json_encode($nowPlaying));
+            
+            if ($nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {
+                $radioListeners = $nowPlaying['listeners'];
+                $targetUserCount = $radioListeners; // Use radio listeners as target
+                error_log("[balanceFakeUsers] Using radio listeners as target: $targetUserCount");
             }
+        } catch (\Exception $e) {
+            error_log("[balanceFakeUsers] Failed to get radio listeners: " . $e->getMessage());
+        }
+        
+        // If radio listeners not available, fall back to minimum_users setting
+        if ($targetUserCount === null) {
+            if ($minUsers <= 0) {
+                $this->deactivateAllFakeUsers();
+                error_log("[balanceFakeUsers] No radio listeners and minimum_users is 0, deactivating all fake users");
+                return;
+            }
+            $targetUserCount = $minUsers;
+            error_log("[balanceFakeUsers] Radio listeners not available, using minimum_users as target: $targetUserCount");
         }
 
-        // Calculate how many fake users we need
-        $fakeUsersNeeded = max(0, $minUsers - $baselineCount);
+        // Calculate how many fake users we need to reach target
+        $fakeUsersNeeded = max(0, $targetUserCount - $realUserCount);
         $currentActiveFake = $this->countActiveFakeUsers();
         
-        error_log("[balanceFakeUsers] Calculation: minUsers($minUsers) - baselineCount($baselineCount) = fakeUsersNeeded($fakeUsersNeeded), currentActiveFake: $currentActiveFake");
+        error_log("[balanceFakeUsers] Calculation: targetUserCount($targetUserCount) - realUserCount($realUserCount) = fakeUsersNeeded($fakeUsersNeeded), currentActiveFake: $currentActiveFake");
 
         if ($fakeUsersNeeded === $currentActiveFake) {
             error_log("[balanceFakeUsers] Already balanced, no changes needed");
@@ -223,10 +223,14 @@ class FakeUserService
         $stmt->bindValue(':limit', $count, PDO::PARAM_INT);
         $stmt->execute();
         $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        error_log("[activateRandomFakeUsers] Requested: $count, Found: " . count($users));
 
         foreach ($users as $user) {
             $this->setFakeUserActive($user['id'], true);
         }
+        
+        error_log("[activateRandomFakeUsers] Activated " . count($users) . " fake users");
     }
 
     /**

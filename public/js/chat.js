@@ -176,9 +176,14 @@ class RadioChatBox {
                         // Session is valid and still linked to this user
                         this.username = savedNickname;
                         this.userId = savedUserId;
-                        this.userRole = this.getStorage('userRole');
+                        // Get role from heartbeat response (more reliable than storage in iframes)
+                        this.userRole = data.user_role || this.getStorage('userRole');
+                        // Save to storage for future use
+                        if (data.user_role) {
+                            this.setStorage('userRole', data.user_role);
+                        }
                         
-                        console.log('[proceedWithNormalLogin] Restored session. userRole from storage:', this.userRole);
+                        console.log('[proceedWithNormalLogin] Restored session. userRole from API:', data.user_role, 'from storage:', this.getStorage('userRole'), 'final:', this.userRole);
                         
                         // Get profile data if available
                         const savedAge = this.getStorage('chatAge');
@@ -946,6 +951,7 @@ class RadioChatBox {
             this.userRole = data.user.role;
             this.setStorage('chatNickname', this.username);
             this.setStorage('userId', this.userId);
+            this.setStorage('userRole', this.userRole); // Store role for session restoration
             
             // If user has admin/moderator role, also set admin credentials for admin panel access
             if (['root', 'administrator', 'moderator'].includes(data.user.role)) {
