@@ -155,6 +155,27 @@ class RadioChatBox {
         const savedNickname = this.getStorage('chatNickname');
         const savedUserId = this.getStorage('userId');
         
+        // Check if we have admin credentials but no active chat session
+        // This handles the case where session expired and storage was already cleared
+        if (!savedNickname || !savedUserId) {
+            const adminToken = localStorage.getItem('adminToken');
+            if (adminToken && adminToken.includes(':')) {
+                const [username, password] = adminToken.split(':');
+                console.log('No active session but admin token found - attempting automatic login');
+                try {
+                    // Attempt automatic login with admin credentials
+                    await this.loginAndJoin(username, password);
+                    return;
+                } catch (loginError) {
+                    console.error('Automatic login failed:', loginError);
+                    // Clear invalid admin token
+                    localStorage.removeItem('adminToken');
+                    localStorage.removeItem('isAdmin');
+                    // Fall through to show login modal
+                }
+            }
+        }
+        
         if (savedNickname) {
             // Check if this is an authenticated user (has userId from login)
             if (savedUserId) {
