@@ -143,9 +143,12 @@ class FakeUserService
     {
         $minUsers = (int) (new SettingsService())->get('minimum_users', 0);
         
+        error_log("[balanceFakeUsers] Starting with realUserCount: $realUserCount, minUsers setting: $minUsers");
+        
         // If minimum is 0 or disabled, deactivate all fake users
         if ($minUsers <= 0) {
             $this->deactivateAllFakeUsers();
+            error_log("[balanceFakeUsers] Minimum users is 0, deactivating all fake users");
             return;
         }
 
@@ -155,31 +158,41 @@ class FakeUserService
             try {
                 $radioService = new \RadioChatBox\RadioStatusService();
                 $nowPlaying = $radioService->getNowPlaying();
+                error_log("[balanceFakeUsers] Radio service response: " . json_encode($nowPlaying));
+                
                 if ($nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {
                     // Use the greater of realUserCount or listener count as baseline
                     $baselineCount = max($realUserCount, $nowPlaying['listeners']);
+                    error_log("[balanceFakeUsers] Using radio listeners. Real users: $realUserCount, Radio listeners: {$nowPlaying['listeners']}, Baseline: $baselineCount");
+                } else {
+                    error_log("[balanceFakeUsers] No radio listeners or null, using real user count: $realUserCount");
                 }
             } catch (\Exception $e) {
                 // If radio service fails, fall back to realUserCount
-                error_log("Failed to get radio listeners for fake user balancing: " . $e->getMessage());
+                error_log("[balanceFakeUsers] Failed to get radio listeners: " . $e->getMessage());
             }
         }
 
         // Calculate how many fake users we need
         $fakeUsersNeeded = max(0, $minUsers - $baselineCount);
         $currentActiveFake = $this->countActiveFakeUsers();
+        
+        error_log("[balanceFakeUsers] Calculation: minUsers($minUsers) - baselineCount($baselineCount) = fakeUsersNeeded($fakeUsersNeeded), currentActiveFake: $currentActiveFake");
 
         if ($fakeUsersNeeded === $currentActiveFake) {
+            error_log("[balanceFakeUsers] Already balanced, no changes needed");
             return; // Already balanced
         }
 
         if ($fakeUsersNeeded > $currentActiveFake) {
             // Need to activate more fake users
             $toActivate = $fakeUsersNeeded - $currentActiveFake;
+            error_log("[balanceFakeUsers] Activating $toActivate fake users");
             $this->activateRandomFakeUsers($toActivate);
         } else {
             // Need to deactivate some fake users
             $toDeactivate = $currentActiveFake - $fakeUsersNeeded;
+            error_log("[balanceFakeUsers] Deactivating $toDeactivate fake users");
             $this->deactivateRandomFakeUsers($toDeactivate);
         }
     }

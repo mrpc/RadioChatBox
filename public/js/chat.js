@@ -188,9 +188,11 @@ class RadioChatBox {
                         
                         // Force update now playing for admin users to show listener count
                         if (this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole)) {
+                            console.log('[proceedWithNormalLogin] Admin user detected, will update now playing. Role:', this.userRole);
                             // Wait a bit for DOM to be ready, then force a fresh fetch
                             setTimeout(() => {
                                 const el = document.getElementById('now-playing');
+                                console.log('[proceedWithNormalLogin] Now playing element:', el, 'visible:', el?.style.display !== 'none');
                                 if (el && el.style.display !== 'none') {
                                     this.updateNowPlaying();
                                 }
@@ -478,12 +480,18 @@ class RadioChatBox {
                 
                 // Check if user is admin (also check stored role if userRole not set yet)
                 const userRole = this.userRole || this.getStorage('userRole');
+                console.log('[updateNowPlaying] userRole:', userRole, 'listeners:', data.nowPlaying.listeners);
+                
                 if (userRole && ['root', 'administrator', 'moderator'].includes(userRole)) {
                     if (data.nowPlaying.listeners !== null && data.nowPlaying.listeners !== undefined) {
                         el.title = `${data.nowPlaying.listeners} listener${data.nowPlaying.listeners === 1 ? '' : 's'}`;
+                        console.log('[updateNowPlaying] Set tooltip for admin:', el.title);
+                    } else {
+                        console.log('[updateNowPlaying] No listener count in response');
                     }
                 } else {
                     el.removeAttribute('title');
+                    console.log('[updateNowPlaying] Not admin, removed tooltip');
                 }
                 
                 el.style.display = 'block';
@@ -492,6 +500,7 @@ class RadioChatBox {
             }
         } catch (e) {
             // hide on error
+            console.error('[updateNowPlaying] Error:', e);
             el.style.display = 'none';
         }
     }
