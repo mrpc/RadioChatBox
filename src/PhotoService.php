@@ -45,7 +45,10 @@ class PhotoService
         
         // Create upload directory if it doesn't exist
         if (!is_dir($this->uploadDir)) {
-            mkdir($this->uploadDir, 0755, true);
+            @mkdir($this->uploadDir, 0755, true);
+            if (!is_dir($this->uploadDir)) {
+                error_log("Failed to create upload directory: {$this->uploadDir}");
+            }
         }
     }
 

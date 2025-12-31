@@ -115,29 +115,45 @@ try {
     } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Get private message history
         $username = $_GET['username'] ?? '';
-        $username = json_decode('"' . $username . '"');
         $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
-        $withUser = json_decode('"' . $withUser . '"');
+        $adminMode = isset($_GET['admin']) && $_GET['admin'] === 'true';
         
         if (empty($username) || empty($sessionId)) {
             throw new InvalidArgumentException('Username and session ID are required');
         }
         
         if ($withUser) {
-            // Get conversation with specific user - only for current session
-            $stmt = $db->prepare("
-                SELECT pm.*, 
-                       a.attachment_id, a.filename, a.file_path, a.file_size, 
-                       a.mime_type, a.width, a.height
-                FROM private_messages pm
-                LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
-                WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?) 
-                    OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
-                ORDER BY pm.created_at ASC
-                LIMIT 500
-            ");
-            $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
+            // Get conversation with specific user
+            if ($adminMode) {
+                // Admin mode: Get ALL messages between these two users, ignoring session_id
+                $stmt = $db->prepare("
+                    SELECT pm.*, 
+                           a.attachment_id, a.filename, a.file_path, a.file_size, 
+                           a.mime_type, a.width, a.height
+                    FROM private_messages pm
+                    LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
+                    WHERE ((pm.from_username = ? AND pm.to_username = ?) 
+                        OR (pm.from_username = ? AND pm.to_username = ?))
+                    ORDER BY pm.created_at ASC
+                    LIMIT 500
+                ");
+                $stmt->execute([$username, $withUser, $withUser, $username]);
+            } else {
+                // Normal mode: Only get messages for current session
+                $stmt = $db->prepare("
+                    SELECT pm.*, 
+                           a.attachment_id, a.filename, a.file_path, a.file_size, 
+                           a.mime_type, a.width, a.height
+                    FROM private_messages pm
+                    LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
+                    WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?) 
+                        OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
+                    ORDER BY pm.created_at ASC
+                    LIMIT 500
+                ");
+                $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
+            }
         } else {
             // Get all recent private messages for current session only
             $stmt = $db->prepare("

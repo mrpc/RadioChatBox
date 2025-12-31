@@ -49,7 +49,8 @@ RUN if [ -f composer.lock ]; then composer install --no-dev --optimize-autoloade
 # Copy application files
 COPY . .
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html
+# Create upload directories and set permissions
+RUN mkdir -p /var/www/html/public/uploads/photos \
+    && chown -R www-data:www-data /var/www/html
 
 EXPOSE 80

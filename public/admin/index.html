@@ -924,7 +924,11 @@
                                 </div>
                                 <div class="kpi-icon primary">👥</div>
                             </div>
-                    
+                            <div class="kpi-value" id="kpi-active-users">-</div>
+                            <div class="kpi-change neutral">Currently online</div>
+                        </div>
+                        
+                        <div class="kpi-card">
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Messages Today</div>
@@ -4199,9 +4203,9 @@
             // Generate fake session ID using MD5 to match the format in private-message.php
             const fakeSessionId = 'fake_' + md5(fakeUser);
 
-            // Load full conversation - get ALL messages, not limited
+            // Load full conversation - get ALL messages with admin=true parameter
             try {
-                const response = await fetch(`/api/private-message.php?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}`, {
+                const response = await fetch(`/api/private-message.php?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}&admin=true`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
