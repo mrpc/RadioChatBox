@@ -2677,6 +2677,13 @@ class RadioChatBox {
         // Send GIF directly via API to bypass browser emoji autocorrect
         // The input field emoji conversion was breaking the URL
         
+        // If in private chat mode, send as private message
+        if (this.privateChat.active && this.privateChat.withUser) {
+            this.sendPrivateMessage(this.privateChat.withUser, gifUrl, null);
+            return;
+        }
+        
+        // Otherwise send as public message
         const data = {
             username: this.username,
             message: gifUrl,
