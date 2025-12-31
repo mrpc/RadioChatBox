@@ -184,10 +184,10 @@ class RadioChatBox {
                         const savedSex = this.getStorage('chatSex');
                         this.userProfile = { age: savedAge, location: savedLocation, sex: savedSex };
                         
-                        // Update now playing to show listener count for admins
-                        this.updateNowPlaying();
-                        
                         this.initializeChat();
+                        
+                        // Update now playing to show listener count for admins (after chat is initialized)
+                        this.updateNowPlaying();
                         return;
                     } else {
                         // Session invalid or user_id mismatch - clear stored data and show login
@@ -941,12 +941,12 @@ class RadioChatBox {
                 window.analytics.trackUserLogin(this.username);
             }
             
-            // Update now playing to show listener count for admins
-            this.updateNowPlaying();
-            
             this.hideNicknameModal();
             this.initializeChat();
             
+            // Update now playing to show listener count for admins (after chat is initialized)
+            this.updateNowPlaying();
+
         } catch (error) {
             console.error('Error logging in:', error);
             throw error;
