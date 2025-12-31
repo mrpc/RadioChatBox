@@ -857,6 +857,10 @@
                         <span class="icon">🔇</span>
                         <span>Nickname Bans</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('url-whitelist')" data-tab="url-whitelist">
+                        <span class="icon">✅</span>
+                        <span>URL Whitelist</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('url-blacklist')" data-tab="url-blacklist">
                         <span class="icon">🔗</span>
                         <span>URL Blacklist</span>
@@ -1414,6 +1418,28 @@
             </script>
             </div>
 
+            <!-- URL Whitelist Tab -->
+            <div id="url-whitelist-tab" class="tab-content">
+                <div class="section">
+                    <h2>URL Whitelist Management</h2>
+                    <p style="color: #6b7280; margin-bottom: 20px;">
+                        URLs matching these patterns are <strong>allowed</strong> in public messages. 
+                        All other URLs will be replaced with ***. Use * as a wildcard (e.g., *.youtube.com).
+                    </p>
+                    
+                    <div class="form-group">
+                        <label>Add New Pattern</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="new-whitelist-pattern" placeholder="e.g., youtube.com or *.social.com" style="flex: 1;">
+                            <input type="text" id="new-whitelist-description" placeholder="Description (optional)" style="flex: 1;">
+                            <button class="btn" onclick="addUrlWhitelist()" style="white-space: nowrap;">Add Pattern</button>
+                        </div>
+                    </div>
+                    
+                    <div id="url-whitelist-table"></div>
+                </div>
+            </div>
+
             <!-- URL Blacklist Tab -->
             <div id="url-blacklist-tab" class="tab-content">
                 <div class="section">
@@ -1493,6 +1519,22 @@
                         <input type="number" id="setting-max-photo-size-mb" placeholder="5" min="1" max="50">
                         <small id="php-max-upload-hint" style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
                             Server maximum: 50 MB
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="setting-gif-enabled" style="width: auto;">
+                            Enable GIF Selector (Tenor Integration)
+                        </label>
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Allow users to search and share GIFs from Tenor. Requires a free API key from <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">Google Tenor</a>.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Tenor API Key (Optional)</label>
+                        <input type="text" id="setting-tenor-api-key" placeholder="Enter your Tenor API key">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Get a free API key at <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">developers.google.com/tenor</a>
                         </small>
                     </div>
                     <div class="form-group" id="setting-minimum-users-group">
@@ -1851,6 +1893,7 @@
                 'impersonate': {title: 'Impersonate', subtitle: 'Reply as fake users'},
                 'ip-bans': {title: 'IP Bans', subtitle: 'Blocked IP addresses'},
                 'nickname-bans': {title: 'Nickname Bans', subtitle: 'Blocked usernames'},
+                'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
                 'settings': {title: 'System Settings', subtitle: 'Configure chat behavior'}
@@ -1877,6 +1920,10 @@
                 loadUsers();
             } else if (tabName === 'dashboard') {
                 loadDashboardKPIs();
+            } else if (tabName === 'url-whitelist') {
+                loadUrlWhitelist();
+            } else if (tabName === 'url-blacklist') {
+                loadUrlBlacklist();
             }
             
             // Close mobile sidebar when switching tabs
@@ -2805,6 +2852,8 @@
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
+                    document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
+                    document.getElementById('setting-tenor-api-key').value = settings.tenor_api_key || '';
                     
                     // Update fake user form requirements based on require_profile
                     updateFakeUserFormRequirements(settings.require_profile === 'true');
@@ -2946,6 +2995,8 @@
                 chat_mode: document.getElementById('setting-chat-mode').value,
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
+                gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
+                tenor_api_key: document.getElementById('setting-tenor-api-key').value,
                 max_photo_size_mb: document.getElementById('setting-max-photo-size-mb').value,
                 minimum_users: document.getElementById('setting-minimum-users').value,
                 rate_limit_messages: document.getElementById('setting-rate-limit-messages').value,
@@ -3104,6 +3155,107 @@
                 }
             } catch (error) {
                 console.error('Failed to load inactive users:', error);
+            }
+        }
+        
+        async function loadUrlWhitelist() {
+            try {
+                const response = await fetch('/api/admin/url-whitelist.php', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const table = document.getElementById('url-whitelist-table');
+                    table.innerHTML = `
+                        <p style="margin-bottom: 10px;"><strong>Total patterns:</strong> ${data.patterns.length}</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Pattern</th>
+                                    <th>Description</th>
+                                    <th>Added By</th>
+                                    <th>Added At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.patterns.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #9ca3af;">No patterns added yet</td></tr>' : 
+                                data.patterns.map(item => `
+                                    <tr>
+                                        <td><code>${item.pattern}</code></td>
+                                        <td>${item.description || '-'}</td>
+                                        <td>${item.added_by || 'admin'}</td>
+                                        <td>${new Date(item.added_at).toLocaleString()}</td>
+                                        <td>
+                                            <button class="btn-danger" onclick="deleteWhitelistPattern(${item.id})">Delete</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to load URL whitelist:', error);
+            }
+        }
+        
+        async function addUrlWhitelist() {
+            const pattern = document.getElementById('new-whitelist-pattern').value.trim();
+            const description = document.getElementById('new-whitelist-description').value.trim();
+            
+            if (!pattern) {
+                alert('Please enter a URL pattern');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/url-whitelist.php', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ pattern, description })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('new-whitelist-pattern').value = '';
+                    document.getElementById('new-whitelist-description').value = '';
+                    loadUrlWhitelist();
+                } else {
+                    alert(data.error || 'Failed to add pattern');
+                }
+            } catch (error) {
+                alert('Network error. Please try again.');
+            }
+        }
+        
+        async function deleteWhitelistPattern(id) {
+            if (!confirm('Are you sure you want to delete this pattern?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/url-whitelist.php?id=${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadUrlWhitelist();
+                } else {
+                    alert(data.error || 'Failed to delete pattern');
+                }
+            } catch (error) {
+                alert('Network error. Please try again.');
             }
         }
         

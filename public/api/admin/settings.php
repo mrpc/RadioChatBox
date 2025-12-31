@@ -75,6 +75,8 @@ try {
             'require_profile',
             'chat_mode',
             'allow_photo_uploads',
+            'gif_enabled',
+            'tenor_api_key',
             'max_photo_size_mb',
             'minimum_users',
             // Radio stream status (Icecast/Shoutcast)

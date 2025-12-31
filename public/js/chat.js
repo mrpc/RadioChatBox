@@ -891,6 +891,9 @@ class RadioChatBox {
         // Emoji picker
         this.initEmojiPicker();
         
+        // GIF picker
+        this.initGifPicker();
+        
         // Scroll to bottom button
         if (this.scrollToBottomBtn) {
             this.scrollToBottomBtn.addEventListener('click', () => this.scrollToBottom());
@@ -1274,7 +1277,7 @@ class RadioChatBox {
             
             // Add message text if present
             if (msg.message) {
-                content += `<div class="message-text">${this.escapeHtml(msg.message)}</div>`;
+                content += `<div class="message-text">${this.formatMessageText(msg.message)}</div>`;
             }
             
             // Add photo if present
@@ -1293,10 +1296,14 @@ class RadioChatBox {
             this.messagesContainer.appendChild(messageDiv);
             
             // Parse emojis with Twemoji for older Windows support
+            // Use attributes callback to prevent parsing inside GIF URLs
             if (typeof twemoji !== 'undefined') {
                 twemoji.parse(messageDiv, {
                     folder: 'svg',
-                    ext: '.svg'
+                    ext: '.svg',
+                    attributes: function() {
+                        return {class: 'emoji'};
+                    }
                 });
             }
         });
@@ -1520,7 +1527,7 @@ class RadioChatBox {
             </div>
             ${replyQuoteHTML}
             <div class="message-body">
-                <div class="message-text">${this.escapeHtml(messageData.message)}</div>
+                <div class="message-text">${this.formatMessageText(messageData.message)}</div>
                 <div class="message-actions">
                     ${replyButton}
                     ${deleteButton}
@@ -1557,7 +1564,10 @@ class RadioChatBox {
         if (typeof twemoji !== 'undefined') {
             twemoji.parse(messageDiv, {
                 folder: 'svg',
-                ext: '.svg'
+                ext: '.svg',
+                callback: function(icon, options) {
+                    return options.base + options.size + '/' + icon + options.ext;
+                }
             });
         }
         
@@ -1611,6 +1621,15 @@ class RadioChatBox {
     }
     
     convertEmoticonsToEmojis(text) {
+        // First, protect URLs by replacing them with placeholders
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const urls = [];
+        let protectedText = text.replace(urlRegex, (url) => {
+            const placeholder = `__URL_${urls.length}__`;
+            urls.push(url);
+            return placeholder;
+        });
+        
         // Map of common emoticons to their emoji equivalents
         const emoticonMap = [
             // Happy/Smiling faces
@@ -1689,14 +1708,17 @@ class RadioChatBox {
             { pattern: /\(n\)/gi, emoji: '👎' }
         ];
         
-        let result = text;
-        
-        // Apply each emoticon replacement
+        // Apply each emoticon replacement on the protected text
         emoticonMap.forEach(({ pattern, emoji }) => {
-            result = result.replace(pattern, emoji);
+            protectedText = protectedText.replace(pattern, emoji);
         });
         
-        return result;
+        // Restore URLs from placeholders
+        urls.forEach((url, index) => {
+            protectedText = protectedText.replace(`__URL_${index}__`, url);
+        });
+        
+        return protectedText;
     }
 
     async sendMessage() {
@@ -2093,7 +2115,7 @@ class RadioChatBox {
             `;
             
             if (messageData.message) {
-                content += `<div class="message-text">${this.escapeHtml(messageData.message)}</div>`;
+                content += `<div class="message-text">${this.formatMessageText(messageData.message)}</div>`;
             }
             
             if (messageData.attachment) {
@@ -2498,6 +2520,173 @@ class RadioChatBox {
         input.setSelectionRange(newPos, newPos);
         input.focus();
     }
+    
+    initGifPicker() {
+        const gifButton = document.getElementById('gif-button');
+        const gifPicker = document.getElementById('gif-picker');
+        const gifSearchInput = document.getElementById('gif-search-input');
+        const gifGrid = document.getElementById('gif-grid');
+        const gifLoading = document.getElementById('gif-loading');
+        
+        if (!gifButton || !gifPicker) {
+            console.warn('GIF picker not available');
+            return;
+        }
+        
+        // Check if GIFs are enabled via settings and load API key
+        fetch('api/settings.php')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.settings.gif_enabled === 'true') {
+                    gifButton.style.display = 'inline-block';
+                    // Load Tenor API key from settings
+                    this.tenorApiKey = data.settings.tenor_api_key || '';
+                }
+            })
+            .catch(err => console.error('Failed to check GIF settings:', err));
+        
+        this.tenorClientKey = 'radiochatbox';
+        
+        // Toggle GIF picker
+        gifButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isVisible = gifPicker.style.display === 'block';
+            gifPicker.style.display = isVisible ? 'none' : 'block';
+            gifButton.classList.toggle('active', !isVisible);
+            
+            // Hide emoji picker if open
+            const emojiPicker = document.getElementById('emoji-picker');
+            if (emojiPicker && emojiPicker.style.display === 'block') {
+                emojiPicker.style.display = 'none';
+                document.getElementById('emoji-button').classList.remove('active');
+            }
+            
+            if (!isVisible) {
+                // Load trending GIFs on open
+                this.searchGifs('');
+            }
+        });
+        
+        // Auto-search as user types (debounced)
+        let searchTimeout;
+        gifSearchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const query = gifSearchInput.value.trim();
+                this.searchGifs(query);
+            }, 500); // Wait 500ms after user stops typing
+        });
+        
+        // Also search on Enter key
+        gifSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                clearTimeout(searchTimeout);
+                const query = gifSearchInput.value.trim();
+                this.searchGifs(query);
+            }
+        });
+        
+        // Close picker when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!gifPicker.contains(e.target) && e.target !== gifButton) {
+                gifPicker.style.display = 'none';
+                gifButton.classList.remove('active');
+            }
+        });
+    }
+    
+    async searchGifs(query) {
+        const gifGrid = document.getElementById('gif-grid');
+        const gifLoading = document.getElementById('gif-loading');
+        
+        if (!gifGrid) return;
+        
+        gifGrid.innerHTML = '';
+        gifLoading.style.display = 'block';
+        
+        // Check if API key is configured
+        if (!this.tenorApiKey) {
+            gifLoading.style.display = 'none';
+            gifGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px;">⚠️ Tenor API key not configured.<br><br>Admin: Go to Settings and add your free API key from <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">Google Tenor</a></div>';
+            return;
+        }
+        
+        try {
+            // Use Tenor API v2
+            const endpoint = query 
+                ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${this.tenorApiKey}&client_key=${this.tenorClientKey}&limit=12`
+                : `https://tenor.googleapis.com/v2/featured?key=${this.tenorApiKey}&client_key=${this.tenorClientKey}&limit=12`;
+            
+            const response = await fetch(endpoint);
+            const data = await response.json();
+            
+            gifLoading.style.display = 'none';
+            
+            if (data.results && data.results.length > 0) {
+                data.results.forEach(gif => {
+                    const gifItem = document.createElement('div');
+                    gifItem.className = 'gif-item';
+                    
+                    const img = document.createElement('img');
+                    // Use tinygif for preview, mediumgif for sending
+                    img.src = gif.media_formats.tinygif?.url || gif.media_formats.gif?.url;
+                    img.alt = gif.content_description || 'GIF';
+                    img.loading = 'lazy';
+                    
+                    gifItem.appendChild(img);
+                    
+                    gifItem.addEventListener('click', () => {
+                        const gifUrl = gif.media_formats.mediumgif?.url || gif.media_formats.gif?.url;
+                        this.insertGif(gifUrl);
+                        document.getElementById('gif-picker').style.display = 'none';
+                        document.getElementById('gif-button').classList.remove('active');
+                    });
+                    
+                    gifGrid.appendChild(gifItem);
+                });
+            } else {
+                gifGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">No GIFs found</div>';
+            }
+        } catch (error) {
+            console.error('Error fetching GIFs:', error);
+            gifLoading.style.display = 'none';
+            const errorMsg = error.message && error.message.includes('API key') 
+                ? 'Invalid API key. Admin: Update your Tenor API key in Settings.'
+                : 'Failed to load GIFs. Please try again.';
+            gifGrid.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px;">${errorMsg}</div>`;
+        }
+    }
+    
+    insertGif(gifUrl) {
+        // Send GIF directly via API to bypass browser emoji autocorrect
+        // The input field emoji conversion was breaking the URL
+        
+        const data = {
+            username: this.username,
+            message: gifUrl,
+            session_id: this.sessionId
+        };
+
+        fetch('api/send.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (!result.success) {
+                console.error('Failed to send GIF:', result.error);
+                alert('Failed to send GIF: ' + (result.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error sending GIF:', error);
+            alert('Error sending GIF. Please try again.');
+        });
+    }
+    
     showTitleNotification(text) {
         if (this.titleNotificationActive) return;
         this.titleNotificationActive = true;
@@ -2518,6 +2707,51 @@ class RadioChatBox {
             clearTimeout(this.titleNotificationTimeout);
             this.titleNotificationTimeout = null;
         }
+    }
+    
+    formatMessageText(text) {
+        // Escape HTML first
+        const escaped = this.escapeHtml(text);
+        
+        // Detect Tenor/Giphy GIF URLs and render as images
+        const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)/gi;
+        let formatted = escaped.replace(gifRegex, (url) => {
+            // Use a data attribute to mark this as a GIF to prevent Twemoji parsing on the URL
+            return `<br><span class="gif-url" data-gif-url="${url}"><img src="${url}" alt="GIF" class="message-gif" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px;"></span>`;
+        });
+        
+        // Convert regular URLs to clickable links (excluding GIF URLs which are already handled)
+        const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
+        formatted = formatted.replace(urlRegex, (url) => {
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`;
+        });
+        
+        return formatted;
+    }
+    
+    decodeEmojiToText(text) {
+        // Map of emojis that browsers commonly auto-convert back to their text equivalents
+        const emojiMap = {
+            '😕': ':/',
+            '😃': ':D',
+            '😛': ':P',
+            '😎': ':)',
+            '☹️': ':(',
+            '😉': ';)',
+            '😮': ':O',
+            '😐': ':|'
+        };
+        
+        // Replace emojis back to text, but only if they appear to be in URLs
+        let result = text;
+        for (const [emoji, textEquiv] of Object.entries(emojiMap)) {
+            // Only replace if the emoji appears in what looks like a URL context
+            // Check for protocol prefix before the emoji
+            const urlPattern = new RegExp(`(https?${emoji})`, 'g');
+            result = result.replace(urlPattern, `https${textEquiv}`);
+        }
+        
+        return result;
     }
 }
 

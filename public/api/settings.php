@@ -22,6 +22,10 @@ try {
     // Get public-safe settings for frontend
     $settings = $settingsService->getPublicSettings();
     
+    // Apply defaults for settings that may not exist in database yet
+    $settings['gif_enabled'] = $settings['gif_enabled'] ?? 'true';
+    $settings['tenor_api_key'] = $settings['tenor_api_key'] ?? '';
+    
     // Add SEO meta tags
     $settings['seo'] = $settingsService->getSeoMeta();
     

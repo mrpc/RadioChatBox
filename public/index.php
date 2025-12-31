@@ -182,6 +182,7 @@
 
             <div id="chat-input-container">
                 <button id="emoji-button" class="emoji-toggle-btn" title="Emojis">😊</button>
+                <button id="gif-button" class="gif-toggle-btn" title="GIFs" style="display: none;">GIF</button>
                 <button id="photo-button" class="photo-btn" title="Upload Photo" style="display: none;">📷</button>
                 <input 
                     type="text" 
@@ -189,6 +190,8 @@
                     placeholder="Type your message..." 
                     maxlength="500"
                     autocomplete="off"
+                    inputmode="text"
+                    data-disable-emoji="true"
                 >
                 <button id="send-button">Send</button>
                 <input type="file" id="photo-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none;">
@@ -206,6 +209,14 @@
                     <button class="emoji-category" data-category="objects">💡</button>
                 </div>
                 <div id="emoji-grid"></div>
+            </div>
+            
+            <div id="gif-picker" style="display: none;">
+                <div class="gif-search-container">
+                    <input type="text" id="gif-search-input" placeholder="Search GIFs..." autocomplete="off">
+                </div>
+                <div id="gif-grid"></div>
+                <div id="gif-loading" style="display: none;">Loading...</div>
             </div>
         </div>
     </div>

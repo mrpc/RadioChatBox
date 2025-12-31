@@ -22,7 +22,7 @@ class MessageFilter
             $replacements[] = $dangerousCheck['reason'];
         }
 
-        // Check and replace URLs
+        // Check and replace URLs (except Tenor/Giphy GIF URLs)
         $urlCheck = self::replaceUrls($message);
         if ($urlCheck['replaced']) {
             $message = $urlCheck['message'];
@@ -157,18 +157,127 @@ class MessageFilter
     {
         $originalMessage = $message;
         
-        // Pattern to match various URL formats
+        // Check if GIF feature is enabled
+        $gifEnabled = self::isGifEnabled();
+        
+        // Extract Tenor and Giphy GIF URLs to preserve them (only if GIF is enabled)
+        $gifUrls = [];
+        if ($gifEnabled) {
+            $gifPattern = '/https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif/i';
+            preg_match_all($gifPattern, $message, $gifMatches);
+            if (!empty($gifMatches[0])) {
+                foreach ($gifMatches[0] as $idx => $gifUrl) {
+                    $placeholder = "___GIFPLACEHOLDER{$idx}___";
+                    $gifUrls[$placeholder] = $gifUrl;
+                    $message = str_replace($gifUrl, $placeholder, $message);
+                }
+            }
+        }
+        
+        // Get whitelisted URL patterns
+        $whitelistPatterns = self::getWhitelistedUrlPatterns();
+        
+        // Extract whitelisted URLs to preserve them
+        $whitelistedUrls = [];
+        if (!empty($whitelistPatterns)) {
+            foreach ($whitelistPatterns as $pattern) {
+                // Convert pattern to regex (support wildcards)
+                $regexPattern = preg_quote($pattern, '/');
+                $regexPattern = str_replace('\*', '.*', $regexPattern);
+                $urlRegex = '/https?:\/\/(?:[a-z0-9-]+\.)*' . $regexPattern . '(?:\/[^\s]*)?/i';
+                
+                preg_match_all($urlRegex, $message, $matches);
+                if (!empty($matches[0])) {
+                    foreach ($matches[0] as $idx => $whitelistedUrl) {
+                        $placeholder = "___WHITELIST{$idx}_{$pattern}___";
+                        $whitelistedUrls[$placeholder] = $whitelistedUrl;
+                        $message = str_replace($whitelistedUrl, $placeholder, $message);
+                    }
+                }
+            }
+        }
+        
+        // Pattern to match various URL formats (won't match placeholders)
         $urlPattern = '/\b(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)[-A-Z0-9+&@#\/%=~_|$?!:,.]*[A-Z0-9+&@#\/%=~_|$]/i';
         $message = preg_replace($urlPattern, '***', $message);
         
-        // Check for domain-like patterns
+        // Check for domain-like patterns (won't match placeholders due to underscores)
         $domainPattern = '/\b[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.(com|net|org|edu|gov|co|io|ai|app|dev|tech|info|biz|me|tv|cc|xyz|online|site|website|blog|shop|store)\b/i';
         $message = preg_replace($domainPattern, '***', $message);
+        
+        // Restore whitelisted URLs
+        foreach ($whitelistedUrls as $placeholder => $whitelistedUrl) {
+            $message = str_replace($placeholder, $whitelistedUrl, $message);
+        }
+        
+        // Restore GIF URLs (only if GIF is enabled)
+        foreach ($gifUrls as $placeholder => $gifUrl) {
+            $message = str_replace($placeholder, $gifUrl, $message);
+        }
         
         return [
             'message' => $message,
             'replaced' => $message !== $originalMessage
         ];
+    }
+    
+    /**
+     * Check if GIF feature is enabled in settings
+     */
+    private static function isGifEnabled(): bool
+    {
+        static $gifEnabled = null;
+        
+        if ($gifEnabled === null) {
+            try {
+                $settingsService = new SettingsService();
+                $gifEnabled = $settingsService->get('gif_enabled', 'true') === 'true';
+            } catch (\Exception $e) {
+                // Default to true if we can't check settings
+                $gifEnabled = true;
+            }
+        }
+        
+        return $gifEnabled;
+    }
+    
+    /**
+     * Get whitelisted URL patterns from database (with Redis caching)
+     */
+    private static function getWhitelistedUrlPatterns(): array
+    {
+        static $patterns = null;
+        
+        if ($patterns !== null) {
+            return $patterns;
+        }
+        
+        try {
+            $redis = Database::getRedis();
+            $prefix = Database::getRedisPrefix();
+            $cacheKey = $prefix . 'url_whitelist_patterns';
+            $cacheTTL = 300; // 5 minutes
+            
+            $cachedData = $redis->get($cacheKey);
+            
+            if ($cachedData !== false) {
+                $patterns = json_decode($cachedData, true);
+            } else {
+                // Cache miss - fetch from database
+                $db = Database::getPDO();
+                $stmt = $db->query("SELECT pattern FROM url_whitelist ORDER BY pattern");
+                $patterns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                
+                // Store in Redis cache
+                $redis->setex($cacheKey, $cacheTTL, json_encode($patterns));
+            }
+            
+            return $patterns;
+        } catch (\Exception $e) {
+            error_log("Error fetching URL whitelist: " . $e->getMessage());
+            $patterns = [];
+            return $patterns;
+        }
     }
     
     /**
