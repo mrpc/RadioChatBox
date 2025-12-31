@@ -186,8 +186,16 @@ class RadioChatBox {
                         
                         this.initializeChat();
                         
-                        // Update now playing after a brief delay to ensure admin tooltip shows
-                        setTimeout(() => this.updateNowPlaying(), 100);
+                        // Force update now playing for admin users to show listener count
+                        if (this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole)) {
+                            // Wait a bit for DOM to be ready, then force a fresh fetch
+                            setTimeout(() => {
+                                const el = document.getElementById('now-playing');
+                                if (el && el.style.display !== 'none') {
+                                    this.updateNowPlaying();
+                                }
+                            }, 200);
+                        }
                         return;
                     } else {
                         // Session invalid or user_id mismatch - clear stored data and show login
@@ -944,8 +952,15 @@ class RadioChatBox {
             this.hideNicknameModal();
             this.initializeChat();
             
-            // Update now playing after a brief delay to ensure admin tooltip shows
-            setTimeout(() => this.updateNowPlaying(), 100);
+            // Force update now playing for admin users to show listener count
+            if (this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole)) {
+                setTimeout(() => {
+                    const el = document.getElementById('now-playing');
+                    if (el && el.style.display !== 'none') {
+                        this.updateNowPlaying();
+                    }
+                }, 200);
+            }
 
         } catch (error) {
             console.error('Error logging in:', error);
