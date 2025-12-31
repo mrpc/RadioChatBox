@@ -326,6 +326,17 @@
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
 
+        .btn-secondary {
+            background: var(--gray-300);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-400);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
         .btn-success {
             background: var(--success);
             color: white;
@@ -773,6 +784,9 @@
             </div>
             <button class="btn btn-primary" style="width: 100%; padding: 14px;" onclick="login()">
                 🔐 Sign In
+            </button>
+            <button class="btn btn-secondary" style="width: 100%; padding: 14px; margin-top: 10px;" onclick="goBackToChat()">
+                ← Back to Chat
             </button>
             <div class="error" id="login-error"></div>
         </div>
@@ -1821,6 +1835,10 @@
             showLoginScreen();
         }
 
+        function goBackToChat() {
+            window.location.href = '/';
+        }
+
         function showLoginScreen() {
             document.getElementById('login-screen').style.display = 'block';
             document.getElementById('admin-panel').style.display = 'none';
@@ -1872,6 +1890,35 @@
             authToken = null;
             localStorage.removeItem('adminToken');
             localStorage.removeItem('isAdmin'); // Remove admin flag
+            
+            // Also clear chat session data (both localStorage and cookies)
+            const chatDataKeys = [
+                'chatNickname',
+                'userId', 
+                'chatAge',
+                'chatLocation',
+                'chatSex',
+                'chatSessionId',
+                'chatSoundEnabled'
+            ];
+            
+            chatDataKeys.forEach(key => {
+                // Clear from localStorage
+                localStorage.removeItem(key);
+                
+                // Clear from cookies (same way the chat does)
+                document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+                // Also try with Secure and Partitioned for HTTPS
+                if (window.location.protocol === 'https:') {
+                    document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=None; Secure; Partitioned`;
+                }
+            });
+            
+            // If in an iframe context (embedded chat), reload to trigger re-login
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'logout' }, '*');
+            }
+            
             showLoginScreen();
         }
 

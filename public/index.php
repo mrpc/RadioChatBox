@@ -24,40 +24,76 @@
     <div id="nickname-modal" class="modal">
         <div class="modal-content">
             <h2>Welcome to Live Chat!</h2>
-            <p>Please enter your details to get started:</p>
-            <input 
-                type="text" 
-                id="nickname-input" 
-                placeholder="Enter your nickname" 
-                maxlength="50"
-                autocomplete="off"
-                required
-            >
-            <div id="profile-fields" style="display: none;">
-                <select id="age-input" required></select>
-                    <script>
-                    // Populate age select (18-90) for registration
-                    document.addEventListener('DOMContentLoaded', function() {
-                        var ageSelect = document.getElementById('age-input');
-                        if (ageSelect) {
-                            ageSelect.innerHTML = '<option value="">Select Age</option>';
-                            for (var i = 18; i <= 90; i++) {
-                                ageSelect.innerHTML += '<option value="' + i + '">' + i + '</option>';
-                            }
-                        }
-                    });
-                    </script>
-                <select id="sex-input" required>
-                    <option value="">Select Sex</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                </select>
-                <select id="location-input" required>
-                    <option value="">Select Country</option>
-                </select>
+            
+            <!-- Toggle between guest and login -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button id="guest-mode-btn" class="mode-toggle-btn active" style="flex: 1; padding: 10px; border: 2px solid #667eea; background: #667eea; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    Join as Guest
+                </button>
+                <button id="login-mode-btn" class="mode-toggle-btn" style="flex: 1; padding: 10px; border: 2px solid #667eea; background: transparent; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    Login
+                </button>
             </div>
-            <div id="nickname-error" class="error-message"></div>
-            <button id="nickname-submit">Join Chat</button>
+            
+            <!-- Guest Mode Form -->
+            <div id="guest-form">
+                <p>Please enter your details to get started:</p>
+                <input 
+                    type="text" 
+                    id="nickname-input" 
+                    placeholder="Enter your nickname" 
+                    maxlength="50"
+                    autocomplete="off"
+                    required
+                >
+                <div id="profile-fields" style="display: none;">
+                    <select id="age-input" required></select>
+                        <script>
+                        // Populate age select (18-90) for registration
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var ageSelect = document.getElementById('age-input');
+                            if (ageSelect) {
+                                ageSelect.innerHTML = '<option value="">Select Age</option>';
+                                for (var i = 18; i <= 90; i++) {
+                                    ageSelect.innerHTML += '<option value="' + i + '">' + i + '</option>';
+                                }
+                            }
+                        });
+                        </script>
+                    <select id="sex-input" required>
+                        <option value="">Select Sex</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                    <select id="location-input" required>
+                        <option value="">Select Country</option>
+                    </select>
+                </div>
+                <div id="nickname-error" class="error-message"></div>
+                <button id="nickname-submit">Join Chat</button>
+            </div>
+            
+            <!-- Login Form -->
+            <div id="login-form" style="display: none;">
+                <p>Login with your registered account:</p>
+                <input 
+                    type="text" 
+                    id="login-username-input" 
+                    placeholder="Username" 
+                    maxlength="50"
+                    autocomplete="username"
+                    required
+                >
+                <input 
+                    type="password" 
+                    id="login-password-input" 
+                    placeholder="Password" 
+                    autocomplete="current-password"
+                    required
+                >
+                <div id="login-error" class="error-message"></div>
+                <button id="login-submit">Login & Join Chat</button>
+            </div>
         </div>
     </div>
 

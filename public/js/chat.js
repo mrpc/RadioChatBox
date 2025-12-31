@@ -78,6 +78,76 @@ class RadioChatBox {
         this.loadSettings().then(() => {
             this.proceedWithNormalLogin();
         });
+        
+        // Listen for storage changes (detect when admin logs out)
+        this.setupStorageListener();
+        
+        // Listen for page visibility changes to detect when returning from admin panel
+        document.addEventListener('visibilitychange', () => this.handleVisibilityChange());
+    }
+    
+    handleVisibilityChange() {
+        // When page becomes visible, check if we've been logged out from admin
+        if (!document.hidden && this.username) {
+            // Check if adminToken was cleared (user logged out from admin)
+            const adminToken = localStorage.getItem('adminToken');
+            const wasLoggedInAsAdmin = this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole);
+            
+            if (wasLoggedInAsAdmin && !adminToken) {
+                // Admin token was cleared, logout from chat too
+                this.logoutUser();
+            }
+        }
+    }
+    
+    setupStorageListener() {
+        // Listen for storage changes from other tabs/windows
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'adminToken' && e.newValue === null && this.username) {
+                // Admin token was cleared in another tab/window
+                this.logoutUser();
+            }
+        });
+    }
+    
+    logoutUser() {
+        console.log('Logging out user:', this.username);
+        
+        // Clear user data
+        this.username = null;
+        this.userId = null;
+        this.userRole = null;
+        this.setStorage('chatNickname', null);
+        this.setStorage('userId', null);
+        this.setStorage('chatAge', null);
+        this.setStorage('chatLocation', null);
+        this.setStorage('chatSex', null);
+        
+        // Close any active connections
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+        }
+        
+        // Stop heartbeat
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        
+        // Close any active chats
+        if (this.privateChat.active) {
+            this.closePrivateChat();
+        }
+        
+        // Hide main chat interface
+        const appContainer = document.getElementById('app-container');
+        if (appContainer) {
+            appContainer.style.display = 'none';
+        }
+        
+        // Show nickname modal (triggers login flow again)
+        this.showNicknameModal();
     }
     
     proceedWithNormalLogin() {
@@ -396,6 +466,12 @@ class RadioChatBox {
     }
 
     setStorage(name, value) {
+        // If value is null, remove the storage item
+        if (value === null) {
+            this.removeStorage(name);
+            return true;
+        }
+        
         // Try localStorage first
         try {
             localStorage.setItem(name, value);
@@ -528,6 +604,9 @@ class RadioChatBox {
         const nicknameSubmit = document.getElementById('nickname-submit');
         const nicknameError = document.getElementById('nickname-error');
         const profileFields = document.getElementById('profile-fields');
+        
+        // Setup mode toggle buttons
+        this.setupModeToggle();
 
         // Check if user is logged in as admin and show quick-join option
         const adminToken = localStorage.getItem('adminToken');
@@ -547,8 +626,11 @@ class RadioChatBox {
                         </button>
                         <p style="margin: 10px 0 0 0; font-size: 12px; opacity: 0.9;">or enter a different nickname below</p>
                     `;
-                    // Insert before the nickname input
-                    nicknameInput.parentElement.insertBefore(adminNotice, nicknameInput);
+                    // Insert at the top of guest-form
+                    const guestForm = document.getElementById('guest-form');
+                    if (guestForm) {
+                        guestForm.insertBefore(adminNotice, guestForm.firstChild);
+                    }
                 }
                 
                 // Add click handler for quick-join button
@@ -663,6 +745,144 @@ class RadioChatBox {
     hideNicknameModal() {
         const modal = document.getElementById('nickname-modal');
         modal.style.display = 'none';
+    }
+    
+    setupModeToggle() {
+        const guestModeBtn = document.getElementById('guest-mode-btn');
+        const loginModeBtn = document.getElementById('login-mode-btn');
+        const guestForm = document.getElementById('guest-form');
+        const loginForm = document.getElementById('login-form');
+        const loginUsernameInput = document.getElementById('login-username-input');
+        const loginPasswordInput = document.getElementById('login-password-input');
+        const loginSubmit = document.getElementById('login-submit');
+        const loginError = document.getElementById('login-error');
+        
+        if (!guestModeBtn || !loginModeBtn) return;
+        
+        // Toggle to guest mode
+        guestModeBtn.onclick = () => {
+            guestModeBtn.classList.add('active');
+            guestModeBtn.style.background = '#667eea';
+            guestModeBtn.style.color = 'white';
+            loginModeBtn.classList.remove('active');
+            loginModeBtn.style.background = 'transparent';
+            loginModeBtn.style.color = '#667eea';
+            guestForm.style.display = 'block';
+            loginForm.style.display = 'none';
+            loginError.textContent = '';
+        };
+        
+        // Toggle to login mode
+        loginModeBtn.onclick = () => {
+            loginModeBtn.classList.add('active');
+            loginModeBtn.style.background = '#667eea';
+            loginModeBtn.style.color = 'white';
+            guestModeBtn.classList.remove('active');
+            guestModeBtn.style.background = 'transparent';
+            guestModeBtn.style.color = '#667eea';
+            guestForm.style.display = 'none';
+            loginForm.style.display = 'block';
+            document.getElementById('nickname-error').textContent = '';
+            if (loginUsernameInput) loginUsernameInput.focus();
+        };
+        
+        // Handle login submission
+        const submitLogin = async () => {
+            const username = loginUsernameInput.value.trim();
+            const password = loginPasswordInput.value;
+            
+            if (!username) {
+                loginError.textContent = 'Please enter your username';
+                return;
+            }
+            
+            if (!password) {
+                loginError.textContent = 'Please enter your password';
+                return;
+            }
+            
+            loginSubmit.disabled = true;
+            loginError.textContent = '';
+            loginSubmit.textContent = 'Logging in...';
+            
+            try {
+                await this.loginAndJoin(username, password);
+            } catch (error) {
+                loginError.textContent = error.message;
+                loginSubmit.disabled = false;
+                loginSubmit.textContent = 'Login & Join Chat';
+            }
+        };
+        
+        if (loginSubmit) {
+            loginSubmit.onclick = submitLogin;
+        }
+        
+        if (loginUsernameInput) {
+            loginUsernameInput.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    if (loginPasswordInput && !loginPasswordInput.value) {
+                        loginPasswordInput.focus();
+                    } else {
+                        submitLogin();
+                    }
+                }
+            };
+        }
+        
+        if (loginPasswordInput) {
+            loginPasswordInput.onkeypress = (e) => {
+                if (e.key === 'Enter') submitLogin();
+            };
+        }
+    }
+    
+    async loginAndJoin(username, password) {
+        try {
+            // Call login API
+            const response = await fetch(`${this.apiUrl}/api/login.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    username, 
+                    password,
+                    sessionId: this.sessionId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Login failed');
+            }
+            
+            // Success! Set username and initialize chat
+            this.username = data.user.username;
+            this.userId = data.user.id;
+            this.userRole = data.user.role;
+            this.setStorage('chatNickname', this.username);
+            this.setStorage('userId', this.userId);
+            
+            // If user has admin/moderator role, also set admin credentials for admin panel access
+            if (['root', 'administrator', 'moderator'].includes(data.user.role)) {
+                const credentials = `${username}:${password}`;
+                localStorage.setItem('adminToken', credentials);
+                localStorage.setItem('isAdmin', 'true');
+                console.log('Admin credentials stored for role:', data.user.role);
+            }
+            
+            // Track user login (if analytics is available and has the method)
+            if (window.analytics && typeof window.analytics.trackUserLogin === 'function') {
+                window.analytics.trackUserLogin(this.username);
+            }
+            
+            this.hideNicknameModal();
+            this.initializeChat();
+            
+        } catch (error) {
+            console.error('Error logging in:', error);
+            throw error;
+        }
     }
 
     showProfileModal() {

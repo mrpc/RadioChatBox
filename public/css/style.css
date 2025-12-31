@@ -160,7 +160,9 @@ body {
 #nickname-input,
 #age-input,
 #location-input,
-#sex-input {
+#sex-input,
+#login-username-input,
+#login-password-input {
     width: 100%;
     padding: 12px 16px;
     border: 2px solid #e5e7eb;
@@ -174,12 +176,29 @@ body {
 #nickname-input:focus,
 #age-input:focus,
 #location-input:focus,
-#sex-input:focus {
+#sex-input:focus,
+#login-username-input:focus,
+#login-password-input:focus {
     border-color: #667eea;
 }
 
 #profile-fields {
     margin-top: 10px;
+}
+
+/* Mode toggle buttons */
+.mode-toggle-btn {
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.mode-toggle-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.mode-toggle-btn:active {
+    transform: translateY(0);
 }
 
 .error-message {
@@ -192,7 +211,8 @@ body {
     display: none;
 }
 
-#nickname-submit {
+#nickname-submit,
+#login-submit {
     width: 100%;
     padding: 12px 24px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -205,12 +225,14 @@ body {
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
-#nickname-submit:hover {
+#nickname-submit:hover,
+#login-submit:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-#nickname-submit:disabled {
+#nickname-submit:disabled,
+#login-submit:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
