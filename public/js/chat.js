@@ -178,6 +178,8 @@ class RadioChatBox {
                         this.userId = savedUserId;
                         this.userRole = this.getStorage('userRole');
                         
+                        console.log('[proceedWithNormalLogin] Restored session. userRole from storage:', this.userRole);
+                        
                         // Get profile data if available
                         const savedAge = this.getStorage('chatAge');
                         const savedLocation = this.getStorage('chatLocation');
