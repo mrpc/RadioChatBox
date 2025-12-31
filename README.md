@@ -295,9 +295,31 @@ Full API documentation is available in OpenAPI 3.0 format: [`docs/openapi.yaml`]
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/admin/messages.php` | GET | Paginated message list |
+| `/api/admin/user-details.php` | GET | User details with pagination & search (`?username=&page=&limit=&search=`) |
+| `/api/admin/inactive-users.php` | GET | List inactive users with pagination |
 | `/api/admin/clear-chat.php` | POST | Clear all messages |
 | `/api/admin/ban-ip.php` | POST | Ban IP address |
+| `/api/admin/kick-user.php` | POST | Kick user from chat |
 | `/api/admin/settings.php` | GET/POST | Manage settings |
+| `/api/admin/users.php` | GET | List all admin users |
+| `/api/admin/create-user.php` | POST | Create new admin user |
+| `/api/admin/update-user.php` | POST | Update existing admin user |
+| `/api/admin/delete-user.php` | DELETE | Delete admin user |
+
+**User Details Endpoint Usage:**
+```bash
+# Get user details with default pagination (page 1, limit 50)
+GET /api/admin/user-details.php?username=john_doe
+
+# Get second page with 20 messages per page
+GET /api/admin/user-details.php?username=john_doe&page=2&limit=20
+
+# Search user's messages containing "hello"
+GET /api/admin/user-details.php?username=john_doe&search=hello
+
+# Combine pagination and search
+GET /api/admin/user-details.php?username=john_doe&page=1&limit=10&search=music
+```
 
 ---
 
