@@ -88,7 +88,7 @@ class UserService
         
         try {
             $stmt = $this->db->prepare("
-                INSERT INTO admin_users (username, password_hash, role, email, created_by)
+                INSERT INTO users (username, password_hash, role, email, created_by)
                 VALUES (:username, :password_hash, :role, :email, :created_by)
                 RETURNING id, username, role, email, created_at
             ");
@@ -164,7 +164,7 @@ class UserService
         }
         
         try {
-            $sql = "UPDATE admin_users SET " . implode(', ', $setFields) . " WHERE id = :id RETURNING id, username, role, email, is_active, updated_at";
+            $sql = "UPDATE users SET " . implode(', ', $setFields) . " WHERE id = :id RETURNING id, username, role, email, is_active, updated_at";
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
             
@@ -199,7 +199,7 @@ class UserService
     {
         try {
             // Get user info before deleting
-            $stmt = $this->db->prepare("SELECT username FROM admin_users WHERE id = :id");
+            $stmt = $this->db->prepare("SELECT username FROM users WHERE id = :id");
             $stmt->execute(['id' => $userId]);
             $user = $stmt->fetch(\PDO::FETCH_ASSOC);
             
@@ -208,7 +208,7 @@ class UserService
             }
             
             // Delete user
-            $stmt = $this->db->prepare("DELETE FROM admin_users WHERE id = :id");
+            $stmt = $this->db->prepare("DELETE FROM users WHERE id = :id");
             $stmt->execute(['id' => $userId]);
             
             // Clear caches
@@ -232,7 +232,7 @@ class UserService
     public function getAllUsers(bool $includeInactive = false): array
     {
         // Try to get from Redis cache first
-        $cacheKey = 'admin_users:list:' . ($includeInactive ? 'all' : 'active');
+        $cacheKey = 'users:list:' . ($includeInactive ? 'all' : 'active');
         
         try {
             $prefix = Database::getRedisPrefix();
@@ -251,7 +251,7 @@ class UserService
         
         try {
             $sql = "SELECT id, username, role, email, is_active, created_at, updated_at, last_login 
-                    FROM admin_users";
+                    FROM users";
             
             if (!$includeInactive) {
                 $sql .= " WHERE is_active = TRUE";
@@ -298,7 +298,7 @@ class UserService
         try {
             $stmt = $this->db->prepare("
                 SELECT id, username, role, email, is_active, created_at, updated_at, last_login
-                FROM admin_users
+                FROM users
                 WHERE id = :id
             ");
             $stmt->execute(['id' => $userId]);
@@ -323,7 +323,7 @@ class UserService
         try {
             $stmt = $this->db->prepare("
                 SELECT id, username, role, email, is_active, created_at, updated_at, last_login
-                FROM admin_users
+                FROM users
                 WHERE username = :username
             ");
             $stmt->execute(['username' => $username]);
@@ -349,7 +349,7 @@ class UserService
         try {
             $stmt = $this->db->prepare("
                 SELECT id, username, password_hash, role, email, is_active
-                FROM admin_users
+                FROM users
                 WHERE username = :username
             ");
             $stmt->execute(['username' => $username]);
@@ -427,7 +427,7 @@ class UserService
     private function updateLastLogin(int $userId): void
     {
         try {
-            $stmt = $this->db->prepare("UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = :id");
+            $stmt = $this->db->prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = :id");
             $stmt->execute(['id' => $userId]);
         } catch (\PDOException $e) {
             error_log("UserService::updateLastLogin error: " . $e->getMessage());
@@ -454,8 +454,8 @@ class UserService
         try {
             $prefix = Database::getRedisPrefix();
             // Clear both active and all users cache
-            $this->redis->del($prefix . 'admin_users:list:active');
-            $this->redis->del($prefix . 'admin_users:list:all');
+            $this->redis->del($prefix . 'users:list:active');
+            $this->redis->del($prefix . 'users:list:all');
         } catch (\Exception $e) {
             error_log("UserService::clearUsersCache error: " . $e->getMessage());
         }

@@ -401,24 +401,24 @@ class ChatService
     {
         $nickname = $this->sanitize($nickname, 50);
         
-        // Clean up inactive users first
-        $this->cleanupInactiveUsers();
+        // Clean up inactive sessions first
+        $this->cleanupInactiveSessions();
         
-        // Check if this is an admin username
+        // Check if this is an authenticated username
         $stmt = $this->pdo->prepare(
-            'SELECT username FROM admin_users WHERE username = :username'
+            'SELECT username FROM users WHERE username = :username'
         );
         $stmt->execute(['username' => $nickname]);
-        $isAdminUsername = $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
+        $isAuthenticatedUsername = $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
         
-        // If it's an admin username, always allow (admins can have multiple sessions)
-        if ($isAdminUsername) {
+        // If it's an authenticated username, always allow (authenticated users can have multiple sessions)
+        if ($isAuthenticatedUsername) {
             return true;
         }
         
         // For regular users, check if username is taken by another session
         $stmt = $this->pdo->prepare(
-            'SELECT session_id FROM active_users WHERE LOWER(username) = LOWER(:username)'
+            'SELECT session_id FROM sessions WHERE LOWER(username) = LOWER(:username)'
         );
         $stmt->execute(['username' => $nickname]);
         $existingSession = $stmt->fetchColumn();
@@ -454,26 +454,26 @@ class ChatService
             return false;
         }
         
-        // Check if username matches an admin username
-        // Note: We now ALLOW admins to use their admin username in chat
+        // Check if username matches an authenticated username
+        // Note: We now ALLOW authenticated users to use their username in chat
         // This check is kept for reference but is no longer blocking
-        $isAdminUsername = false;
+        $isAuthenticatedUsername = false;
         $stmt = $this->pdo->prepare(
-            'SELECT username FROM admin_users WHERE username = :username'
+            'SELECT username FROM users WHERE username = :username'
         );
         $stmt->execute(['username' => $username]);
         if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
-            $isAdminUsername = true;
-            // Admins are allowed to join chat with their admin username
+            $isAuthenticatedUsername = true;
+            // Authenticated users are allowed to join chat with their username
             // No error log needed as this is expected behavior
         }
         
-        // For admin usernames, allow multiple sessions (different devices)
+        // For authenticated usernames, allow multiple sessions (different devices)
         // For regular users, enforce one session per username
-        if (!$isAdminUsername) {
+        if (!$isAuthenticatedUsername) {
             // Check if username is already taken by another session
             $stmt = $this->pdo->prepare(
-                'SELECT session_id FROM active_users WHERE username = :username'
+                'SELECT session_id FROM sessions WHERE username = :username'
             );
             $stmt->execute(['username' => $username]);
             $existingUser = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -486,10 +486,10 @@ class ChatService
         }
         
         try {
-            // Insert or update active user
-            // Note: ON CONFLICT now uses (username, session_id) to allow multiple sessions for admin users
+            // Insert or update active session
+            // Note: ON CONFLICT now uses (username, session_id) to allow multiple sessions for authenticated users
             $stmt = $this->pdo->prepare(
-                'INSERT INTO active_users (username, session_id, ip_address, last_heartbeat, joined_at)
+                'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, NOW(), NOW())
                  ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
@@ -544,11 +544,11 @@ class ChatService
     public function updateHeartbeat(string $username, string $sessionId): bool
     {
         try {
-            // Clean up inactive users first (this might change the user list)
-            $this->cleanupInactiveUsers();
+            // Clean up inactive sessions first (this might change the user list)
+            $this->cleanupInactiveSessions();
             
             $stmt = $this->pdo->prepare(
-                'UPDATE active_users 
+                'UPDATE sessions 
                  SET last_heartbeat = NOW() 
                  WHERE username = :username AND session_id = :session_id'
             );
@@ -573,7 +573,7 @@ class ChatService
      */
     public function getActiveUsers(): array
     {
-        $this->cleanupInactiveUsers();
+        $this->cleanupInactiveSessions();
         
         try {
             $stmt = $this->pdo->query(
@@ -584,7 +584,7 @@ class ChatService
                     p.age,
                     p.location,
                     p.sex
-                 FROM active_users a
+                 FROM sessions a
                  LEFT JOIN user_profiles p ON a.username = p.username
                  ORDER BY a.joined_at ASC'
             );
@@ -601,10 +601,10 @@ class ChatService
      */
     public function getActiveUserCount(): int
     {
-        $this->cleanupInactiveUsers();
+        $this->cleanupInactiveSessions();
         
         try {
-            $stmt = $this->pdo->query('SELECT COUNT(*) FROM active_users');
+            $stmt = $this->pdo->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
             error_log("Failed to get active user count: " . $e->getMessage());
@@ -663,7 +663,7 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'DELETE FROM active_users 
+                'DELETE FROM sessions 
                  WHERE username = :username AND session_id = :session_id'
             );
             
@@ -685,14 +685,14 @@ class ChatService
     }
 
     /**
-     * Clean up inactive users (not seen in 5 minutes)
+     * Clean up inactive sessions (not seen in 5 minutes)
      */
-    private function cleanupInactiveUsers(): void
+    private function cleanupInactiveSessions(): void
     {
         try {
-            $this->pdo->exec("SELECT cleanup_inactive_users()");
+            $this->pdo->exec("SELECT cleanup_inactive_sessions()");
         } catch (\PDOException $e) {
-            error_log("Failed to cleanup inactive users: " . $e->getMessage());
+            error_log("Failed to cleanup inactive sessions: " . $e->getMessage());
         }
     }
 
@@ -800,7 +800,7 @@ class ChatService
     public function getTotalActiveUsersCount(): int
     {
         try {
-            $stmt = $this->pdo->query('SELECT COUNT(*) FROM active_users');
+            $stmt = $this->pdo->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
             error_log("Failed to get active users count: " . $e->getMessage());
@@ -885,8 +885,8 @@ class ChatService
                 'banned_by' => $bannedBy,
             ]);
             
-            // Remove from active users if currently online
-            $this->pdo->prepare('DELETE FROM active_users WHERE LOWER(username) = LOWER(:nickname)')
+            // Remove from active sessions if currently online
+            $this->pdo->prepare('DELETE FROM sessions WHERE LOWER(username) = LOWER(:nickname)')
                       ->execute(['nickname' => $nickname]);
             
             // Invalidate Redis cache
@@ -964,7 +964,7 @@ class ChatService
     private function publishUserUpdate(): void
     {
         try {
-            $this->cleanupInactiveUsers();
+            $this->cleanupInactiveSessions();
             
             // Use getAllUsers() to include fake users
             $users = $this->getAllUsers();

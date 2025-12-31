@@ -36,7 +36,7 @@ try {
         $username = $data['username'];
         
         // Get user's IP and session before removing them
-        $stmt = $db->prepare('SELECT ip_address, session_id FROM active_users WHERE username = ?');
+        $stmt = $db->prepare('SELECT ip_address, session_id FROM sessions WHERE username = ?');
         $stmt->execute([$username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -55,7 +55,7 @@ try {
         ]));
         
         // Remove from database
-        $stmt = $db->prepare('DELETE FROM active_users WHERE username = ?');
+        $stmt = $db->prepare('DELETE FROM sessions WHERE username = ?');
         $result = $stmt->execute([$username]);
         
         if ($result) {

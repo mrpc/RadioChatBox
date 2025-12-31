@@ -40,7 +40,7 @@ try {
     $stmt = $db->prepare("
         SELECT m.*, u.ip_address 
         FROM messages m
-        LEFT JOIN users u ON m.username = u.username
+        LEFT JOIN user_activity u ON m.username = u.username
         WHERE m.username = ?
         ORDER BY m.created_at DESC
         LIMIT 100
@@ -59,7 +59,7 @@ try {
     $ipAddresses = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Get active session info
-    $stmt = $db->prepare("SELECT * FROM active_users WHERE username = ?");
+    $stmt = $db->prepare("SELECT * FROM sessions WHERE username = ?");
     $stmt->execute([$username]);
     $activeSession = $stmt->fetch(PDO::FETCH_ASSOC);
     

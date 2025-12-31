@@ -19,7 +19,8 @@ DROP TABLE IF EXISTS banned_ips CASCADE;
 DROP TABLE IF EXISTS user_profiles CASCADE;
 DROP TABLE IF EXISTS attachments CASCADE;
 DROP TABLE IF EXISTS private_messages CASCADE;
-DROP TABLE IF EXISTS active_users CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS user_activity CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS settings CASCADE;
@@ -30,7 +31,7 @@ DROP VIEW IF EXISTS user_stats CASCADE;
 
 -- Drop functions
 DROP FUNCTION IF EXISTS update_user_stats() CASCADE;
-DROP FUNCTION IF EXISTS cleanup_inactive_users() CASCADE;
+DROP FUNCTION IF EXISTS cleanup_inactive_sessions() CASCADE;
 
 -- ============================================================================
 -- CORE TABLES
@@ -57,8 +58,8 @@ CREATE INDEX idx_messages_reply_to ON messages(reply_to);
 
 COMMENT ON COLUMN messages.reply_to IS 'References the message_id of the parent message being replied to';
 
--- Users table for tracking and moderation
-CREATE TABLE IF NOT EXISTS users (
+-- User activity table for tracking and moderation (historical participation audit)
+CREATE TABLE IF NOT EXISTS user_activity (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     session_id VARCHAR(255),
@@ -67,25 +68,36 @@ CREATE TABLE IF NOT EXISTS users (
     last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     message_count INTEGER DEFAULT 0,
     is_banned BOOLEAN DEFAULT FALSE,
-    is_moderator BOOLEAN DEFAULT FALSE
+    is_moderator BOOLEAN DEFAULT FALSE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_ip_address ON users(ip_address);
+CREATE INDEX idx_user_activity_username ON user_activity(username);
+CREATE INDEX idx_user_activity_ip_address ON user_activity(ip_address);
+CREATE INDEX idx_user_activity_user ON user_activity(user_id);
 
--- Active users (currently online)
-CREATE TABLE IF NOT EXISTS active_users (
+COMMENT ON TABLE user_activity IS 'Historical participation tracking - auto-populated by trigger when messages are sent (audit log of all chat participants)';
+COMMENT ON COLUMN user_activity.user_id IS 'References authenticated user account (NULL for anonymous participants, NOT NULL for registered users)';
+
+-- Sessions table (currently online users - anonymous and authenticated)
+CREATE TABLE IF NOT EXISTS sessions (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
+    username VARCHAR(50) NOT NULL,
     session_id VARCHAR(255) NOT NULL,
     ip_address VARCHAR(45) NOT NULL,
     last_heartbeat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT sessions_username_session_unique UNIQUE (username, session_id)
 );
 
-CREATE INDEX idx_active_users_username ON active_users(username);
-CREATE INDEX idx_active_users_last_heartbeat ON active_users(last_heartbeat);
-CREATE INDEX idx_active_users_session_id ON active_users(session_id);
+CREATE INDEX idx_sessions_username ON sessions(username);
+CREATE INDEX idx_sessions_last_heartbeat ON sessions(last_heartbeat);
+CREATE INDEX idx_sessions_session_id ON sessions(session_id);
+CREATE INDEX idx_sessions_user ON sessions(user_id);
+
+COMMENT ON TABLE sessions IS 'Currently active chat sessions - includes both anonymous users (user_id NULL) and authenticated users (user_id NOT NULL)';
+COMMENT ON COLUMN sessions.user_id IS 'References authenticated user account (NULL for anonymous users, NOT NULL for logged-in users)';
 
 -- Fake users (to fill chat when real user count is low)
 CREATE TABLE IF NOT EXISTS fake_users (
@@ -225,13 +237,14 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE OR REPLACE FUNCTION update_user_stats()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO users (username, ip_address, last_seen, message_count)
-    VALUES (NEW.username, NEW.ip_address, NEW.created_at, 1)
+    INSERT INTO user_activity (username, ip_address, last_seen, message_count, user_id)
+    VALUES (NEW.username, NEW.ip_address, NEW.created_at, 1, NEW.user_id)
     ON CONFLICT (username) 
     DO UPDATE SET
         last_seen = NEW.created_at,
-        message_count = users.message_count + 1,
-        ip_address = NEW.ip_address;
+        message_count = user_activity.message_count + 1,
+        ip_address = NEW.ip_address,
+        user_id = COALESCE(NEW.user_id, user_activity.user_id);
     
     RETURN NEW;
 END;
@@ -242,13 +255,13 @@ AFTER INSERT ON messages
 FOR EACH ROW
 EXECUTE FUNCTION update_user_stats();
 
--- Clean up inactive users (not seen in 5 minutes)
-CREATE OR REPLACE FUNCTION cleanup_inactive_users()
+-- Clean up inactive sessions (not seen in 5 minutes)
+CREATE OR REPLACE FUNCTION cleanup_inactive_sessions()
 RETURNS INTEGER AS $$
 DECLARE
     deleted_count INTEGER;
 BEGIN
-    DELETE FROM active_users
+    DELETE FROM sessions
     WHERE last_heartbeat < NOW() - INTERVAL '5 minutes';
     
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
@@ -283,8 +296,9 @@ SELECT
     last_seen,
     message_count,
     is_banned,
-    is_moderator
-FROM users
+    is_moderator,
+    user_id
+FROM user_activity
 ORDER BY message_count DESC;
 
 -- ============================================================================
@@ -379,45 +393,45 @@ COMMENT ON COLUMN attachments.file_size IS 'File size in bytes';
 
 -- Migration: Admin Users with Role-Based Access Control
 -- Created: 2025-11-12
--- Description: Creates admin_users table with hierarchical roles for admin panel access
+-- Description: Creates users table with hierarchical roles for authentication and access control
 
 -- Create enum type for user roles
 DO $$ 
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admin_role') THEN
-        CREATE TYPE admin_role AS ENUM ('root', 'administrator', 'moderator', 'simple_user');
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE user_role AS ENUM ('root', 'administrator', 'moderator', 'simple_user');
     END IF;
 END $$;
 
--- Admin users table
-CREATE TABLE IF NOT EXISTS admin_users (
+-- Users table (authenticated accounts - admin panel + future registered chat users)
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role admin_role NOT NULL DEFAULT 'simple_user',
+    role user_role NOT NULL DEFAULT 'simple_user',
     email VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP,
-    created_by INTEGER REFERENCES admin_users(id),
+    created_by INTEGER REFERENCES users(id),
     CONSTRAINT username_length CHECK (LENGTH(username) >= 3),
     CONSTRAINT valid_email CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
 );
 
-CREATE INDEX idx_admin_users_username ON admin_users(username);
-CREATE INDEX idx_admin_users_role ON admin_users(role);
-CREATE INDEX idx_admin_users_is_active ON admin_users(is_active);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_is_active ON users(is_active);
 
-COMMENT ON TABLE admin_users IS 'Admin panel users with role-based access control';
+COMMENT ON TABLE users IS 'Authenticated user accounts with passwords and role-based access (admins, moderators, future registered chat users)';
 
 -- Insert default root user (username: admin, password: admin123)
-INSERT INTO admin_users (username, password_hash, role, email, is_active) VALUES 
+INSERT INTO users (username, password_hash, role, email, is_active) VALUES 
     ('admin', '$2y$10$ZUCvW9SmSpOUwPtWC.XzL.mA0piFBy.DM8TKPHvkWdd0CsG121vCC', 'root', NULL, TRUE)
 ON CONFLICT (username) DO NOTHING;
 
 -- Auto-update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_admin_users_updated_at()
+CREATE OR REPLACE FUNCTION update_users_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
@@ -425,10 +439,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_admin_users_updated_at
-BEFORE UPDATE ON admin_users
+CREATE TRIGGER trigger_users_updated_at
+BEFORE UPDATE ON users
 FOR EACH ROW
-EXECUTE FUNCTION update_admin_users_updated_at();
+EXECUTE FUNCTION update_users_updated_at();
 
 
 -- Migration: Add session isolation to private messages
@@ -480,22 +494,13 @@ COMMENT ON COLUMN messages.user_id IS 'User ID if message sent by registered use
 -- Anonymous users will continue to use session_id only
 
 
--- Migration 004: Allow admin users to have multiple simultaneous sessions
+-- Migration 004: Allow authenticated users to have multiple simultaneous sessions
+-- Note: This constraint is now part of the sessions table definition above
+-- (sessions_username_session_unique constraint)
 -- Regular users still limited to one session per username
--- Admins can join from multiple devices
-
--- Remove the UNIQUE constraint on username
-ALTER TABLE active_users DROP CONSTRAINT IF EXISTS active_users_username_key;
-
--- Add a composite unique constraint on (username, session_id) instead
--- This allows same username from different sessions
-ALTER TABLE active_users ADD CONSTRAINT active_users_username_session_unique UNIQUE (username, session_id);
-
--- Update the index since username is no longer unique by itself
--- The existing index is still useful for lookups
--- Keep idx_active_users_username for fast username lookups
+-- Authenticated users can join from multiple devices
 
 -- Note: The application logic in ChatService.php has been updated to:
--- 1. Allow admin usernames to register (no longer blocked)
--- 2. Allow admin usernames to have multiple active sessions
+-- 1. Allow authenticated usernames to register (no longer blocked)
+-- 2. Allow authenticated usernames to have multiple active sessions
 -- 3. Regular users still enforced to one session per username

@@ -78,10 +78,10 @@ class UserServiceTest extends TestCase
         
         // Mock Redis cache clear (matches any key ending with these patterns)
         $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_users:list:active$/'))
+            ->with(Mockery::pattern('/users:list:active$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_users:list:all$/'))
+            ->with(Mockery::pattern('/users:list:all$/'))
             ->andReturn(1);
 
         $result = $this->userService->createUser(
@@ -168,10 +168,10 @@ class UserServiceTest extends TestCase
         
         // Mock Redis cache clear (matches any key ending with these patterns)
         $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_users:list:active$/'))
+            ->with(Mockery::pattern('/users:list:active$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_users:list:all$/'))
+            ->with(Mockery::pattern('/users:list:all$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
             ->with(Mockery::pattern('/admin_session:testuser$/'))
@@ -222,10 +222,10 @@ class UserServiceTest extends TestCase
         
         // Mock Redis cache clear (matches any key ending with these patterns)
         $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_users:list:active$/'))
+            ->with(Mockery::pattern('/users:list:active$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_users:list:all$/'))
+            ->with(Mockery::pattern('/users:list:all$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
             ->with(Mockery::pattern('/admin_session:testuser$/'))

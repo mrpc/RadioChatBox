@@ -30,13 +30,13 @@ try {
     // Get total count
     $countStmt = $db->query("
         SELECT COUNT(DISTINCT u.username) 
-        FROM users u
-        WHERE u.username NOT IN (SELECT username FROM active_users)
+        FROM user_activity u
+        WHERE u.username NOT IN (SELECT username FROM sessions)
     ");
     $total = (int)$countStmt->fetchColumn();
     $totalPages = ceil($total / $limit);
     
-    // Get users from the users table who are NOT in active_users
+    // Get users from the user_activity table who are NOT in sessions
     // This shows all users who have ever connected but are not currently active
     $stmt = $db->prepare("
         SELECT DISTINCT 
@@ -47,9 +47,9 @@ try {
             p.sex,
             (SELECT MAX(created_at) FROM messages m WHERE m.username = u.username) as last_message_at,
             (SELECT COUNT(*) FROM messages m WHERE m.username = u.username) as message_count
-        FROM users u
+        FROM user_activity u
         LEFT JOIN user_profiles p ON u.username = p.username
-        WHERE u.username NOT IN (SELECT username FROM active_users)
+        WHERE u.username NOT IN (SELECT username FROM sessions)
         ORDER BY last_message_at DESC NULLS LAST
         LIMIT :limit OFFSET :offset
     ");

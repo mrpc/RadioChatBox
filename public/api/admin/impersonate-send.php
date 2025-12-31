@@ -72,7 +72,7 @@ try {
     }
     
     // Get recipient's session_id
-    $stmt = $pdo->prepare("SELECT session_id FROM active_users WHERE username = ?");
+    $stmt = $pdo->prepare("SELECT session_id FROM sessions WHERE username = ?");
     $stmt->execute([$toUsername]);
     $recipient = $stmt->fetch(PDO::FETCH_ASSOC);
     

@@ -56,7 +56,7 @@ try {
         $toUsername = MessageFilter::sanitizeForOutput(trim($toUsername));
         
         // Check if recipient exists in active users or is an active fake user
-        $stmt = $db->prepare("SELECT session_id FROM active_users WHERE username = ?");
+        $stmt = $db->prepare("SELECT session_id FROM sessions WHERE username = ?");
         $stmt->execute([$toUsername]);
         $recipient = $stmt->fetch();
         

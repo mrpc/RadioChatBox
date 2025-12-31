@@ -67,7 +67,7 @@ class AdminAuth
     }
     
     /**
-     * Authenticate against admin_users table
+     * Authenticate against users table
      * 
      * @param string $username Username
      * @param string $password Plain text password

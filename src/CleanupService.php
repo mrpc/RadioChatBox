@@ -54,7 +54,7 @@ class CleanupService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'DELETE FROM active_users 
+                'DELETE FROM sessions 
                  WHERE last_heartbeat < NOW() - INTERVAL \'5 minutes\''
             );
             $stmt->execute();

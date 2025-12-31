@@ -56,7 +56,7 @@ try {
     // Verify session belongs to user
     $stmt = $db->prepare("
         SELECT username 
-        FROM active_users 
+        FROM sessions 
         WHERE session_id = :session_id AND username = :username
     ");
     $stmt->execute([
