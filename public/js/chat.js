@@ -186,8 +186,8 @@ class RadioChatBox {
                         
                         this.initializeChat();
                         
-                        // Update now playing to show listener count for admins (after chat is initialized)
-                        this.updateNowPlaying();
+                        // Update now playing after a brief delay to ensure admin tooltip shows
+                        setTimeout(() => this.updateNowPlaying(), 100);
                         return;
                     } else {
                         // Session invalid or user_id mismatch - clear stored data and show login
@@ -944,8 +944,8 @@ class RadioChatBox {
             this.hideNicknameModal();
             this.initializeChat();
             
-            // Update now playing to show listener count for admins (after chat is initialized)
-            this.updateNowPlaying();
+            // Update now playing after a brief delay to ensure admin tooltip shows
+            setTimeout(() => this.updateNowPlaying(), 100);
 
         } catch (error) {
             console.error('Error logging in:', error);
