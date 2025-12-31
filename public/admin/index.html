@@ -2014,8 +2014,20 @@
             } else {
                 // Handle hash-based navigation for initial load
                 const hash = window.location.hash.substring(1);
-                const tab = hash || 'dashboard';
-                switchTab(tab, false);
+                if (hash.startsWith('user-details/')) {
+                    // Load user details from URL
+                    const username = decodeURIComponent(hash.substring('user-details/'.length));
+                    switchTab('users', false);
+                    viewUserDetails(username);
+                } else if (hash.startsWith('inactive-user/')) {
+                    // Load inactive user details from URL
+                    const username = decodeURIComponent(hash.substring('inactive-user/'.length));
+                    switchTab('inactive-users', false);
+                    viewInactiveUserDetails(username);
+                } else {
+                    const tab = hash || 'dashboard';
+                    switchTab(tab, false);
+                }
             }
         });
         
@@ -2668,6 +2680,11 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    // Update URL hash
+                    const url = new URL(window.location);
+                    url.hash = `user-details/${encodeURIComponent(username)}`;
+                    history.pushState({ tab: 'users', username: username }, '', url);
+                    
                     const user = data.user;
                     document.getElementById('user-details-name').textContent = username;
                     
@@ -2771,6 +2788,11 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    // Update URL hash
+                    const url = new URL(window.location);
+                    url.hash = `inactive-user/${encodeURIComponent(username)}`;
+                    history.pushState({ tab: 'inactive-users', username: username }, '', url);
+                    
                     const user = data.user;
                     document.getElementById('inactive-user-details-name').textContent = username;
                     
