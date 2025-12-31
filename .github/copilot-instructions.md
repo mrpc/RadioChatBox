@@ -39,6 +39,19 @@ User sends message → POST /api/send.php
 2. `src/Config.php` reads from getenv() with fallback defaults
 3. Database `settings` table for runtime configuration (admin panel)
 
+### Settings Management Pattern
+**IMPORTANT**: When adding new settings:
+- **DO NOT create migration files** to insert default values
+- **DO use code-level defaults** in `public/api/settings.php` using `??` operator
+- **DO NOT pre-populate** settings in `database/init.sql` unless critical
+- Settings only get written to database when admin saves them via admin panel
+- Example:
+  ```php
+  // In public/api/settings.php
+  $settings['new_feature_enabled'] = $settings['new_feature_enabled'] ?? 'true';
+  ```
+- This ensures clean database with only admin-configured values
+
 ## Development Workflows
 
 ### Local Development (Docker-based)
