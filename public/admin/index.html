@@ -2672,9 +2672,9 @@
             }
         }
 
-        async function viewUserDetails(username) {
+        async function viewUserDetails(username, page = 1) {
             try {
-                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}`, {
+                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -2686,6 +2686,7 @@
                     history.pushState({ tab: 'users', username: username }, '', url);
                     
                     const user = data.user;
+                    const pagination = data.pagination;
                     document.getElementById('user-details-name').textContent = username;
                     
                     let profileHtml = '';
@@ -2704,7 +2705,26 @@
                     });
                     ipHtml += '</ul>';
 
-                    let messagesHtml = `<h3>Recent Messages (${user.total_messages} total)</h3>
+                    // Pagination controls for messages
+                    let paginationHtml = '';
+                    if (pagination.total_pages > 1) {
+                        paginationHtml = `<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">`;
+                        
+                        if (pagination.page > 1) {
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewUserDetails('${escapeHtml(username)}', ${pagination.page - 1})">← Previous</button>`;
+                        }
+                        
+                        paginationHtml += `<span>Page ${pagination.page} of ${pagination.total_pages}</span>`;
+                        
+                        if (pagination.page < pagination.total_pages) {
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewUserDetails('${escapeHtml(username)}', ${pagination.page + 1})">Next →</button>`;
+                        }
+                        
+                        paginationHtml += `</div>`;
+                    }
+
+                    let messagesHtml = `<h3>Messages (${pagination.total_messages} total)</h3>
+                        ${paginationHtml}
                         <table>
                             <thead>
                                 <tr>
@@ -2714,7 +2734,7 @@
                             </thead>
                             <tbody>`;
                     
-                    user.messages.slice(0, 20).forEach(msg => {
+                    user.messages.forEach(msg => {
                         messagesHtml += `
                             <tr>
                                 <td>${new Date(msg.created_at).toLocaleString()}</td>
@@ -2722,7 +2742,7 @@
                             </tr>
                         `;
                     });
-                    messagesHtml += '</tbody></table>';
+                    messagesHtml += `</tbody></table>${paginationHtml}`;
                     
                     // Private messages - show as conversation list
                     let privateMessagesHtml = '<h3>Private Conversations</h3>';
@@ -2780,9 +2800,9 @@
             }
         }
 
-        async function viewInactiveUserDetails(username) {
+        async function viewInactiveUserDetails(username, page = 1) {
             try {
-                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}`, {
+                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -2794,6 +2814,7 @@
                     history.pushState({ tab: 'inactive-users', username: username }, '', url);
                     
                     const user = data.user;
+                    const pagination = data.pagination;
                     document.getElementById('inactive-user-details-name').textContent = username;
                     
                     let profileHtml = '';
@@ -2812,7 +2833,26 @@
                     });
                     ipHtml += '</ul>';
 
-                    let messagesHtml = `<h3>Recent Messages (${user.total_messages} total)</h3>
+                    // Pagination controls for messages
+                    let paginationHtml = '';
+                    if (pagination.total_pages > 1) {
+                        paginationHtml = `<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">`;
+                        
+                        if (pagination.page > 1) {
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewInactiveUserDetails('${escapeHtml(username)}', ${pagination.page - 1})">← Previous</button>`;
+                        }
+                        
+                        paginationHtml += `<span>Page ${pagination.page} of ${pagination.total_pages}</span>`;
+                        
+                        if (pagination.page < pagination.total_pages) {
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewInactiveUserDetails('${escapeHtml(username)}', ${pagination.page + 1})">Next →</button>`;
+                        }
+                        
+                        paginationHtml += `</div>`;
+                    }
+
+                    let messagesHtml = `<h3>Messages (${pagination.total_messages} total)</h3>
+                        ${paginationHtml}
                         <table>
                             <thead>
                                 <tr>
@@ -2822,7 +2862,7 @@
                             </thead>
                             <tbody>`;
                     
-                    user.messages.slice(0, 20).forEach(msg => {
+                    user.messages.forEach(msg => {
                         messagesHtml += `
                             <tr>
                                 <td>${new Date(msg.created_at).toLocaleString()}</td>
@@ -2830,7 +2870,7 @@
                             </tr>
                         `;
                     });
-                    messagesHtml += '</tbody></table>';
+                    messagesHtml += `</tbody></table>${paginationHtml}`;
                     
                     // Private messages - show as conversation list
                     let privateMessagesHtml = '<h3>Private Conversations</h3>';
