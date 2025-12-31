@@ -153,8 +153,27 @@ class RadioChatBox {
     proceedWithNormalLogin() {
         // Check if user has a saved nickname
         const savedNickname = this.getStorage('chatNickname');
+        const savedUserId = this.getStorage('userId');
         
         if (savedNickname) {
+            // Check if this is an authenticated user (has userId from login)
+            if (savedUserId) {
+                // Authenticated user - restore session directly without re-registering
+                this.username = savedNickname;
+                this.userId = savedUserId;
+                this.userRole = this.getStorage('userRole');
+                
+                // Get profile data if available
+                const savedAge = this.getStorage('chatAge');
+                const savedLocation = this.getStorage('chatLocation');
+                const savedSex = this.getStorage('chatSex');
+                this.userProfile = { age: savedAge, location: savedLocation, sex: savedSex };
+                
+                this.initializeChat();
+                return;
+            }
+            
+            // Guest user - go through normal registration flow
             // Try to get saved profile data
             const savedAge = this.getStorage('chatAge');
             const savedLocation = this.getStorage('chatLocation');
