@@ -277,7 +277,18 @@ Full API documentation is available in OpenAPI 3.0 format: [`docs/openapi.yaml`]
 | `/api/history.php` | GET | Get message history |
 | `/api/now-playing.php` | GET | Current radio song/artist (if configured) |
 | `/api/register.php` | POST | Register username |
+| `/api/login.php` | POST | Login with username/password |
+| `/api/logout.php` | POST | Logout user session |
 | `/api/settings.php` | GET | Get public settings |
+| `/api/active-users.php` | GET | Get list of active users |
+| `/api/check-nickname.php` | POST | Check nickname availability |
+| `/api/heartbeat.php` | POST | Keep session alive |
+| `/api/private-message.php` | POST | Send private message |
+| `/api/update-profile.php` | POST | Update user profile |
+| `/api/upload-photo.php` | POST | Upload photo attachment |
+| `/api/user-profile.php` | GET | Get user profile details |
+| `/api/health.php` | GET | Health check endpoint |
+| `/api/version.php` | GET | Get API version |
 
 #### Admin Endpoints (Require Basic Auth)
 
