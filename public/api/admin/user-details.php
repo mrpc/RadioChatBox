@@ -48,10 +48,10 @@ try {
     $stmt->execute([$username]);
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Get user's IP addresses (from users table)
+    // Get user's IP addresses (from user_activity table)
     $stmt = $db->prepare("
         SELECT DISTINCT ip_address, first_seen
-        FROM users 
+        FROM user_activity 
         WHERE username = ?
         ORDER BY first_seen DESC
     ");
