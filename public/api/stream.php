@@ -18,10 +18,10 @@ header('X-Accel-Buffering: no'); // Disable nginx buffering
 // Disable output buffering
 if (ob_get_level()) ob_end_clean();
 
-// Set script timeout to 120 seconds to account for Cloudflare limits
-// Cloudflare free plan has 100 second timeout, we disconnect at 90s
-set_time_limit(120);
-ini_set('max_execution_time', '120');
+// Set script timeout for long-running SSE connections
+    // If behind Cloudflare without bypass, reduce to 90 seconds
+    set_time_limit(620);
+    ini_set('max_execution_time', '620');
 
 // Send initial comment to establish connection
 echo ": SSE connection established\n\n";
@@ -74,92 +74,123 @@ try {
         exit;
     }
     
-    // Set Redis read timeout with periodic ping check
-    // We use a timeout so we can periodically check connection and send pings
-    $redis->setOption(\Redis::OPT_READ_TIMEOUT, 30);
+    // Set Redis read timeout to periodically check connection and send pings
+    // When no messages arrive for this duration, Redis throws a timeout exception
+    // We catch it and use it as a trigger to send pings
+    $redis->setOption(\Redis::OPT_READ_TIMEOUT, 20);
     
     $startTime = time();
-    // With periodic pings every 25 seconds, connection stays alive indefinitely
-    // Keep a very long timeout (10 minutes) just as a safety measure
-    // This prevents indefinite hanging in case of edge cases
-    $maxRuntime = 600; // 10 minutes
+    // SSE connection max runtime
+    // Set to 600 seconds (10 minutes) when Cloudflare is bypassed via page rule
+    // If you're behind Cloudflare without bypass, reduce this to 90 seconds
+    $maxRuntime = 600;
     
-    $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix, &$startTime, $maxRuntime) {
-        // Check if we've exceeded max runtime - force reconnect before Cloudflare timeout
-        if (time() - $startTime > $maxRuntime) {
-            // Send a reconnect signal before closing
-            echo "event: reconnect\n";
-            echo "data: " . json_encode(['reason' => 'timeout']) . "\n\n";
-            flush();
-            return false; // Unsubscribe - browser will auto-reconnect
-        }
-        
-        // Check if client is still connected
-        if (connection_aborted()) {
-            return false; // Unsubscribe
-        }
-        
-        // Send periodic ping to keep connection alive (every 25 seconds)
-        // Cloudflare expects some data flow to keep connection open
-        if (time() - $lastPing > 25) {
-            echo ": ping " . time() . "\n\n";
-            flush();
-            $lastPing = time();
-        }
-        
-        if ($channel === $prefix . 'chat:updates') {
-            // Check if it's a special event type
-            $msgData = json_decode($message, true);
-            if (isset($msgData['type'])) {
-                if ($msgData['type'] === 'clear') {
-                    echo "event: clear\n";
+    // Main loop - keeps reconnecting to Redis on timeout to send pings
+    while (time() - $startTime < $maxRuntime && !connection_aborted()) {
+        try {
+            $redis->subscribe($channels, function($redis, $channel, $message) use (&$lastPing, $username, $prefix, &$startTime, $maxRuntime) {
+                // Check if we've exceeded max runtime
+                if (time() - $startTime > $maxRuntime) {
+                    echo "event: reconnect\n";
+                    echo "data: " . json_encode(['reason' => 'timeout']) . "\n\n";
+                    flush();
+                    return false; // Unsubscribe
+                }
+                
+                if (connection_aborted()) {
+                    return false; // Unsubscribe
+                }
+                
+                // Send periodic ping
+                if (time() - $lastPing > 20) {
+                    echo ": ping " . time() . "\n\n";
+                    flush();
+                    $lastPing = time();
+                }
+                
+                if ($channel === $prefix . 'chat:updates') {
+                    $msgData = json_decode($message, true);
+                    if (isset($msgData['type'])) {
+                        if ($msgData['type'] === 'clear') {
+                            echo "event: clear\n";
+                            echo "data: " . $message . "\n\n";
+                            flush();
+                        } elseif ($msgData['type'] === 'message_deleted') {
+                            echo "event: message_deleted\n";
+                            echo "data: " . $message . "\n\n";
+                            flush();
+                        } else {
+                            echo "event: message\n";
+                            echo "data: " . $message . "\n\n";
+                            flush();
+                        }
+                    } else {
+                        echo "event: message\n";
+                        echo "data: " . $message . "\n\n";
+                        flush();
+                    }
+                } elseif ($channel === $prefix . 'chat:user_updates') {
+                    echo "event: users\n";
                     echo "data: " . $message . "\n\n";
                     flush();
-                } elseif ($msgData['type'] === 'message_deleted') {
-                    echo "event: message_deleted\n";
-                    echo "data: " . $message . "\n\n";
-                    flush();
-                } else {
-                    // Unknown type, send as regular message
-                    echo "event: message\n";
-                    echo "data: " . $message . "\n\n";
-                    flush();
+                } elseif ($channel === $prefix . 'chat:private_messages') {
+                    $msgData = json_decode($message, true);
+                    if ($username && ($msgData['to_username'] === $username || $msgData['from_username'] === $username)) {
+                        echo "event: private\n";
+                        echo "data: " . $message . "\n\n";
+                        flush();
+                    }
+                }
+                $lastPing = time();
+            });
+            
+            // If we get here, subscription ended normally (callback returned false)
+            break;
+            
+        } catch (RedisException $e) {
+            // Redis timeout or connection error
+            $errorMsg = $e->getMessage();
+            
+            // Check if it's a read timeout (expected for ping mechanism)
+            if (strpos($errorMsg, 'read error on connection') !== false || 
+                strpos($errorMsg, 'Connection lost') !== false) {
+                // Expected timeout - send ping and reconnect
+                echo ": ping timeout " . time() . "\n\n";
+                flush();
+                $lastPing = time();
+                
+                // Reconnect Redis for next iteration
+                try {
+                    $redis->close();
+                    $redis = Database::getRedisForSubscribe();
+                    $redis->setOption(\Redis::OPT_READ_TIMEOUT, 20);
+                } catch (Exception $reconnectError) {
+                    error_log("Failed to reconnect to Redis: " . $reconnectError->getMessage());
+                    break;
                 }
             } else {
-                // Regular message
-                echo "event: message\n";
-                echo "data: " . $message . "\n\n";
+                // Unexpected error
+                error_log("Redis subscribe error: " . $errorMsg);
+                echo "event: error\n";
+                echo "data: " . json_encode(['error' => 'Connection error']) . "\n\n";
                 flush();
-            }
-        } elseif ($channel === $prefix . 'chat:user_updates') {
-            echo "event: users\n";
-            echo "data: " . $message . "\n\n";
-            flush();
-        } elseif ($channel === $prefix . 'chat:private_messages') {
-            // Only send private messages intended for this user
-            $msgData = json_decode($message, true);
-            if ($username && ($msgData['to_username'] === $username || $msgData['from_username'] === $username)) {
-                echo "event: private\n";
-                echo "data: " . $message . "\n\n";
-                flush();
+                break;
             }
         }
-        $lastPing = time();
-    });
+    }
+    
+    // Max runtime reached, tell client to reconnect
+    if (time() - $startTime >= $maxRuntime) {
+        echo "event: reconnect\n";
+        echo "data: " . json_encode(['reason' => 'max_runtime']) . "\n\n";
+        flush();
+    }
 
 } catch (Exception $e) {
     error_log("SSE Stream Error: " . $e->getMessage());
-    
-    // Check if it's a Redis timeout (expected behavior for periodic pings)
-    if (strpos($e->getMessage(), 'read error on connection') !== false) {
-        // This is expected when using read timeout for ping mechanism
-        // Connection will be re-established by client
-    } else {
-        // Actual error - send to client
-        echo "event: error\n";
-        echo "data: " . json_encode(['error' => 'Connection error']) . "\n\n";
-        flush();
-    }
+    echo "event: error\n";
+    echo "data: " . json_encode(['error' => 'Connection error']) . "\n\n";
+    flush();
 } finally {
     // Clean up Redis connection
     if (isset($redis)) {
