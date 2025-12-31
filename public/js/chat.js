@@ -203,7 +203,34 @@ class RadioChatBox {
                         }
                         return;
                     } else {
-                        // Session invalid or user_id mismatch - clear stored data and show login
+                        // Session invalid or user_id mismatch
+                        // Check if we have admin credentials to automatically re-login
+                        const adminToken = localStorage.getItem('adminToken');
+                        if (adminToken && adminToken.includes(':')) {
+                            const [username, password] = adminToken.split(':');
+                            // Check if the saved username matches the admin username
+                            if (username === savedNickname) {
+                                console.log('Session expired but admin token found - attempting automatic re-login');
+                                try {
+                                    // Clear old session data first
+                                    this.setStorage('chatNickname', null);
+                                    this.setStorage('userId', null);
+                                    this.setStorage('userRole', null);
+                                    
+                                    // Attempt automatic re-login with admin credentials
+                                    await this.loginAndJoin(username, password);
+                                    return;
+                                } catch (loginError) {
+                                    console.error('Automatic re-login failed:', loginError);
+                                    // Clear invalid admin token
+                                    localStorage.removeItem('adminToken');
+                                    localStorage.removeItem('isAdmin');
+                                    // Fall through to show login modal
+                                }
+                            }
+                        }
+                        
+                        // Session invalid and no valid admin token - clear stored data and show login
                         console.warn('Session validation failed - user_id mismatch or session expired');
                         this.setStorage('chatNickname', null);
                         this.setStorage('userId', null);
@@ -213,6 +240,31 @@ class RadioChatBox {
                     }
                 } catch (error) {
                     console.error('Session validation failed:', error);
+                    // Check if we have admin credentials to automatically re-login
+                    const adminToken = localStorage.getItem('adminToken');
+                    if (adminToken && adminToken.includes(':')) {
+                        const [username, password] = adminToken.split(':');
+                        if (username === savedNickname) {
+                            console.log('Session validation error but admin token found - attempting automatic re-login');
+                            try {
+                                // Clear old session data first
+                                this.setStorage('chatNickname', null);
+                                this.setStorage('userId', null);
+                                this.setStorage('userRole', null);
+                                
+                                // Attempt automatic re-login with admin credentials
+                                await this.loginAndJoin(username, password);
+                                return;
+                            } catch (loginError) {
+                                console.error('Automatic re-login failed:', loginError);
+                                // Clear invalid admin token
+                                localStorage.removeItem('adminToken');
+                                localStorage.removeItem('isAdmin');
+                                // Fall through to show login modal
+                            }
+                        }
+                    }
+                    
                     // On error, fall through to normal login flow
                     this.setStorage('chatNickname', null);
                     this.setStorage('userId', null);
