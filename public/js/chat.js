@@ -293,10 +293,7 @@ class RadioChatBox {
                 
                 // Apply color scheme
                 if (this.settings.color_scheme) {
-                    console.log('Applying color scheme from settings:', this.settings.color_scheme); // Debug
                     this.applyColorScheme(this.settings.color_scheme);
-                } else {
-                    console.log('No color_scheme in settings, using default'); // Debug
                 }
                 
                 // Show profile fields if required
@@ -947,7 +944,6 @@ class RadioChatBox {
                 const credentials = `${username}:${password}`;
                 localStorage.setItem('adminToken', credentials);
                 localStorage.setItem('isAdmin', 'true');
-                console.log('Admin credentials stored for role:', data.user.role);
             }
             
             // Track user login (if analytics is available and has the method)
@@ -1300,15 +1296,10 @@ class RadioChatBox {
             this.eventSource.addEventListener('users', (e) => {
                 const data = JSON.parse(e.data);
                 
-                console.log('Received users event:', data);
-                
                 // Handle user kick event
                 if (data.type === 'user_kicked') {
-                    console.log('User kicked event received:', data.username);
-                    console.log('Current username:', this.username);
                     if (data.username === this.username) {
                         // Current user was kicked
-                        console.log('Current user was kicked!');
                         
                         // Clear all storage (both localStorage and cookies)
                         this.removeStorage('chatNickname');
