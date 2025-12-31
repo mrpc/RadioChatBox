@@ -2018,12 +2018,12 @@
                     // Load user details from URL
                     const username = decodeURIComponent(hash.substring('user-details/'.length));
                     switchTab('users', false);
-                    viewUserDetails(username);
+                    setTimeout(() => viewUserDetails(username), 100);
                 } else if (hash.startsWith('inactive-user/')) {
                     // Load inactive user details from URL
                     const username = decodeURIComponent(hash.substring('inactive-user/'.length));
                     switchTab('inactive-users', false);
-                    viewInactiveUserDetails(username);
+                    setTimeout(() => viewInactiveUserDetails(username), 100);
                 } else {
                     const tab = hash || 'dashboard';
                     switchTab(tab, false);
@@ -2034,11 +2034,24 @@
         // Load initial tab from URL hash on page load
         window.addEventListener('DOMContentLoaded', function() {
             const hash = window.location.hash.substring(1);
-            const initialTab = hash || 'dashboard';
-            // Replace state for initial load so back button works correctly
-            history.replaceState({ tab: initialTab }, '', window.location);
-            if (hash) {
-                switchTab(initialTab, false);
+            
+            if (hash.startsWith('user-details/')) {
+                // Load user details from URL
+                const username = decodeURIComponent(hash.substring('user-details/'.length));
+                switchTab('users', false);
+                setTimeout(() => viewUserDetails(username), 100);
+            } else if (hash.startsWith('inactive-user/')) {
+                // Load inactive user details from URL
+                const username = decodeURIComponent(hash.substring('inactive-user/'.length));
+                switchTab('inactive-users', false);
+                setTimeout(() => viewInactiveUserDetails(username), 100);
+            } else {
+                const initialTab = hash || 'dashboard';
+                // Replace state for initial load so back button works correctly
+                history.replaceState({ tab: initialTab }, '', window.location);
+                if (hash) {
+                    switchTab(initialTab, false);
+                }
             }
         });
         
@@ -2672,9 +2685,9 @@
             }
         }
 
-        async function viewUserDetails(username, page = 1) {
+        async function viewUserDetails(username, page = 1, search = '') {
             try {
-                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10`, {
+                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10&search=${encodeURIComponent(search)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -2705,19 +2718,29 @@
                     });
                     ipHtml += '</ul>';
 
+                    // Search field for messages
+                    let searchHtml = `
+                        <div style="margin: 20px 0;">
+                            <input type="text" id="user-search-field" placeholder="Search messages..." style="padding: 8px 12px; width: 300px; max-width: 100%; border: 1px solid #ccc; border-radius: 4px;">
+                            <button class="btn btn-sm" onclick="searchUserMessages('${escapeHtml(username)}')">Search</button>
+                        </div>
+                    `;
+
                     // Pagination controls for messages
                     let paginationHtml = '';
                     if (pagination.total_pages > 1) {
-                        paginationHtml = `<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">`;
+                        paginationHtml = `<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">`;
                         
                         if (pagination.page > 1) {
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewUserDetails('${escapeHtml(username)}', 1)">⏮ First</button>`;
                             paginationHtml += `<button class="btn btn-sm" onclick="viewUserDetails('${escapeHtml(username)}', ${pagination.page - 1})">← Previous</button>`;
                         }
                         
-                        paginationHtml += `<span>Page ${pagination.page} of ${pagination.total_pages}</span>`;
+                        paginationHtml += `<span style="min-width: 150px;">Page ${pagination.page} of ${pagination.total_pages}</span>`;
                         
                         if (pagination.page < pagination.total_pages) {
                             paginationHtml += `<button class="btn btn-sm" onclick="viewUserDetails('${escapeHtml(username)}', ${pagination.page + 1})">Next →</button>`;
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewUserDetails('${escapeHtml(username)}', ${pagination.total_pages})">Last ⏭</button>`;
                         }
                         
                         paginationHtml += `</div>`;
@@ -2798,11 +2821,15 @@
             if (usersTable && usersTable.parentElement) {
                 usersTable.parentElement.style.display = 'block';
             }
+            // Update URL hash to remove username
+            const url = new URL(window.location);
+            url.hash = 'users';
+            history.pushState({ tab: 'users' }, '', url);
         }
 
-        async function viewInactiveUserDetails(username, page = 1) {
+        async function viewInactiveUserDetails(username, page = 1, search = '') {
             try {
-                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10`, {
+                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10&search=${encodeURIComponent(search)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -2833,25 +2860,36 @@
                     });
                     ipHtml += '</ul>';
 
+                    // Search field for messages
+                    let searchHtml = `
+                        <div style="margin: 20px 0;">
+                            <input type="text" id="inactive-search-field" placeholder="Search messages..." style="padding: 8px 12px; width: 300px; max-width: 100%; border: 1px solid #ccc; border-radius: 4px;">
+                            <button class="btn btn-sm" onclick="searchInactiveUserMessages('${escapeHtml(username)}')">Search</button>
+                        </div>
+                    `;
+
                     // Pagination controls for messages
                     let paginationHtml = '';
                     if (pagination.total_pages > 1) {
-                        paginationHtml = `<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">`;
+                        paginationHtml = `<div style="margin: 20px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">`;
                         
                         if (pagination.page > 1) {
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewInactiveUserDetails('${escapeHtml(username)}', 1)">⏮ First</button>`;
                             paginationHtml += `<button class="btn btn-sm" onclick="viewInactiveUserDetails('${escapeHtml(username)}', ${pagination.page - 1})">← Previous</button>`;
                         }
                         
-                        paginationHtml += `<span>Page ${pagination.page} of ${pagination.total_pages}</span>`;
+                        paginationHtml += `<span style="min-width: 150px;">Page ${pagination.page} of ${pagination.total_pages}</span>`;
                         
                         if (pagination.page < pagination.total_pages) {
                             paginationHtml += `<button class="btn btn-sm" onclick="viewInactiveUserDetails('${escapeHtml(username)}', ${pagination.page + 1})">Next →</button>`;
+                            paginationHtml += `<button class="btn btn-sm" onclick="viewInactiveUserDetails('${escapeHtml(username)}', ${pagination.total_pages})">Last ⏭</button>`;
                         }
                         
                         paginationHtml += `</div>`;
                     }
 
                     let messagesHtml = `<h3>Messages (${pagination.total_messages} total)</h3>
+                        ${searchHtml}
                         ${paginationHtml}
                         <table>
                             <thead>
@@ -2918,6 +2956,28 @@
         function closeInactiveUserDetails() {
             document.getElementById('inactive-user-details').style.display = 'none';
             document.getElementById('inactive-users-section').style.display = 'block';
+            // Update URL hash to remove username
+            const url = new URL(window.location);
+            url.hash = 'inactive-users';
+            history.pushState({ tab: 'inactive-users' }, '', url);
+        }
+        
+        function searchUserMessages(username) {
+            const searchField = document.getElementById('user-search-field');
+            if (searchField) {
+                const searchTerm = searchField.value;
+                // Fetch user details with search query, starting from page 1
+                viewUserDetails(username, 1, searchTerm);
+            }
+        }
+        
+        function searchInactiveUserMessages(username) {
+            const searchField = document.getElementById('inactive-search-field');
+            if (searchField) {
+                const searchTerm = searchField.value;
+                // Fetch user details with search query, starting from page 1
+                viewInactiveUserDetails(username, 1, searchTerm);
+            }
         }
         
         function viewConversation(user1, user2) {
