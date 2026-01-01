@@ -951,7 +951,7 @@
                             <div class="kpi-change neutral">Currently online</div>
                         </div>
                         
-                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('statistics')" title="Click to view statistics">
+                        <div class="kpi-card" style="cursor: pointer; display: none;" id="kpi-listeners-card" onclick="switchTab('statistics')" title="Click to view statistics">
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Shoutcast Listeners</div>
@@ -2166,29 +2166,27 @@
                 // Load radio status (Shoutcast listeners)
                 const radioResponse = await fetch('/api/now-playing.php');
                 const radioData = await radioResponse.json();
+                const kpiListenersCard = document.getElementById('kpi-listeners-card');
                 
-                if (kpiListenersEl) {
-                    if (radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
-                        const listeners = radioData.nowPlaying.listeners ?? '-';
-                        kpiListenersEl.textContent = listeners;
-                        
-                        // Show what's playing
-                        let nowPlayingText = 'Now Playing';
-                        if (radioData.nowPlaying.display) {
-                            nowPlayingText = radioData.nowPlaying.display.substring(0, 50);
-                            if (radioData.nowPlaying.display.length > 50) {
-                                nowPlayingText += '...';
-                            }
+                if (kpiListenersEl && radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
+                    // Radio is enabled and active - show the widget
+                    if (kpiListenersCard) {
+                        kpiListenersCard.style.display = '';
+                    }
+                    
+                    const listeners = radioData.nowPlaying.listeners ?? '-';
+                    kpiListenersEl.textContent = listeners;
+                    
+                    // Show what's playing
+                    let nowPlayingText = 'Now Playing';
+                    if (radioData.nowPlaying.display) {
+                        nowPlayingText = radioData.nowPlaying.display.substring(0, 50);
+                        if (radioData.nowPlaying.display.length > 50) {
+                            nowPlayingText += '...';
                         }
-                        if (kpiListenersNowEl) {
-                            kpiListenersNowEl.textContent = nowPlayingText;
-                        }
-                    } else {
-                        // Radio not enabled or not active
-                        const kpiCard = kpiListenersEl.closest('.kpi-card');
-                        if (kpiCard) {
-                            kpiCard.style.display = 'none';
-                        }
+                    }
+                    if (kpiListenersNowEl) {
+                        kpiListenersNowEl.textContent = nowPlayingText;
                     }
                 }
             } catch (error) {
