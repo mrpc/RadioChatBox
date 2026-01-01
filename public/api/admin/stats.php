@@ -96,13 +96,17 @@ try {
     // Get radio status URL setting to determine if radio stats should be shown
     $settingsService = new \RadioChatBox\SettingsService();
     $radioStatusUrl = $settingsService->get('radio_status_url', '');
+    $chatMode = $settingsService->get('chat_mode', 'both');
+    $allowPhotoUploads = $settingsService->get('allow_photo_uploads', 'true') === 'true';
     
     http_response_code(200);
     echo json_encode([
         'success' => true,
         'granularity' => $granularity,
         'data' => $data,
-        'radio_enabled' => !empty($radioStatusUrl)
+        'radio_enabled' => !empty($radioStatusUrl),
+        'chat_mode' => $chatMode,
+        'photos_enabled' => $allowPhotoUploads
     ]);
 } catch (Exception $e) {
     error_log("Stats retrieval error: " . $e->getMessage());

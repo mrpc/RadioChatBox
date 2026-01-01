@@ -4999,11 +4999,18 @@
                     const reversed = daily.reverse();
                     
                     const datasets = [
-                        { label: 'Messages', data: reversed.map(d => d.total_messages), borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4, yAxisID: 'y' },
-                        { label: 'Private Messages', data: reversed.map(d => d.private_messages), borderColor: '#f093fb', backgroundColor: 'rgba(240, 147, 251, 0.1)', tension: 0.4, yAxisID: 'y' },
+                        { label: 'Messages', data: reversed.map(d => d.total_messages), borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4, yAxisID: 'y' }
+                    ];
+                    
+                    // Only show private messages if chat mode allows it
+                    if (window.chatMode !== 'public') {
+                        datasets.push({ label: 'Private Messages', data: reversed.map(d => d.private_messages), borderColor: '#f093fb', backgroundColor: 'rgba(240, 147, 251, 0.1)', tension: 0.4, yAxisID: 'y' });
+                    }
+                    
+                    datasets.push(
                         { label: 'Active Users', data: reversed.map(d => d.active_users), borderColor: '#4facfe', backgroundColor: 'rgba(79, 172, 254, 0.1)', tension: 0.4, yAxisID: 'y1' },
                         { label: 'Peak Concurrent', data: reversed.map(d => d.peak_concurrent_users), borderColor: '#ff6b6b', backgroundColor: 'rgba(255, 107, 107, 0.1)', borderDash: [5, 5], tension: 0.4, yAxisID: 'y1' }
-                    ];
+                    );
                     
                     if (window.radioEnabled) {
                         datasets.push({ label: '📻 Radio Listeners (avg)', data: reversed.map(d => d.radio_listeners_avg), borderColor: '#30cfd0', backgroundColor: 'rgba(48, 207, 208, 0.1)', tension: 0.4, yAxisID: 'y1' });
@@ -5023,12 +5030,23 @@
                 });
             } else if (type === 'hourly') {
                 const datasets = [
-                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' },
-                    { label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' },
-                    { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(79, 172, 254, 0.7)', yAxisID: 'y1' },
-                    { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), backgroundColor: 'rgba(255, 107, 107, 0.7)', yAxisID: 'y1' },
-                    { label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y1' }
+                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' }
                 ];
+                
+                // Only show private messages if chat mode allows it
+                if (window.chatMode !== 'public') {
+                    datasets.push({ label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' });
+                }
+                
+                // Only show photos if enabled
+                if (window.photosEnabled) {
+                    datasets.push({ label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y1' });
+                }
+                
+                datasets.push(
+                    { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(79, 172, 254, 0.7)', yAxisID: 'y1' },
+                    { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), backgroundColor: 'rgba(255, 107, 107, 0.7)', yAxisID: 'y1' }
+                );
                 if (window.radioEnabled) {
                     datasets.push({ label: '📻 Radio', data: data.map(d => d.radio_listeners), backgroundColor: 'rgba(48, 207, 208, 0.7)', yAxisID: 'y1' });
                 }
@@ -5039,14 +5057,25 @@
                 });
             } else if (type === 'daily') {
                 const datasets = [
-                    { label: 'Messages', data: data.map(d => d.total_messages), borderColor: '#667eea', tension: 0.4, yAxisID: 'y' },
-                    { label: 'Private Messages', data: data.map(d => d.private_messages), borderColor: '#f093fb', tension: 0.4, yAxisID: 'y' },
-                    { label: 'Photos', data: data.map(d => d.photo_uploads), borderColor: '#43e97b', tension: 0.4, yAxisID: 'y' },
+                    { label: 'Messages', data: data.map(d => d.total_messages), borderColor: '#667eea', tension: 0.4, yAxisID: 'y' }
+                ];
+                
+                // Only show private messages if chat mode allows it
+                if (window.chatMode !== 'public') {
+                    datasets.push({ label: 'Private Messages', data: data.map(d => d.private_messages), borderColor: '#f093fb', tension: 0.4, yAxisID: 'y' });
+                }
+                
+                // Only show photos if enabled
+                if (window.photosEnabled) {
+                    datasets.push({ label: 'Photos', data: data.map(d => d.photo_uploads), borderColor: '#43e97b', tension: 0.4, yAxisID: 'y' });
+                }
+                
+                datasets.push(
                     { label: 'New Registrations', data: data.map(d => d.new_registrations), borderColor: '#fa709a', tension: 0.4, yAxisID: 'y' },
                     { label: 'Active Users', data: data.map(d => d.active_users), borderColor: '#4facfe', tension: 0.4, yAxisID: 'y1' },
                     { label: 'Guest Users', data: data.map(d => d.guest_users), borderColor: '#ffa751', tension: 0.4, yAxisID: 'y1' },
                     { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), borderColor: '#ff6b6b', borderDash: [5, 5], tension: 0.4, yAxisID: 'y1' }
-                ];
+                );
                 if (window.radioEnabled) {
                     datasets.push({ label: '📻 Listeners (avg)', data: data.map(d => d.radio_listeners_avg), borderColor: '#30cfd0', tension: 0.4, yAxisID: 'y1' });
                     datasets.push({ label: '📻 Peak', data: data.map(d => d.radio_listeners_peak), borderColor: '#00b4d8', borderDash: [5, 5], tension: 0.4, yAxisID: 'y1' });
@@ -5058,14 +5087,25 @@
                 });
             } else if (type === 'weekly') {
                 const datasets = [
-                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' },
-                    { label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' },
-                    { label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y' },
+                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' }
+                ];
+                
+                // Only show private messages if chat mode allows it
+                if (window.chatMode !== 'public') {
+                    datasets.push({ label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' });
+                }
+                
+                // Only show photos if enabled
+                if (window.photosEnabled) {
+                    datasets.push({ label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y' });
+                }
+                
+                datasets.push(
                     { label: 'New Registrations', data: data.map(d => d.new_registrations), backgroundColor: 'rgba(250, 112, 154, 0.7)', yAxisID: 'y' },
                     { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(79, 172, 254, 0.7)', yAxisID: 'y1' },
                     { label: 'Guest Users', data: data.map(d => d.guest_users), backgroundColor: 'rgba(255, 167, 81, 0.7)', yAxisID: 'y1' },
                     { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), backgroundColor: 'rgba(255, 107, 107, 0.7)', yAxisID: 'y1' }
-                ];
+                );
                 if (window.radioEnabled) {
                     datasets.push({ label: '📻 Listeners (avg)', data: data.map(d => d.radio_listeners_avg), backgroundColor: 'rgba(48, 207, 208, 0.7)', yAxisID: 'y1' });
                 }
@@ -5077,14 +5117,25 @@
             } else if (type === 'monthly') {
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 const datasets = [
-                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' },
-                    { label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' },
-                    { label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y' },
+                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' }
+                ];
+                
+                // Only show private messages if chat mode allows it
+                if (window.chatMode !== 'public') {
+                    datasets.push({ label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' });
+                }
+                
+                // Only show photos if enabled
+                if (window.photosEnabled) {
+                    datasets.push({ label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y' });
+                }
+                
+                datasets.push(
                     { label: 'New Registrations', data: data.map(d => d.new_registrations), backgroundColor: 'rgba(250, 112, 154, 0.7)', yAxisID: 'y' },
                     { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(79, 172, 254, 0.7)', yAxisID: 'y1' },
                     { label: 'Guest Users', data: data.map(d => d.guest_users), backgroundColor: 'rgba(255, 167, 81, 0.7)', yAxisID: 'y1' },
                     { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), backgroundColor: 'rgba(255, 107, 107, 0.7)', yAxisID: 'y1' }
-                ];
+                );
                 if (window.radioEnabled) {
                     datasets.push({ label: '📻 Listeners (avg)', data: data.map(d => d.radio_listeners_avg), backgroundColor: 'rgba(48, 207, 208, 0.7)', yAxisID: 'y1' });
                 }
@@ -5095,14 +5146,25 @@
                 });
             } else if (type === 'yearly') {
                 const datasets = [
-                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' },
-                    { label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' },
-                    { label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y' },
+                    { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)', yAxisID: 'y' }
+                ];
+                
+                // Only show private messages if chat mode allows it
+                if (window.chatMode !== 'public') {
+                    datasets.push({ label: 'Private Messages', data: data.map(d => d.private_messages), backgroundColor: 'rgba(240, 147, 251, 0.7)', yAxisID: 'y' });
+                }
+                
+                // Only show photos if enabled
+                if (window.photosEnabled) {
+                    datasets.push({ label: 'Photos', data: data.map(d => d.photo_uploads), backgroundColor: 'rgba(67, 233, 123, 0.7)', yAxisID: 'y' });
+                }
+                
+                datasets.push(
                     { label: 'New Registrations', data: data.map(d => d.new_registrations), backgroundColor: 'rgba(250, 112, 154, 0.7)', yAxisID: 'y' },
                     { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(79, 172, 254, 0.7)', yAxisID: 'y1' },
                     { label: 'Guest Users', data: data.map(d => d.guest_users), backgroundColor: 'rgba(255, 167, 81, 0.7)', yAxisID: 'y1' },
                     { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), backgroundColor: 'rgba(255, 107, 107, 0.7)', yAxisID: 'y1' }
-                ];
+                );
                 if (window.radioEnabled) {
                     datasets.push({ label: '📻 Listeners (avg)', data: data.map(d => d.radio_listeners_avg), backgroundColor: 'rgba(48, 207, 208, 0.7)', yAxisID: 'y1' });
                 }
@@ -5128,9 +5190,15 @@
             }
             
             const result = await response.json();
-            // Store radio_enabled globally for conditional display
+            // Store settings globally for conditional display
             if (result.radio_enabled !== undefined) {
                 window.radioEnabled = result.radio_enabled;
+            }
+            if (result.chat_mode !== undefined) {
+                window.chatMode = result.chat_mode;
+            }
+            if (result.photos_enabled !== undefined) {
+                window.photosEnabled = result.photos_enabled;
             }
             return result;
         }
