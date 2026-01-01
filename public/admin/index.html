@@ -4695,18 +4695,22 @@
             const result = await fetchStatsData('summary');
             const summary = result.data;
             const radioEnabled = result.radio_enabled || false;
+            const chatMode = result.chat_mode || 'both';
+            const photosEnabled = result.photos_enabled !== false;
             
-            const today = summary.today || {};
-            const month = summary.this_month || {};
-            const year = summary.this_year || {};
-            const snapshot = summary.latest_snapshot || {};
+            // Conditional KPI cards based on settings
+            const privateCard = chatMode !== 'public' ? `
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">🔒 Private (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.private_messages || 0}</div>
+                    </div>
+            ` : '';
             
-            // Radio listener card - only show if radio is configured
-            const radioCard = radioEnabled ? `
-                    <!-- Radio Listeners -->
-                    <div style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: white; padding: 20px; border-radius: 8px;">
-                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📻 Radio Listeners</div>
-                        <div style="font-size: 32px; font-weight: bold;">${snapshot.radio_listeners || 0}</div>
+            const photosCard = photosEnabled ? `
+                    <!-- Photos -->
+                    <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📸 Photos (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.photo_uploads || 0}</div>
                     </div>
             ` : '';
             
@@ -4735,16 +4739,8 @@
                         <div style="font-size: 32px; font-weight: bold;">${today.total_messages || 0}</div>
                     </div>
                     
-                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px;">
-                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">🔒 Private (Today)</div>
-                        <div style="font-size: 32px; font-weight: bold;">${today.private_messages || 0}</div>
-                    </div>
-                    
-                    <!-- Photos -->
-                    <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px;">
-                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📸 Photos (Today)</div>
-                        <div style="font-size: 32px; font-weight: bold;">${today.photo_uploads || 0}</div>
-                    </div>
+                    ${privateCard}
+                    ${photosCard}
                     
                     <!-- Registrations -->
                     <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 8px;">
@@ -4752,7 +4748,13 @@
                         <div style="font-size: 32px; font-weight: bold;">${today.new_registrations || 0}</div>
                     </div>
                     
-                    ${radioCard}
+                    ${radioEnabled ? `
+                    <!-- Radio Listeners -->
+                    <div style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📻 Radio Listeners</div>
+                        <div style="font-size: 32px; font-weight: bold;">${snapshot.radio_listeners || 0}</div>
+                    </div>
+                    ` : ''}
                     
                     <!-- Peak Concurrent -->
                     <div style="background: linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%); color: white; padding: 20px; border-radius: 8px;">
@@ -4790,14 +4792,18 @@
                                 <span style="color: #6b7280;">Public Messages:</span>
                                 <strong>${today.total_messages || 0}</strong>
                             </div>
+                            ${chatMode !== 'public' ? `
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Private Messages:</span>
                                 <strong>${today.private_messages || 0}</strong>
                             </div>
+                            ` : ''}
+                            ${photosEnabled ? `
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Photo Uploads:</span>
                                 <strong>${today.photo_uploads || 0}</strong>
                             </div>
+                            ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${today.new_registrations || 0}</strong>
@@ -4827,14 +4833,18 @@
                                 <span style="color: #6b7280;">Public Messages:</span>
                                 <strong>${month.total_messages || 0}</strong>
                             </div>
+                            ${chatMode !== 'public' ? `
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Private Messages:</span>
                                 <strong>${month.private_messages || 0}</strong>
                             </div>
+                            ` : ''}
+                            ${photosEnabled ? `
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Photo Uploads:</span>
                                 <strong>${month.photo_uploads || 0}</strong>
                             </div>
+                            ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${month.new_registrations || 0}</strong>
@@ -4864,14 +4874,18 @@
                                 <span style="color: #6b7280;">Public Messages:</span>
                                 <strong>${year.total_messages || 0}</strong>
                             </div>
+                            ${chatMode !== 'public' ? `
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Private Messages:</span>
                                 <strong>${year.private_messages || 0}</strong>
                             </div>
+                            ` : ''}
+                            ${photosEnabled ? `
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Photo Uploads:</span>
                                 <strong>${year.photo_uploads || 0}</strong>
                             </div>
+                            ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${year.new_registrations || 0}</strong>
