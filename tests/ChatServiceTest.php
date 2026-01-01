@@ -446,4 +446,127 @@ class ChatServiceTest extends TestCase
         $stmt = $pdo->prepare("DELETE FROM fake_users WHERE nickname = :nickname");
         $stmt->execute(['nickname' => $fakeNickname]);
     }
+
+    public function testRegisterUserPopulatesUserActivityTable()
+    {
+        $pdo = Database::getPDO();
+        $username = 'phpunit_activity_' . uniqid() . '_' . time();
+        $sessionId = 'session_activity_' . uniqid();
+        $ipAddress = '192.168.1.100';
+        
+        // Register a guest user
+        $result = $this->chatService->registerUser($username, $sessionId, $ipAddress);
+        $this->assertTrue($result, 'User registration should succeed');
+        
+        // Verify user_activity record was created
+        $stmt = $pdo->prepare('SELECT * FROM user_activity WHERE username = :username');
+        $stmt->execute(['username' => $username]);
+        $activity = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        $this->assertNotNull($activity, 'user_activity record should exist for registered user');
+        $this->assertEquals($username, $activity['username']);
+        $this->assertEquals($ipAddress, $activity['ip_address']);
+        $this->assertNull($activity['user_id'], 'user_id should be NULL for guest users');
+        $this->assertEquals(0, $activity['message_count'], 'message_count should be 0 on registration');
+        
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM user_activity WHERE username = :username");
+        $stmt->execute(['username' => $username]);
+        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt->execute(['username' => $username]);
+    }
+
+    public function testRegisterUserUpdatesUserActivityIPAddress()
+    {
+        $pdo = Database::getPDO();
+        $username = 'phpunit_ip_update_' . uniqid() . '_' . time();
+        $sessionId = 'session_ip_' . uniqid();
+        $ipAddress1 = '192.168.1.101';
+        $ipAddress2 = '192.168.1.102';
+        
+        // Register with first IP
+        $result1 = $this->chatService->registerUser($username, $sessionId, $ipAddress1);
+        $this->assertTrue($result1, 'First registration should succeed');
+        
+        // Re-register with different IP (same session)
+        $result2 = $this->chatService->registerUser($username, $sessionId, $ipAddress2);
+        $this->assertTrue($result2, 'Re-registration should succeed');
+        
+        // Verify IP was updated in user_activity
+        $stmt = $pdo->prepare('SELECT ip_address FROM user_activity WHERE username = :username');
+        $stmt->execute(['username' => $username]);
+        $activity = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        $this->assertNotNull($activity);
+        $this->assertEquals($ipAddress2, $activity['ip_address'], 'IP address should be updated on re-registration');
+        
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM user_activity WHERE username = :username");
+        $stmt->execute(['username' => $username]);
+        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt->execute(['username' => $username]);
+    }
+
+    public function testRegisterAuthenticatedUserSetsUserIdInActivity()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create a test user
+        $testUsername = 'phpunit_auth_' . uniqid() . '_' . time();
+        $testPassword = 'TestPassword123!';
+        
+        // Register the user account
+        $stmt = $pdo->prepare(
+            'INSERT INTO users (username, password_hash, email, created_at, updated_at) 
+             VALUES (:username, :password, :email, NOW(), NOW())'
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'password' => password_hash($testPassword, PASSWORD_BCRYPT),
+            'email' => $testUsername . '@test.com',
+        ]);
+        
+        // Get the user ID
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE username = :username');
+        $stmt->execute(['username' => $testUsername]);
+        $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $userId = $user['id'];
+        
+        // Create an authenticated session
+        $sessionId = 'auth_session_' . uniqid();
+        $ipAddress = '192.168.1.103';
+        
+        // Manually insert a session with user_id to simulate authentication
+        $stmt = $pdo->prepare(
+            'INSERT INTO sessions (username, session_id, user_id, ip_address, last_heartbeat, joined_at)
+             VALUES (:username, :session_id, :user_id, :ip_address, NOW(), NOW())'
+        );
+        $stmt->execute([
+            'username' => $testUsername,
+            'session_id' => $sessionId,
+            'user_id' => $userId,
+            'ip_address' => $ipAddress,
+        ]);
+        
+        // Now call registerUser (it will update the session)
+        $result = $this->chatService->registerUser($testUsername, $sessionId, $ipAddress);
+        $this->assertTrue($result, 'Authenticated user registration should succeed');
+        
+        // Verify user_activity has the user_id set
+        $stmt = $pdo->prepare('SELECT user_id FROM user_activity WHERE username = :username');
+        $stmt->execute(['username' => $testUsername]);
+        $activity = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        $this->assertNotNull($activity);
+        $this->assertNotNull($activity['user_id'], 'user_id should be set for authenticated users');
+        $this->assertEquals($userId, $activity['user_id']);
+        
+        // Cleanup
+        $stmt = $pdo->prepare("DELETE FROM user_activity WHERE username = :username");
+        $stmt->execute(['username' => $testUsername]);
+        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt->execute(['username' => $testUsername]);
+        $stmt = $pdo->prepare("DELETE FROM users WHERE username = :username");
+        $stmt->execute(['username' => $testUsername]);
+    }
 }
