@@ -2029,12 +2029,21 @@
                 loadUsers();
             } else if (tabName === 'dashboard') {
                 loadDashboardKPIs();
+                // Start live refresh for dashboard (every 10 seconds)
+                clearInterval(window.dashboardRefreshInterval); // Clear any existing interval
+                window.dashboardRefreshInterval = setInterval(() => {
+                    loadDashboardKPIs();
+                }, 10000);
             } else if (tabName === 'statistics') {
                 loadStatsTab('summary');
             } else if (tabName === 'url-whitelist') {
                 loadUrlWhitelist();
             } else if (tabName === 'url-blacklist') {
                 loadUrlBlacklist();
+            } else {
+                // Stop dashboard refresh when switching away from dashboard
+                clearInterval(window.dashboardRefreshInterval);
+                window.dashboardRefreshInterval = null;
             }
             
             // Close mobile sidebar when switching tabs
