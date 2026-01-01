@@ -918,18 +918,18 @@
                 <div id="dashboard-tab" class="tab-content active">
                     <!-- KPI Cards -->
                     <div class="kpi-grid">
-                        <div class="kpi-card">
+                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('users')" title="Click to view all active users">
                             <div class="kpi-header">
                                 <div>
-                                    <div class="kpi-title">Active Users</div>
+                                    <div class="kpi-title">Active Users (Real)</div>
                                 </div>
                                 <div class="kpi-icon primary">👥</div>
                             </div>
                             <div class="kpi-value" id="kpi-active-users">-</div>
-                            <div class="kpi-change neutral">Currently online</div>
+                            <div class="kpi-change neutral">Currently online (real users)</div>
                         </div>
                         
-                        <div class="kpi-card">
+                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('messages')" title="Click to view all messages">
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Messages Today</div>
@@ -940,7 +940,7 @@
                             <div class="kpi-change neutral">Last 24 hours</div>
                         </div>
                         
-                        <div class="kpi-card">
+                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('fake-users')" title="Click to manage fake users">
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Fake Users Active</div>
@@ -951,7 +951,7 @@
                             <div class="kpi-change neutral">Currently online</div>
                         </div>
                         
-                        <div class="kpi-card">
+                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('ip-bans')" title="Click to view IP bans">
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">IP Bans</div>
@@ -2105,13 +2105,15 @@
         
         async function loadDashboardKPIs() {
             try {
-                // Load active users count
+                // Load active users count (real users only)
                 const usersResponse = await fetch('/api/admin/active-users.php', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const usersData = await usersResponse.json();
                 if (usersData.success) {
-                    document.getElementById('kpi-active-users').textContent = usersData.count || 0;
+                    // Count only real users (exclude fake users)
+                    const realUsersCount = usersData.users.filter(u => !u.is_fake).length;
+                    document.getElementById('kpi-active-users').textContent = realUsersCount;
                 }
                 
                 // Load messages (get today's count)
@@ -2172,7 +2174,7 @@
                 html += `
                     <tr>
                         <td>${time}</td>
-                        <td><strong>${msg.username}</strong></td>
+                        <td><strong><a href="#" onclick="event.preventDefault(); switchTab('users'); setTimeout(() => viewUserDetails('${escapeHtml(msg.username)}'), 100);" style="color: #667eea; cursor: pointer; text-decoration: none;">${msg.username}</a></strong></td>
                         <td>${msg.message.substring(0, 100)}${msg.message.length > 100 ? '...' : ''}</td>
                     </tr>
                 `;

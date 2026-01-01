@@ -7,7 +7,7 @@ use PDO;
 
 class ChatService
 {
-    private Redis $redis;
+    private \Redis $redis;
     private PDO $pdo;
     private string $prefix;
     private const MESSAGES_KEY = 'chat:messages';
@@ -197,7 +197,7 @@ class ChatService
             
             // Return in chronological order (oldest first) to match getHistory() behavior
             return array_reverse($messages);
-        } catch (PDOException $e) {
+        } catch (\PDOException $e) {
             error_log("Failed to load history from DB: " . $e->getMessage());
             return [];
         }

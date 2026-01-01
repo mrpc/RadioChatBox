@@ -496,4 +496,17 @@ class UserService
     {
         return array_keys(self::ROLE_LEVELS);
     }
+    
+    /**
+     * Get only real active users
+     * 
+     * @return array List of real active users
+     */
+    public function getActiveRealUsers(): array
+    {
+        // Fetch active users from the database
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE is_fake = 0 AND is_active = 1");
+        $stmt->execute();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
 }
