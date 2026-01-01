@@ -2216,7 +2216,7 @@
                 const date = typeof msg.timestamp === 'number' 
                     ? new Date(msg.timestamp * 1000) 
                     : new Date(msg.timestamp || msg.created_at);
-                const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleTimeString();
+                const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleString();
                 html += `
                     <tr>
                         <td>${time}</td>
