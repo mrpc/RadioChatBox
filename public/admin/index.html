@@ -951,15 +951,15 @@
                             <div class="kpi-change neutral">Currently online</div>
                         </div>
                         
-                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('ip-bans')" title="Click to view IP bans">
+                        <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('statistics')" title="Click to view statistics">
                             <div class="kpi-header">
                                 <div>
-                                    <div class="kpi-title">IP Bans</div>
+                                    <div class="kpi-title">Shoutcast Listeners</div>
                                 </div>
-                                <div class="kpi-icon danger">🚫</div>
+                                <div class="kpi-icon info">📻</div>
                             </div>
-                            <div class="kpi-value" id="kpi-ip-bans">-</div>
-                            <div class="kpi-change neutral">Total blocked</div>
+                            <div class="kpi-value" id="kpi-listeners">-</div>
+                            <div class="kpi-change neutral" id="kpi-listeners-now">Now Playing</div>
                         </div>
                     </div>
                     
@@ -2105,15 +2105,23 @@
         
         async function loadDashboardKPIs() {
             try {
+                // Cache element references to avoid null errors
+                const kpiActiveUsersEl = document.getElementById('kpi-active-users');
+                const kpiMessagesTodayEl = document.getElementById('kpi-messages-today');
+                const kpiFakeUsersEl = document.getElementById('kpi-fake-users');
+                const kpiIpBansEl = document.getElementById('kpi-ip-bans');
+                const kpiListenersEl = document.getElementById('kpi-listeners');
+                const kpiListenersNowEl = document.getElementById('kpi-listeners-now');
+                
                 // Load active users count (real users only)
                 const usersResponse = await fetch('/api/admin/active-users.php', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const usersData = await usersResponse.json();
-                if (usersData.success) {
+                if (usersData.success && kpiActiveUsersEl) {
                     // Count only real users (exclude fake users)
                     const realUsersCount = usersData.users.filter(u => !u.is_fake).length;
-                    document.getElementById('kpi-active-users').textContent = realUsersCount;
+                    kpiActiveUsersEl.textContent = realUsersCount;
                 }
                 
                 // Load messages (get today's count)
@@ -2128,7 +2136,9 @@
                         const msgDate = new Date(m.timestamp * 1000);
                         return msgDate >= today;
                     });
-                    document.getElementById('kpi-messages-today').textContent = todayMessages.length;
+                    if (kpiMessagesTodayEl) {
+                        kpiMessagesTodayEl.textContent = todayMessages.length;
+                    }
                     
                     // Load recent messages for dashboard
                     loadDashboardRecentMessages(messagesData.messages.slice(0, 10));
@@ -2139,9 +2149,9 @@
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const fakeUsersData = await fakeUsersResponse.json();
-                if (fakeUsersData.success) {
+                if (fakeUsersData.success && kpiFakeUsersEl) {
                     const activeFake = fakeUsersData.users.filter(u => u.is_active).length;
-                    document.getElementById('kpi-fake-users').textContent = activeFake;
+                    kpiFakeUsersEl.textContent = activeFake;
                 }
                 
                 // Load IP bans
@@ -2149,8 +2159,37 @@
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const bansData = await bansResponse.json();
-                if (bansData.success) {
-                    document.getElementById('kpi-ip-bans').textContent = bansData.banned_ips.length;
+                if (bansData.success && kpiIpBansEl) {
+                    kpiIpBansEl.textContent = bansData.banned_ips.length;
+                }
+                
+                // Load radio status (Shoutcast listeners)
+                const radioResponse = await fetch('/api/now-playing.php');
+                const radioData = await radioResponse.json();
+                
+                if (kpiListenersEl) {
+                    if (radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
+                        const listeners = radioData.nowPlaying.listeners ?? '-';
+                        kpiListenersEl.textContent = listeners;
+                        
+                        // Show what's playing
+                        let nowPlayingText = 'Now Playing';
+                        if (radioData.nowPlaying.display) {
+                            nowPlayingText = radioData.nowPlaying.display.substring(0, 50);
+                            if (radioData.nowPlaying.display.length > 50) {
+                                nowPlayingText += '...';
+                            }
+                        }
+                        if (kpiListenersNowEl) {
+                            kpiListenersNowEl.textContent = nowPlayingText;
+                        }
+                    } else {
+                        // Radio not enabled or not active
+                        const kpiCard = kpiListenersEl.closest('.kpi-card');
+                        if (kpiCard) {
+                            kpiCard.style.display = 'none';
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load dashboard KPIs:', error);
