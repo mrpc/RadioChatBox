@@ -559,6 +559,21 @@ class ChatService
                 'ip_address' => $ipAddress,
             ]);
             
+            // Track IP address in user_activity even if no message is sent yet
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO user_activity (username, ip_address, first_seen, last_seen, message_count, user_id)
+                 VALUES (:username, :ip_address, NOW(), NOW(), 0, :user_id)
+                 ON CONFLICT (username) DO UPDATE SET
+                     ip_address = :ip_address,
+                     last_seen = NOW()'
+            );
+            
+            $stmt->execute([
+                'username' => $username,
+                'ip_address' => $ipAddress,
+                'user_id' => $registeredUser !== false ? $registeredUser['id'] : null,
+            ]);
+            
             // Store user profile if any profile data provided
             if ($age !== null || $location !== null || $sex !== null) {
                 $stmt = $this->pdo->prepare(
