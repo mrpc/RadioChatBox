@@ -4698,6 +4698,12 @@
             const chatMode = result.chat_mode || 'both';
             const photosEnabled = result.photos_enabled !== false;
             
+            // Extract summary data
+            const today = summary.today || {};
+            const month = summary.this_month || {};
+            const year = summary.this_year || {};
+            const snapshot = summary.latest_snapshot || {};
+            
             // Conditional KPI cards based on settings
             const privateCard = chatMode !== 'public' ? `
                     <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px;">
