@@ -150,7 +150,7 @@ class FakeUserService
             $radioService = new \RadioChatBox\RadioStatusService();
             $nowPlaying = $radioService->getNowPlaying();
             
-            if ($nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {
+            if (isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {
                 $radioListeners = $nowPlaying['listeners'];
                 $targetUserCount = $radioListeners; // Use radio listeners as target
             }

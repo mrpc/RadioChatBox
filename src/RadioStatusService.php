@@ -67,6 +67,7 @@ class RadioStatusService
                 'display' => null,
                 'artist' => null,
                 'title' => null,
+                'listeners' => null,
             ];
         }
 
@@ -77,6 +78,7 @@ class RadioStatusService
                 'display' => null,
                 'artist' => null,
                 'title' => null,
+                'listeners' => null,
             ];
         }
 
