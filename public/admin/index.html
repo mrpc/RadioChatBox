@@ -2749,11 +2749,31 @@
                         `;
                     }
 
-                    let ipHtml = '<h3>IP Addresses</h3><ul>';
-                    user.ip_addresses.forEach(ip => {
-                        ipHtml += `<li>${ip.ip_address} - ${new Date(ip.first_seen).toLocaleString()}</li>`;
-                    });
-                    ipHtml += '</ul>';
+                    let ipHtml = '<h3>IP Addresses & Sessions</h3>';
+                    
+                    // Show active session if available
+                    if (user.active_session) {
+                        ipHtml += `
+                            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                                <p style="margin: 0 0 8px 0;"><strong style="color: #3b82f6;">🟢 Active Session</strong></p>
+                                <p style="margin: 4px 0;"><strong>IP Address:</strong> ${escapeHtml(user.active_session.ip_address)}</p>
+                                <p style="margin: 4px 0;"><strong>Session ID:</strong> ${escapeHtml(user.active_session.session_id)}</p>
+                                <p style="margin: 4px 0;"><strong>Joined:</strong> ${new Date(user.active_session.joined_at).toLocaleString()}</p>
+                                <p style="margin: 4px 0;"><strong>Last Activity:</strong> ${new Date(user.active_session.last_heartbeat).toLocaleString()}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // Show historical IP addresses
+                    if (user.ip_addresses.length > 0) {
+                        ipHtml += '<p><strong>Historical IP Addresses:</strong></p><ul>';
+                        user.ip_addresses.forEach(ip => {
+                            ipHtml += `<li>${ip.ip_address} - First seen: ${new Date(ip.first_seen).toLocaleString()}</li>`;
+                        });
+                        ipHtml += '</ul>';
+                    } else if (!user.active_session) {
+                        ipHtml += '<p>No IP address data available</p>';
+                    }
 
                     // Search field for messages
                     let searchHtml = `
@@ -2891,11 +2911,31 @@
                         `;
                     }
 
-                    let ipHtml = '<h3>IP Addresses</h3><ul>';
-                    user.ip_addresses.forEach(ip => {
-                        ipHtml += `<li>${ip.ip_address} - ${new Date(ip.first_seen).toLocaleString()}</li>`;
-                    });
-                    ipHtml += '</ul>';
+                    let ipHtml = '<h3>IP Addresses & Sessions</h3>';
+                    
+                    // Show active session if available
+                    if (user.active_session) {
+                        ipHtml += `
+                            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                                <p style="margin: 0 0 8px 0;"><strong style="color: #3b82f6;">🟢 Active Session</strong></p>
+                                <p style="margin: 4px 0;"><strong>IP Address:</strong> ${escapeHtml(user.active_session.ip_address)}</p>
+                                <p style="margin: 4px 0;"><strong>Session ID:</strong> ${escapeHtml(user.active_session.session_id)}</p>
+                                <p style="margin: 4px 0;"><strong>Joined:</strong> ${new Date(user.active_session.joined_at).toLocaleString()}</p>
+                                <p style="margin: 4px 0;"><strong>Last Activity:</strong> ${new Date(user.active_session.last_heartbeat).toLocaleString()}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // Show historical IP addresses
+                    if (user.ip_addresses.length > 0) {
+                        ipHtml += '<p><strong>Historical IP Addresses:</strong></p><ul>';
+                        user.ip_addresses.forEach(ip => {
+                            ipHtml += `<li>${ip.ip_address} - First seen: ${new Date(ip.first_seen).toLocaleString()}</li>`;
+                        });
+                        ipHtml += '</ul>';
+                    } else if (!user.active_session) {
+                        ipHtml += '<p>No IP address data available</p>';
+                    }
 
                     // Search field for messages
                     let searchHtml = `
