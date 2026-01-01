@@ -3030,9 +3030,13 @@ class RadioChatBox {
             .then(res => res.json())
             .then(data => {
                 if (data.success && data.settings.gif_enabled === 'true') {
-                    gifButton.style.display = 'inline-block';
                     // Load Tenor API key from settings
                     this.tenorApiKey = data.settings.tenor_api_key || '';
+                    
+                    // Only show GIF button if Tenor API key is configured
+                    if (this.tenorApiKey && this.tenorApiKey.trim() !== '') {
+                        gifButton.style.display = 'inline-block';
+                    }
                 }
             })
             .catch(err => console.error('Failed to check GIF settings:', err));

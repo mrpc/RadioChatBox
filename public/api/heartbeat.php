@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 
 use RadioChatBox\CorsHandler;
 use RadioChatBox\ChatService;
+use RadioChatBox\StatsService;
 
 // Handle CORS
 CorsHandler::handle();
@@ -40,6 +41,16 @@ try {
     
     // Get session info to return user_id and role for validation
     $sessionInfo = $chatService->getSessionInfo($username, $sessionId);
+    
+    // Trigger stats recording on heartbeat (fallback for when cron isn't available)
+    // Uses rate-limiting internally (max once per 5 minutes)
+    try {
+        $statsService = new StatsService();
+        $statsService->recordSnapshot();
+    } catch (Exception $e) {
+        // Log but don't fail the heartbeat if stats recording fails
+        error_log('Stats snapshot recording failed: ' . $e->getMessage());
+    }
     
     echo json_encode([
         'success' => true,

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RadioChatBox - Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -809,6 +810,10 @@
                         <span class="icon">📊</span>
                         <span>Dashboard</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('statistics')" data-tab="statistics">
+                        <span class="icon">📈</span>
+                        <span>Statistics</span>
+                    </div>
                 </div>
                 
                 <div class="nav-section">
@@ -996,6 +1001,32 @@
                             <button class="btn btn-outline" onclick="switchTab('messages')">View All</button>
                         </div>
                         <div id="dashboard-recent-messages"></div>
+                    </div>
+                </div>
+
+                <!-- Statistics Tab -->
+                <div id="statistics-tab" class="tab-content">
+                    <div class="section">
+                        <h2>📈 Statistics Dashboard</h2>
+                        <p style="color: #6b7280; margin-bottom: 20px;">
+                            View real-time statistics and analytics for your chat activity.
+                        </p>
+                        
+                        <!-- Statistics Sub-tabs -->
+                        <div style="display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb;">
+                            <button class="btn" onclick="loadStatsTab('summary')" id="stats-tab-summary" style="background: #667eea; color: white; margin-bottom: -2px; border-bottom: 3px solid #667eea;">Summary</button>
+                            <button class="btn" onclick="loadStatsTab('hourly')" id="stats-tab-hourly" style="background: transparent; color: #6b7280;">Hourly</button>
+                            <button class="btn" onclick="loadStatsTab('daily')" id="stats-tab-daily" style="background: transparent; color: #6b7280;">Daily</button>
+                            <button class="btn" onclick="loadStatsTab('weekly')" id="stats-tab-weekly" style="background: transparent; color: #6b7280;">Weekly</button>
+                            <button class="btn" onclick="loadStatsTab('monthly')" id="stats-tab-monthly" style="background: transparent; color: #6b7280;">Monthly</button>
+                            <button class="btn" onclick="loadStatsTab('yearly')" id="stats-tab-yearly" style="background: transparent; color: #6b7280;">Yearly</button>
+                        </div>
+                        
+                        <!-- Statistics Controls -->
+                        <div id="stats-controls" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;"></div>
+                        
+                        <div id="stats-error" style="margin-top: 20px;"></div>
+                        <div id="stats-content" style="margin-top: 30px;"></div>
                     </div>
                 </div>
 
@@ -1973,7 +2004,8 @@
                 'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
-                'settings': {title: 'System Settings', subtitle: 'Configure chat behavior'}
+                'settings': {title: 'System Settings', subtitle: 'Configure chat behavior'},
+                'statistics': {title: 'Statistics Dashboard', subtitle: 'View and analyze chat analytics'}
             };
             
             if (titles[tabName]) {
@@ -1997,6 +2029,8 @@
                 loadUsers();
             } else if (tabName === 'dashboard') {
                 loadDashboardKPIs();
+            } else if (tabName === 'statistics') {
+                loadStatsTab('summary');
             } else if (tabName === 'url-whitelist') {
                 loadUrlWhitelist();
             } else if (tabName === 'url-blacklist') {
@@ -2130,8 +2164,11 @@
             
             let html = '<table><thead><tr><th>Time</th><th>User</th><th>Message</th></tr></thead><tbody>';
             messages.forEach(msg => {
-                const date = new Date(msg.timestamp * 1000);
-                const time = date.toLocaleTimeString();
+                // Handle both Unix timestamps and ISO datetime strings from database
+                const date = typeof msg.timestamp === 'number' 
+                    ? new Date(msg.timestamp * 1000) 
+                    : new Date(msg.timestamp || msg.created_at);
+                const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleTimeString();
                 html += `
                     <tr>
                         <td>${time}</td>
@@ -4539,6 +4576,568 @@
                 });
             }
         });
+        
+        // =========================================
+        // STATISTICS FUNCTIONS
+        // =========================================
+        
+        let currentStatsTab = 'summary';
+        
+        async function loadStatsTab(tab) {
+            currentStatsTab = tab;
+            
+            // Update tab buttons
+            document.querySelectorAll('[id^="stats-tab-"]').forEach(btn => {
+                btn.style.background = 'transparent';
+                btn.style.color = '#6b7280';
+                btn.style.borderBottom = 'none';
+            });
+            document.getElementById(`stats-tab-${tab}`).style.background = '#667eea';
+            document.getElementById(`stats-tab-${tab}`).style.color = 'white';
+            document.getElementById(`stats-tab-${tab}`).style.borderBottom = '3px solid #667eea';
+            
+            // Update controls
+            const controlsDiv = document.getElementById('stats-controls');
+            
+            if (tab === 'summary') {
+                controlsDiv.innerHTML = '<button class="btn btn-primary" onclick="loadStatsContent()">Refresh</button>';
+            } else if (tab === 'hourly') {
+                controlsDiv.innerHTML = `
+                    <label style="color: #333; font-weight: 600;">Show last:</label>
+                    <select id="hourly-limit" style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        <option value="24">24 hours</option>
+                        <option value="48">48 hours</option>
+                        <option value="168" selected>7 days</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadStatsContent()">Load</button>
+                `;
+            } else if (tab === 'daily') {
+                controlsDiv.innerHTML = `
+                    <label style="color: #333; font-weight: 600;">Show last:</label>
+                    <select id="daily-limit" style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        <option value="30">30 days</option>
+                        <option value="90" selected>90 days</option>
+                        <option value="180">180 days</option>
+                        <option value="365">1 year</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadStatsContent()">Load</button>
+                `;
+            } else if (tab === 'weekly') {
+                const currentYear = new Date().getFullYear();
+                let yearOptions = '';
+                for (let i = currentYear; i >= currentYear - 5; i--) {
+                    yearOptions += `<option value="${i}" ${i === currentYear ? 'selected' : ''}>${i}</option>`;
+                }
+                controlsDiv.innerHTML = `
+                    <label style="color: #333; font-weight: 600;">Year:</label>
+                    <select id="weekly-year" style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        ${yearOptions}
+                    </select>
+                    <button class="btn btn-primary" onclick="loadStatsContent()">Load</button>
+                `;
+            } else if (tab === 'monthly') {
+                const currentYear = new Date().getFullYear();
+                let yearOptions = '';
+                for (let i = currentYear; i >= currentYear - 5; i--) {
+                    yearOptions += `<option value="${i}" ${i === currentYear ? 'selected' : ''}>${i}</option>`;
+                }
+                controlsDiv.innerHTML = `
+                    <label style="color: #333; font-weight: 600;">Year:</label>
+                    <select id="monthly-year" style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        ${yearOptions}
+                    </select>
+                    <button class="btn btn-primary" onclick="loadStatsContent()">Load</button>
+                `;
+            } else if (tab === 'yearly') {
+                controlsDiv.innerHTML = '<button class="btn btn-primary" onclick="loadStatsContent()">Refresh</button>';
+            }
+            
+            loadStatsContent();
+        }
+        
+        async function loadStatsContent() {
+            const content = document.getElementById('stats-content');
+            const errorDiv = document.getElementById('stats-error');
+            errorDiv.innerHTML = '';
+            
+            content.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280;">Loading statistics...</div>';
+            
+            try {
+                if (currentStatsTab === 'summary') {
+                    await loadStatsSummary();
+                } else if (currentStatsTab === 'hourly') {
+                    const limit = document.getElementById('hourly-limit')?.value || 168;
+                    await loadStatsHourly(limit);
+                } else if (currentStatsTab === 'daily') {
+                    const limit = document.getElementById('daily-limit')?.value || 90;
+                    await loadStatsDaily(limit);
+                } else if (currentStatsTab === 'weekly') {
+                    const year = document.getElementById('weekly-year')?.value || new Date().getFullYear();
+                    await loadStatsWeekly(year);
+                } else if (currentStatsTab === 'monthly') {
+                    const year = document.getElementById('monthly-year')?.value || new Date().getFullYear();
+                    await loadStatsMonthly(year);
+                } else if (currentStatsTab === 'yearly') {
+                    await loadStatsYearly();
+                }
+            } catch (error) {
+                content.innerHTML = `
+                    <div style="background: #fee2e2; border: 1px solid #ef4444; padding: 20px; border-radius: 6px; color: #991b1b; text-align: center;">
+                        <strong>Failed to load statistics</strong><br>
+                        <small>${error.message}</small>
+                    </div>
+                `;
+            }
+        }
+        
+        async function loadStatsSummary() {
+            const content = document.getElementById('stats-content');
+            const result = await fetchStatsData('summary');
+            const summary = result.data;
+            const radioEnabled = result.radio_enabled || false;
+            
+            const today = summary.today || {};
+            const month = summary.this_month || {};
+            const year = summary.this_year || {};
+            const snapshot = summary.latest_snapshot || {};
+            
+            // Radio listener card - only show if radio is configured
+            const radioCard = radioEnabled ? `
+                    <!-- Radio Listeners -->
+                    <div style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📻 Radio Listeners</div>
+                        <div style="font-size: 32px; font-weight: bold;">${snapshot.radio_listeners || 0}</div>
+                    </div>
+            ` : '';
+            
+            content.innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 30px;">
+                    <!-- Real-time Users -->
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">👥 Active Users (Now)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${snapshot.concurrent_users || 0}</div>
+                    </div>
+                    
+                    <!-- Today's Users Breakdown -->
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">👤 Registered (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.registered_users || 0}</div>
+                    </div>
+                    
+                    <div style="background: linear-gradient(135deg, #ffa751 0%, #ffe259 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">🚶 Guests (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.guest_users || 0}</div>
+                    </div>
+                    
+                    <!-- Messages -->
+                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">💬 Messages (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.total_messages || 0}</div>
+                    </div>
+                    
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">🔒 Private (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.private_messages || 0}</div>
+                    </div>
+                    
+                    <!-- Photos -->
+                    <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📸 Photos (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.photo_uploads || 0}</div>
+                    </div>
+                    
+                    <!-- Registrations -->
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">✨ New Signups (Today)</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.new_registrations || 0}</div>
+                    </div>
+                    
+                    ${radioCard}
+                    
+                    <!-- Peak Concurrent -->
+                    <div style="background: linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">⚡ Peak Today</div>
+                        <div style="font-size: 32px; font-weight: bold;">${today.peak_concurrent_users || 0}</div>
+                    </div>
+                    
+                    <!-- Month Summary -->
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #667eea 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📊 Month Total</div>
+                        <div style="font-size: 32px; font-weight: bold;">${month.total_messages || 0}</div>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 30px;">
+                    <!-- Today's Summary Card -->
+                    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <h3 style="margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+                            📅 Today's Summary
+                        </h3>
+                        <div style="space-y: 10px;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Active Users:</span>
+                                <strong>${today.active_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Registered:</span>
+                                <strong>${today.registered_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Guests:</span>
+                                <strong>${today.guest_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Public Messages:</span>
+                                <strong>${today.total_messages || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Private Messages:</span>
+                                <strong>${today.private_messages || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Photo Uploads:</span>
+                                <strong>${today.photo_uploads || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                <span style="color: #6b7280;">New Registrations:</span>
+                                <strong>${today.new_registrations || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Month Summary Card -->
+                    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <h3 style="margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+                            📆 This Month's Summary
+                        </h3>
+                        <div style="space-y: 10px;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Active Users:</span>
+                                <strong>${month.active_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Registered:</span>
+                                <strong>${month.registered_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Guests:</span>
+                                <strong>${month.guest_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Public Messages:</span>
+                                <strong>${month.total_messages || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Private Messages:</span>
+                                <strong>${month.private_messages || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Photo Uploads:</span>
+                                <strong>${month.photo_uploads || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                <span style="color: #6b7280;">New Registrations:</span>
+                                <strong>${month.new_registrations || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Year Summary Card -->
+                    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <h3 style="margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+                            📈 This Year's Summary
+                        </h3>
+                        <div style="space-y: 10px;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Active Users:</span>
+                                <strong>${year.active_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Registered:</span>
+                                <strong>${year.registered_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Guests:</span>
+                                <strong>${year.guest_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Public Messages:</span>
+                                <strong>${year.total_messages || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Private Messages:</span>
+                                <strong>${year.private_messages || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Photo Uploads:</span>
+                                <strong>${year.photo_uploads || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                <span style="color: #6b7280;">New Registrations:</span>
+                                <strong>${year.new_registrations || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 15px; color: #1f2937;">Last 7 Days Activity</h3>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            loadStatsChart('summary');
+        }
+        
+        async function loadStatsHourly(limit) {
+            const content = document.getElementById('stats-content');
+            const result = await fetchStatsData('hourly', { limit });
+            const data = result.data || result;
+            const reversed = data.reverse();
+            
+            content.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 15px; color: #1f2937;">Hourly Statistics</h3>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            loadStatsChart('hourly', reversed);
+        }
+        
+        async function loadStatsDaily(limit) {
+            const content = document.getElementById('stats-content');
+            const result = await fetchStatsData('daily', { limit });
+            const data = result.data || result;
+            const reversed = data.reverse();
+            
+            content.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 15px; color: #1f2937;">Daily Statistics</h3>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            loadStatsChart('daily', reversed);
+        }
+        
+        async function loadStatsWeekly(year) {
+            const content = document.getElementById('stats-content');
+            const result = await fetchStatsData('weekly', { year });
+            const data = result.data || result;
+            const reversed = data.reverse();
+            
+            content.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 15px; color: #1f2937;">Weekly Statistics - ${year}</h3>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            loadStatsChart('weekly', reversed);
+        }
+        
+        async function loadStatsMonthly(year) {
+            const content = document.getElementById('stats-content');
+            const result = await fetchStatsData('monthly', { year });
+            const data = result.data || result;
+            const reversed = data.reverse();
+            
+            content.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 15px; color: #1f2937;">Monthly Statistics - ${year}</h3>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            loadStatsChart('monthly', reversed);
+        }
+        
+        async function loadStatsYearly() {
+            const content = document.getElementById('stats-content');
+            const result = await fetchStatsData('yearly');
+            const data = result.data || result;
+            const reversed = data.reverse();
+            
+            content.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 15px; color: #1f2937;">Yearly Statistics</h3>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            loadStatsChart('yearly', reversed);
+        }
+        
+        function loadStatsChart(type, data = null) {
+            const ctx = document.getElementById('statsChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (window.statsChartInstance) {
+                window.statsChartInstance.destroy();
+            }
+            
+            const chartCtx = ctx.getContext('2d');
+            
+            if (type === 'summary') {
+                // Load 7-day data for summary
+                fetchStatsData('daily', { limit: 7 }).then(result => {
+                    const daily = result.data || result;
+                    const reversed = daily.reverse();
+                    window.statsChartInstance = new Chart(chartCtx, {
+                        type: 'line',
+                        data: {
+                            labels: reversed.map(d => d.stat_date),
+                            datasets: [
+                                {
+                                    label: 'Messages',
+                                    data: reversed.map(d => d.total_messages),
+                                    borderColor: '#667eea',
+                                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                    tension: 0.4
+                                },
+                                {
+                                    label: 'Active Users',
+                                    data: reversed.map(d => d.active_users),
+                                    borderColor: '#f093fb',
+                                    backgroundColor: 'rgba(240, 147, 251, 0.1)',
+                                    tension: 0.4
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { position: 'top' } },
+                            scales: { y: { beginAtZero: true } }
+                        }
+                    });
+                });
+            } else if (type === 'hourly') {
+                window.statsChartInstance = new Chart(chartCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => new Date(d.stat_hour).toLocaleString()),
+                        datasets: [
+                            { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)' },
+                            { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(240, 147, 251, 0.7)' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            } else if (type === 'daily') {
+                window.statsChartInstance = new Chart(chartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => d.stat_date),
+                        datasets: [
+                            { label: 'Messages', data: data.map(d => d.total_messages), borderColor: '#667eea', tension: 0.4 },
+                            { label: 'Private Messages', data: data.map(d => d.private_messages), borderColor: '#f093fb', tension: 0.4 },
+                            { label: 'Active Users', data: data.map(d => d.active_users), borderColor: '#4facfe', tension: 0.4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            } else if (type === 'weekly') {
+                window.statsChartInstance = new Chart(chartCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => `Week ${d.stat_week}`),
+                        datasets: [
+                            { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)' },
+                            { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(240, 147, 251, 0.7)' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            } else if (type === 'monthly') {
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                window.statsChartInstance = new Chart(chartCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => months[d.stat_month - 1]),
+                        datasets: [
+                            { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)' },
+                            { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(240, 147, 251, 0.7)' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            } else if (type === 'yearly') {
+                window.statsChartInstance = new Chart(chartCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => d.stat_year),
+                        datasets: [
+                            { label: 'Messages', data: data.map(d => d.total_messages), backgroundColor: 'rgba(102, 126, 234, 0.7)' },
+                            { label: 'Active Users', data: data.map(d => d.active_users), backgroundColor: 'rgba(240, 147, 251, 0.7)' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
+        }
+        
+        async function fetchStatsData(granularity, params = {}) {
+            const queryString = new URLSearchParams(params).toString();
+            const url = `/api/admin/stats.php?granularity=${granularity}&${queryString}`;
+            
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to fetch statistics');
+            }
+            
+            const result = await response.json();
+            // Store radio_enabled globally for conditional display
+            if (result.radio_enabled !== undefined) {
+                window.radioEnabled = result.radio_enabled;
+            }
+            return result;
+        }
+        
+
     </script>
     <!-- Ensure countries.js is loaded first -->
     <script src="/js/countries.js"></script>

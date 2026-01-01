@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Comprehensive statistics system with multi-level time granularity
+  - Real-time snapshots of concurrent users, radio listeners, and active sessions
+  - Hourly, daily, weekly, monthly, and yearly aggregated statistics
+  - Tracks: active users, guest users, registered users, messages, private messages, photo uploads, new registrations, radio listeners, peak concurrent users
+  - PostgreSQL-based aggregation functions for efficient data processing
+  - Redis caching for fast statistics retrieval
+  - Admin statistics dashboard with interactive charts (Chart.js)
+  - Multiple visualization types: line charts, bar charts, doughnut charts
+  - Tabbed interface for different time granularities
+  - API endpoints for stats recording, aggregation, and retrieval
+  - Automated data collection via cron script (stats-cron.sh)
+  - Snapshot retention (30 days) with automatic cleanup
+  - Complete documentation in docs/STATISTICS.md
+  - Database migration: 006_add_statistics_tables.sql
 - Message reply feature for public chat
   - Reply button on all messages to quote and reference previous messages
   - Visual quote display showing original username and truncated message

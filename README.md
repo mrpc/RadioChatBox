@@ -43,6 +43,16 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 - **Automatic violation tracking** with auto-ban system
 - **Session-based authentication** with 24-hour Redis caching
 
+### Analytics & Statistics
+
+- **Comprehensive statistics system** tracking hourly, daily, weekly, monthly, and yearly metrics
+- **Real-time monitoring** of concurrent users, radio listeners, and activity levels
+- **Interactive dashboard** with charts and visualizations (Chart.js)
+- **Metrics tracked**: active users, guest vs registered users, messages, private messages, photo uploads, new registrations, radio listeners, peak concurrent users
+- **Automated data collection** via cron jobs with PostgreSQL aggregation functions
+- **Redis-cached queries** for fast statistics retrieval
+- See [docs/STATISTICS.md](docs/STATISTICS.md) for details
+
 ### User Experience
 
 - **Optional user profiles** (age, location, sex)
@@ -216,6 +226,15 @@ The system supports four hierarchical roles with different permission levels:
 ---
 
 ## 📚 Documentation
+
+### Key Documentation Files
+
+- **[STATISTICS.md](docs/STATISTICS.md)** - Comprehensive statistics system guide
+- **[STATISTICS_QUICKSTART.md](STATISTICS_QUICKSTART.md)** - Quick setup for statistics
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+- **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
+- **[openapi.yaml](docs/openapi.yaml)** - Complete API specification
+- **[EMOJI_SUPPORT.md](docs/EMOJI_SUPPORT.md)** - Emoji rendering documentation
 
 ### Project Structure
 

@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS messages (
     ip_address VARCHAR(45) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT FALSE,
-    reply_to VARCHAR(255) DEFAULT NULL
+    reply_to VARCHAR(255) DEFAULT NULL,
+    user_id INTEGER  -- Foreign key constraint added later after users table exists
 );
 
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
@@ -55,6 +56,7 @@ CREATE INDEX idx_messages_ip_address ON messages(ip_address);
 CREATE INDEX idx_messages_message_id ON messages(message_id);
 CREATE INDEX idx_messages_active_recent ON messages(is_deleted, created_at DESC) WHERE is_deleted = FALSE;
 CREATE INDEX idx_messages_reply_to ON messages(reply_to);
+CREATE INDEX idx_messages_user ON messages(user_id);
 
 COMMENT ON COLUMN messages.reply_to IS 'References the message_id of the parent message being replied to';
 
@@ -69,7 +71,7 @@ CREATE TABLE IF NOT EXISTS user_activity (
     message_count INTEGER DEFAULT 0,
     is_banned BOOLEAN DEFAULT FALSE,
     is_moderator BOOLEAN DEFAULT FALSE,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+    user_id INTEGER  -- Foreign key constraint added later after users table exists
 );
 
 CREATE INDEX idx_user_activity_username ON user_activity(username);
@@ -87,7 +89,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     ip_address VARCHAR(45) NOT NULL,
     last_heartbeat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    user_id INTEGER,  -- Foreign key constraint added later after users table exists
     CONSTRAINT sessions_username_session_unique UNIQUE (username, session_id)
 );
 
@@ -350,9 +352,8 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('radio_status_url', '')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Reserved nicknames
+-- Reserved nicknames (admin is NOT banned since it's the default user account)
 INSERT INTO banned_nicknames (nickname, reason, banned_by) VALUES 
-    ('admin', 'Reserved for administrators', 'system'),
     ('moderator', 'Reserved for moderators', 'system'),
     ('system', 'Reserved for system messages', 'system')
 ON CONFLICT (nickname) DO NOTHING;
@@ -444,6 +445,21 @@ BEFORE UPDATE ON users
 FOR EACH ROW
 EXECUTE FUNCTION update_users_updated_at();
 
+-- Add foreign key constraint to user_activity now that users table exists
+ALTER TABLE user_activity 
+ADD CONSTRAINT fk_user_activity_user 
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- Add foreign key constraint to sessions now that users table exists
+ALTER TABLE sessions 
+ADD CONSTRAINT fk_sessions_user 
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- Add foreign key constraint to messages now that users table exists
+ALTER TABLE messages 
+ADD CONSTRAINT fk_messages_user 
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
 
 -- Migration: Add session isolation to private messages
 -- This prevents users from seeing private messages from previous users with the same username
@@ -473,14 +489,12 @@ ALTER TABLE private_messages
 ADD COLUMN IF NOT EXISTS from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
--- Add user_id column to messages (public chat)
-ALTER TABLE messages
-ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+-- Note: user_id column for messages is already added in the main table creation above
+-- (along with sessions and user_activity tables)
 
 -- Create indexes for user-based queries
 CREATE INDEX IF NOT EXISTS idx_private_messages_from_user ON private_messages(from_user_id);
 CREATE INDEX IF NOT EXISTS idx_private_messages_to_user ON private_messages(to_user_id);
-CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
 
 -- Add comments explaining the design
 COMMENT ON COLUMN private_messages.from_user_id IS 'User ID of sender if logged in as registered user (NULL for anonymous/session-only users)';
@@ -504,3 +518,413 @@ COMMENT ON COLUMN messages.user_id IS 'User ID if message sent by registered use
 -- 1. Allow authenticated usernames to register (no longer blocked)
 -- 2. Allow authenticated usernames to have multiple active sessions
 -- 3. Regular users still enforced to one session per username
+
+-- ============================================================================
+-- STATISTICS TABLES (Migration 006)
+-- ============================================================================
+
+-- Hourly statistics
+CREATE TABLE IF NOT EXISTS stats_hourly (
+    id SERIAL PRIMARY KEY,
+    stat_hour TIMESTAMP NOT NULL,
+    active_users INTEGER DEFAULT 0,
+    guest_users INTEGER DEFAULT 0,
+    registered_users INTEGER DEFAULT 0,
+    total_messages INTEGER DEFAULT 0,
+    private_messages INTEGER DEFAULT 0,
+    photo_uploads INTEGER DEFAULT 0,
+    new_registrations INTEGER DEFAULT 0,
+    radio_listeners INTEGER DEFAULT 0,
+    peak_concurrent_users INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stat_hour)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_hourly_stat_hour ON stats_hourly(stat_hour DESC);
+
+COMMENT ON TABLE stats_hourly IS 'Hourly aggregated statistics - one row per hour';
+
+-- Daily statistics
+CREATE TABLE IF NOT EXISTS stats_daily (
+    id SERIAL PRIMARY KEY,
+    stat_date DATE NOT NULL,
+    active_users INTEGER DEFAULT 0,
+    guest_users INTEGER DEFAULT 0,
+    registered_users INTEGER DEFAULT 0,
+    total_messages INTEGER DEFAULT 0,
+    private_messages INTEGER DEFAULT 0,
+    photo_uploads INTEGER DEFAULT 0,
+    new_registrations INTEGER DEFAULT 0,
+    radio_listeners_avg INTEGER DEFAULT 0,
+    radio_listeners_peak INTEGER DEFAULT 0,
+    peak_concurrent_users INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stat_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_daily_stat_date ON stats_daily(stat_date DESC);
+
+COMMENT ON TABLE stats_daily IS 'Daily aggregated statistics - one row per day';
+
+-- Weekly statistics
+CREATE TABLE IF NOT EXISTS stats_weekly (
+    id SERIAL PRIMARY KEY,
+    stat_year INTEGER NOT NULL,
+    stat_week INTEGER NOT NULL,
+    week_start_date DATE NOT NULL,
+    active_users INTEGER DEFAULT 0,
+    guest_users INTEGER DEFAULT 0,
+    registered_users INTEGER DEFAULT 0,
+    total_messages INTEGER DEFAULT 0,
+    private_messages INTEGER DEFAULT 0,
+    photo_uploads INTEGER DEFAULT 0,
+    new_registrations INTEGER DEFAULT 0,
+    radio_listeners_avg INTEGER DEFAULT 0,
+    radio_listeners_peak INTEGER DEFAULT 0,
+    peak_concurrent_users INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stat_year, stat_week)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_weekly_year_week ON stats_weekly(stat_year DESC, stat_week DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_weekly_week_start ON stats_weekly(week_start_date DESC);
+
+COMMENT ON TABLE stats_weekly IS 'Weekly aggregated statistics - one row per week (ISO week numbering)';
+
+-- Monthly statistics
+CREATE TABLE IF NOT EXISTS stats_monthly (
+    id SERIAL PRIMARY KEY,
+    stat_year INTEGER NOT NULL,
+    stat_month INTEGER NOT NULL,
+    active_users INTEGER DEFAULT 0,
+    guest_users INTEGER DEFAULT 0,
+    registered_users INTEGER DEFAULT 0,
+    total_messages INTEGER DEFAULT 0,
+    private_messages INTEGER DEFAULT 0,
+    photo_uploads INTEGER DEFAULT 0,
+    new_registrations INTEGER DEFAULT 0,
+    radio_listeners_avg INTEGER DEFAULT 0,
+    radio_listeners_peak INTEGER DEFAULT 0,
+    peak_concurrent_users INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stat_year, stat_month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_monthly_year_month ON stats_monthly(stat_year DESC, stat_month DESC);
+
+COMMENT ON TABLE stats_monthly IS 'Monthly aggregated statistics - one row per month';
+
+-- Yearly statistics
+CREATE TABLE IF NOT EXISTS stats_yearly (
+    id SERIAL PRIMARY KEY,
+    stat_year INTEGER NOT NULL UNIQUE,
+    active_users INTEGER DEFAULT 0,
+    guest_users INTEGER DEFAULT 0,
+    registered_users INTEGER DEFAULT 0,
+    total_messages INTEGER DEFAULT 0,
+    private_messages INTEGER DEFAULT 0,
+    photo_uploads INTEGER DEFAULT 0,
+    new_registrations INTEGER DEFAULT 0,
+    radio_listeners_avg INTEGER DEFAULT 0,
+    radio_listeners_peak INTEGER DEFAULT 0,
+    peak_concurrent_users INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_yearly_year ON stats_yearly(stat_year DESC);
+
+COMMENT ON TABLE stats_yearly IS 'Yearly aggregated statistics - one row per year';
+
+-- Real-time snapshots
+CREATE TABLE IF NOT EXISTS stats_snapshots (
+    id SERIAL PRIMARY KEY,
+    snapshot_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    concurrent_users INTEGER DEFAULT 0,
+    radio_listeners INTEGER DEFAULT 0,
+    active_sessions INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_snapshots_time ON stats_snapshots(snapshot_time DESC);
+
+COMMENT ON TABLE stats_snapshots IS 'Real-time snapshots taken every 5-15 minutes for calculating averages and peaks';
+
+-- Statistics aggregation functions
+CREATE OR REPLACE FUNCTION aggregate_hourly_stats(target_hour TIMESTAMP)
+RETURNS void AS $$
+DECLARE
+    v_active_users INTEGER;
+    v_guest_users INTEGER;
+    v_registered_users INTEGER;
+    v_total_messages INTEGER;
+    v_private_messages INTEGER;
+    v_photo_uploads INTEGER;
+    v_new_registrations INTEGER;
+    v_radio_listeners INTEGER;
+    v_peak_concurrent INTEGER;
+    v_hour_start TIMESTAMP;
+    v_hour_end TIMESTAMP;
+BEGIN
+    v_hour_start := date_trunc('hour', target_hour);
+    v_hour_end := v_hour_start + INTERVAL '1 hour';
+    
+    SELECT COUNT(DISTINCT username) INTO v_active_users
+    FROM messages
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end AND is_deleted = FALSE;
+    
+    SELECT COUNT(DISTINCT m.username) INTO v_guest_users
+    FROM messages m LEFT JOIN users u ON m.username = u.username
+    WHERE m.created_at >= v_hour_start AND m.created_at < v_hour_end
+      AND m.is_deleted = FALSE AND u.id IS NULL;
+    
+    v_registered_users := COALESCE(v_active_users, 0) - COALESCE(v_guest_users, 0);
+    
+    SELECT COUNT(*) INTO v_total_messages
+    FROM messages
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end AND is_deleted = FALSE;
+    
+    SELECT COUNT(*) INTO v_private_messages
+    FROM private_messages
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end;
+    
+    SELECT COUNT(*) INTO v_photo_uploads
+    FROM attachments
+    WHERE uploaded_at >= v_hour_start AND uploaded_at < v_hour_end AND is_deleted = FALSE;
+    
+    SELECT COUNT(*) INTO v_new_registrations
+    FROM users
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end;
+    
+    SELECT COALESCE(AVG(radio_listeners)::INTEGER, 0) INTO v_radio_listeners
+    FROM stats_snapshots
+    WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
+    
+    SELECT COALESCE(MAX(concurrent_users), 0) INTO v_peak_concurrent
+    FROM stats_snapshots
+    WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
+    
+    INSERT INTO stats_hourly (
+        stat_hour, active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners, peak_concurrent_users
+    )
+    VALUES (
+        v_hour_start,
+        COALESCE(v_active_users, 0),
+        COALESCE(v_guest_users, 0),
+        COALESCE(v_registered_users, 0),
+        COALESCE(v_total_messages, 0),
+        COALESCE(v_private_messages, 0),
+        COALESCE(v_photo_uploads, 0),
+        COALESCE(v_new_registrations, 0),
+        COALESCE(v_radio_listeners, 0),
+        COALESCE(v_peak_concurrent, 0)
+    )
+    ON CONFLICT (stat_hour) DO UPDATE SET
+        active_users = EXCLUDED.active_users,
+        guest_users = EXCLUDED.guest_users,
+        registered_users = EXCLUDED.registered_users,
+        total_messages = EXCLUDED.total_messages,
+        private_messages = EXCLUDED.private_messages,
+        photo_uploads = EXCLUDED.photo_uploads,
+        new_registrations = EXCLUDED.new_registrations,
+        radio_listeners = EXCLUDED.radio_listeners,
+        peak_concurrent_users = EXCLUDED.peak_concurrent_users;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION aggregate_daily_stats(target_date DATE)
+RETURNS void AS $$
+DECLARE
+    v_day_start TIMESTAMP;
+    v_day_end TIMESTAMP;
+BEGIN
+    v_day_start := target_date::TIMESTAMP;
+    v_day_end := v_day_start + INTERVAL '1 day';
+    
+    INSERT INTO stats_daily (
+        stat_date, active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners_avg, radio_listeners_peak,
+        peak_concurrent_users
+    )
+    SELECT
+        target_date,
+        MAX(active_users),
+        MAX(guest_users),
+        MAX(registered_users),
+        SUM(total_messages),
+        SUM(private_messages),
+        SUM(photo_uploads),
+        SUM(new_registrations),
+        AVG(radio_listeners)::INTEGER,
+        MAX(radio_listeners),
+        MAX(peak_concurrent_users)
+    FROM stats_hourly
+    WHERE stat_hour >= v_day_start AND stat_hour < v_day_end
+    ON CONFLICT (stat_date) DO UPDATE SET
+        active_users = EXCLUDED.active_users,
+        guest_users = EXCLUDED.guest_users,
+        registered_users = EXCLUDED.registered_users,
+        total_messages = EXCLUDED.total_messages,
+        private_messages = EXCLUDED.private_messages,
+        photo_uploads = EXCLUDED.photo_uploads,
+        new_registrations = EXCLUDED.new_registrations,
+        radio_listeners_avg = EXCLUDED.radio_listeners_avg,
+        radio_listeners_peak = EXCLUDED.radio_listeners_peak,
+        peak_concurrent_users = EXCLUDED.peak_concurrent_users;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION aggregate_weekly_stats(target_date DATE)
+RETURNS void AS $$
+DECLARE
+    v_year INTEGER;
+    v_week INTEGER;
+    v_week_start DATE;
+    v_week_end DATE;
+BEGIN
+    v_year := EXTRACT(ISOYEAR FROM target_date);
+    v_week := EXTRACT(WEEK FROM target_date);
+    v_week_start := date_trunc('week', target_date)::DATE;
+    v_week_end := v_week_start + INTERVAL '1 week';
+    
+    INSERT INTO stats_weekly (
+        stat_year, stat_week, week_start_date,
+        active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners_avg, radio_listeners_peak,
+        peak_concurrent_users
+    )
+    SELECT
+        v_year, v_week, v_week_start,
+        MAX(active_users),
+        MAX(guest_users),
+        MAX(registered_users),
+        SUM(total_messages),
+        SUM(private_messages),
+        SUM(photo_uploads),
+        SUM(new_registrations),
+        AVG(radio_listeners_avg)::INTEGER,
+        MAX(radio_listeners_peak),
+        MAX(peak_concurrent_users)
+    FROM stats_daily
+    WHERE stat_date >= v_week_start AND stat_date < v_week_end::DATE
+    ON CONFLICT (stat_year, stat_week) DO UPDATE SET
+        active_users = EXCLUDED.active_users,
+        guest_users = EXCLUDED.guest_users,
+        registered_users = EXCLUDED.registered_users,
+        total_messages = EXCLUDED.total_messages,
+        private_messages = EXCLUDED.private_messages,
+        photo_uploads = EXCLUDED.photo_uploads,
+        new_registrations = EXCLUDED.new_registrations,
+        radio_listeners_avg = EXCLUDED.radio_listeners_avg,
+        radio_listeners_peak = EXCLUDED.radio_listeners_peak,
+        peak_concurrent_users = EXCLUDED.peak_concurrent_users;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION aggregate_monthly_stats(target_date DATE)
+RETURNS void AS $$
+DECLARE
+    v_year INTEGER;
+    v_month INTEGER;
+    v_month_start DATE;
+    v_month_end DATE;
+BEGIN
+    v_year := EXTRACT(YEAR FROM target_date);
+    v_month := EXTRACT(MONTH FROM target_date);
+    v_month_start := date_trunc('month', target_date)::DATE;
+    v_month_end := (v_month_start + INTERVAL '1 month')::DATE;
+    
+    INSERT INTO stats_monthly (
+        stat_year, stat_month,
+        active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners_avg, radio_listeners_peak,
+        peak_concurrent_users
+    )
+    SELECT
+        v_year, v_month,
+        MAX(active_users),
+        MAX(guest_users),
+        MAX(registered_users),
+        SUM(total_messages),
+        SUM(private_messages),
+        SUM(photo_uploads),
+        SUM(new_registrations),
+        AVG(radio_listeners_avg)::INTEGER,
+        MAX(radio_listeners_peak),
+        MAX(peak_concurrent_users)
+    FROM stats_daily
+    WHERE stat_date >= v_month_start AND stat_date < v_month_end
+    ON CONFLICT (stat_year, stat_month) DO UPDATE SET
+        active_users = EXCLUDED.active_users,
+        guest_users = EXCLUDED.guest_users,
+        registered_users = EXCLUDED.registered_users,
+        total_messages = EXCLUDED.total_messages,
+        private_messages = EXCLUDED.private_messages,
+        photo_uploads = EXCLUDED.photo_uploads,
+        new_registrations = EXCLUDED.new_registrations,
+        radio_listeners_avg = EXCLUDED.radio_listeners_avg,
+        radio_listeners_peak = EXCLUDED.radio_listeners_peak,
+        peak_concurrent_users = EXCLUDED.peak_concurrent_users;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION aggregate_yearly_stats(target_year INTEGER)
+RETURNS void AS $$
+DECLARE
+    v_year_start DATE;
+    v_year_end DATE;
+BEGIN
+    v_year_start := (target_year || '-01-01')::DATE;
+    v_year_end := (target_year + 1 || '-01-01')::DATE;
+    
+    INSERT INTO stats_yearly (
+        stat_year,
+        active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners_avg, radio_listeners_peak,
+        peak_concurrent_users
+    )
+    SELECT
+        target_year,
+        MAX(active_users),
+        MAX(guest_users),
+        MAX(registered_users),
+        SUM(total_messages),
+        SUM(private_messages),
+        SUM(photo_uploads),
+        SUM(new_registrations),
+        AVG(radio_listeners_avg)::INTEGER,
+        MAX(radio_listeners_peak),
+        MAX(peak_concurrent_users)
+    FROM stats_daily
+    WHERE stat_date >= v_year_start AND stat_date < v_year_end
+    ON CONFLICT (stat_year) DO UPDATE SET
+        active_users = EXCLUDED.active_users,
+        guest_users = EXCLUDED.guest_users,
+        registered_users = EXCLUDED.registered_users,
+        total_messages = EXCLUDED.total_messages,
+        private_messages = EXCLUDED.private_messages,
+        photo_uploads = EXCLUDED.photo_uploads,
+        new_registrations = EXCLUDED.new_registrations,
+        radio_listeners_avg = EXCLUDED.radio_listeners_avg,
+        radio_listeners_peak = EXCLUDED.radio_listeners_peak,
+        peak_concurrent_users = EXCLUDED.peak_concurrent_users;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION cleanup_old_snapshots()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM stats_snapshots WHERE snapshot_time < NOW() - INTERVAL '30 days';
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION aggregate_hourly_stats(TIMESTAMP) IS 'Aggregate statistics for a specific hour from raw data and snapshots';
+COMMENT ON FUNCTION aggregate_daily_stats(DATE) IS 'Aggregate daily statistics from hourly stats';
+COMMENT ON FUNCTION aggregate_weekly_stats(DATE) IS 'Aggregate weekly statistics from daily stats';
+COMMENT ON FUNCTION aggregate_monthly_stats(DATE) IS 'Aggregate monthly statistics from daily stats';
+COMMENT ON FUNCTION aggregate_yearly_stats(INTEGER) IS 'Aggregate yearly statistics from daily stats';
+COMMENT ON FUNCTION cleanup_old_snapshots() IS 'Remove snapshots older than 30 days to keep table size manageable';
