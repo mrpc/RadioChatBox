@@ -12,6 +12,8 @@ This document outlines the planned features and enhancements for RadioChatBox.
 ### Architecture Improvements
 **Priority:** HIGH - Foundation for future development
 
+- [ ] Notification system for admin panel
+- [ ] Notifications for messages to fake users
 - [ ] Integrate Pramnos Framework (https://github.com/mrpc/PramnosFramework)
 - [ ] Refactor existing code to use Pramnos structure
 - [ ] Implement automated database migration system
