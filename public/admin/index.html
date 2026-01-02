@@ -2049,6 +2049,29 @@
             const tabContent = document.getElementById(tabName + '-tab');
             if (tabContent) tabContent.classList.add('active');
             
+            // Hide user detail panels when switching tabs
+            const userDetailsPanel = document.getElementById('user-details');
+            const inactiveUserDetailsPanel = document.getElementById('inactive-user-details');
+            if (userDetailsPanel) {
+                userDetailsPanel.style.display = 'none';
+            }
+            if (inactiveUserDetailsPanel) {
+                inactiveUserDetailsPanel.style.display = 'none';
+            }
+            
+            // Show the main content sections for users and inactive-users tabs
+            if (tabName === 'users') {
+                const usersTable = document.getElementById('users-table');
+                if (usersTable && usersTable.parentElement) {
+                    usersTable.parentElement.style.display = 'block';
+                }
+            } else if (tabName === 'inactive-users') {
+                const inactiveUsersSection = document.getElementById('inactive-users-section');
+                if (inactiveUsersSection) {
+                    inactiveUsersSection.style.display = 'block';
+                }
+            }
+            
             // Update page title
             const titles = {
                 'dashboard': {title: 'Dashboard', subtitle: 'Overview and key metrics'},
