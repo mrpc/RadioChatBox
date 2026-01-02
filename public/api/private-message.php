@@ -60,15 +60,17 @@ try {
         $stmt->execute([$toUsername]);
         $recipient = $stmt->fetch();
         
+        $isFakeUser = false;
         if (!$recipient) {
             // Check if it's an active fake user
             $stmt = $db->prepare("SELECT nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE");
             $stmt->execute([$toUsername]);
             $fakeUser = $stmt->fetch();
-            
+
             if ($fakeUser) {
                 // Create a fake session ID for the fake user
                 $toSessionId = 'fake_' . md5($toUsername);
+                $isFakeUser = true;
             } else {
                 throw new RuntimeException('Recipient is not online');
             }
@@ -105,7 +107,36 @@ try {
         
         $prefix = Database::getRedisPrefix();
         $redis->publish($prefix . 'chat:private_messages', json_encode($messageData));
-        
+
+        // If message was sent to a fake user, create admin notification
+        if ($isFakeUser) {
+            try {
+                $stmt = $db->prepare("SELECT create_fake_user_dm_notification(?, ?, ?, ?)");
+                $stmt->execute([
+                    $fromUsername,
+                    $toUsername,
+                    $message ?: '[Photo attachment]',
+                    $result['id']
+                ]);
+                $notificationId = $stmt->fetchColumn();
+
+                // Publish notification to Redis for real-time admin alerts
+                $notificationData = [
+                    'id' => $notificationId,
+                    'type' => 'fake_user_dm',
+                    'from_username' => $fromUsername,
+                    'to_username' => $toUsername,
+                    'message_preview' => substr($message ?: '[Photo attachment]', 0, 100),
+                    'message_id' => $result['id'],
+                    'timestamp' => time()
+                ];
+                $redis->publish($prefix . 'chat:admin_notifications', json_encode($notificationData));
+            } catch (Exception $e) {
+                // Log error but don't fail the message send
+                error_log("Failed to create admin notification: " . $e->getMessage());
+            }
+        }
+
         echo json_encode([
             'success' => true,
             'message' => 'Private message sent',

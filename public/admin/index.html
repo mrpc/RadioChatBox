@@ -125,6 +125,19 @@
             text-align: center;
         }
 
+        .notification-badge {
+            display: inline-block;
+            background: var(--danger);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: auto;
+            min-width: 18px;
+            text-align: center;
+        }
+
         /* Main Content Area */
         .main-content {
             margin-left: var(--sidebar-width);
@@ -842,6 +855,11 @@
                         <span class="icon">💬</span>
                         <span>Message History</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('notifications')" id="nav-notifications" style="display:none;" data-tab="notifications">
+                        <span class="icon">🔔</span>
+                        <span>Notifications</span>
+                        <span class="notification-badge" id="notification-badge" style="display:none;">0</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('impersonate')" id="nav-impersonate" style="display:none;" data-tab="impersonate">
                         <span class="icon">👤</span>
                         <span>Impersonate</span>
@@ -1322,6 +1340,47 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications Tab (Root/Administrator only) -->
+            <div id="notifications-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2>🔔 Admin Notifications</h2>
+                            <p>Real-time alerts for admin-worthy events</p>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn" onclick="refreshNotifications()" style="background: #10b981;">
+                                🔄 Refresh
+                            </button>
+                            <button class="btn" onclick="markAllNotificationsRead()" style="background: #667eea; color: white;">
+                                ✓ Mark All Read
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                        <button class="filter-btn active" onclick="filterNotifications('all')" data-filter="all" style="padding: 8px 16px; border: 2px solid #e5e7eb; background: #667eea; color: white; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                            All Notifications
+                        </button>
+                        <button class="filter-btn" onclick="filterNotifications('unread')" data-filter="unread" style="padding: 8px 16px; border: 2px solid #e5e7eb; background: white; color: #6b7280; border-radius: 6px; cursor: pointer;">
+                            Unread Only
+                        </button>
+                        <button class="filter-btn" onclick="filterNotifications('fake_user_dm')" data-filter="fake_user_dm" style="padding: 8px 16px; border: 2px solid #e5e7eb; background: white; color: #6b7280; border-radius: 6px; cursor: pointer;">
+                            Fake User DMs
+                        </button>
+                    </div>
+
+                    <div id="notifications-list" style="display: flex; flex-direction: column; gap: 12px;">
+                        <!-- Notifications will be populated here -->
+                        <div style="text-align: center; padding: 60px 20px; color: #9ca3af;">
+                            <div style="font-size: 64px; margin-bottom: 20px;">🔔</div>
+                            <h3 style="margin-bottom: 8px; color: #6b7280;">No notifications yet</h3>
+                            <p>You'll be notified here when users send DMs to fake users</p>
                         </div>
                     </div>
                 </div>
@@ -1998,6 +2057,7 @@
                 'inactive-users': {title: 'Inactive Users', subtitle: 'Users who have left the chat'},
                 'admin-users': {title: 'Admin Users', subtitle: 'Manage administrative accounts'},
                 'fake-users': {title: 'Fake Users', subtitle: 'Manage automated users'},
+                'notifications': {title: 'Notifications', subtitle: 'Admin alerts and notifications'},
                 'impersonate': {title: 'Impersonate', subtitle: 'Reply as fake users'},
                 'ip-bans': {title: 'IP Bans', subtitle: 'Blocked IP addresses'},
                 'nickname-bans': {title: 'Nickname Bans', subtitle: 'Blocked usernames'},
@@ -2025,6 +2085,8 @@
             // Auto-load data when switching to certain tabs
             if (tabName === 'impersonate') {
                 refreshImpersonateConversations();
+            } else if (tabName === 'notifications') {
+                refreshNotifications();
             } else if (tabName === 'users') {
                 loadUsers();
             } else if (tabName === 'dashboard') {
@@ -3893,12 +3955,18 @@
                     document.getElementById('user-avatar').textContent = data.user.username.charAt(0).toUpperCase();
                     
                     applyRoleBasedRestrictions(data.user.role);
+
+                    // Connect to notifications stream
+                    connectNotificationsStream();
                 }
             } catch (error) {
                 console.error('Failed to load current user:', error);
                 // Assume root for legacy auth
                 currentUserRole = 'root';
                 document.getElementById('user-role').textContent = 'root';
+
+                // Connect to notifications stream for legacy auth
+                connectNotificationsStream();
             }
         }
 
@@ -3907,18 +3975,20 @@
             const adminUsersNav = document.getElementById('nav-admin-users');
             const settingsNav = document.getElementById('nav-settings');
             const impersonateNav = document.getElementById('nav-impersonate');
+            const notificationsNav = document.getElementById('nav-notifications');
             const fakeUsersNav = document.querySelector('.nav-item[data-tab="fake-users"]');
             const fakeUsersKpi = document.querySelector('.kpi-card:has(#kpi-fake-users)');
             const manageFakeUsersBtn = document.querySelector('button[onclick*="fake-users"]');
             const minimumUsersGroup = document.getElementById('setting-minimum-users-group');
-            
+
             // Update user role display
             document.getElementById('user-role').textContent = role;
-            
+
             if (role === 'moderator') {
                 if (adminUsersNav) adminUsersNav.style.display = 'none';
                 if (settingsNav) settingsNav.style.display = 'none';
                 if (impersonateNav) impersonateNav.style.display = 'none';
+                if (notificationsNav) notificationsNav.style.display = 'none';
                 if (fakeUsersNav) fakeUsersNav.style.display = 'none';
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'none';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
@@ -3926,12 +3996,14 @@
             } else if (role === 'root' || role === 'owner') {
                 // Show all features for root/owner
                 if (impersonateNav) impersonateNav.style.display = 'flex';
+                if (notificationsNav) notificationsNav.style.display = 'flex';
                 if (fakeUsersNav) fakeUsersNav.style.display = 'flex';
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'block';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'flex';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'block';
-            } else {
-                // Hide fake users features for admin/administrator role
+            } else if (role === 'administrator') {
+                // Administrators can view notifications but not impersonate
+                if (notificationsNav) notificationsNav.style.display = 'flex';
                 if (fakeUsersNav) fakeUsersNav.style.display = 'none';
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'none';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
@@ -5310,7 +5382,339 @@
             }
             return result;
         }
-        
+
+        // ========== Notifications System ==========
+        let notificationsFilter = 'all';
+        let notificationsStream = null;
+        let notificationSound = null;
+
+        async function refreshNotifications() {
+            const unreadOnly = notificationsFilter === 'unread';
+            const type = notificationsFilter === 'fake_user_dm' ? 'fake_user_dm' : null;
+
+            try {
+                const params = new URLSearchParams();
+                if (unreadOnly) params.append('unread_only', 'true');
+                if (type) params.append('type', type);
+
+                const response = await fetch(`/api/admin/notifications.php?${params.toString()}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch notifications');
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    renderNotifications(data.notifications);
+                    updateNotificationBadge(data.unread_count);
+                }
+            } catch (error) {
+                console.error('Error fetching notifications:', error);
+                alert('Failed to load notifications');
+            }
+        }
+
+        function renderNotifications(notifications) {
+            const container = document.getElementById('notifications-list');
+
+            if (!notifications || notifications.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 60px 20px; color: #9ca3af;">
+                        <div style="font-size: 64px; margin-bottom: 20px;">🔔</div>
+                        <h3 style="margin-bottom: 8px; color: #6b7280;">No notifications ${notificationsFilter === 'unread' ? '(unread)' : notificationsFilter === 'fake_user_dm' ? '(fake user DMs)' : ''}</h3>
+                        <p>You'll be notified here when users send DMs to fake users</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = notifications.map(notification => {
+                const timestamp = new Date(notification.created_at);
+                const isUnread = !notification.is_read;
+                const metadata = notification.metadata || {};
+
+                return `
+                    <div class="notification-item" style="background: ${isUnread ? '#eff6ff' : 'white'}; border: 2px solid ${isUnread ? '#667eea' : '#e5e7eb'}; border-radius: 8px; padding: 16px; display: flex; gap: 12px; align-items: start;">
+                        <div style="font-size: 24px; flex-shrink: 0;">
+                            ${notification.notification_type === 'fake_user_dm' ? '💬' : '🔔'}
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                                <h4 style="margin: 0; color: ${isUnread ? '#667eea' : '#374151'}; font-weight: 600;">
+                                    ${escapeHtml(notification.title)}
+                                    ${isUnread ? '<span style="background: #667eea; color: white; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 8px; font-weight: 700;">NEW</span>' : ''}
+                                </h4>
+                                <span style="color: #9ca3af; font-size: 13px; white-space: nowrap; margin-left: 12px;">${formatTimeAgo(timestamp)}</span>
+                            </div>
+                            <p style="margin: 4px 0 8px 0; color: #6b7280; line-height: 1.4;">${escapeHtml(notification.message)}</p>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                ${notification.notification_type === 'fake_user_dm' && metadata.from_username ? `
+                                    <button class="btn" onclick="viewUserDetails('${escapeHtml(metadata.from_username).replace(/'/g, "\\'")}');" style="padding: 6px 12px; font-size: 13px;">
+                                        👁️ View Sender
+                                    </button>
+                                    <button class="btn" onclick="switchTab('impersonate'); setTimeout(() => loadImpersonateConversation('${escapeHtml(metadata.to_username).replace(/'/g, "\\'")}', '${escapeHtml(metadata.from_username).replace(/'/g, "\\'")}'), 100);" style="padding: 6px 12px; font-size: 13px; background: #667eea; color: white;">
+                                        💬 Reply
+                                    </button>
+                                ` : ''}
+                                ${isUnread ? `
+                                    <button class="btn" onclick="markNotificationRead(${notification.id})" style="padding: 6px 12px; font-size: 13px; background: #10b981; color: white;">
+                                        ✓ Mark Read
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateNotificationBadge(count) {
+            const badge = document.getElementById('notification-badge');
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function filterNotifications(filter) {
+            notificationsFilter = filter;
+
+            // Update button styles
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                if (btn.getAttribute('data-filter') === filter) {
+                    btn.style.background = '#667eea';
+                    btn.style.color = 'white';
+                    btn.classList.add('active');
+                } else {
+                    btn.style.background = 'white';
+                    btn.style.color = '#6b7280';
+                    btn.classList.remove('active');
+                }
+            });
+
+            refreshNotifications();
+        }
+
+        async function markNotificationRead(notificationId) {
+            try {
+                const response = await fetch('/api/admin/notifications.php', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ notification_id: notificationId })
+                });
+
+                if (!response.ok) throw new Error('Failed to mark notification as read');
+
+                refreshNotifications();
+            } catch (error) {
+                console.error('Error marking notification as read:', error);
+            }
+        }
+
+        async function markAllNotificationsRead() {
+            if (!confirm('Mark all notifications as read?')) return;
+
+            try {
+                const response = await fetch('/api/admin/notifications.php', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ mark_all_read: true })
+                });
+
+                if (!response.ok) throw new Error('Failed to mark all notifications as read');
+
+                const data = await response.json();
+                if (data.success) {
+                    refreshNotifications();
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error marking all notifications as read:', error);
+                alert('Failed to mark all notifications as read');
+            }
+        }
+
+        async function connectNotificationsStream() {
+            // Only connect if user has access to notifications
+            if (currentUserRole !== 'root' && currentUserRole !== 'administrator' && currentUserRole !== 'owner') {
+                return;
+            }
+
+            // Ensure we have auth token
+            if (!authToken) {
+                console.error('Cannot connect to notifications stream: No auth token');
+                return;
+            }
+
+            // Close existing stream
+            if (notificationsStream && notificationsStream.abort) {
+                notificationsStream.abort();
+            }
+
+            // Create abort controller for this connection
+            const abortController = new AbortController();
+            notificationsStream = abortController;
+
+            try {
+                const response = await fetch('/api/admin/stream.php', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Accept': 'text/event-stream'
+                    },
+                    signal: abortController.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (done) {
+                        console.log('Stream ended, reconnecting...');
+                        setTimeout(connectNotificationsStream, 1000);
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    let currentEvent = { type: 'message', data: '' };
+
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            currentEvent.type = line.substring(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            currentEvent.data += line.substring(5).trim();
+                        } else if (line === '') {
+                            // Empty line signals end of event
+                            if (currentEvent.data) {
+                                handleSSEEvent(currentEvent);
+                            }
+                            currentEvent = { type: 'message', data: '' };
+                        }
+                    }
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Stream connection aborted');
+                    return;
+                }
+                console.error('Stream error:', error);
+                setTimeout(connectNotificationsStream, 5000);
+            }
+        }
+
+        function handleSSEEvent(event) {
+            try {
+                if (event.type === 'notification_count') {
+                    const data = JSON.parse(event.data);
+                    updateNotificationBadge(data.unread_count);
+                } else if (event.type === 'notification') {
+                    const data = JSON.parse(event.data);
+
+                    // Update badge
+                    const badge = document.getElementById('notification-badge');
+                    let currentCount = parseInt(badge.textContent) || 0;
+                    updateNotificationBadge(currentCount + 1);
+
+                    // Refresh notifications if on notifications tab
+                    const notificationsTab = document.getElementById('notifications-tab');
+                    if (notificationsTab && notificationsTab.classList.contains('active')) {
+                        refreshNotifications();
+                    }
+
+                    // Play sound
+                    playNotificationSound();
+
+                    // Show browser notification if permission granted
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                        new Notification('New Admin Notification', {
+                            body: data.from_username + ' → ' + data.to_username + ': ' + data.message_preview.substring(0, 100),
+                            icon: '/favicon.ico',
+                            tag: 'admin-notification-' + data.id
+                        });
+                    }
+                } else if (event.type === 'reconnect') {
+                    console.log('Server requested reconnect');
+                    if (notificationsStream && notificationsStream.abort) {
+                        notificationsStream.abort();
+                    }
+                    setTimeout(connectNotificationsStream, 1000);
+                } else if (event.type === 'error') {
+                    const errorData = JSON.parse(event.data);
+                    console.error('Server error:', errorData);
+                }
+            } catch (error) {
+                console.error('Error handling SSE event:', error);
+            }
+        }
+
+        function playNotificationSound() {
+            if (!notificationSound) {
+                // Create a simple notification beep using Web Audio API
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+        }
+
+        function formatTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+
+            if (seconds < 60) return 'just now';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+            return date.toLocaleDateString();
+        }
+
+        function loadImpersonateConversation(fakeUsername, senderUsername) {
+            // Set the impersonate select dropdown
+            const impersonateSelect = document.getElementById('impersonate-select');
+            if (impersonateSelect) {
+                impersonateSelect.value = fakeUsername;
+                // Trigger load
+                if (typeof selectSender === 'function') {
+                    selectSender(fakeUsername, senderUsername);
+                }
+            }
+        }
+
+        // Request notification permission on page load
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
 
     </script>
     <!-- Ensure countries.js is loaded first -->

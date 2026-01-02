@@ -12,8 +12,18 @@ This document outlines the planned features and enhancements for RadioChatBox.
 ### Architecture Improvements
 **Priority:** HIGH - Foundation for future development
 
-- [ ] Notification system for admin panel
-- [ ] Notifications for messages to fake users
+- [x] Notification system for admin panel
+- [x] Notifications for messages to fake users
+- [ ] **Implement secure token-based authentication system**
+  - Replace username:password credentials sent on every request
+  - Generate secure session tokens on login (JWT or random tokens)
+  - Store tokens in Redis with expiration
+  - Reduce credential exposure in logs and network traffic
+  - Enable proper SSE authentication via headers (not query parameters)
+  - Implement custom SSE client that supports headers (EventSource doesn't support custom headers)
+  - Alternative: Use fetch() with ReadableStream for SSE instead of EventSource
+  - Add token refresh mechanism
+  - Implement token revocation on logout
 - [ ] Integrate Pramnos Framework (https://github.com/mrpc/PramnosFramework)
 - [ ] Refactor existing code to use Pramnos structure
 - [ ] Implement automated database migration system
