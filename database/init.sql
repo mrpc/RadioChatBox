@@ -582,7 +582,8 @@ CREATE TABLE IF NOT EXISTS stats_hourly (
     private_messages INTEGER DEFAULT 0,
     photo_uploads INTEGER DEFAULT 0,
     new_registrations INTEGER DEFAULT 0,
-    radio_listeners INTEGER DEFAULT 0,
+    radio_listeners_avg INTEGER DEFAULT 0,
+    radio_listeners_peak INTEGER DEFAULT 0,
     peak_concurrent_users INTEGER DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(stat_hour)
@@ -591,6 +592,8 @@ CREATE TABLE IF NOT EXISTS stats_hourly (
 CREATE INDEX IF NOT EXISTS idx_stats_hourly_stat_hour ON stats_hourly(stat_hour DESC);
 
 COMMENT ON TABLE stats_hourly IS 'Hourly aggregated statistics - one row per hour';
+COMMENT ON COLUMN stats_hourly.radio_listeners_avg IS 'Average radio listeners during this hour';
+COMMENT ON COLUMN stats_hourly.radio_listeners_peak IS 'Peak radio listeners during the hour';
 
 -- Daily statistics
 CREATE TABLE IF NOT EXISTS stats_daily (
@@ -707,7 +710,8 @@ DECLARE
     v_private_messages INTEGER;
     v_photo_uploads INTEGER;
     v_new_registrations INTEGER;
-    v_radio_listeners INTEGER;
+    v_radio_listeners_avg INTEGER;
+    v_radio_listeners_peak INTEGER;
     v_peak_concurrent INTEGER;
     v_hour_start TIMESTAMP;
     v_hour_end TIMESTAMP;
@@ -742,7 +746,11 @@ BEGIN
     FROM users
     WHERE created_at >= v_hour_start AND created_at < v_hour_end;
     
-    SELECT COALESCE(AVG(radio_listeners)::INTEGER, 0) INTO v_radio_listeners
+    SELECT COALESCE(AVG(radio_listeners)::INTEGER, 0) INTO v_radio_listeners_avg
+    FROM stats_snapshots
+    WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
+    
+    SELECT COALESCE(MAX(radio_listeners), 0) INTO v_radio_listeners_peak
     FROM stats_snapshots
     WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
     
@@ -753,7 +761,7 @@ BEGIN
     INSERT INTO stats_hourly (
         stat_hour, active_users, guest_users, registered_users,
         total_messages, private_messages, photo_uploads,
-        new_registrations, radio_listeners, peak_concurrent_users
+        new_registrations, radio_listeners_avg, radio_listeners_peak, peak_concurrent_users
     )
     VALUES (
         v_hour_start,
@@ -764,7 +772,8 @@ BEGIN
         COALESCE(v_private_messages, 0),
         COALESCE(v_photo_uploads, 0),
         COALESCE(v_new_registrations, 0),
-        COALESCE(v_radio_listeners, 0),
+        COALESCE(v_radio_listeners_avg, 0),
+        COALESCE(v_radio_listeners_peak, 0),
         COALESCE(v_peak_concurrent, 0)
     )
     ON CONFLICT (stat_hour) DO UPDATE SET
@@ -775,7 +784,8 @@ BEGIN
         private_messages = EXCLUDED.private_messages,
         photo_uploads = EXCLUDED.photo_uploads,
         new_registrations = EXCLUDED.new_registrations,
-        radio_listeners = EXCLUDED.radio_listeners,
+        radio_listeners_avg = EXCLUDED.radio_listeners_avg,
+        radio_listeners_peak = EXCLUDED.radio_listeners_peak,
         peak_concurrent_users = EXCLUDED.peak_concurrent_users;
 END;
 $$ LANGUAGE plpgsql;
