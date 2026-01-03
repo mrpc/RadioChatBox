@@ -101,6 +101,12 @@ This document outlines the planned features and enhancements for RadioChatBox.
 - [ ] Facebook OAuth integration
 - [ ] Account settings page
 - [ ] Two-factor authentication (2FA)
+- [ ] CAPTCHA/robot protection for sign-in and registration
+  - Google reCAPTCHA v3 (invisible) or v2 (checkbox) integration
+  - hCaptcha as privacy-friendly alternative
+  - Configurable CAPTCHA threshold/sensitivity
+  - CAPTCHA requirement for failed login attempts
+  - Rate limiting integration (trigger CAPTCHA after X failed attempts)
 
 **Database Changes:**
 - Add to `users` table: `email`, `password_hash`, `facebook_id`, `email_verified`, `two_factor_enabled`, `remember_token`
