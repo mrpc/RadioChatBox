@@ -1165,13 +1165,20 @@
                     </div>
                     
                     <!-- Recent Activity -->
-                    <div class="section">
+                    <div class="section" id="dashboard-recent-messages-section">
                         <div class="section-header">
                             <div>
                                 <h2>Recent Messages</h2>
-                                <p>Last 10 public messages</p>
+                                <p id="dashboard-messages-subtitle">Last 10 messages</p>
                             </div>
-                            <button class="btn btn-outline" onclick="switchTab('messages')">View All</button>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <select id="dashboard-message-filter" onchange="filterDashboardMessages()" style="padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 6px; display: none;">
+                                    <option value="all">All Messages</option>
+                                    <option value="public">Public Only</option>
+                                    <option value="private">Private Only</option>
+                                </select>
+                                <button class="btn btn-outline" onclick="switchTab('messages')">View All</button>
+                            </div>
                         </div>
                         <div id="dashboard-recent-messages"></div>
                     </div>
@@ -1209,9 +1216,14 @@
                         <div class="section-header">
                             <div>
                                 <h2>Message History</h2>
-                                <p>View and manage all public messages</p>
+                                <p id="message-history-subtitle">View and manage all messages</p>
                             </div>
-                            <div style="display: flex; gap: 10px;">
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <select id="message-type-filter" onchange="loadMessages(1)" style="padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 6px; display: none;">
+                                    <option value="all">All Messages</option>
+                                    <option value="public">Public Only</option>
+                                    <option value="private">Private Only</option>
+                                </select>
                                 <button class="btn btn-warning" onclick="flushRedisCache()">
                                     � Flush Cache
                                 </button>
@@ -1304,7 +1316,7 @@
                 </div>
 
                 <div class="section">
-                    <h2>Admin Users</h2>
+                    <h2>User Management</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Manage admin panel users and their roles</p>
                     <div id="admin-users-table"></div>
                 </div>
@@ -1996,7 +2008,7 @@
                         💾 Save All Settings
                     </button>
                     <p style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 6px; color: #1e40af; font-size: 14px;">
-                        � <strong>Note:</strong> To change your admin password, go to the <strong>Admin Users</strong> tab and edit your user account.
+                        � <strong>Note:</strong> To change your admin password, go to the <strong>User Management</strong> tab and edit your user account.
                     </p>
                 </div>
 
@@ -2185,7 +2197,13 @@
                 });
                 
                 // Create a secure session token for SSE connections
-                await createAdminSessionToken();
+                const tokenCreated = await createAdminSessionToken();
+                if (!tokenCreated) {
+                    // Session token creation failed, but login succeeded
+                    // This is non-critical - SSE notifications won't work but admin panel will
+                    console.warn('⚠️ Warning: Could not create admin session token. Real-time notifications will not work.');
+                    console.warn('This usually means Redis is unavailable. Check server logs.');
+                }
                 
                 errorDiv.textContent = '';
                 await showAdminPanel();
@@ -2206,12 +2224,19 @@
                 const data = await response.json();
                 if (data.success && data.session_token) {
                     adminSessionToken = data.session_token;
-                    console.log('Admin session token created for SSE');
+                    console.log('✓ Admin session token created successfully');
+                    return true;
                 } else {
-                    console.error('Failed to create admin session token:', data.error);
+                    console.error('Failed to create admin session token:', data.error || 'Unknown error');
+                    // Check if the response indicates an auth issue
+                    if (response.status === 401) {
+                        console.error('Session token creation failed: Unauthorized. Try logging in again.');
+                    }
+                    return false;
                 }
             } catch (error) {
                 console.error('Error creating admin session token:', error);
+                return false;
             }
         }
 
@@ -2285,10 +2310,31 @@
             console.log('Connecting to admin notification stream...');
 
             try {
-                // Use secure session token instead of raw credentials
+                // If session token is not available, try to create one first
                 if (!adminSessionToken) {
-                    console.error('No admin session token available for SSE');
-                    reconnectAdminStream();
+                    console.warn('⚠️ No admin session token - attempting to create one...');
+                    // Set a flag to prevent infinite retry loops
+                    if (window.adminTokenCreationRetrying) {
+                        console.warn('⚠️ Admin session token creation already in progress, skipping retry');
+                        return;
+                    }
+                    
+                    window.adminTokenCreationRetrying = true;
+                    createAdminSessionToken().then((success) => {
+                        window.adminTokenCreationRetrying = false;
+                        if (success && adminSessionToken) {
+                            console.log('✓ Session token created, retrying connection...');
+                            // Retry connection after token creation
+                            connectAdminStream();
+                        } else {
+                            console.error('❌ Failed to create admin session token. Real-time notifications will not work.');
+                            console.error('This usually means Redis is unavailable. Check your server configuration.');
+                            // Don't retry further - user will need to refresh
+                        }
+                    }).catch(error => {
+                        window.adminTokenCreationRetrying = false;
+                        console.error('Error creating admin session token:', error);
+                    });
                     return;
                 }
                 
@@ -2314,6 +2360,20 @@
                         handleAdminNotificationEvent(notification);
                     } catch (error) {
                         console.error('Failed to parse notification event:', error);
+                    }
+                });
+
+                adminStreamEventSource.addEventListener('message', (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        // Refresh message history if we're on the messages tab
+                        const activeTab = document.querySelector('.tab-content.active');
+                        if (activeTab && activeTab.id === 'messages-tab') {
+                            console.log('New message received, refreshing message history...');
+                            loadMessages(1); // Refresh to first page to show new messages
+                        }
+                    } catch (error) {
+                        console.error('Failed to parse message event:', error);
                     }
                 });
 
@@ -2593,10 +2653,10 @@
             // Update page title
             const titles = {
                 'dashboard': {title: 'Dashboard', subtitle: 'Overview and key metrics'},
-                'messages': {title: 'Message History', subtitle: 'View and manage all public messages'},
+                'messages': {title: 'Message History', subtitle: 'View and manage all messages'},
                 'users': {title: 'Active Users', subtitle: 'Currently online users'},
                 'inactive-users': {title: 'Inactive Users', subtitle: 'Users who have left the chat'},
-                'admin-users': {title: 'Admin Users', subtitle: 'Manage administrative accounts'},
+                'admin-users': {title: 'User Management', subtitle: 'Manage administrative accounts'},
                 'fake-users': {title: 'Fake Users', subtitle: 'Manage automated users'},
                 'notifications': {title: 'Notifications', subtitle: 'Admin alerts and notifications'},
                 'impersonate': {title: 'Impersonate', subtitle: 'Reply as fake users'},
@@ -2752,8 +2812,16 @@
                         kpiMessagesTodayEl.textContent = todayMessages.length;
                     }
                     
-                    // Load recent messages for dashboard
-                    loadDashboardRecentMessages(messagesData.messages.slice(0, 10));
+                    // Load recent messages for dashboard and hide section if needed
+                    const includePrivate = messagesData.include_private || false;
+                    const chatMode = messagesData.chat_mode || 'both';
+                    loadDashboardRecentMessages(messagesData.messages.slice(0, 100), includePrivate, chatMode);
+                    
+                    // Hide Recent Messages section if chat is DMs only
+                    const recentMessagesSection = document.getElementById('dashboard-recent-messages-section');
+                    if (recentMessagesSection) {
+                        recentMessagesSection.style.display = chatMode === 'private' ? 'none' : '';
+                    }
                 }
                 
                 // Load fake users
@@ -2806,25 +2874,85 @@
             }
         }
         
-        function loadDashboardRecentMessages(messages) {
+        // Store all dashboard messages globally for filtering
+        let allDashboardMessages = [];
+        let dashboardIncludesPrivate = false;
+        let dashboardChatMode = 'both';
+        
+        function loadDashboardRecentMessages(messages, includePrivate = false, chatMode = 'both') {
+            allDashboardMessages = messages || [];
+            dashboardIncludesPrivate = includePrivate;
+            dashboardChatMode = chatMode;
+            
+            // Show/hide filter dropdown - only show if both types are available and user can see them
+            const filterDropdown = document.getElementById('dashboard-message-filter');
+            const subtitle = document.getElementById('dashboard-messages-subtitle');
+            
+            const showFilter = includePrivate && chatMode === 'both';
+            if (showFilter && filterDropdown) {
+                filterDropdown.style.display = '';
+                if (subtitle) subtitle.textContent = 'Last 10 public and private messages';
+            } else {
+                if (filterDropdown) filterDropdown.style.display = 'none';
+                if (subtitle) {
+                    if (chatMode === 'private') {
+                        subtitle.textContent = 'Last 10 private messages';
+                    } else {
+                        subtitle.textContent = 'Last 10 public messages';
+                    }
+                }
+            }
+            
+            // Apply current filter
+            filterDashboardMessages();
+        }
+        
+        function filterDashboardMessages() {
             const container = document.getElementById('dashboard-recent-messages');
-            if (!messages || messages.length === 0) {
+            const filterDropdown = document.getElementById('dashboard-message-filter');
+            const filter = filterDropdown ? filterDropdown.value : 'all';
+            
+            let filteredMessages = allDashboardMessages;
+            
+            if (dashboardIncludesPrivate && filter !== 'all') {
+                filteredMessages = allDashboardMessages.filter(msg => {
+                    const isPrivate = msg.message_type === 'private';
+                    if (filter === 'public') return !isPrivate;
+                    if (filter === 'private') return isPrivate;
+                    return true;
+                });
+            }
+            
+            // Limit to 10 messages
+            filteredMessages = filteredMessages.slice(0, 10);
+            
+            if (!filteredMessages || filteredMessages.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: var(--gray-400); padding: 40px;">No messages yet</p>';
                 return;
             }
             
-            let html = '<table><thead><tr><th>Time</th><th>User</th><th>Message</th></tr></thead><tbody>';
-            messages.forEach(msg => {
+            let html = '<table><thead><tr>';
+            if (dashboardIncludesPrivate) html += '<th>Type</th>';
+            html += '<th>Time</th><th>User</th><th>Message</th></tr></thead><tbody>';
+            
+            filteredMessages.forEach(msg => {
+                const isPrivate = msg.message_type === 'private';
+                const rowStyle = isPrivate ? 'background: #fff7ed;' : '';
+                
                 // Handle both Unix timestamps and ISO datetime strings from database
                 const date = typeof msg.timestamp === 'number' 
                     ? new Date(msg.timestamp * 1000) 
                     : new Date(msg.timestamp || msg.created_at);
                 const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleString();
+                
+                const displayUser = isPrivate ? `${escapeHtml(msg.from_username)} → ${escapeHtml(msg.to_username)}` : escapeHtml(msg.username);
+                
                 html += `
-                    <tr>
+                    <tr style="${rowStyle}">
+                        ${dashboardIncludesPrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                         <td>${time}</td>
-                        <td><strong><a href="#" onclick="event.preventDefault(); switchTab('users'); setTimeout(() => viewUserDetails('${escapeHtml(msg.username)}'), 100);" style="color: #667eea; cursor: pointer; text-decoration: none;">${msg.username}</a></strong></td>
-                        <td>${msg.message.substring(0, 100)}${msg.message.length > 100 ? '...' : ''}</td>
+                        <td><strong>${displayUser}</strong></td>
+                        <td>${escapeHtml(msg.message.substring(0, 100))}${msg.message.length > 100 ? '...' : ''}</td>
                     </tr>
                 `;
             });
@@ -2929,7 +3057,10 @@
 
         async function loadMessages(page = 1) {
             try {
-                const response = await fetch(`/api/admin/messages.php?page=${page}&limit=20`, {
+                const filterDropdown = document.getElementById('message-type-filter');
+                const filter = filterDropdown ? filterDropdown.value : 'all';
+                
+                const response = await fetch(`/api/admin/messages.php?page=${page}&limit=20&type=${filter}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -2937,26 +3068,58 @@
                 if (data.success) {
                     const table = document.getElementById('messages-table');
                     const pagination = data.pagination;
+                    const includePrivate = data.include_private || false;
+                    const chatMode = data.chat_mode || 'both';
+                    
+                    // Show/hide filter dropdown only if both message types are available and user can see them
+                    if (filterDropdown) {
+                        const showFilter = includePrivate && chatMode === 'both';
+                        filterDropdown.style.display = showFilter ? '' : 'none';
+                    }
+                    
+                    // Update subtitle to show what's being displayed
+                    const subtitle = document.getElementById('message-history-subtitle');
+                    if (subtitle) {
+                        if (!includePrivate) {
+                            subtitle.textContent = 'View and manage all public messages';
+                        } else if (chatMode === 'public') {
+                            subtitle.textContent = 'View and manage all public messages';
+                        } else if (chatMode === 'private') {
+                            subtitle.textContent = 'View and manage all private messages';
+                        } else {
+                            const filterText = filter === 'public' ? 'public' : filter === 'private' ? 'private' : 'public and private';
+                            subtitle.textContent = `Viewing ${filterText} messages`;
+                        }
+                    }
                     
                     table.innerHTML = `
                         <table>
                             <thead>
                                 <tr>
+                                    ${includePrivate ? '<th>Type</th>' : ''}
                                     <th>Time</th>
-                                    <th>Username</th>
+                                    ${includePrivate ? '<th>From</th><th>To</th>' : '<th>Username</th>'}
                                     <th>Message</th>
-                                    <th>IP</th>
+                                    ${!includePrivate ? '<th>IP</th>' : ''}
                                 </tr>
                             </thead>
                             <tbody>
-                                ${data.messages.map(msg => `
-                                    <tr>
+                                ${data.messages.map(msg => {
+                                    const isPrivate = msg.message_type === 'private';
+                                    const rowStyle = isPrivate ? 'background: #fff7ed;' : '';
+                                    return `
+                                    <tr style="${rowStyle}">
+                                        ${includePrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                                         <td>${new Date(msg.created_at).toLocaleString()}</td>
-                                        <td>${escapeHtml(msg.username)}</td>
+                                        ${includePrivate 
+                                            ? `<td>${escapeHtml(isPrivate ? msg.from_username : msg.username)}</td><td>${isPrivate ? escapeHtml(msg.to_username) : '-'}</td>`
+                                            : `<td>${escapeHtml(msg.username)}</td>`
+                                        }
                                         <td>${escapeHtml(msg.message)}</td>
-                                        <td>${msg.ip_address}</td>
+                                        ${!includePrivate ? `<td>${msg.ip_address}</td>` : ''}
                                     </tr>
-                                `).join('')}
+                                `;
+                                }).join('')}
                             </tbody>
                         </table>
                         ${renderPagination(pagination, 'loadMessages')}

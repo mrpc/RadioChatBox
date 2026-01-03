@@ -18,18 +18,28 @@ if (!AdminAuth::verify()) {
 
 try {
     $chatService = new ChatService();
+    $currentUser = AdminAuth::getCurrentUser();
     
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 500) : 100;
     $offset = ($page - 1) * $limit;
+    $type = isset($_GET['type']) ? $_GET['type'] : 'all'; // all, public, private
     
-    $messages = $chatService->getAllMessages($limit, $offset);
-    $total = $chatService->getTotalMessagesCount();
+    // Root admins can see both public and private messages
+    $includePrivate = $currentUser && $currentUser['role'] === 'root';
+    
+    // Get chat mode to determine if both message types are available
+    $chatMode = $chatService->getSetting('chat_mode') ?? 'both';
+    
+    $messages = $chatService->getAllMessages($limit, $offset, $includePrivate, $type);
+    $total = $chatService->getTotalMessagesCount($includePrivate, $type);
     $totalPages = ceil($total / $limit);
     
     echo json_encode([
         'success' => true,
         'messages' => $messages,
+        'include_private' => $includePrivate,
+        'chat_mode' => $chatMode,
         'pagination' => [
             'page' => $page,
             'limit' => $limit,

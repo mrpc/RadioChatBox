@@ -45,7 +45,7 @@ if (AdminAuth::verify()) {
             // Reconstruct current user from token data
             $currentUser = [
                 'username' => $data['username'],
-                'role' => 'administrator' // Tokens are only created for authenticated admins
+                'role' => $data['role'] ?? 'administrator' // Use stored role
             ];
         }
     }

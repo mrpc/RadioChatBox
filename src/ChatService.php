@@ -315,7 +315,7 @@ class ChatService
                  VALUES (:message_id, :username, :message, :ip_address, :created_at, :reply_to)'
             );
 
-            $stmt->execute([
+            $result = $stmt->execute([
                 'message_id' => $messageData['id'],
                 'username' => $messageData['username'],
                 'message' => $messageData['message'],
@@ -323,9 +323,14 @@ class ChatService
                 'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
                 'reply_to' => $messageData['reply_to'] ?? null,
             ]);
+            
+            if (!$result) {
+                error_log("Failed to store message in database - execute returned false. Errors: " . json_encode($stmt->errorInfo()));
+            }
         } catch (\PDOException $e) {
-            // Log error but don't fail the request
-            error_log("Failed to store message in database: " . $e->getMessage());
+            // Log error with full details but don't fail the request
+            error_log("Failed to store message in database (PDOException): " . $e->getMessage() . " | Code: " . $e->getCode());
+            error_log("Message ID: " . ($messageData['id'] ?? 'null'));
         }
     }
     
@@ -886,17 +891,77 @@ class ChatService
     /**
      * Get all messages from database with pagination
      */
-    public function getAllMessages(int $limit = 100, int $offset = 0): array
+    /**
+     * Get all messages for admin panel (optionally including private messages for root admins)
+     */
+    public function getAllMessages(int $limit = 100, int $offset = 0, bool $includePrivate = false, string $type = 'all'): array
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT message_id, username, message, ip_address, created_at, is_deleted
-                 FROM messages 
-                 ORDER BY created_at DESC 
-                 LIMIT :limit OFFSET :offset'
-            );
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            // Determine which messages to fetch
+            if (!$includePrivate || $type === 'public') {
+                // Only public messages (non-deleted)
+                $stmt = $this->pdo->prepare(
+                    'SELECT message_id, username, message, ip_address, created_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username
+                     FROM messages 
+                     WHERE is_deleted = FALSE
+                     ORDER BY created_at DESC 
+                     LIMIT :limit OFFSET :offset'
+                );
+                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            } elseif ($type === 'private') {
+                // Only private messages
+                $stmt = $this->pdo->prepare(
+                    'SELECT 
+                        id::text as message_id, 
+                        from_username as username, 
+                        message, 
+                        \'\' as ip_address, 
+                        created_at, 
+                        FALSE as is_deleted,
+                        \'private\' as message_type,
+                        from_username,
+                        to_username
+                     FROM private_messages
+                     ORDER BY created_at DESC
+                     LIMIT :limit OFFSET :offset'
+                );
+                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            } else {
+                // Both public and private messages
+                $stmt = $this->pdo->prepare(
+                    '(SELECT 
+                        message_id, 
+                        username, 
+                        message, 
+                        ip_address, 
+                        created_at, 
+                        is_deleted, 
+                        \'public\' as message_type, 
+                        NULL as from_username, 
+                        NULL as to_username
+                     FROM messages 
+                     WHERE is_deleted = FALSE)
+                    UNION ALL
+                    (SELECT 
+                        id::text as message_id, 
+                        from_username as username, 
+                        message, 
+                        \'\' as ip_address, 
+                        created_at, 
+                        FALSE as is_deleted,
+                        \'private\' as message_type,
+                        from_username,
+                        to_username
+                     FROM private_messages)
+                    ORDER BY created_at DESC
+                    LIMIT :limit OFFSET :offset'
+                );
+                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            }
+            
             $stmt->execute();
             
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -907,12 +972,20 @@ class ChatService
     }
 
     /**
-     * Get total count of messages (for admin pagination)
+     * Get total count of messages (optionally including private messages for root admins)
      */
-    public function getTotalMessagesCount(): int
+    public function getTotalMessagesCount(bool $includePrivate = false, string $type = 'all'): int
     {
         try {
-            $stmt = $this->pdo->query('SELECT COUNT(*) FROM messages');
+            if (!$includePrivate || $type === 'public') {
+                $stmt = $this->pdo->query('SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE');
+            } elseif ($type === 'private') {
+                $stmt = $this->pdo->query('SELECT COUNT(*) FROM private_messages');
+            } else {
+                $stmt = $this->pdo->query(
+                    'SELECT (SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE) + (SELECT COUNT(*) FROM private_messages) AS total'
+                );
+            }
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
             error_log("Failed to get messages count: " . $e->getMessage());
