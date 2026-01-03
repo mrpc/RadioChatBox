@@ -15,7 +15,6 @@ This document outlines the planned features and enhancements for RadioChatBox.
 - [x] Notification system for admin panel
 - [x] Notifications for messages to fake users
 - [ ] **Implement secure token-based authentication system**
-  - Replace username:password credentials sent on every request
   - Generate secure session tokens on login (JWT or random tokens)
   - Store tokens in Redis with expiration
   - Reduce credential exposure in logs and network traffic
