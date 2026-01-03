@@ -1433,6 +1433,7 @@
                                 <div>
                                     <strong>Chatting with: <span id="impersonate-current-sender"></span></strong>
                                     <span style="color: #6b7280; margin-left: 10px;">as <strong id="impersonate-as-name"></strong></span>
+                                    <div id="impersonate-as-info" style="margin-top: 8px; font-size: 13px; color: #6b7280;"></div>
                                 </div>
                                 <button class="btn" onclick="selectSender(currentImpersonateAs, currentSender)" style="background: #10b981; padding: 6px 12px; font-size: 13px;">
                                     🔄 Refresh
@@ -4889,20 +4890,40 @@
                 if (data.success) {
                     impersonateData = data;
                     
-                    // Populate fake users dropdown
+                    // Populate fake users dropdown (already sorted by last message time from API)
                     const select = document.getElementById('impersonate-select');
                     select.innerHTML = '<option value="">-- Select a fake user --</option>';
                     
                     data.fake_users.forEach(fakeUser => {
                         const option = document.createElement('option');
                         option.value = fakeUser;
-                        option.textContent = fakeUser;
+                        const conversation = data.conversations[fakeUser];
                         
-                        // Show message count if any
-                        if (data.conversations[fakeUser]) {
-                            option.textContent += ` (${data.conversations[fakeUser].total_messages} messages)`;
+                        let optionText = fakeUser;
+                        
+                        // Show profile info
+                        let profileInfo = [];
+                        if (conversation.age) profileInfo.push(conversation.age);
+                        if (conversation.sex) profileInfo.push(conversation.sex.charAt(0).toUpperCase());
+                        if (conversation.location) profileInfo.push(conversation.location);
+                        
+                        if (profileInfo.length > 0) {
+                            optionText += ' (' + profileInfo.join(', ') + ')';
                         }
                         
+                        // Show last message date
+                        if (conversation.last_message_time) {
+                            const lastMsgTime = new Date(conversation.last_message_time);
+                            const timeStr = lastMsgTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            optionText += ` - ${timeStr}`;
+                        }
+                        
+                        // Show message count if any
+                        if (conversation.total_messages) {
+                            optionText += ` [${conversation.total_messages} msgs]`;
+                        }
+                        
+                        option.textContent = optionText;
                         select.appendChild(option);
                     });
 
@@ -4939,6 +4960,14 @@
                 return;
             }
 
+            // Update URL to show the selected fake user (without a specific sender yet)
+            const url = new URL(window.location);
+            url.hash = `impersonate/${encodeURIComponent(fakeUser)}`;
+            history.pushState({ 
+                tab: 'impersonate',
+                fakeUser: fakeUser
+            }, '', url);
+
             currentImpersonateAs = fakeUser;
             const conversation = impersonateData.conversations[fakeUser];
             
@@ -4947,17 +4976,32 @@
                 return;
             }
 
-            // Display senders list
+            // Display senders list (already sorted by online status then by date from API)
             const sendersList = document.getElementById('impersonate-senders-list');
             sendersList.innerHTML = '';
             
             conversation.senders.forEach(sender => {
                 const senderDiv = document.createElement('div');
+                const lastMsgTime = new Date(sender.last_message_time);
+                const timeStr = lastMsgTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                
+                const onlineIndicator = sender.is_online ? 
+                    '<span style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 8px;"></span>' : 
+                    '<span style="display: inline-block; width: 8px; height: 8px; background: #d1d5db; border-radius: 50%; margin-right: 8px;"></span>';
+                
+                const onlineText = sender.is_online ? 
+                    '<span style="color: #10b981; font-weight: 600; font-size: 12px;">●</span>' : '';
+                
                 senderDiv.style.cssText = 'padding: 10px; margin: 5px 0; background: white; border-radius: 6px; cursor: pointer; border: 2px solid transparent;';
                 senderDiv.innerHTML = `
-                    <strong>${sender.username}</strong>
-                    <span style="color: #6b7280; font-size: 13px; margin-left: 10px;">${sender.unread_count} message(s)</span>
-                    <div style="color: #9ca3af; font-size: 12px; margin-top: 5px;">${sender.last_message.substring(0, 50)}...</div>
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <strong>${onlineIndicator}${sender.username}</strong>
+                            <div style="color: #6b7280; font-size: 13px; margin-left: 0;">${sender.unread_count} message(s)</div>
+                            <div style="color: #9ca3af; font-size: 12px; margin-top: 5px;">${sender.last_message.substring(0, 50)}...</div>
+                        </div>
+                        <div style="text-align: right; font-size: 12px; color: #6b7280; white-space: nowrap; margin-left: 10px;">${timeStr}</div>
+                    </div>
                 `;
                 senderDiv.onclick = () => selectSender(fakeUser, sender.username);
                 sendersList.appendChild(senderDiv);
@@ -5093,6 +5137,28 @@
             document.getElementById('impersonate-current-sender').textContent = senderUsername;
             document.getElementById('impersonate-as-name').textContent = fakeUser;
             document.getElementById('impersonate-as-name-2').textContent = fakeUser;
+            
+            // Update URL to reflect the current conversation
+            updateImpersonateURL(fakeUser, senderUsername);
+            
+            // Display fake user profile info
+            const conversation = impersonateData.conversations[fakeUser];
+            if (conversation) {
+                let infoText = '';
+                if (conversation.age) {
+                    infoText += conversation.age + ' years old';
+                }
+                if (conversation.sex) {
+                    if (infoText) infoText += ' • ';
+                    infoText += conversation.sex.charAt(0).toUpperCase() + conversation.sex.slice(1);
+                }
+                if (conversation.location) {
+                    if (infoText) infoText += ' • ';
+                    infoText += conversation.location;
+                }
+                document.getElementById('impersonate-as-info').textContent = infoText;
+            }
+            
             document.getElementById('impersonate-selected-conversation').style.display = 'block';
 
             // Generate fake session ID using MD5 to match the format in private-message.php
@@ -6349,6 +6415,111 @@
             Notification.requestPermission();
         }
 
+        // URL Routing for Impersonate Tab
+        function updateImpersonateURL(fakeUser, senderUsername) {
+            // Update URL hash without triggering hashchange event initially
+            const url = new URL(window.location);
+            url.hash = `impersonate/${encodeURIComponent(fakeUser)}/${encodeURIComponent(senderUsername)}`;
+            history.pushState({ 
+                tab: 'impersonate',
+                fakeUser: fakeUser,
+                senderUsername: senderUsername
+            }, '', url);
+        }
+
+        function parseImpersonateURL() {
+            // Parse hash like #impersonate/fakeuser or #impersonate/fakeuser/sender
+            const hash = window.location.hash.slice(1); // Remove #
+            const parts = hash.split('/');
+            
+            if (parts[0] === 'impersonate') {
+                if (parts.length >= 3) {
+                    // Full URL with sender
+                    return {
+                        fakeUser: decodeURIComponent(parts[1]),
+                        senderUsername: decodeURIComponent(parts[2])
+                    };
+                } else if (parts.length === 2) {
+                    // Just fake user, no sender
+                    return {
+                        fakeUser: decodeURIComponent(parts[1]),
+                        senderUsername: null
+                    };
+                }
+            }
+            return null;
+        }
+
+        function restoreImpersonateState() {
+            const state = parseImpersonateURL();
+            if (state && state.fakeUser) {
+                // Make sure impersonate data is loaded
+                if (impersonateData && impersonateData.conversations && impersonateData.conversations[state.fakeUser]) {
+                    // Set the select dropdown and open the conversation
+                    const select = document.getElementById('impersonate-select');
+                    if (select) {
+                        select.value = state.fakeUser;
+                        currentImpersonateAs = state.fakeUser;
+                        // Load the conversation list for this fake user
+                        loadImpersonateConversation();
+                        
+                        // If there's a specific sender, select them
+                        if (state.senderUsername) {
+                            setTimeout(() => {
+                                selectSender(state.fakeUser, state.senderUsername);
+                            }, 100);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle hash changes (back/forward button navigation)
+        window.addEventListener('hashchange', function() {
+            const hash = window.location.hash.slice(1);
+            
+            // If it's an impersonate route with user/sender info
+            if (hash.startsWith('impersonate/')) {
+                switchTab('impersonate', false); // Switch to impersonate tab without updating history
+                
+                // Wait a moment for the tab to be visible, then restore state
+                setTimeout(() => {
+                    // Reload conversations if needed
+                    if (!impersonateData) {
+                        refreshImpersonateConversations().then(() => {
+                            restoreImpersonateState();
+                        });
+                    } else {
+                        restoreImpersonateState();
+                    }
+                }, 200);
+            } else if (hash) {
+                // Normal tab hash
+                switchTab(hash, false);
+            }
+        });
+
+        // Check URL on page load
+        window.addEventListener('load', function() {
+            const hash = window.location.hash.slice(1);
+            
+            if (hash) {
+                // If it's an impersonate route
+                if (hash.startsWith('impersonate/')) {
+                    switchTab('impersonate', false);
+                    
+                    // Load conversations and restore state
+                    setTimeout(() => {
+                        refreshImpersonateConversations().then(() => {
+                            restoreImpersonateState();
+                        });
+                    }, 500);
+                } else {
+                    // Normal tab
+                    switchTab(hash, false);
+                }
+            }
+        });
 
     </script>
     <!-- Ensure countries.js is loaded first -->
