@@ -1,12 +1,22 @@
 -- Migration: Add radio listener peak tracking to hourly statistics
--- Purpose: Adds radio_listeners_avg and radio_listeners_peak columns to stats_hourly table
---          and updates the aggregation function to calculate both metrics
+-- Purpose: Replaces radio_listeners with radio_listeners_avg and radio_listeners_peak
+--          to match the structure of daily/weekly/monthly/yearly stats tables
 -- Date: January 2026
 
--- Add missing radio listener columns to hourly stats table
+-- Add new radio listener columns to hourly stats table
 ALTER TABLE stats_hourly 
 ADD COLUMN IF NOT EXISTS radio_listeners_avg INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS radio_listeners_peak INTEGER DEFAULT 0;
+
+-- Migrate existing data from radio_listeners to radio_listeners_avg
+UPDATE stats_hourly 
+SET radio_listeners_avg = radio_listeners,
+    radio_listeners_peak = radio_listeners
+WHERE radio_listeners IS NOT NULL;
+
+-- Remove old radio_listeners column (replaced by avg and peak)
+ALTER TABLE stats_hourly 
+DROP COLUMN IF EXISTS radio_listeners;
 
 -- Add column comments
 COMMENT ON COLUMN stats_hourly.radio_listeners_avg IS 'Average radio listeners during this hour';

@@ -6241,7 +6241,7 @@
                     { label: 'Peak Concurrent', data: data.map(d => d.peak_concurrent_users), backgroundColor: 'rgba(255, 107, 107, 0.7)', yAxisID: 'y1' }
                 );
                 if (window.radioEnabled) {
-                    datasets.push({ label: '📻 Radio', data: data.map(d => d.radio_listeners), backgroundColor: 'rgba(48, 207, 208, 0.7)', yAxisID: 'y1' });
+                    datasets.push({ label: '📻 Radio (avg)', data: data.map(d => d.radio_listeners_avg), backgroundColor: 'rgba(48, 207, 208, 0.7)', yAxisID: 'y1' });
                     datasets.push({ label: '📻 Radio Peak', data: data.map(d => d.radio_listeners_peak), backgroundColor: 'rgba(0, 180, 216, 0.7)', yAxisID: 'y1' });
                 }
                 window.statsChartInstance = new Chart(chartCtx, {
