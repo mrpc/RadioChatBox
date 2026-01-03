@@ -5482,7 +5482,7 @@
                                     <button class="btn" onclick="viewUserDetails('${escapeHtml(metadata.from_username).replace(/'/g, "\\'")}');" style="padding: 6px 12px; font-size: 13px;">
                                         👁️ View Sender
                                     </button>
-                                    <button class="btn" onclick="switchTab('impersonate'); setTimeout(() => loadImpersonateConversation('${escapeHtml(metadata.to_username).replace(/'/g, "\\'")}', '${escapeHtml(metadata.from_username).replace(/'/g, "\\'")}'), 100);" style="padding: 6px 12px; font-size: 13px; background: #667eea; color: white;">
+                                    <button class="btn" onclick="switchTab('impersonate'); setTimeout(() => loadImpersonateFromNotification('${escapeHtml(metadata.to_username).replace(/'/g, "\\'")}', '${escapeHtml(metadata.from_username).replace(/'/g, "\\'")}', ${notification.id}), 100);" style="padding: 6px 12px; font-size: 13px; background: #667eea; color: white;">
                                         💬 Reply
                                     </button>
                                 ` : ''}
@@ -5662,11 +5662,8 @@
                     let currentCount = parseInt(badge.textContent) || 0;
                     updateNotificationBadge(currentCount + 1);
 
-                    // Refresh notifications if on notifications tab
-                    const notificationsTab = document.getElementById('notifications-tab');
-                    if (notificationsTab && notificationsTab.classList.contains('active')) {
-                        refreshNotifications();
-                    }
+                    // Always refresh notifications to update the list in real-time
+                    refreshNotifications();
 
                     // Play sound
                     playNotificationSound();
@@ -5725,14 +5722,20 @@
             return date.toLocaleDateString();
         }
 
-        function loadImpersonateConversation(fakeUsername, senderUsername) {
+        function loadImpersonateFromNotification(fakeUsername, senderUsername, notificationId) {
             // Set the impersonate select dropdown
             const impersonateSelect = document.getElementById('impersonate-select');
             if (impersonateSelect) {
                 impersonateSelect.value = fakeUsername;
+                // Set currentImpersonateAs before calling selectSender
+                currentImpersonateAs = fakeUsername;
                 // Trigger load
                 if (typeof selectSender === 'function') {
                     selectSender(fakeUsername, senderUsername);
+                }
+                // Mark notification as read if provided
+                if (notificationId) {
+                    markNotificationRead(notificationId);
                 }
             }
         }
