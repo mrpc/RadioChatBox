@@ -5657,6 +5657,22 @@
                 } else if (event.type === 'notification') {
                     const data = JSON.parse(event.data);
 
+                    // Check if admin is currently viewing this conversation in impersonate tab
+                    const impersonateTab = document.getElementById('impersonate-tab');
+                    const isViewingConversation = impersonateTab && 
+                                                 impersonateTab.classList.contains('active') &&
+                                                 currentImpersonateAs === data.to_username &&
+                                                 currentSender === data.from_username;
+
+                    // If already viewing this conversation, play sound but skip visual notifications
+                    if (isViewingConversation) {
+                        // Play sound to indicate new message
+                        playNotificationSound();
+                        // Silently mark notification as read since admin is already viewing it
+                        markNotificationRead(data.id);
+                        return; // Skip visual notification alerts
+                    }
+
                     // Update badge
                     const badge = document.getElementById('notification-badge');
                     let currentCount = parseInt(badge.textContent) || 0;
@@ -5692,7 +5708,7 @@
         }
 
         function playNotificationSound() {
-            if (!notificationSound) {
+            try {
                 // Create a simple notification beep using Web Audio API
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioContext.createOscillator();
@@ -5709,6 +5725,8 @@
 
                 oscillator.start(audioContext.currentTime);
                 oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (error) {
+                console.error('Failed to play notification sound:', error);
             }
         }
 
