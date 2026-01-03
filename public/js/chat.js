@@ -60,6 +60,7 @@ class RadioChatBox {
         // Conversations tracking
         this.conversations = new Map(); // Map of username -> { lastMessage, unreadCount, timestamp }
         this.conversationsPanelOpen = false;
+        this.activeUsersList = []; // Track active users for filtering conversations
 
         // DOM elements (will be initialized after nickname selection)
         this.messagesContainer = null;
@@ -1563,6 +1564,7 @@ class RadioChatBox {
             const data = await response.json();
 
             if (data.success) {
+                this.activeUsersList = data.users; // Store for filtering conversations
                 this.activeUsersCount.textContent = data.count;
                 this.renderActiveUsers(data.users);
             }
@@ -2802,6 +2804,8 @@ class RadioChatBox {
         this.conversationsPanelOpen = true;
         if (this.conversationsPanel) {
             this.conversationsPanel.style.display = 'block';
+            // Load latest active users to ensure accurate filtering
+            await this.loadActiveUsers();
             // Load all conversations from server
             await this.loadAllConversations();
             this.renderConversations();
@@ -2859,9 +2863,18 @@ class RadioChatBox {
             return;
         }
         
-        // Convert to array and sort by timestamp (most recent first)
+        // Get set of active usernames for quick lookup
+        const activeUsernames = new Set(this.activeUsersList.map(u => u.username));
+        
+        // Convert to array, filter to only online users, and sort by timestamp (most recent first)
         const conversationsArray = Array.from(this.conversations.entries())
+            .filter(([username]) => activeUsernames.has(username))
             .sort((a, b) => b[1].timestamp - a[1].timestamp);
+        
+        if (conversationsArray.length === 0) {
+            this.conversationsList.innerHTML = '<div class="empty-conversations">No conversations with online users</div>';
+            return;
+        }
         
         this.conversationsList.innerHTML = conversationsArray.map(([username, conv]) => {
             const hasUnread = conv.unreadCount > 0;
