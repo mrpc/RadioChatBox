@@ -103,7 +103,7 @@ try {
         ]);
 
     } elseif ($_SERVER['REQUEST_METHOD'] === 'PUT') {
-        // Mark notification(s) as read
+        // Mark notification(s) as read or clear read notifications
         $input = json_decode(file_get_contents('php://input'), true);
 
         if (!$input) {
@@ -112,8 +112,27 @@ try {
 
         $notificationId = $input['notification_id'] ?? null;
         $markAllRead = $input['mark_all_read'] ?? false;
+        $clearReadNotifications = $input['clear_read'] ?? false;
 
-        if ($markAllRead) {
+        if ($clearReadNotifications) {
+            // Clear all read notifications by deleting them
+            $stmt = $pdo->prepare("
+                DELETE FROM admin_notifications
+                WHERE id IN (
+                    SELECT n.id FROM admin_notifications n
+                    INNER JOIN admin_notification_reads r
+                        ON n.id = r.notification_id
+                        AND r.admin_username = ?
+                )
+            ");
+            $stmt->execute([$currentUser['username']]);
+            $count = $stmt->rowCount();
+
+            echo json_encode([
+                'success' => true,
+                'message' => "Cleared $count read notification(s)"
+            ]);
+        } elseif ($markAllRead) {
             // Mark all as read
             $stmt = $pdo->prepare("SELECT mark_all_notifications_read(?)");
             $stmt->execute([$currentUser['username']]);
@@ -141,7 +160,7 @@ try {
                 ]);
             }
         } else {
-            throw new InvalidArgumentException('notification_id or mark_all_read is required');
+            throw new InvalidArgumentException('notification_id, mark_all_read, or clear_read is required');
         }
 
     } elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {

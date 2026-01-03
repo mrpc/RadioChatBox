@@ -1542,6 +1542,9 @@
                             <button class="btn" onclick="markAllNotificationsRead()" style="background: #667eea; color: white;">
                                 ✓ Mark All Read
                             </button>
+                            <button class="btn" onclick="clearReadNotifications()" style="background: #ef4444; color: white;">
+                                🗑️ Clear Read
+                            </button>
                         </div>
                     </div>
 
@@ -6556,6 +6559,32 @@
             } catch (error) {
                 console.error('Error marking all notifications as read:', error);
                 alert('Failed to mark all notifications as read');
+            }
+        }
+
+        async function clearReadNotifications() {
+            if (!confirm('Delete all read notifications? This action cannot be undone.')) return;
+
+            try {
+                const response = await fetch('/api/admin/notifications.php', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ clear_read: true })
+                });
+
+                if (!response.ok) throw new Error('Failed to clear read notifications');
+
+                const data = await response.json();
+                if (data.success) {
+                    refreshNotifications();
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error clearing read notifications:', error);
+                alert('Failed to clear read notifications');
             }
         }
 
