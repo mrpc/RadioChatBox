@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RadioChatBox - Admin Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
     <style>
         * {
             margin: 0;
@@ -774,6 +775,160 @@
             background: var(--gray-200);
             color: var(--gray-700);
         }
+
+        #impersonate-emoji-picker {
+            position: fixed !important;
+            z-index: 10000 !important;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 380px;
+            max-width: 90vw;
+            max-height: 400px;
+            display: none;
+            flex-direction: column;
+            box-sizing: border-box;
+            animation: slideUp 0.2s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .impersonate-emoji-category {
+            background: transparent;
+            border: none;
+            font-size: 20px;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background 0.2s;
+            flex-shrink: 0;
+            min-width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .impersonate-emoji-category:hover {
+            background: #e5e7eb;
+        }
+
+        .impersonate-emoji-category.active {
+            background: #667eea;
+            color: white;
+        }
+
+        #impersonate-emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 40px);
+            gap: 4px;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .emoji-item {
+            background: transparent;
+            border: none;
+            font-size: 24px;
+            padding: 0;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            max-width: 40px;
+            min-height: 40px;
+            max-height: 40px;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .emoji-item:hover {
+            background: #f3f4f6;
+            transform: scale(1.2);
+        }
+
+        .emoji-item:active {
+            transform: scale(1.05);
+        }
+
+        #impersonate-gif-picker {
+            position: fixed !important;
+            z-index: 10000 !important;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 380px;
+            max-width: 90vw;
+            max-height: 400px;
+            display: none;
+            flex-direction: column;
+            box-sizing: border-box;
+            animation: slideUp 0.2s ease;
+        }
+
+        #impersonate-gif-search-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #impersonate-gif-search-input:focus {
+            border-color: #667eea;
+        }
+
+        #impersonate-gif-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            box-sizing: border-box;
+        }
+
+        .impersonate-gif-item {
+            cursor: pointer;
+            border-radius: 8px;
+            overflow: hidden;
+            border: none;
+            transition: transform 0.2s;
+            background: #f3f4f6;
+        }
+
+        .impersonate-gif-item:hover {
+            transform: scale(1.05);
+        }
+
+        .impersonate-gif-item img {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+        }
     </style>
 </head>
 <body>
@@ -1294,10 +1449,18 @@
                                 </div>
                                 <div style="display: flex; gap: 8px; align-items: flex-end;">
                                     <button 
+                                        id="impersonate-emoji-button"
                                         onclick="toggleImpersonateEmojiPicker()" 
                                         style="background: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 20px; height: 44px; flex-shrink: 0;"
                                         title="Insert emoji">
                                         😊
+                                    </button>
+                                    <button 
+                                        id="impersonate-gif-button"
+                                        onclick="toggleImpersonateGifPicker()" 
+                                        style="background: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 20px; height: 44px; flex-shrink: 0; display: none;"
+                                        title="Insert GIF">
+                                        GIF
                                     </button>
                                     <button 
                                         onclick="document.getElementById('impersonate-photo-input').click()" 
@@ -1333,15 +1496,33 @@
                                     </div>
                                     <img id="impersonate-photo-preview-img" style="max-width: 200px; max-height: 150px; border-radius: 4px;">
                                 </div>
-                                <!-- Emoji picker for impersonate -->
-                                <div id="impersonate-emoji-picker" style="display: none; margin-top: 10px; background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto;">
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 4px;">
-                                        <!-- Emojis will be populated here -->
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Emoji picker for impersonate -->
+                <div id="impersonate-emoji-picker" style="display: none;">
+                    <div class="emoji-categories" style="display: flex; border-bottom: 1px solid #e5e7eb; background: #f9fafb; padding: 6px; gap: 2px; overflow-x: auto; flex-shrink: 0;">
+                        <button class="impersonate-emoji-category active" data-category="smileys">😀</button>
+                        <button class="impersonate-emoji-category" data-category="gestures">👋</button>
+                        <button class="impersonate-emoji-category" data-category="hearts">❤️</button>
+                        <button class="impersonate-emoji-category" data-category="animals">🐶</button>
+                        <button class="impersonate-emoji-category" data-category="food">🍕</button>
+                        <button class="impersonate-emoji-category" data-category="activities">⚽</button>
+                        <button class="impersonate-emoji-category" data-category="travel">✈️</button>
+                        <button class="impersonate-emoji-category" data-category="objects">💡</button>
+                    </div>
+                    <div id="impersonate-emoji-grid"></div>
+                </div>
+
+                <!-- GIF picker for impersonate -->
+                <div id="impersonate-gif-picker" style="display: none;">
+                    <div class="gif-search-container" style="display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb; flex-shrink: 0;">
+                        <input type="text" id="impersonate-gif-search-input" placeholder="Search GIFs..." autocomplete="off">
+                    </div>
+                    <div id="impersonate-gif-grid"></div>
+                    <div id="impersonate-gif-loading" style="display: none; text-align: center; padding: 20px; color: #6b7280;">Loading...</div>
                 </div>
             </div>
 
@@ -1847,6 +2028,7 @@
 
     <script>
         let authToken = localStorage.getItem('adminToken');
+        let cachedSettings = null;
 
         // Pagination helper function
         function renderPagination(pagination, functionName) {
@@ -2326,6 +2508,29 @@
             await loadSettings();
             await loadUrlBlacklist();
             await loadPhotos();
+            
+            // Initialize GIF settings for impersonate
+            try {
+                if (!cachedSettings) {
+                    const settingsRes = await fetch('/api/settings.php');
+                    cachedSettings = await settingsRes.json();
+                }
+                if (cachedSettings && cachedSettings.success) {
+                    // Show GIF button if Tenor API key is configured
+                    const tenorKey = cachedSettings.settings.tenor_api_key || '';
+                    const gifEnabled = cachedSettings.settings.gif_enabled === 'true' || cachedSettings.settings.gif_enabled === '1';
+                    if ((gifEnabled && tenorKey.trim()) || tenorKey.trim()) {
+                        impersonateTenorApiKey = tenorKey;
+                        const gifBtn = document.getElementById('impersonate-gif-button');
+                        if (gifBtn) {
+                            gifBtn.style.display = 'inline-block';
+                            gifBtn.style.visibility = 'visible';
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load GIF settings:', err);
+            }
             
             // Only load admin users if user has permission
             if (currentUserRole !== 'moderator') {
@@ -4306,26 +4511,109 @@
         let currentImpersonateAs = '';
         let currentSender = '';
 
+        // Format message text with GIF rendering and links
+        function formatImpersonateMessageText(text) {
+            // Escape HTML first
+            const escaped = escapeHtml(text);
+            
+            // Detect Tenor/Giphy GIF URLs and render as images
+            const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)/gi;
+            let formatted = escaped.replace(gifRegex, (url) => {
+                return `<br><img src="${url}" alt="GIF" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px;">`;
+            });
+            
+            // Convert regular URLs to clickable links (excluding GIF URLs which are already handled)
+            const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
+            formatted = formatted.replace(urlRegex, (url) => {
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline;">${url}</a>`;
+            });
+            
+            return formatted;
+        }
+
         // Emoji picker for impersonate
         const commonEmojis = ['😀','😃','😄','😁','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐','🖖','👋','🤝','🙏','💪','🦾','🎉','🎊','🎈','🎁','🏆','🥇','🥈','🥉','⭐','🌟','💯','💥','💫','💬','💭','💤','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','✨','⚡','🌈','☀️','🌙','⭐','🌍','🌎','🌏','🎵','🎶','🎤','🎧','🎸','🎹','🎺','🎷','📱','💻','⌨️','🖥️','🖨️','🖱️','📷','📸','📹','🎥','☎️','📞','📟','📠','📺','📻','🔊','🔉','🔇','🔔','🔕','⏰','🕐'];
 
+        let impersonateCurrentEmojiCategory = 'smileys';
+
         function toggleImpersonateEmojiPicker() {
+            console.log('toggleImpersonateEmojiPicker called');
             const picker = document.getElementById('impersonate-emoji-picker');
-            if (picker.style.display === 'none') {
-                // Populate emojis if not already done
-                if (picker.children[0].children.length === 0) {
-                    const grid = picker.children[0];
-                    commonEmojis.forEach(emoji => {
-                        const btn = document.createElement('button');
-                        btn.textContent = emoji;
-                        btn.style.cssText = 'background: white; border: 1px solid #e5e7eb; border-radius: 4px; padding: 6px; cursor: pointer; font-size: 20px;';
-                        btn.onclick = () => insertEmojiIntoImpersonate(emoji);
-                        grid.appendChild(btn);
-                    });
-                }
-                picker.style.display = 'block';
-            } else {
+            const button = document.getElementById('impersonate-emoji-button');
+            
+            if (!picker) {
+                console.error('Emoji picker element not found');
+                return;
+            }
+            if (!button) {
+                console.error('Emoji button element not found');
+                return;
+            }
+            
+            const isVisible = picker.style.display === 'block';
+            console.log('Emoji picker visible:', isVisible);
+            
+            if (isVisible) {
                 picker.style.display = 'none';
+                button.classList.remove('active');
+            } else {
+                // Close GIF picker if open
+                const gifPicker = document.getElementById('impersonate-gif-picker');
+                if (gifPicker && gifPicker.style.display === 'block') {
+                    gifPicker.style.display = 'none';
+                }
+                
+                // Position the emoji picker dynamically above the button
+                const rect = button.getBoundingClientRect();
+                console.log('Button rect:', rect);
+                picker.style.display = 'block';
+                // Position above the button (picker height + gap)
+                picker.style.top = (rect.top - picker.offsetHeight - 10) + 'px';
+                picker.style.left = (rect.left) + 'px';
+                // Ensure it doesn't go off-screen to the right
+                if (rect.left + 380 > window.innerWidth) {
+                    picker.style.left = (window.innerWidth - 390) + 'px';
+                }
+                picker.style.zIndex = '10000';
+                button.classList.add('active');
+                console.log('Calling renderImpersonateEmojis');
+                renderImpersonateEmojis(impersonateCurrentEmojiCategory);
+            }
+        }
+
+        function renderImpersonateEmojis(category) {
+            const emojiGrid = document.getElementById('impersonate-emoji-grid');
+            if (!emojiGrid) {
+                console.error('Emoji grid not found');
+                return;
+            }
+            
+            emojiGrid.innerHTML = '';
+            
+            // Try to use EMOJIS data if available, otherwise use common emojis
+            const emojisToShow = (typeof EMOJIS !== 'undefined' && EMOJIS[category]) 
+                ? EMOJIS[category] 
+                : commonEmojis;
+            
+            console.log('Rendering emojis for category:', category, 'count:', emojisToShow.length);
+            
+            emojisToShow.forEach(emoji => {
+                const btn = document.createElement('button');
+                btn.className = 'emoji-item';
+                btn.textContent = emoji;
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    insertEmojiIntoImpersonate(emoji);
+                });
+                emojiGrid.appendChild(btn);
+            });
+            
+            // Parse emojis with Twemoji for older Windows support
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(emojiGrid, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
             }
         }
 
@@ -4337,8 +4625,188 @@
             textarea.value = text.substring(0, start) + emoji + text.substring(end);
             textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
             textarea.focus();
-            // Close picker
-            document.getElementById('impersonate-emoji-picker').style.display = 'none';
+        }
+
+        // GIF picker for impersonate
+        let impersonateTenorApiKey = '';
+        const impersonateTenorClientKey = 'radiochatbox';
+
+        function toggleImpersonateGifPicker() {
+            console.log('toggleImpersonateGifPicker called');
+            const picker = document.getElementById('impersonate-gif-picker');
+            const button = document.getElementById('impersonate-gif-button');
+            
+            if (!picker) {
+                console.error('GIF picker element not found');
+                return;
+            }
+            if (!button) {
+                console.error('GIF button element not found');
+                return;
+            }
+            
+            const isVisible = picker.style.display === 'block';
+            console.log('GIF picker visible:', isVisible);
+            
+            if (isVisible) {
+                picker.style.display = 'none';
+                button.classList.remove('active');
+            } else {
+                // Hide emoji picker if open
+                const emojiPicker = document.getElementById('impersonate-emoji-picker');
+                if (emojiPicker && emojiPicker.style.display === 'block') {
+                    emojiPicker.style.display = 'none';
+                    document.getElementById('impersonate-emoji-button').classList.remove('active');
+                }
+                
+                // Position the GIF picker dynamically above the button
+                const rect = button.getBoundingClientRect();
+                console.log('Button rect:', rect);
+                picker.style.display = 'block';
+                // Position above the button (picker height + gap)
+                picker.style.top = (rect.top - picker.offsetHeight - 10) + 'px';
+                picker.style.left = (rect.left) + 'px';
+                // Ensure it doesn't go off-screen to the right
+                if (rect.left + 380 > window.innerWidth) {
+                    picker.style.left = (window.innerWidth - 390) + 'px';
+                }
+                picker.style.zIndex = '10000';
+                button.classList.add('active');
+                
+                // Load trending GIFs on open
+                console.log('Calling searchImpersonateGifs');
+                searchImpersonateGifs('');
+            }
+        }
+
+        async function searchImpersonateGifs(query) {
+            const gifGrid = document.getElementById('impersonate-gif-grid');
+            const gifLoading = document.getElementById('impersonate-gif-loading');
+            
+            if (!gifGrid) return;
+            
+            gifGrid.innerHTML = '';
+            gifLoading.style.display = 'block';
+            
+            // Check if API key is configured
+            if (!impersonateTenorApiKey) {
+                gifLoading.style.display = 'none';
+                gifGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px; grid-column: 1/-1;">⚠️ Tenor API key not configured.<br><br>Admin: Go to Settings and add your free API key from <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">Google Tenor</a></div>';
+                return;
+            }
+            
+            try {
+                // Use Tenor API v2
+                const endpoint = query 
+                    ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${impersonateTenorApiKey}&client_key=${impersonateTenorClientKey}&limit=12`
+                    : `https://tenor.googleapis.com/v2/featured?key=${impersonateTenorApiKey}&client_key=${impersonateTenorClientKey}&limit=12`;
+                
+                const response = await fetch(endpoint);
+                const data = await response.json();
+                
+                gifLoading.style.display = 'none';
+                
+                if (data.results && data.results.length > 0) {
+                    data.results.forEach(gif => {
+                        const gifItem = document.createElement('div');
+                        gifItem.style.cssText = 'cursor: pointer; border-radius: 6px; overflow: hidden; border: 2px solid #e5e7eb; transition: transform 0.2s;';
+                        gifItem.onmouseover = () => gifItem.style.transform = 'scale(1.05)';
+                        gifItem.onmouseout = () => gifItem.style.transform = 'scale(1)';
+                        
+                        const img = document.createElement('img');
+                        // Use tinygif for preview, mediumgif for sending
+                        img.src = gif.media_formats.tinygif?.url || gif.media_formats.gif?.url;
+                        img.alt = gif.content_description || 'GIF';
+                        img.loading = 'lazy';
+                        img.style.cssText = 'width: 100%; height: 100px; object-fit: cover;';
+                        
+                        gifItem.appendChild(img);
+                        
+                        gifItem.addEventListener('click', () => {
+                            const gifUrl = gif.media_formats.mediumgif?.url || gif.media_formats.gif?.url;
+                            insertGifIntoImpersonate(gifUrl);
+                            document.getElementById('impersonate-gif-picker').style.display = 'none';
+                            document.getElementById('impersonate-gif-button').classList.remove('active');
+                        });
+                        
+                        gifGrid.appendChild(gifItem);
+                    });
+                } else {
+                    gifGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280; grid-column: 1/-1;">No GIFs found</div>';
+                }
+            } catch (error) {
+                console.error('Error fetching GIFs:', error);
+                gifLoading.style.display = 'none';
+                const errorMsg = error.message && error.message.includes('API key') 
+                    ? 'Invalid API key. Admin: Update your Tenor API key in Settings.'
+                    : 'Failed to load GIFs. Please try again.';
+                gifGrid.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px; grid-column: 1/-1;">${errorMsg}</div>`;
+            }
+        }
+
+        function insertGifIntoImpersonate(gifUrl) {
+            const textarea = document.getElementById('impersonate-message');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+            textarea.value = text.substring(0, start) + gifUrl + text.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + gifUrl.length;
+            textarea.focus();
+        }
+
+        // Setup emoji category event listeners
+        function setupImpersonateEmojiCategoryListeners() {
+            document.querySelectorAll('.impersonate-emoji-category').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.querySelectorAll('.impersonate-emoji-category').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    impersonateCurrentEmojiCategory = btn.dataset.category;
+                    renderImpersonateEmojis(impersonateCurrentEmojiCategory);
+                });
+            });
+
+            // Close picker when clicking outside
+            document.addEventListener('click', (e) => {
+                const emojiPicker = document.getElementById('impersonate-emoji-picker');
+                const gifPicker = document.getElementById('impersonate-gif-picker');
+                const emojiButton = document.getElementById('impersonate-emoji-button');
+                const gifButton = document.getElementById('impersonate-gif-button');
+                const messageContainer = document.getElementById('impersonate-selected-conversation');
+                
+                if (emojiPicker && emojiPicker.style.display === 'block' && !emojiPicker.contains(e.target) && e.target !== emojiButton && !e.target.closest('.impersonate-emoji-category')) {
+                    emojiPicker.style.display = 'none';
+                    emojiButton.classList.remove('active');
+                }
+                if (gifPicker && gifPicker.style.display === 'block' && !gifPicker.contains(e.target) && e.target !== gifButton) {
+                    gifPicker.style.display = 'none';
+                    gifButton.classList.remove('active');
+                }
+            });
+        }
+
+        // Setup GIF search
+        function setupImpersonateGifSearch() {
+            const gifSearchInput = document.getElementById('impersonate-gif-search-input');
+            if (!gifSearchInput) return;
+
+            let searchTimeout;
+            gifSearchInput.addEventListener('input', () => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    const query = gifSearchInput.value.trim();
+                    searchImpersonateGifs(query);
+                }, 500); // Wait 500ms after user stops typing
+            });
+
+            // Also search on Enter key
+            gifSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    clearTimeout(searchTimeout);
+                    const query = gifSearchInput.value.trim();
+                    searchImpersonateGifs(query);
+                }
+            });
         }
 
         let impersonatePhotoAttachmentId = null;
@@ -4444,6 +4912,18 @@
                         hasConversations ? 'none' : 'block';
                     document.getElementById('impersonate-conversations').style.display = 
                         hasConversations ? 'block' : 'none';
+
+                    // Initialize emoji and GIF pickers
+                    setupImpersonateEmojiCategoryListeners();
+                    setupImpersonateGifSearch();
+                    
+                    // Update GIF button visibility based on cached settings
+                    if (cachedSettings && cachedSettings.success && cachedSettings.settings.gif_enabled === 'true') {
+                        impersonateTenorApiKey = cachedSettings.settings.tenor_api_key || '';
+                        if (impersonateTenorApiKey && impersonateTenorApiKey.trim() !== '') {
+                            document.getElementById('impersonate-gif-button').style.display = 'inline-block';
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load impersonate conversations:', error);
@@ -4671,7 +5151,9 @@
                         
                         // Show message text if present
                         if (msg.message) {
-                            content += `<div style="word-wrap: break-word; line-height: 1.4;">${escapeHtml(msg.message)}</div>`;
+                            // Format message to render GIFs and links
+                            const formatted = formatImpersonateMessageText(msg.message);
+                            content += `<div style="word-wrap: break-word; line-height: 1.4;">${formatted}</div>`;
                         }
                         
                         msgDiv.innerHTML = content;
@@ -4698,7 +5180,7 @@
 
         async function sendImpersonateMessage() {
             const messageInput = document.getElementById('impersonate-message');
-            const message = messageInput.value.trim();
+            let message = messageInput.value.trim();
             
             // Allow empty message if there's a photo
             if (!message && !impersonatePhotoAttachmentId) {
@@ -4709,6 +5191,9 @@
                 alert('Please select a conversation first');
                 return;
             }
+
+            // Convert emoticons to emojis
+            message = convertEmoticonsToEmojis(message);
 
             try {
                 const requestBody = {
@@ -4745,6 +5230,107 @@
                 console.error('Failed to send impersonate message:', error);
                 alert('Failed to send message');
             }
+        }
+
+        function convertEmoticonsToEmojis(text) {
+            // First, protect URLs by replacing them with placeholders
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            const urls = [];
+            let protectedText = text.replace(urlRegex, (url) => {
+                const placeholder = `__URL_${urls.length}__`;
+                urls.push(url);
+                return placeholder;
+            });
+            
+            // Map of common emoticons to their emoji equivalents
+            const emoticonMap = [
+                // Happy/Smiling faces
+                { pattern: /:-\)/g, emoji: '🙂' },
+                { pattern: /:\)/g, emoji: '🙂' },
+                { pattern: /=\)/g, emoji: '🙂' },
+                { pattern: /:-D/g, emoji: '😃' },
+                { pattern: /:D/g, emoji: '😃' },
+                { pattern: /=D/g, emoji: '😃' },
+                { pattern: /xD/gi, emoji: '😆' },
+                { pattern: /XD/g, emoji: '😆' },
+                
+                // Winking
+                { pattern: /;-\)/g, emoji: '😉' },
+                { pattern: /;\)/g, emoji: '😉' },
+                
+                // Sad faces
+                { pattern: /:-\(/g, emoji: '🙁' },
+                { pattern: /:\(/g, emoji: '🙁' },
+                { pattern: /=\(/g, emoji: '🙁' },
+                { pattern: /:-\[/g, emoji: '😞' },
+                { pattern: /:\[/g, emoji: '😞' },
+                
+                // Tongue out
+                { pattern: /:-[pP]/g, emoji: '😛' },
+                { pattern: /:[pP]/g, emoji: '😛' },
+                { pattern: /:-[bB]/g, emoji: '😛' },
+                
+                // Love/Hearts
+                { pattern: /<3/g, emoji: '❤️' },
+                { pattern: /<\/3/g, emoji: '💔' },
+                
+                // Cool/Sunglasses
+                { pattern: /8-\)/g, emoji: '😎' },
+                { pattern: /B-\)/gi, emoji: '😎' },
+                
+                // Surprised/Shocked
+                { pattern: /:-[oO]/g, emoji: '😮' },
+                { pattern: /:[oO]/g, emoji: '😮' },
+                
+                // Crying
+                { pattern: /:'-\(/g, emoji: '😢' },
+                { pattern: /:'\(/g, emoji: '😢' },
+                { pattern: /;-;/g, emoji: '😢' },
+                { pattern: /T_T/g, emoji: '😭' },
+                { pattern: /T-T/g, emoji: '😭' },
+                
+                // Laughing
+                { pattern: /:-\|/g, emoji: '😐' },
+                { pattern: /:\|/g, emoji: '😐' },
+                
+                // Kiss
+                { pattern: /:-\*/g, emoji: '😘' },
+                { pattern: /:\*/g, emoji: '😘' },
+                
+                // Angel
+                { pattern: /O:-\)/g, emoji: '😇' },
+                { pattern: /O:\)/g, emoji: '😇' },
+                
+                // Devil
+                { pattern: />:-\)/g, emoji: '😈' },
+                { pattern: />:\)/g, emoji: '😈' },
+                
+                // Confused
+                { pattern: /:-\//g, emoji: '😕' },
+                { pattern: /:\//g, emoji: '😕' },
+                { pattern: /:-\\/g, emoji: '😕' },
+                { pattern: /:\\/g, emoji: '😕' },
+                
+                // Thinking
+                { pattern: /:-\?/g, emoji: '🤔' },
+                { pattern: /:\?/g, emoji: '🤔' },
+                
+                // Thumbs up/down
+                { pattern: /\(y\)/gi, emoji: '👍' },
+                { pattern: /\(n\)/gi, emoji: '👎' }
+            ];
+            
+            // Apply each emoticon replacement on the protected text
+            emoticonMap.forEach(({ pattern, emoji }) => {
+                protectedText = protectedText.replace(pattern, emoji);
+            });
+            
+            // Restore URLs from placeholders
+            urls.forEach((url, index) => {
+                protectedText = protectedText.replace(`__URL_${index}__`, url);
+            });
+            
+            return protectedText;
         }
         
         // Add Enter key support for impersonate message
@@ -5767,6 +6353,7 @@
     </script>
     <!-- Ensure countries.js is loaded first -->
     <script src="/js/countries.js"></script>
+    <script src="/js/emojis.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             initializeFakeUserForm();
