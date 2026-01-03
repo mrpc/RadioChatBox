@@ -21,15 +21,42 @@ if (ob_get_level()) ob_end_clean();
 // Set script timeout
 ini_set('max_execution_time', '120');
 
-// Check authentication via Authorization header
-if (!AdminAuth::verify()) {
+// Check authentication via Authorization header or secure session token
+// EventSource doesn't support custom headers, so also check session_token parameter
+$authenticated = false;
+$currentUser = null;
+
+// Try normal header authentication first (for direct API calls)
+if (AdminAuth::verify()) {
+    $authenticated = true;
+    $currentUser = AdminAuth::getCurrentUser();
+} else if (isset($_GET['session_token']) && !empty($_GET['session_token'])) {
+    // Validate secure session token from Redis
+    $sessionToken = $_GET['session_token'];
+    $redis = Database::getRedis();
+    $cacheKey = 'admin_session:' . $sessionToken;
+    $tokenData = $redis->get($cacheKey);
+    
+    if ($tokenData) {
+        $data = json_decode($tokenData, true);
+        if ($data && isset($data['expires_at']) && $data['expires_at'] > time()) {
+            // Token is valid and not expired
+            $authenticated = true;
+            // Reconstruct current user from token data
+            $currentUser = [
+                'username' => $data['username'],
+                'role' => 'administrator' // Tokens are only created for authenticated admins
+            ];
+        }
+    }
+}
+
+if (!$authenticated || !$currentUser) {
     echo "event: error\n";
     echo "data: " . json_encode(['error' => 'Unauthorized']) . "\n\n";
     flush();
     exit;
 }
-
-$currentUser = AdminAuth::getCurrentUser();
 
 // Verify admin has proper role
 if (!$currentUser || !isset($currentUser['role']) || !in_array($currentUser['role'], ['root', 'administrator', 'owner'])) {

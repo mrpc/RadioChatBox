@@ -2029,6 +2029,7 @@
 
     <script>
         let authToken = localStorage.getItem('adminToken');
+        let adminSessionToken = null; // Secure token for SSE connections
         let cachedSettings = null;
 
         // Pagination helper function
@@ -2105,6 +2106,8 @@
             document.getElementById('admin-panel').style.display = 'block';
             document.getElementById('admin-panel').classList.add('active');
             await loadAllData();
+            // Connect to SSE stream for real-time notifications
+            connectAdminStream();
         }
 
         async function login() {
@@ -2178,6 +2181,9 @@
                     }
                 });
                 
+                // Create a secure session token for SSE connections
+                await createAdminSessionToken();
+                
                 errorDiv.textContent = '';
                 await showAdminPanel();
             } catch (error) {
@@ -2185,8 +2191,34 @@
             }
         }
 
+        async function createAdminSessionToken() {
+            try {
+                const response = await fetch('/api/admin/create-session.php', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success && data.session_token) {
+                    adminSessionToken = data.session_token;
+                    console.log('Admin session token created for SSE');
+                } else {
+                    console.error('Failed to create admin session token:', data.error);
+                }
+            } catch (error) {
+                console.error('Error creating admin session token:', error);
+            }
+        }
+
         function logout() {
+            // Disconnect SSE streams
+            disconnectAdminStream();
+            disconnectImpersonateChatStream();
+            
             authToken = null;
+            adminSessionToken = null;
             localStorage.removeItem('adminToken');
             localStorage.removeItem('isAdmin'); // Remove admin flag
             
@@ -2221,6 +2253,301 @@
             showLoginScreen();
         }
 
+        // ============================================================================
+        // ADMIN SSE STREAMING WITH RECONNECTION LOGIC
+        // ============================================================================
+
+        let adminStreamEventSource = null;
+        let adminStreamReconnectAttempts = 0;
+        let adminStreamMaxReconnectAttempts = 999; // Essentially unlimited
+        let adminStreamReconnectDelay = 2000; // Start with 2 second delay
+        let adminStreamMaxReconnectDelay = 30000; // Max 30 seconds between retries
+        let adminStreamPeriodicReconnectTimer = null;
+        
+        // Impersonate chat streaming
+        let impersonateChatEventSource = null;
+        let impersonateChatReconnectAttempts = 0;
+        let impersonateChatMaxReconnectAttempts = 999;
+        let impersonateChatReconnectDelay = 2000;
+        let impersonateChatMaxReconnectDelay = 30000;
+        let impersonateChatPeriodicReconnectTimer = null;
+        let currentImpersonateConversation = null; // Track current conversation
+
+        function connectAdminStream() {
+            // Close existing connection if any
+            if (adminStreamEventSource) {
+                adminStreamEventSource.close();
+            }
+
+            console.log('Connecting to admin notification stream...');
+
+            try {
+                // Use secure session token instead of raw credentials
+                if (!adminSessionToken) {
+                    console.error('No admin session token available for SSE');
+                    reconnectAdminStream();
+                    return;
+                }
+                
+                adminStreamEventSource = new EventSource(`/api/admin/stream.php?session_token=${encodeURIComponent(adminSessionToken)}`);
+
+                adminStreamEventSource.addEventListener('open', () => {
+                    console.log('Admin SSE stream connected');
+                    adminStreamReconnectAttempts = 0;
+                    // Clear periodic reconnect timer
+                    if (adminStreamPeriodicReconnectTimer) {
+                        clearInterval(adminStreamPeriodicReconnectTimer);
+                    }
+                    // Set up periodic reconnect every 95 seconds to avoid connection timeouts (Cloudflare limit)
+                    adminStreamPeriodicReconnectTimer = setInterval(() => {
+                        console.log('Periodic stream refresh (95s)...');
+                        reconnectAdminStream();
+                    }, 95000);
+                });
+
+                adminStreamEventSource.addEventListener('notification', (e) => {
+                    try {
+                        const notification = JSON.parse(e.data);
+                        handleAdminNotificationEvent(notification);
+                    } catch (error) {
+                        console.error('Failed to parse notification event:', error);
+                    }
+                });
+
+                adminStreamEventSource.addEventListener('error', (e) => {
+                    console.error('Admin SSE error:', e);
+                    adminStreamEventSource.close();
+                    reconnectAdminStream();
+                });
+
+            } catch (error) {
+                console.error('Failed to connect to admin stream:', error);
+                reconnectAdminStream();
+            }
+        }
+
+        function reconnectAdminStream() {
+            if (adminStreamReconnectAttempts >= adminStreamMaxReconnectAttempts) {
+                console.error('Max admin stream reconnection attempts reached');
+                return;
+            }
+
+            adminStreamReconnectAttempts++;
+            // Exponential backoff with max delay
+            const delay = Math.min(adminStreamReconnectDelay * Math.pow(1.5, adminStreamReconnectAttempts - 1), adminStreamMaxReconnectDelay);
+
+            console.log(`Admin stream reconnection attempt ${adminStreamReconnectAttempts} in ${Math.round(delay / 1000)}s...`);
+
+            setTimeout(() => {
+                connectAdminStream();
+                // After reconnecting, fetch any missed notifications
+                setTimeout(() => {
+                    refreshNotifications();
+                }, 500);
+            }, delay);
+        }
+
+        function handleAdminNotificationEvent(notification) {
+            // Update badge and re-render notifications
+            updateNotificationBadge(notification.unread_count);
+            
+            // Refresh the notifications list
+            refreshNotifications();
+            
+            // Play sound if enabled
+            if (notification.unread_count > 0) {
+                playNotificationSound();
+            }
+            
+            // Show browser notification if permission granted
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('RadioChatBox Admin', {
+                    icon: '🔔',
+                    badge: '📻',
+                    title: notification.title || 'New Notification',
+                    body: notification.message || 'You have a new admin notification',
+                    tag: 'radiochatbox-admin-' + (notification.id || Date.now()),
+                    requireInteraction: true
+                });
+            }
+        }
+
+        function disconnectAdminStream() {
+            if (adminStreamEventSource) {
+                adminStreamEventSource.close();
+                adminStreamEventSource = null;
+            }
+            if (adminStreamPeriodicReconnectTimer) {
+                clearInterval(adminStreamPeriodicReconnectTimer);
+                adminStreamPeriodicReconnectTimer = null;
+            }
+        }
+
+        // ============================================================================
+        // IMPERSONATE CHAT REAL-TIME STREAMING
+        // ============================================================================
+
+        function connectImpersonateChatStream(fakeUser, senderUsername) {
+            // Store current conversation info
+            currentImpersonateConversation = { fakeUser, senderUsername };
+            
+            // Close existing connection if any
+            if (impersonateChatEventSource) {
+                impersonateChatEventSource.close();
+            }
+
+            console.log(`Connecting to impersonate chat stream for ${fakeUser} <-> ${senderUsername}...`);
+
+            try {
+                const fakeSessionId = 'fake_' + md5(fakeUser);
+                const url = `/api/stream.php?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}&admin=true`;
+                
+                impersonateChatEventSource = new EventSource(url);
+
+                impersonateChatEventSource.addEventListener('open', () => {
+                    console.log('Impersonate chat stream connected');
+                    impersonateChatReconnectAttempts = 0;
+                    // Clear periodic reconnect timer
+                    if (impersonateChatPeriodicReconnectTimer) {
+                        clearInterval(impersonateChatPeriodicReconnectTimer);
+                    }
+                    // Set up periodic reconnect every 95 seconds
+                    impersonateChatPeriodicReconnectTimer = setInterval(() => {
+                        console.log('Periodic impersonate chat stream refresh (95s)...');
+                        reconnectImpersonateChatStream();
+                    }, 95000);
+                });
+
+                impersonateChatEventSource.addEventListener('private', (e) => {
+                    try {
+                        const messageData = JSON.parse(e.data);
+                        handleImpersonateChatMessage(messageData);
+                    } catch (error) {
+                        console.error('Failed to parse impersonate chat message:', error);
+                    }
+                });
+
+                impersonateChatEventSource.addEventListener('error', (e) => {
+                    console.error('Impersonate chat stream error:', e);
+                    impersonateChatEventSource.close();
+                    reconnectImpersonateChatStream();
+                });
+
+            } catch (error) {
+                console.error('Failed to connect to impersonate chat stream:', error);
+                reconnectImpersonateChatStream();
+            }
+        }
+
+        function reconnectImpersonateChatStream() {
+            if (!currentImpersonateConversation) return;
+            
+            if (impersonateChatReconnectAttempts >= impersonateChatMaxReconnectAttempts) {
+                console.error('Max impersonate chat stream reconnection attempts reached');
+                return;
+            }
+
+            impersonateChatReconnectAttempts++;
+            const delay = Math.min(impersonateChatReconnectDelay * Math.pow(1.5, impersonateChatReconnectAttempts - 1), impersonateChatMaxReconnectDelay);
+
+            console.log(`Impersonate chat stream reconnection attempt ${impersonateChatReconnectAttempts} in ${Math.round(delay / 1000)}s...`);
+
+            setTimeout(() => {
+                connectImpersonateChatStream(currentImpersonateConversation.fakeUser, currentImpersonateConversation.senderUsername);
+            }, delay);
+        }
+
+        function handleImpersonateChatMessage(message) {
+            // Check if this message is for the current conversation we're viewing
+            if (!currentImpersonateConversation) return;
+            if (message.from_username !== currentImpersonateConversation.fakeUser && 
+                message.from_username !== currentImpersonateConversation.senderUsername) return;
+            if (message.to_username !== currentImpersonateConversation.fakeUser && 
+                message.to_username !== currentImpersonateConversation.senderUsername) return;
+
+            // Check if message already exists in the UI
+            const messagesDiv = document.getElementById('impersonate-messages');
+            const msgId = message.message_id || message.id;
+            if (messagesDiv.querySelector(`[data-message-id="${msgId}"]`)) {
+                return; // Message already displayed
+            }
+
+            // Add the new message to the UI
+            const isFromFake = message.from_username === currentImpersonateConversation.fakeUser;
+            
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.style.cssText = `display: flex; ${isFromFake ? 'justify-content: flex-end;' : 'justify-content: flex-start;'} margin: 8px 0;`;
+            wrapperDiv.setAttribute('data-message-id', msgId);
+            
+            const msgDiv = document.createElement('div');
+            msgDiv.style.cssText = `display: inline-block; padding: 12px 15px; border-radius: 12px; max-width: 70%; ${isFromFake ? 'background: #667eea; color: white; text-align: right;' : 'background: #f3f4f6; border: 1px solid #e5e7eb; text-align: left;'}`;
+            
+            // Parse timestamp robustly - handle various formats
+            let timeStr = 'unknown time';
+            if (message.created_at || message.timestamp) {
+                try {
+                    let timestamp;
+                    const timeValue = message.created_at || message.timestamp;
+                    
+                    // If it's a Unix timestamp (number or numeric string)
+                    if (typeof timeValue === 'number' || /^\d+$/.test(String(timeValue))) {
+                        // Unix timestamp in seconds
+                        timestamp = new Date(parseInt(timeValue) * 1000);
+                    } else {
+                        // ISO string or other format
+                        timestamp = new Date(timeValue);
+                    }
+                    
+                    // Check if date is valid
+                    if (isNaN(timestamp.getTime())) {
+                        console.warn('Invalid timestamp:', timeValue);
+                    } else {
+                        timeStr = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                } catch (e) {
+                    console.error('Error parsing timestamp:', message.created_at || message.timestamp, e);
+                }
+            }
+            
+            let content = `
+                <div style="font-size: 11px; ${isFromFake ? 'color: rgba(255,255,255,0.8);' : 'color: #6b7280;'} margin-bottom: 6px; font-weight: 600;">
+                    ${escapeHtml(message.from_username)} • ${timeStr}
+                </div>`;
+            
+            if (message.attachment && message.attachment.file_path) {
+                content += `
+                    <div style="margin-bottom: 8px;">
+                        <img src="${escapeHtml(message.attachment.file_path)}" 
+                             style="max-width: 250px; border-radius: 8px; cursor: pointer;" 
+                             onclick="window.open('${escapeHtml(message.attachment.file_path)}', '_blank')">
+                    </div>`;
+            }
+            
+            if (message.message) {
+                const formatted = formatImpersonateMessageText(message.message);
+                content += `<div style="word-wrap: break-word; line-height: 1.4;">${formatted}</div>`;
+            }
+            
+            msgDiv.innerHTML = content;
+            wrapperDiv.appendChild(msgDiv);
+            messagesDiv.appendChild(wrapperDiv);
+            
+            // Scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function disconnectImpersonateChatStream() {
+            if (impersonateChatEventSource) {
+                impersonateChatEventSource.close();
+                impersonateChatEventSource = null;
+            }
+            if (impersonateChatPeriodicReconnectTimer) {
+                clearInterval(impersonateChatPeriodicReconnectTimer);
+                impersonateChatPeriodicReconnectTimer = null;
+            }
+            currentImpersonateConversation = null;
+        }
+
         function switchTab(tabName, updateHistory = true) {
             // Update sidebar navigation
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
@@ -2231,6 +2558,11 @@
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             const tabContent = document.getElementById(tabName + '-tab');
             if (tabContent) tabContent.classList.add('active');
+            
+            // Disconnect impersonate chat stream when leaving impersonate tab
+            if (tabName !== 'impersonate') {
+                disconnectImpersonateChatStream();
+            }
             
             // Hide user detail panels when switching tabs
             const userDetailsPanel = document.getElementById('user-details');
@@ -5138,6 +5470,9 @@
             document.getElementById('impersonate-as-name').textContent = fakeUser;
             document.getElementById('impersonate-as-name-2').textContent = fakeUser;
             
+            // Connect to real-time chat stream for this conversation
+            connectImpersonateChatStream(fakeUser, senderUsername);
+            
             // Update URL to reflect the current conversation
             updateImpersonateURL(fakeUser, senderUsername);
             
@@ -6392,21 +6727,34 @@
             return date.toLocaleDateString();
         }
 
-        function loadImpersonateFromNotification(fakeUsername, senderUsername, notificationId) {
-            // Set the impersonate select dropdown
-            const impersonateSelect = document.getElementById('impersonate-select');
-            if (impersonateSelect) {
-                impersonateSelect.value = fakeUsername;
-                // Set currentImpersonateAs before calling selectSender
-                currentImpersonateAs = fakeUsername;
-                // Trigger load
-                if (typeof selectSender === 'function') {
-                    selectSender(fakeUsername, senderUsername);
+        async function loadImpersonateFromNotification(fakeUsername, senderUsername, notificationId) {
+            try {
+                // First, make sure impersonate conversations are loaded
+                if (!impersonateData || !impersonateData.conversations[fakeUsername]) {
+                    await refreshImpersonateConversations();
                 }
+                
+                // Now set the select dropdown and load
+                const impersonateSelect = document.getElementById('impersonate-select');
+                if (impersonateSelect) {
+                    impersonateSelect.value = fakeUsername;
+                    currentImpersonateAs = fakeUsername;
+                    
+                    // Load conversation list for this fake user
+                    loadImpersonateConversation();
+                    
+                    // Then select the specific sender after a small delay
+                    setTimeout(() => {
+                        selectSender(fakeUsername, senderUsername);
+                    }, 200);
+                }
+                
                 // Mark notification as read if provided
                 if (notificationId) {
                     markNotificationRead(notificationId);
                 }
+            } catch (error) {
+                console.error('Failed to load impersonate from notification:', error);
             }
         }
 
