@@ -314,8 +314,8 @@ BEGIN
         SUM(private_messages),
         SUM(photo_uploads),
         SUM(new_registrations),
-        AVG(radio_listeners)::INTEGER,
-        MAX(radio_listeners),
+        AVG(radio_listeners_avg)::INTEGER,
+        MAX(radio_listeners_peak),
         MAX(peak_concurrent_users)
     INTO
         v_active_users, v_guest_users, v_registered_users,

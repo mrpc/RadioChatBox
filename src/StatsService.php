@@ -385,6 +385,7 @@ class StatsService
 
     /**
      * Get weekly statistics.
+     * Includes current week stats (computed from daily data) if applicable.
      * 
      * @param int|null $year Filter by year
      * @param int $limit Maximum rows to return
@@ -419,6 +420,39 @@ class StatsService
         $stmt->execute();
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Include current week if not already in results
+        $currentWeekData = $this->computeCurrentWeekStats();
+        if ($currentWeekData) {
+            // Check if current week is already in results
+            $currentWeekExists = false;
+            foreach ($results as $row) {
+                if ($row['stat_year'] == $currentWeekData['stat_year'] && 
+                    isset($row['stat_week']) && $row['stat_week'] == (int)date('W')) {
+                    $currentWeekExists = true;
+                    break;
+                }
+            }
+            
+            // Add current week to the beginning if not present and filter matches
+            if (!$currentWeekExists && ($year === null || $year == date('Y'))) {
+                array_unshift($results, [
+                    'stat_year' => $currentWeekData['stat_year'],
+                    'stat_week' => (int)date('W'),
+                    'week_start_date' => $currentWeekData['week_start'],
+                    'active_users' => $currentWeekData['active_users'],
+                    'guest_users' => $currentWeekData['guest_users'],
+                    'registered_users' => $currentWeekData['registered_users'],
+                    'total_messages' => $currentWeekData['total_messages'],
+                    'private_messages' => $currentWeekData['private_messages'],
+                    'photo_uploads' => $currentWeekData['photo_uploads'],
+                    'new_registrations' => $currentWeekData['new_registrations'],
+                    'radio_listeners_avg' => $currentWeekData['radio_listeners_avg'],
+                    'radio_listeners_peak' => $currentWeekData['radio_listeners_peak'],
+                    'peak_concurrent_users' => $currentWeekData['peak_concurrent_users']
+                ]);
+            }
+        }
+
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));
 
@@ -427,6 +461,7 @@ class StatsService
 
     /**
      * Get monthly statistics.
+     * Includes current month stats (computed from daily data) if applicable.
      * 
      * @param int|null $year Filter by year
      * @param int $limit Maximum rows to return
@@ -461,6 +496,38 @@ class StatsService
         $stmt->execute();
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Include current month if not already in results
+        $currentMonthData = $this->computeCurrentMonthStats();
+        if ($currentMonthData) {
+            // Check if current month is already in results
+            $currentMonthExists = false;
+            foreach ($results as $row) {
+                if ($row['stat_year'] == $currentMonthData['stat_year'] && 
+                    $row['stat_month'] == $currentMonthData['stat_month']) {
+                    $currentMonthExists = true;
+                    break;
+                }
+            }
+            
+            // Add current month to the beginning if not present and filter matches
+            if (!$currentMonthExists && ($year === null || $year == date('Y'))) {
+                array_unshift($results, [
+                    'stat_year' => $currentMonthData['stat_year'],
+                    'stat_month' => $currentMonthData['stat_month'],
+                    'active_users' => $currentMonthData['active_users'],
+                    'guest_users' => $currentMonthData['guest_users'],
+                    'registered_users' => $currentMonthData['registered_users'],
+                    'total_messages' => $currentMonthData['total_messages'],
+                    'private_messages' => $currentMonthData['private_messages'],
+                    'photo_uploads' => $currentMonthData['photo_uploads'],
+                    'new_registrations' => $currentMonthData['new_registrations'],
+                    'radio_listeners_avg' => $currentMonthData['radio_listeners_avg'],
+                    'radio_listeners_peak' => $currentMonthData['radio_listeners_peak'],
+                    'peak_concurrent_users' => $currentMonthData['peak_concurrent_users']
+                ]);
+            }
+        }
+
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));
 
@@ -469,6 +536,7 @@ class StatsService
 
     /**
      * Get yearly statistics.
+     * Includes current year stats (computed from daily data) if applicable.
      * 
      * @param int $limit Maximum rows to return
      * @return array Array of yearly stat rows
@@ -491,6 +559,36 @@ class StatsService
         $stmt->execute();
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Include current year if not already in results
+        $currentYearData = $this->computeCurrentYearStats();
+        if ($currentYearData) {
+            // Check if current year is already in results
+            $currentYearExists = false;
+            foreach ($results as $row) {
+                if ($row['stat_year'] == $currentYearData['stat_year']) {
+                    $currentYearExists = true;
+                    break;
+                }
+            }
+            
+            // Add current year to the beginning if not present
+            if (!$currentYearExists) {
+                array_unshift($results, [
+                    'stat_year' => $currentYearData['stat_year'],
+                    'active_users' => $currentYearData['active_users'],
+                    'guest_users' => $currentYearData['guest_users'],
+                    'registered_users' => $currentYearData['registered_users'],
+                    'total_messages' => $currentYearData['total_messages'],
+                    'private_messages' => $currentYearData['private_messages'],
+                    'photo_uploads' => $currentYearData['photo_uploads'],
+                    'new_registrations' => $currentYearData['new_registrations'],
+                    'radio_listeners_avg' => $currentYearData['radio_listeners_avg'],
+                    'radio_listeners_peak' => $currentYearData['radio_listeners_peak'],
+                    'peak_concurrent_users' => $currentYearData['peak_concurrent_users']
+                ]);
+            }
+        }
+
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));
 
@@ -500,6 +598,10 @@ class StatsService
     /**
      * Get summary statistics (latest data from each granularity).
      * Useful for admin dashboard overview.
+     * 
+     * Computes real-time stats for current periods by aggregating raw data
+     * (today, this week, this month, this year) if pre-aggregated data doesn't exist yet.
+     * Falls back to pre-aggregated data for past periods.
      * 
      * @return array Summary with today, this week, this month, this year stats
      */
@@ -516,24 +618,19 @@ class StatsService
         $today = date('Y-m-d');
         $thisYear = (int)date('Y');
         $thisMonth = (int)date('m');
+        $thisWeek = (int)date('W');
 
-        // Today's stats (if available)
-        $stmt = $this->pdo->prepare("SELECT * FROM stats_daily WHERE stat_date = :today");
-        $stmt->execute(['today' => $today]);
-        $todayStats = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        // Today's stats - compute from raw data if not yet aggregated
+        $todayStats = $this->computeTodayStats();
 
-        // This month's stats
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM stats_monthly 
-            WHERE stat_year = :year AND stat_month = :month
-        ");
-        $stmt->execute(['year' => $thisYear, 'month' => $thisMonth]);
-        $monthStats = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        // This week's stats - compute from daily data including today
+        $weekStats = $this->computeCurrentWeekStats();
 
-        // This year's stats
-        $stmt = $this->pdo->prepare("SELECT * FROM stats_yearly WHERE stat_year = :year");
-        $stmt->execute(['year' => $thisYear]);
-        $yearStats = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        // This month's stats - compute from daily data including today
+        $monthStats = $this->computeCurrentMonthStats();
+
+        // This year's stats - compute from daily data including today
+        $yearStats = $this->computeCurrentYearStats();
 
         // Latest snapshot
         $stmt = $this->pdo->query("
@@ -545,6 +642,7 @@ class StatsService
 
         $summary = [
             'today' => $todayStats,
+            'this_week' => $weekStats,
             'this_month' => $monthStats,
             'this_year' => $yearStats,
             'latest_snapshot' => $latestSnapshot,
@@ -555,6 +653,216 @@ class StatsService
         $this->redis->setex($cacheKey, 300, json_encode($summary));
 
         return $summary;
+    }
+
+    /**
+     * Compute today's statistics from raw data (messages, snapshots).
+     * Provides real-time stats for the current day.
+     * 
+     * @return array|null Today's stats or null if no data available
+     */
+    private function computeTodayStats(): ?array
+    {
+        $today = date('Y-m-d');
+        $todayStart = $today . ' 00:00:00';
+        $todayEnd = $today . ' 23:59:59';
+
+        // Always compute from hourly stats for current day (don't trust pre-aggregated data)
+        // since today is still in progress and pre-aggregated data may be stale
+        $stmt = $this->pdo->prepare("
+            SELECT
+                MAX(active_users) as active_users,
+                MAX(guest_users) as guest_users,
+                MAX(registered_users) as registered_users,
+                SUM(total_messages)::INTEGER as total_messages,
+                SUM(private_messages)::INTEGER as private_messages,
+                SUM(photo_uploads)::INTEGER as photo_uploads,
+                SUM(new_registrations)::INTEGER as new_registrations,
+                AVG(radio_listeners_avg)::INTEGER as radio_listeners_avg,
+                MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
+                MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
+            FROM stats_hourly
+            WHERE stat_hour >= :today_start AND stat_hour <= :today_end
+        ");
+        $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
+        $hourlyData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($hourlyData && ($hourlyData['active_users'] !== null || $hourlyData['total_messages'] !== null)) {
+            return [
+                'stat_date' => $today,
+                'active_users' => $hourlyData['active_users'] ?? 0,
+                'guest_users' => $hourlyData['guest_users'] ?? 0,
+                'registered_users' => $hourlyData['registered_users'] ?? 0,
+                'total_messages' => $hourlyData['total_messages'] ?? 0,
+                'private_messages' => $hourlyData['private_messages'] ?? 0,
+                'photo_uploads' => $hourlyData['photo_uploads'] ?? 0,
+                'new_registrations' => $hourlyData['new_registrations'] ?? 0,
+                'radio_listeners_avg' => $hourlyData['radio_listeners_avg'] ?? 0,
+                'radio_listeners_peak' => $hourlyData['radio_listeners_peak'] ?? 0,
+                'peak_concurrent_users' => $hourlyData['peak_concurrent_users'] ?? 0
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Compute this week's statistics.
+     * Includes all data from Monday to today.
+     * 
+     * @return array|null This week's stats or null if no data available
+     */
+    private function computeCurrentWeekStats(): ?array
+    {
+        $today = date('Y-m-d');
+        $weekStart = date('Y-m-d', strtotime('monday this week'));
+        $weekStartTime = $weekStart . ' 00:00:00';
+        $todayEndTime = $today . ' 23:59:59';
+        
+        // Compute from hourly stats for accuracy (don't rely on potentially stale daily aggregates)
+        $stmt = $this->pdo->prepare("
+            SELECT
+                MAX(active_users) as active_users,
+                MAX(guest_users) as guest_users,
+                MAX(registered_users) as registered_users,
+                SUM(total_messages)::INTEGER as total_messages,
+                SUM(private_messages)::INTEGER as private_messages,
+                SUM(photo_uploads)::INTEGER as photo_uploads,
+                SUM(new_registrations)::INTEGER as new_registrations,
+                AVG(radio_listeners_avg)::INTEGER as radio_listeners_avg,
+                MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
+                MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
+            FROM stats_hourly
+            WHERE stat_hour >= :week_start AND stat_hour <= :today_end
+        ");
+        $stmt->execute(['week_start' => $weekStartTime, 'today_end' => $todayEndTime]);
+        $weekData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($weekData && ($weekData['active_users'] !== null || $weekData['total_messages'] !== null)) {
+            return [
+                'stat_year' => (int)date('Y'),
+                'stat_week' => (int)date('W'),
+                'week_start' => $weekStart,
+                'active_users' => $weekData['active_users'] ?? 0,
+                'guest_users' => $weekData['guest_users'] ?? 0,
+                'registered_users' => $weekData['registered_users'] ?? 0,
+                'total_messages' => $weekData['total_messages'] ?? 0,
+                'private_messages' => $weekData['private_messages'] ?? 0,
+                'photo_uploads' => $weekData['photo_uploads'] ?? 0,
+                'new_registrations' => $weekData['new_registrations'] ?? 0,
+                'radio_listeners_avg' => $weekData['radio_listeners_avg'] ?? 0,
+                'radio_listeners_peak' => $weekData['radio_listeners_peak'] ?? 0,
+                'peak_concurrent_users' => $weekData['peak_concurrent_users'] ?? 0
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Compute this month's statistics.
+     * Includes all data from 1st of month to today.
+     * 
+     * @return array|null This month's stats or null if no data available
+     */
+    private function computeCurrentMonthStats(): ?array
+    {
+        $today = date('Y-m-d');
+        $monthStart = date('Y-m-01');
+        $monthStartTime = $monthStart . ' 00:00:00';
+        $todayEndTime = $today . ' 23:59:59';
+        
+        // Compute from hourly stats for accuracy (don't rely on potentially stale daily aggregates)
+        $stmt = $this->pdo->prepare("
+            SELECT
+                MAX(active_users) as active_users,
+                MAX(guest_users) as guest_users,
+                MAX(registered_users) as registered_users,
+                SUM(total_messages)::INTEGER as total_messages,
+                SUM(private_messages)::INTEGER as private_messages,
+                SUM(photo_uploads)::INTEGER as photo_uploads,
+                SUM(new_registrations)::INTEGER as new_registrations,
+                AVG(radio_listeners_avg)::INTEGER as radio_listeners_avg,
+                MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
+                MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
+            FROM stats_hourly
+            WHERE stat_hour >= :month_start AND stat_hour <= :today_end
+        ");
+        $stmt->execute(['month_start' => $monthStartTime, 'today_end' => $todayEndTime]);
+        $monthData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($monthData && ($monthData['active_users'] !== null || $monthData['total_messages'] !== null)) {
+            $thisYear = (int)date('Y');
+            $thisMonth = (int)date('m');
+            return [
+                'stat_year' => $thisYear,
+                'stat_month' => $thisMonth,
+                'active_users' => $monthData['active_users'] ?? 0,
+                'guest_users' => $monthData['guest_users'] ?? 0,
+                'registered_users' => $monthData['registered_users'] ?? 0,
+                'total_messages' => $monthData['total_messages'] ?? 0,
+                'private_messages' => $monthData['private_messages'] ?? 0,
+                'photo_uploads' => $monthData['photo_uploads'] ?? 0,
+                'new_registrations' => $monthData['new_registrations'] ?? 0,
+                'radio_listeners_avg' => $monthData['radio_listeners_avg'] ?? 0,
+                'radio_listeners_peak' => $monthData['radio_listeners_peak'] ?? 0,
+                'peak_concurrent_users' => $monthData['peak_concurrent_users'] ?? 0
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Compute this year's statistics.
+     * Includes all data from January 1st to today.
+     * 
+     * @return array|null This year's stats or null if no data available
+     */
+    private function computeCurrentYearStats(): ?array
+    {
+        $today = date('Y-m-d');
+        $yearStart = date('Y-01-01');
+        $yearStartTime = $yearStart . ' 00:00:00';
+        $todayEndTime = $today . ' 23:59:59';
+        
+        // Compute from hourly stats for accuracy (don't rely on potentially stale daily aggregates)
+        $stmt = $this->pdo->prepare("
+            SELECT
+                MAX(active_users) as active_users,
+                MAX(guest_users) as guest_users,
+                MAX(registered_users) as registered_users,
+                SUM(total_messages)::INTEGER as total_messages,
+                SUM(private_messages)::INTEGER as private_messages,
+                SUM(photo_uploads)::INTEGER as photo_uploads,
+                SUM(new_registrations)::INTEGER as new_registrations,
+                AVG(radio_listeners_avg)::INTEGER as radio_listeners_avg,
+                MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
+                MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
+            FROM stats_hourly
+            WHERE stat_hour >= :year_start AND stat_hour <= :today_end
+        ");
+        $stmt->execute(['year_start' => $yearStartTime, 'today_end' => $todayEndTime]);
+        $yearData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($yearData && ($yearData['active_users'] !== null || $yearData['total_messages'] !== null)) {
+            $thisYear = (int)date('Y');
+            return [
+                'stat_year' => $thisYear,
+                'active_users' => $yearData['active_users'] ?? 0,
+                'guest_users' => $yearData['guest_users'] ?? 0,
+                'registered_users' => $yearData['registered_users'] ?? 0,
+                'total_messages' => $yearData['total_messages'] ?? 0,
+                'private_messages' => $yearData['private_messages'] ?? 0,
+                'photo_uploads' => $yearData['photo_uploads'] ?? 0,
+                'new_registrations' => $yearData['new_registrations'] ?? 0,
+                'radio_listeners_avg' => $yearData['radio_listeners_avg'] ?? 0,
+                'radio_listeners_peak' => $yearData['radio_listeners_peak'] ?? 0,
+                'peak_concurrent_users' => $yearData['peak_concurrent_users'] ?? 0
+            ];
+        }
+
+        return null;
     }
 
     /**

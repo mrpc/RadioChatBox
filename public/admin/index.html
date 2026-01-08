@@ -2929,23 +2929,22 @@
                     kpiActiveUsersEl.textContent = realUsersCount;
                 }
                 
-                // Load messages (get today's count)
-                const messagesResponse = await fetch('/api/admin/messages.php?limit=1000', {
+                // Load today's stats from summary
+                const statsResponse = await fetch('/api/admin/stats.php?granularity=summary', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const statsData = await statsResponse.json();
+                if (statsData.data && statsData.data.today && kpiMessagesTodayEl) {
+                    // Use aggregated today's messages from stats
+                    kpiMessagesTodayEl.textContent = statsData.data.today.total_messages || 0;
+                }
+                
+                // Load messages for recent messages dashboard
+                const messagesResponse = await fetch('/api/admin/messages.php?limit=100', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const messagesData = await messagesResponse.json();
                 if (messagesData.success) {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const todayMessages = messagesData.messages.filter(m => {
-                        const msgDate = new Date(m.timestamp * 1000);
-                        return msgDate >= today;
-                    });
-                    if (kpiMessagesTodayEl) {
-                        kpiMessagesTodayEl.textContent = todayMessages.length;
-                    }
-                    
-                    // Load recent messages for dashboard and hide section if needed
                     const includePrivate = messagesData.include_private || false;
                     const chatMode = messagesData.chat_mode || 'both';
                     loadDashboardRecentMessages(messagesData.messages.slice(0, 100), includePrivate, chatMode);
@@ -6175,6 +6174,7 @@
             
             // Extract summary data
             const today = summary.today || {};
+            const week = summary.this_week || {};
             const month = summary.this_month || {};
             const year = summary.this_year || {};
             const snapshot = summary.latest_snapshot || {};
@@ -6247,6 +6247,12 @@
                     <div style="background: linear-gradient(135deg, #667eea 0%, #667eea 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white;">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📊 Month Total</div>
                         <div style="font-size: 32px; font-weight: bold;">${month.total_messages || 0}</div>
+                    </div>
+                    
+                    <!-- Week Summary -->
+                    <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white;">
+                        <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📅 Week Total</div>
+                        <div style="font-size: 32px; font-weight: bold;">${week.total_messages || 0}</div>
                     </div>
                 </div>
                 
@@ -6329,6 +6335,47 @@
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${month.new_registrations || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Week Summary Card -->
+                    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <h3 style="margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+                            📅 This Week's Summary
+                        </h3>
+                        <div style="space-y: 10px;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Active Users:</span>
+                                <strong>${week.active_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Registered:</span>
+                                <strong>${week.registered_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Guests:</span>
+                                <strong>${week.guest_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Public Messages:</span>
+                                <strong>${week.total_messages || 0}</strong>
+                            </div>
+                            ${chatMode !== 'public' ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Private Messages:</span>
+                                <strong>${week.private_messages || 0}</strong>
+                            </div>
+                            ` : ''}
+                            ${photosEnabled ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Photo Uploads:</span>
+                                <strong>${week.photo_uploads || 0}</strong>
+                            </div>
+                            ` : ''}
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                <span style="color: #6b7280;">New Registrations:</span>
+                                <strong>${week.new_registrations || 0}</strong>
                             </div>
                         </div>
                     </div>
