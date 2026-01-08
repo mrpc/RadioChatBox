@@ -638,6 +638,15 @@ class StatsService
         // Latest snapshot
         $latestSnapshot = $this->getLatestSnapshot();
 
+        // If users just arrived and haven't been aggregated to hourly stats yet,
+        // use real-time concurrent users from latest snapshot if higher
+        if ($todayStats && $latestSnapshot) {
+            $todayStats['active_users'] = max(
+                $todayStats['active_users'] ?? 0,
+                $latestSnapshot['concurrent_users'] ?? 0
+            );
+        }
+
         $summary = [
             'today' => $todayStats,
             'this_week' => $weekStats,
