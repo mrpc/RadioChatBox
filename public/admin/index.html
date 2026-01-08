@@ -6263,24 +6263,24 @@
             content.innerHTML = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 30px;">
                     <!-- Real-time Users -->
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="Number of users currently active in chat (real-time snapshot)">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">👥 Active Users (Now)</div>
                         <div style="font-size: 32px; font-weight: bold;">${snapshot.concurrent_users || 0}</div>
                     </div>
                     
                     <!-- Today's Users Breakdown -->
-                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="Users with registered accounts that have been active today">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">👤 Registered (Today)</div>
                         <div style="font-size: 32px; font-weight: bold;">${today.registered_users || 0}</div>
                     </div>
                     
-                    <div style="background: linear-gradient(135deg, #ffa751 0%, #ffe259 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #ffa751 0%, #ffe259 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="Anonymous users who chatted without registering an account today">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">🚶 Guests (Today)</div>
                         <div style="font-size: 32px; font-weight: bold;">${today.guest_users || 0}</div>
                     </div>
                     
                     <!-- Messages -->
-                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="Total public messages posted in chat today">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">💬 Messages (Today)</div>
                         <div style="font-size: 32px; font-weight: bold;">${today.total_messages || 0}</div>
                     </div>
@@ -6289,39 +6289,39 @@
                     ${photosCard}
                     
                     <!-- Registrations -->
-                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="New user accounts created today">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">✨ New Registrations (Today)</div>
                         <div style="font-size: 32px; font-weight: bold;">${today.new_registrations || 0}</div>
                     </div>
                     
                     ${radioEnabled ? `
                     <!-- Radio Listeners -->
-                    <div style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="Number of people currently listening to the radio stream">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📻 Radio Listeners (Now)</div>
                         <div style="font-size: 32px; font-weight: bold;">${snapshot.radio_listeners || 0}</div>
                     </div>
                     
                     <!-- Peak Radio Listeners -->
-                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px; cursor: help;" title="Highest number of radio listeners at any point today">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📻 Peak Listeners (Today)</div>
                         <div style="font-size: 32px; font-weight: bold;">${today.radio_listeners_peak || 0}</div>
                     </div>
                     ` : ''}
                     
                     <!-- Peak Concurrent (Chat Users) -->
-                    <div style="background: linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%); color: white; padding: 20px; border-radius: 8px;">
+                    <div style="background: linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%); color: white; padding: 20px; border-radius: 8px; cursor: help;" title="Highest number of chat users online at any point today">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">⚡ Peak Chat Users (Today)</div>
                         <div style="font-size: 32px; font-weight: bold;">${today.peak_concurrent_users || 0}</div>
                     </div>
                     
                     <!-- Month Summary -->
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #667eea 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #667eea 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white; cursor: help;" title="Total public messages posted this month">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📊 Month Total</div>
                         <div style="font-size: 32px; font-weight: bold;">${month.total_messages || 0}</div>
                     </div>
                     
                     <!-- Week Summary -->
-                    <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white;">
+                    <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 20px; border-radius: 8px; border-left: 4px solid white; cursor: help;" title="Total public messages posted this week">
                         <div style="font-size: 11px; text-transform: uppercase; opacity: 0.9; margin-bottom: 8px;">📅 Week Total</div>
                         <div style="font-size: 32px; font-weight: bold;">${week.total_messages || 0}</div>
                     </div>
@@ -6334,45 +6334,45 @@
                             📅 Today's Summary
                         </h3>
                         <div style="space-y: 10px;">
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Users with registered accounts that have been active today">
                                 <span style="color: #6b7280;">Active Users:</span>
                                 <strong>${today.active_users || 0}</strong>
                             </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Users with registered accounts that have been active today">
                                 <span style="color: #6b7280;">Registered:</span>
                                 <strong>${today.registered_users || 0}</strong>
                             </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Anonymous users who chatted without registering an account today">
                                 <span style="color: #6b7280;">Guests:</span>
                                 <strong>${today.guest_users || 0}</strong>
                             </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Total public messages posted in chat today">
                                 <span style="color: #6b7280;">Public Messages:</span>
                                 <strong>${today.total_messages || 0}</strong>
                             </div>
                             ${chatMode !== 'public' ? `
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Private one-on-one messages sent today">
                                 <span style="color: #6b7280;">Private Messages:</span>
                                 <strong>${today.private_messages || 0}</strong>
                             </div>
                             ` : ''}
                             ${photosEnabled ? `
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Images/photos uploaded to chat today">
                                 <span style="color: #6b7280;">Photo Uploads:</span>
                                 <strong>${today.photo_uploads || 0}</strong>
                             </div>
                             ` : ''}
                             ${radioEnabled ? `
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Average number of radio stream listeners throughout the day">
                                 <span style="color: #6b7280;">Avg Radio Listeners:</span>
                                 <strong>${today.radio_listeners_avg || 0}</strong>
                             </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; cursor: help;" title="Highest number of radio stream listeners at any point today">
                                 <span style="color: #6b7280;">Peak Radio Listeners:</span>
                                 <strong>${today.radio_listeners_peak || 0}</strong>
                             </div>
                             ` : ''}
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; cursor: help;" title="New user accounts created today">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${today.new_registrations || 0}</strong>
                             </div>
