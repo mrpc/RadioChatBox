@@ -612,26 +612,10 @@ class StatsService
         $cacheKey = 'stats:summary';
         $cached = $this->redis->get($cacheKey);
         
-        // Check if we have a cached value
+        // Return cached value if available - cache is only valid for 5 minutes anyway
+        // Detailed validation happens server-side in getSummary if needed
         if ($cached !== false) {
-            $cachedData = json_decode($cached, true);
-            
-            // Validate cache against real-time data
-            // If real-time concurrent users is > 0 but today's active_users is 0, cache is stale
-            $snapshot = $this->getLatestSnapshot();
-            if ($snapshot && $snapshot['concurrent_users'] > 0) {
-                $todayStats = $cachedData['today'] ?? null;
-                // If real-time shows users but today shows none, invalidate cache
-                if (!$todayStats || $todayStats['active_users'] == 0) {
-                    error_log("Cache validation: Real-time users ({$snapshot['concurrent_users']}) > 0 but today shows 0, invalidating cache");
-                    $this->redis->del($cacheKey);
-                    // Fall through to recompute
-                } else {
-                    return $cachedData;
-                }
-            } else {
-                return $cachedData;
-            }
+            return json_decode($cached, true);
         }
 
         $today = date('Y-m-d');

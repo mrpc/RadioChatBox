@@ -2912,6 +2912,14 @@
         
         async function loadDashboardKPIs() {
             try {
+                // Verify authToken is set
+                if (!authToken) {
+                    console.error('loadDashboardKPIs: authToken not set');
+                    return;
+                }
+                
+                console.log('Loading dashboard KPIs with authToken:', authToken.substring(0, 20) + '...');
+                
                 // Cache element references to avoid null errors
                 const kpiActiveUsersEl = document.getElementById('kpi-active-users');
                 const kpiMessagesTodayEl = document.getElementById('kpi-messages-today');
@@ -2932,6 +2940,8 @@
                             const realUsersCount = usersData.users.filter(u => !u.is_fake).length;
                             kpiActiveUsersEl.textContent = realUsersCount;
                         }
+                    } else {
+                        console.warn('Active users response not ok:', usersResponse.status);
                     }
                 } catch (e) {
                     console.error('Failed to load active users:', e);
@@ -2948,6 +2958,8 @@
                             // Use aggregated today's messages from stats
                             kpiMessagesTodayEl.textContent = statsData.data.today.total_messages || 0;
                         }
+                    } else {
+                        console.warn('Stats response not ok:', statsResponse.status);
                     }
                 } catch (e) {
                     console.error('Failed to load stats:', e);
@@ -2967,6 +2979,8 @@
                             
                             // Recent Messages section is always visible regardless of chat mode
                         }
+                    } else {
+                        console.warn('Messages response not ok:', messagesResponse.status);
                     }
                 } catch (e) {
                     console.error('Failed to load messages:', e);
@@ -6217,16 +6231,8 @@
             const year = summary.this_year || {};
             const snapshot = summary.latest_snapshot || {};
             
-            // Validate data consistency: if real-time shows users but today shows none, data is stale
-            if (snapshot.concurrent_users > 0 && (!today.active_users || today.active_users === 0)) {
-                console.warn('Cache validation failed: Real-time users (' + snapshot.concurrent_users + ') > 0 but today shows 0. Clearing cache...');
-                // Clear all localStorage cache
-                localStorage.removeItem('stats_cache');
-                localStorage.removeItem('stats_timestamp');
-                // Reload page to get fresh data
-                setTimeout(() => location.reload(), 500);
-                return;
-            }
+            // Debug logging
+            console.log('loadStatsSummary - today.active_users:', today.active_users, 'snapshot.concurrent_users:', snapshot.concurrent_users);
             
             // Debug logging
             console.log('loadStatsSummary:', {
