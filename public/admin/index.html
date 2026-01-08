@@ -6179,10 +6179,22 @@
             const year = summary.this_year || {};
             const snapshot = summary.latest_snapshot || {};
             
+            // Validate data consistency: if real-time shows users but today shows none, data is stale
+            if (snapshot.concurrent_users > 0 && (!today.active_users || today.active_users === 0)) {
+                console.warn('Cache validation failed: Real-time users (' + snapshot.concurrent_users + ') > 0 but today shows 0. Clearing cache...');
+                // Clear all localStorage cache
+                localStorage.removeItem('stats_cache');
+                localStorage.removeItem('stats_timestamp');
+                // Reload page to get fresh data
+                setTimeout(() => location.reload(), 500);
+                return;
+            }
+            
             // Debug logging
             console.log('loadStatsSummary:', {
                 today: today,
                 today_active_users: today.active_users,
+                snapshot_concurrent_users: snapshot.concurrent_users,
                 radioEnabled: radioEnabled,
                 chatMode: chatMode,
                 photosEnabled: photosEnabled
