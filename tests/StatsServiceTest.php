@@ -130,7 +130,7 @@ class StatsServiceTest extends TestCase
         $expectedColumns = [
             'id', 'stat_hour', 'active_users', 'guest_users', 'registered_users',
             'total_messages', 'private_messages', 'photo_uploads', 'new_registrations',
-            'radio_listeners', 'peak_concurrent_users', 'created_at'
+            'radio_listeners_avg', 'radio_listeners_peak', 'peak_concurrent_users', 'created_at'
         ];
         
         foreach ($expectedColumns as $column) {
