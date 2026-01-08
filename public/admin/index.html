@@ -6131,9 +6131,10 @@
                 controlsDiv.innerHTML = `
                     <label style="color: #333; font-weight: 600;">Show last:</label>
                     <select id="hourly-limit" style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        <option value="12" selected>12 hours</option>
                         <option value="24">24 hours</option>
                         <option value="48">48 hours</option>
-                        <option value="168" selected>7 days</option>
+                        <option value="168">7 days</option>
                     </select>
                     <button class="btn btn-primary" onclick="loadStatsContent()">Load</button>
                 `;
