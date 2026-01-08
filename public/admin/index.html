@@ -6179,6 +6179,15 @@
             const year = summary.this_year || {};
             const snapshot = summary.latest_snapshot || {};
             
+            // Debug logging
+            console.log('loadStatsSummary:', {
+                today: today,
+                today_active_users: today.active_users,
+                radioEnabled: radioEnabled,
+                chatMode: chatMode,
+                photosEnabled: photosEnabled
+            });
+            
             // Conditional KPI cards based on settings
             const privateCard = chatMode !== 'public' ? `
                     <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1f2937; padding: 20px; border-radius: 8px;">
@@ -6302,51 +6311,14 @@
                                 <span style="color: #6b7280;">Avg Radio Listeners:</span>
                                 <strong>${today.radio_listeners_avg || 0}</strong>
                             </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Peak Radio Listeners:</span>
+                                <strong>${today.radio_listeners_peak || 0}</strong>
+                            </div>
                             ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${today.new_registrations || 0}</strong>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Month Summary Card -->
-                    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <h3 style="margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
-                            📆 This Month's Summary
-                        </h3>
-                        <div style="space-y: 10px;">
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                                <span style="color: #6b7280;">Active Users:</span>
-                                <strong>${month.active_users || 0}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                                <span style="color: #6b7280;">Registered:</span>
-                                <strong>${month.registered_users || 0}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                                <span style="color: #6b7280;">Guests:</span>
-                                <strong>${month.guest_users || 0}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                                <span style="color: #6b7280;">Public Messages:</span>
-                                <strong>${month.total_messages || 0}</strong>
-                            </div>
-                            ${chatMode !== 'public' ? `
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                                <span style="color: #6b7280;">Private Messages:</span>
-                                <strong>${month.private_messages || 0}</strong>
-                            </div>
-                            ` : ''}
-                            ${photosEnabled ? `
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                                <span style="color: #6b7280;">Photo Uploads:</span>
-                                <strong>${month.photo_uploads || 0}</strong>
-                            </div>
-                            ` : ''}
-                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                                <span style="color: #6b7280;">New Registrations:</span>
-                                <strong>${month.new_registrations || 0}</strong>
                             </div>
                         </div>
                     </div>
@@ -6385,9 +6357,70 @@
                                 <strong>${week.photo_uploads || 0}</strong>
                             </div>
                             ` : ''}
+                            ${radioEnabled ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Avg Radio Listeners:</span>
+                                <strong>${week.radio_listeners_avg || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Peak Radio Listeners:</span>
+                                <strong>${week.radio_listeners_peak || 0}</strong>
+                            </div>
+                            ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${week.new_registrations || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Month Summary Card -->
+                    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <h3 style="margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+                            📆 This Month's Summary
+                        </h3>
+                        <div style="space-y: 10px;">
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Active Users:</span>
+                                <strong>${month.active_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Registered:</span>
+                                <strong>${month.registered_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Guests:</span>
+                                <strong>${month.guest_users || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Public Messages:</span>
+                                <strong>${month.total_messages || 0}</strong>
+                            </div>
+                            ${chatMode !== 'public' ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Private Messages:</span>
+                                <strong>${month.private_messages || 0}</strong>
+                            </div>
+                            ` : ''}
+                            ${photosEnabled ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Photo Uploads:</span>
+                                <strong>${month.photo_uploads || 0}</strong>
+                            </div>
+                            ` : ''}
+                            ${radioEnabled ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Avg Radio Listeners:</span>
+                                <strong>${month.radio_listeners_avg || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Peak Radio Listeners:</span>
+                                <strong>${month.radio_listeners_peak || 0}</strong>
+                            </div>
+                            ` : ''}
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                <span style="color: #6b7280;">New Registrations:</span>
+                                <strong>${month.new_registrations || 0}</strong>
                             </div>
                         </div>
                     </div>
@@ -6424,6 +6457,16 @@
                             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
                                 <span style="color: #6b7280;">Photo Uploads:</span>
                                 <strong>${year.photo_uploads || 0}</strong>
+                            </div>
+                            ` : ''}
+                            ${radioEnabled ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Avg Radio Listeners:</span>
+                                <strong>${year.radio_listeners_avg || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Peak Radio Listeners:</span>
+                                <strong>${year.radio_listeners_peak || 0}</strong>
                             </div>
                             ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
@@ -6748,6 +6791,8 @@
             }
             
             const result = await response.json();
+            console.log('fetchStatsData result:', { granularity, result });
+            
             // Store settings globally for conditional display
             if (result.radio_enabled !== undefined) {
                 window.radioEnabled = result.radio_enabled;
