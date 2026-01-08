@@ -1416,6 +1416,12 @@
                     </div>
                     
                     <div class="form-group">
+                        <label>Display Name (Optional)</label>
+                        <input type="text" id="edit-admin-display-name" placeholder="Name shown in chat" maxlength="100">
+                        <small style="color: #6b7280;">Leave empty to use username</small>
+                    </div>
+                    
+                    <div class="form-group">
                         <label>Role</label>
                         <select id="edit-admin-role" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px;">
                             <option value="root">🔴 Root</option>
@@ -3028,26 +3034,32 @@
                         const radioData = await radioResponse.json();
                         const kpiListenersCard = document.getElementById('kpi-listeners-card');
                         
-                        if (kpiListenersEl && radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
-                            // Radio is enabled and active - show the widget
+                        // Check if radio is enabled and has status available
+                        if (kpiListenersEl && radioData.success && radioData.nowPlaying) {
+                            // Always show the widget if we have radio data (even if offline/inactive)
                             if (kpiListenersCard) {
                                 kpiListenersCard.style.display = '';
                             }
                             
-                            const listeners = radioData.nowPlaying.listeners ?? '-';
+                            const listeners = radioData.nowPlaying.listeners ?? 0;
                             kpiListenersEl.textContent = listeners;
                             
-                            // Show what's playing
+                            // Show what's playing or status
                             let nowPlayingText = 'Now Playing';
                             if (radioData.nowPlaying.display) {
                                 nowPlayingText = radioData.nowPlaying.display.substring(0, 50);
                                 if (radioData.nowPlaying.display.length > 50) {
                                     nowPlayingText += '...';
                                 }
+                            } else if (!radioData.nowPlaying.active) {
+                                nowPlayingText = 'Radio Offline';
                             }
                             if (kpiListenersNowEl) {
                                 kpiListenersNowEl.textContent = nowPlayingText;
                             }
+                        } else if (kpiListenersCard) {
+                            // Hide widget if radio integration is disabled or unavailable
+                            kpiListenersCard.style.display = 'none';
                         }
                     }
                 } catch (e) {
@@ -5084,6 +5096,7 @@
                     document.getElementById('edit-admin-user-id').value = user.id;
                     document.getElementById('edit-admin-username').value = user.username;
                     document.getElementById('edit-admin-email').value = user.email || '';
+                    document.getElementById('edit-admin-display-name').value = user.display_name || '';
                     document.getElementById('edit-admin-role').value = user.role;
                     document.getElementById('edit-admin-is-active').checked = user.is_active;
                     document.getElementById('edit-admin-password').value = '';
@@ -5143,6 +5156,7 @@
             const userId = parseInt(document.getElementById('edit-admin-user-id').value);
             const password = document.getElementById('edit-admin-password').value;
             const email = document.getElementById('edit-admin-email').value.trim();
+            const displayName = document.getElementById('edit-admin-display-name').value.trim();
             const role = document.getElementById('edit-admin-role').value;
             const isActive = document.getElementById('edit-admin-is-active').checked;
 
@@ -5150,6 +5164,7 @@
                 user_id: userId,
                 role,
                 email: email || null,
+                display_name: displayName || null,
                 is_active: isActive
             };
 

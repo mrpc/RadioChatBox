@@ -459,18 +459,22 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role user_role NOT NULL DEFAULT 'simple_user',
     email VARCHAR(255),
+    display_name VARCHAR(100),
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP,
     created_by INTEGER REFERENCES users(id),
     CONSTRAINT username_length CHECK (LENGTH(username) >= 3),
-    CONSTRAINT valid_email CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    CONSTRAINT valid_email CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    CONSTRAINT display_name_length CHECK (display_name IS NULL OR LENGTH(display_name) >= 1)
 );
 
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_is_active ON users(is_active);
+CREATE UNIQUE INDEX idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX idx_users_display_name_unique ON users(display_name) WHERE display_name IS NOT NULL;
 
 COMMENT ON TABLE users IS 'Authenticated user accounts with passwords and role-based access (admins, moderators, future registered chat users)';
 

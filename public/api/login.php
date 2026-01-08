@@ -70,6 +70,7 @@ try {
         'user' => [
             'id' => $user['id'],
             'username' => $user['username'],
+            'display_name' => $user['display_name'] ?? null,
             'role' => $user['role']
         ]
     ]);

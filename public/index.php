@@ -113,6 +113,18 @@
                 >
             </div>
             
+            <!-- Display name - always available for authenticated users -->
+            <div id="profile-display-name-field" class="profile-info" style="display: none;">
+                <label>Display Name (Optional)</label>
+                <input 
+                    type="text" 
+                    id="profile-display-name"
+                    placeholder="Leave empty to use nickname"
+                    maxlength="100"
+                >
+                <small style="color: #999;">This is the name others will see in chat</small>
+            </div>
+            
             <div id="profile-edit-fields" style="display: none;">
                 <div class="profile-info">
                     <label>Age</label>
@@ -145,7 +157,8 @@
             <div id="profile-error" class="error-message"></div>
             
             <div class="modal-buttons">
-                <button id="profile-save" class="btn-primary" style="display: none;">Save Changes</button>
+                <button id="profile-save-displayname" class="btn-primary" style="display: none;">Save Display Name</button>
+                <button id="profile-save" class="btn-primary" style="display: none;">Save Profile</button>
                 <button id="profile-logout" class="btn-danger">Logout</button>
                 <button id="profile-close" class="btn-secondary">Close</button>
             </div>

@@ -569,4 +569,79 @@ class ChatServiceTest extends TestCase
         $stmt = $pdo->prepare("DELETE FROM users WHERE username = :username");
         $stmt->execute(['username' => $testUsername]);
     }
+
+    public function testMessagesIncludeDisplayName()
+    {
+        $pdo = Database::getPDO();
+        $userService = new \RadioChatBox\UserService();
+        
+        // Create a test user with display name
+        $testUsername = 'displaynametest_' . uniqid();
+        $testDisplayName = 'Test Display Name';
+        $testPassword = 'testpass123';
+        
+        $result = $userService->createUser(
+            $testUsername,
+            $testPassword,
+            'simple_user',
+            null,
+            null,
+            $testDisplayName
+        );
+        
+        $this->assertTrue($result['success'] ?? false, 'Test user should be created');
+        $userId = $result['user']['id'] ?? null;
+        
+        try {
+            // Create a session for this user
+            $sessionId = 'test_session_' . uniqid();
+            $ipAddress = '127.0.0.1';
+            
+            $stmt = $pdo->prepare(
+                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                 VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
+            );
+            $stmt->execute([
+                'username' => $testUsername,
+                'session_id' => $sessionId,
+                'ip_address' => $ipAddress,
+                'user_id' => $userId
+            ]);
+            
+            // Post a message
+            $message = $this->chatService->postMessage(
+                $testUsername,
+                'Test message with display name',
+                $ipAddress,
+                $sessionId
+            );
+            
+            $this->assertArrayHasKey('display_name', $message, 'Message should have display_name field');
+            $this->assertEquals($testDisplayName, $message['display_name'], 'Display name should match');
+            
+            // Verify message in history includes display_name
+            $history = $this->chatService->getHistory(10);
+            $foundMessage = null;
+            foreach ($history as $msg) {
+                if ($msg['id'] === $message['id']) {
+                    $foundMessage = $msg;
+                    break;
+                }
+            }
+            
+            $this->assertNotNull($foundMessage, 'Message should be in history');
+            $this->assertEquals($testDisplayName, $foundMessage['display_name'] ?? null, 'Display name should be in history');
+            
+        } finally {
+            // Cleanup
+            if (isset($message['id'])) {
+                $stmt = $pdo->prepare("DELETE FROM messages WHERE message_id = :message_id");
+                $stmt->execute(['message_id' => $message['id']]);
+            }
+            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt->execute(['username' => $testUsername]);
+            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt->execute(['id' => $userId]);
+        }
+    }
 }

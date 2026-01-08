@@ -334,7 +334,7 @@ class UserServiceTest extends TestCase
         $mockStmt1 = Mockery::mock(\PDOStatement::class);
         $mockStmt1->shouldReceive('execute')
             ->once()
-            ->with(['username' => 'testuser'])
+            ->with(['identifier' => 'testuser'])
             ->andReturn(true);
         $mockStmt1->shouldReceive('fetch')
             ->once()
@@ -345,6 +345,7 @@ class UserServiceTest extends TestCase
                 'password_hash' => $passwordHash,
                 'role' => 'administrator',
                 'email' => 'test@example.com',
+                'display_name' => null,
                 'is_active' => true
             ]);
 
@@ -381,6 +382,7 @@ class UserServiceTest extends TestCase
                 'password_hash' => $passwordHash,
                 'role' => 'administrator',
                 'email' => 'test@example.com',
+                'display_name' => null,
                 'is_active' => true
             ]);
 
@@ -409,6 +411,7 @@ class UserServiceTest extends TestCase
                 'password_hash' => $passwordHash,
                 'role' => 'administrator',
                 'email' => 'test@example.com',
+                'display_name' => null,
                 'is_active' => false
             ]);
 

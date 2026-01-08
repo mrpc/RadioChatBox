@@ -180,6 +180,48 @@ class LoginTest extends TestCase
         }
     }
 
+    public function testLoginWithEmail()
+    {
+        $pdo = Database::getPDO();
+        
+        // Create a test user with email
+        $testUsername = 'emailtest_' . uniqid();
+        $testEmail = 'test_' . uniqid() . '@example.com';
+        $testPassword = 'testpass123';
+        $userService = new UserService();
+        
+        $result = $userService->createUser(
+            $testUsername,
+            $testPassword,
+            'simple_user',
+            $testEmail,
+            null
+        );
+        
+        $this->assertTrue($result['success'] ?? false, 'Test user should be created');
+        $userId = $result['user']['id'] ?? null;
+
+        try {
+            // Test login with email instead of username
+            $response = $this->callLoginApi([
+                'username' => $testEmail,  // Using email as username
+                'password' => $testPassword,
+                'sessionId' => $this->sessionId
+            ]);
+            
+            $this->assertEquals(200, $response['status'], 'Login with email should succeed');
+            $this->assertTrue($response['body']['success'] ?? false, 'Login should succeed');
+            $this->assertEquals($testUsername, $response['body']['user']['username'] ?? '', 'Should return correct username');
+
+        } finally {
+            // Cleanup
+            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt->execute(['username' => $testUsername]);
+            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt->execute(['id' => $userId]);
+        }
+    }
+
     /**
      * Helper method to call login API
      */

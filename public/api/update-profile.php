@@ -28,6 +28,7 @@ $sessionId = $input['sessionId'] ?? '';
 $age = $input['age'] ?? null;
 $sex = $input['sex'] ?? '';
 $location = $input['location'] ?? '';
+$displayName = $input['displayName'] ?? null;
 
 // Validation
 if (empty($username) || empty($sessionId)) {
@@ -68,6 +69,108 @@ try {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Invalid session']);
         exit;
+    }
+    
+    // Update display name in users table if key is present (even if value is null)
+    if (array_key_exists('displayName', $input)) {
+        // Check if user is authenticated (has user_id in session)
+        $stmt = $db->prepare("
+            SELECT user_id 
+            FROM sessions 
+            WHERE session_id = :session_id AND username = :username AND user_id IS NOT NULL
+        ");
+        $stmt->execute([
+            'session_id' => $sessionId,
+            'username' => $username
+        ]);
+        $session = $stmt->fetch();
+        
+        if ($session && $session['user_id']) {
+            // Handle null and empty string cases for PHP 8+ compatibility
+            $trimmedDisplayName = $displayName !== null ? trim($displayName) : '';
+            $finalDisplayName = empty($trimmedDisplayName) ? null : $trimmedDisplayName;
+            
+            // If setting a display name (not clearing it), check for uniqueness
+            if ($finalDisplayName !== null) {
+                // Check if display name conflicts with any username
+                $stmt = $db->prepare("
+                    SELECT id FROM users WHERE username = :display_name
+                ");
+                $stmt->execute(['display_name' => $finalDisplayName]);
+                if ($stmt->fetch()) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'This display name is already taken as a username']);
+                    exit;
+                }
+                
+                // Check if display name conflicts with another user's display name
+                $stmt = $db->prepare("
+                    SELECT id FROM users 
+                    WHERE display_name = :display_name 
+                    AND id != :user_id
+                ");
+                $stmt->execute([
+                    'display_name' => $finalDisplayName,
+                    'user_id' => $session['user_id']
+                ]);
+                if ($stmt->fetch()) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'This display name is already taken']);
+                    exit;
+                }
+                
+                // Check if display name conflicts with fake user nicknames
+                $stmt = $db->prepare("
+                    SELECT id FROM fake_users WHERE nickname = :display_name
+                ");
+                $stmt->execute(['display_name' => $finalDisplayName]);
+                if ($stmt->fetch()) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'This display name conflicts with a system user']);
+                    exit;
+                }
+                
+                // Check if display name conflicts with active guest nicknames
+                $stmt = $db->prepare("
+                    SELECT session_id FROM sessions WHERE username = :display_name
+                ");
+                $stmt->execute(['display_name' => $finalDisplayName]);
+                if ($stmt->fetch()) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'This display name is currently in use as a nickname']);
+                    exit;
+                }
+            }
+            
+            // Update display_name in users table
+            $stmt = $db->prepare("
+                UPDATE users 
+                SET display_name = :display_name 
+                WHERE id = :user_id
+            ");
+            
+            $stmt->execute([
+                'display_name' => $finalDisplayName,
+                'user_id' => $session['user_id']
+            ]);
+            
+            // Clear display name cache
+            $redis = Database::getRedis();
+            $prefix = Database::getRedisPrefix();
+            $redis->del($prefix . 'display_name:' . $username);
+            
+            // Clear message history cache to force reload with new display name
+            $redis->del($prefix . 'chat:messages');
+            
+            // Small delay to ensure database commit and cache clear complete
+            usleep(100000); // 100ms
+            
+            // Publish a history refresh event to all connected clients
+            $redis->publish($prefix . 'chat:updates', json_encode([
+                'type' => 'refresh_history',
+                'reason' => 'display_name_changed'
+            ]));
+        }
     }
     
     // Update profile

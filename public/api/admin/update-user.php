@@ -102,6 +102,9 @@ if (isset($input['role'])) {
 if (isset($input['is_active'])) {
     $updates['is_active'] = $input['is_active'];
 }
+if (isset($input['display_name'])) {
+    $updates['display_name'] = $input['display_name'];
+}
 
 if (empty($updates)) {
     http_response_code(400);

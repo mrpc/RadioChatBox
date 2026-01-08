@@ -94,11 +94,28 @@ try {
             $attachmentData = $photoService->getAttachment($attachmentId);
         }
         
+        // Get display names for sender and recipient
+        $fromDisplayName = null;
+        $toDisplayName = null;
+        
+        $stmt = $db->prepare("SELECT u.username, u.display_name FROM users u WHERE u.username IN (?, ?)");
+        $stmt->execute([$fromUsername, $toUsername]);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if ($row['username'] === $fromUsername) {
+                $fromDisplayName = $row['display_name'];
+            }
+            if ($row['username'] === $toUsername) {
+                $toDisplayName = $row['display_name'];
+            }
+        }
+        
         // Publish to Redis for real-time delivery
         $messageData = [
             'id' => $result['id'],
             'from_username' => $fromUsername,
+            'from_display_name' => $fromDisplayName,
             'to_username' => $toUsername,
+            'to_display_name' => $toDisplayName,
             'message' => $message,
             'attachment' => $attachmentData,
             'timestamp' => strtotime($result['created_at']),
@@ -161,9 +178,13 @@ try {
                 $stmt = $db->prepare("
                     SELECT pm.*, 
                            a.attachment_id, a.filename, a.file_path, a.file_size, 
-                           a.mime_type, a.width, a.height
+                           a.mime_type, a.width, a.height,
+                           u_from.display_name as from_display_name,
+                           u_to.display_name as to_display_name
                     FROM private_messages pm
                     LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
+                    LEFT JOIN users u_from ON pm.from_username = u_from.username
+                    LEFT JOIN users u_to ON pm.to_username = u_to.username
                     WHERE ((pm.from_username = ? AND pm.to_username = ?) 
                         OR (pm.from_username = ? AND pm.to_username = ?))
                     ORDER BY pm.created_at ASC
@@ -182,9 +203,13 @@ try {
                     $stmt = $db->prepare("
                         SELECT pm.*, 
                                a.attachment_id, a.filename, a.file_path, a.file_size, 
-                               a.mime_type, a.width, a.height
+                               a.mime_type, a.width, a.height,
+                               u_from.display_name as from_display_name,
+                               u_to.display_name as to_display_name
                         FROM private_messages pm
                         LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
+                        LEFT JOIN users u_from ON pm.from_username = u_from.username
+                        LEFT JOIN users u_to ON pm.to_username = u_to.username
                         WHERE ((pm.from_username = ? AND pm.to_username = ?) 
                             OR (pm.from_username = ? AND pm.to_username = ?))
                         ORDER BY pm.created_at ASC
@@ -197,9 +222,13 @@ try {
                     $stmt = $db->prepare("
                         SELECT pm.*, 
                                a.attachment_id, a.filename, a.file_path, a.file_size, 
-                               a.mime_type, a.width, a.height
+                               a.mime_type, a.width, a.height,
+                               u_from.display_name as from_display_name,
+                               u_to.display_name as to_display_name
                         FROM private_messages pm
                         LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
+                        LEFT JOIN users u_from ON pm.from_username = u_from.username
+                        LEFT JOIN users u_to ON pm.to_username = u_to.username
                         WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?) 
                             OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
                         ORDER BY pm.created_at ASC
@@ -213,9 +242,13 @@ try {
             $stmt = $db->prepare("
                 SELECT pm.*,
                        a.attachment_id, a.filename, a.file_path, a.file_size, 
-                       a.mime_type, a.width, a.height
+                       a.mime_type, a.width, a.height,
+                       u_from.display_name as from_display_name,
+                       u_to.display_name as to_display_name
                 FROM private_messages pm
                 LEFT JOIN attachments a ON pm.attachment_id = a.attachment_id AND a.is_deleted = FALSE
+                LEFT JOIN users u_from ON pm.from_username = u_from.username
+                LEFT JOIN users u_to ON pm.to_username = u_to.username
                 WHERE (pm.from_username = ? AND pm.from_session_id = ?) 
                    OR (pm.to_username = ? AND pm.to_session_id = ?)
                 ORDER BY pm.created_at DESC

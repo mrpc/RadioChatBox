@@ -63,9 +63,10 @@ class UserService
      * @param string $role User role (root, administrator, moderator, simple_user)
      * @param string|null $email Email address
      * @param int|null $createdBy ID of user creating this account
+     * @param string|null $displayName Display name (optional)
      * @return array Success/error response
      */
-    public function createUser(string $username, string $password, string $role, ?string $email = null, ?int $createdBy = null): array
+    public function createUser(string $username, string $password, string $role, ?string $email = null, ?int $createdBy = null, ?string $displayName = null): array
     {
         // Validate username
         $username = trim($username);
@@ -88,9 +89,9 @@ class UserService
         
         try {
             $stmt = $this->db->prepare("
-                INSERT INTO users (username, password_hash, role, email, created_by)
-                VALUES (:username, :password_hash, :role, :email, :created_by)
-                RETURNING id, username, role, email, created_at
+                INSERT INTO users (username, password_hash, role, email, created_by, display_name)
+                VALUES (:username, :password_hash, :role, :email, :created_by, :display_name)
+                RETURNING id, username, role, email, display_name, created_at
             ");
             
             $stmt->execute([
@@ -98,7 +99,8 @@ class UserService
                 'password_hash' => $passwordHash,
                 'role' => $role,
                 'email' => $email,
-                'created_by' => $createdBy
+                'created_by' => $createdBy,
+                'display_name' => $displayName
             ]);
             
             $user = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -129,7 +131,7 @@ class UserService
      */
     public function updateUser(int $userId, array $updates): array
     {
-        $allowedFields = ['password', 'email', 'role', 'is_active'];
+        $allowedFields = ['password', 'email', 'role', 'is_active', 'display_name'];
         $setFields = [];
         $params = ['id' => $userId];
         
@@ -156,6 +158,9 @@ class UserService
             } elseif ($field === 'email') {
                 $setFields[] = "email = :email";
                 $params['email'] = $value;
+            } elseif ($field === 'display_name') {
+                $setFields[] = "display_name = :display_name";
+                $params['display_name'] = $value;
             }
         }
         
@@ -164,7 +169,7 @@ class UserService
         }
         
         try {
-            $sql = "UPDATE users SET " . implode(', ', $setFields) . " WHERE id = :id RETURNING id, username, role, email, is_active, updated_at";
+            $sql = "UPDATE users SET " . implode(', ', $setFields) . " WHERE id = :id RETURNING id, username, role, email, display_name, is_active, updated_at";
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
             
@@ -250,7 +255,7 @@ class UserService
         }
         
         try {
-            $sql = "SELECT id, username, role, email, is_active, created_at, updated_at, last_login 
+            $sql = "SELECT id, username, role, email, display_name, is_active, created_at, updated_at, last_login 
                     FROM users";
             
             if (!$includeInactive) {
@@ -338,21 +343,22 @@ class UserService
     }
     
     /**
-     * Authenticate user with username and password
+     * Authenticate user with username/email and password
      * 
-     * @param string $username Username
+     * @param string $identifier Username or email address
      * @param string $password Plain text password
      * @return array|null User data if authenticated, null otherwise
      */
-    public function authenticate(string $username, string $password): ?array
+    public function authenticate(string $identifier, string $password): ?array
     {
         try {
+            // Try both username and email
             $stmt = $this->db->prepare("
-                SELECT id, username, password_hash, role, email, is_active
+                SELECT id, username, password_hash, role, email, display_name, is_active
                 FROM users
-                WHERE username = :username
+                WHERE username = :identifier OR email = :identifier
             ");
-            $stmt->execute(['username' => $username]);
+            $stmt->execute(['identifier' => $identifier]);
             $user = $stmt->fetch(\PDO::FETCH_ASSOC);
             
             if (!$user) {

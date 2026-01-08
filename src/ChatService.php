@@ -71,11 +71,15 @@ class ChatService
         if (!empty($replyTo)) {
             $replyData = $this->getReplyMessageData($replyTo);
         }
+        
+        // Get display name if user is authenticated
+        $displayName = $this->getDisplayNameForUsername($username);
 
         // Create message object
         $messageData = [
             'id' => uniqid('msg_', true),
             'username' => $username,
+            'display_name' => $displayName,
             'message' => $message,
             'timestamp' => time(),
             'ip' => $ipAddress,
@@ -130,19 +134,50 @@ class ChatService
             return array_reverse($decodedMessages);
         }
         
-        // Batch query to check which messages are deleted
+        // Batch query to check which messages are deleted AND get current display_names
         $placeholders = str_repeat('?,', count($messageIds) - 1) . '?';
-        $stmt = $this->pdo->prepare("SELECT message_id FROM messages WHERE message_id IN ($placeholders) AND is_deleted = true");
+        $stmt = $this->pdo->prepare("
+            SELECT m.message_id, m.is_deleted, u.display_name, m.username
+            FROM messages m
+            LEFT JOIN users u ON m.user_id = u.id
+            WHERE m.message_id IN ($placeholders)
+        ");
         $stmt->execute(array_values($messageIds));
-        $deletedIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        $deletedIdsSet = array_flip($deletedIds);
+        $dbData = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Filter out deleted messages
-        $filteredMessages = array_filter($decodedMessages, function($msg) use ($deletedIdsSet) {
-            return !isset($msg['id']) || !isset($deletedIdsSet[$msg['id']]);
+        // Create lookup maps
+        $deletedIdsSet = [];
+        $displayNameMap = [];
+        foreach ($dbData as $row) {
+            if ($row['is_deleted']) {
+                $deletedIdsSet[$row['message_id']] = true;
+            }
+            if ($row['username']) {
+                $displayNameMap[$row['username']] = $row['display_name'];
+            }
+        }
+        
+        // Filter out deleted messages and update display_names with current values from DB
+        $filteredMessages = array_filter($decodedMessages, function($msg) use ($deletedIdsSet, $displayNameMap) {
+            if (isset($msg['id']) && isset($deletedIdsSet[$msg['id']])) {
+                return false;
+            }
+            // Update display_name with current value from database
+            if (isset($msg['username']) && array_key_exists($msg['username'], $displayNameMap)) {
+                $msg['display_name'] = $displayNameMap[$msg['username']];
+            }
+            return true;
         });
         
-        return array_reverse(array_values($filteredMessages));
+        // Re-apply display_name updates to the array (filter doesn't modify by reference)
+        $filteredMessages = array_map(function($msg) use ($displayNameMap) {
+            if (isset($msg['username']) && array_key_exists($msg['username'], $displayNameMap)) {
+                $msg['display_name'] = $displayNameMap[$msg['username']];
+            }
+            return $msg;
+        }, array_values($filteredMessages));
+        
+        return array_reverse($filteredMessages);
     }
 
     /**
@@ -153,9 +188,12 @@ class ChatService
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.reply_to,
-                        r.username as reply_username, r.message as reply_message
+                        r.username as reply_username, r.message as reply_message,
+                        u.display_name, ru.display_name as reply_display_name
                  FROM messages m
                  LEFT JOIN messages r ON m.reply_to = r.message_id
+                 LEFT JOIN users u ON m.user_id = u.id
+                 LEFT JOIN users ru ON r.user_id = ru.id
                  WHERE m.is_deleted = false 
                  ORDER BY m.created_at DESC 
                  LIMIT :limit'
@@ -169,6 +207,7 @@ class ChatService
                 $msg = [
                     'id' => $row['message_id'],
                     'username' => $row['username'],
+                    'display_name' => $row['display_name'],
                     'message' => $row['message'],
                     'timestamp' => strtotime($row['created_at']),
                     'ip' => $row['ip_address'],
@@ -179,6 +218,7 @@ class ChatService
                 if (!empty($row['reply_to']) && !empty($row['reply_username'])) {
                     $msg['reply_data'] = [
                         'username' => $row['reply_username'],
+                        'display_name' => $row['reply_display_name'],
                         'message' => mb_substr($row['reply_message'], 0, 100),
                     ];
                 }
@@ -318,14 +358,24 @@ class ChatService
     private function storeMessageInDB(array $messageData): void
     {
         try {
+            // Look up user_id for authenticated users
+            $userId = null;
+            $userStmt = $this->pdo->prepare('SELECT id FROM users WHERE username = :username LIMIT 1');
+            $userStmt->execute(['username' => $messageData['username']]);
+            $userRow = $userStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($userRow) {
+                $userId = $userRow['id'];
+            }
+            
             $stmt = $this->pdo->prepare(
-                'INSERT INTO messages (message_id, username, message, ip_address, created_at, reply_to) 
-                 VALUES (:message_id, :username, :message, :ip_address, :created_at, :reply_to)'
+                'INSERT INTO messages (message_id, username, user_id, message, ip_address, created_at, reply_to) 
+                 VALUES (:message_id, :username, :user_id, :message, :ip_address, :created_at, :reply_to)'
             );
 
             $result = $stmt->execute([
                 'message_id' => $messageData['id'],
                 'username' => $messageData['username'],
+                'user_id' => $userId,
                 'message' => $messageData['message'],
                 'ip_address' => $messageData['ip'],
                 'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
@@ -355,6 +405,7 @@ class ChatService
                 if (isset($decoded['id']) && $decoded['id'] === $messageId) {
                     return [
                         'username' => $decoded['username'],
+                        'display_name' => $decoded['display_name'] ?? null,
                         'message' => mb_substr($decoded['message'], 0, 100), // Truncate to 100 chars for quote
                     ];
                 }
@@ -362,7 +413,11 @@ class ChatService
             
             // Fallback to database
             $stmt = $this->pdo->prepare(
-                'SELECT username, message FROM messages WHERE message_id = :message_id AND is_deleted = false LIMIT 1'
+                'SELECT m.username, m.message, u.display_name 
+                 FROM messages m 
+                 LEFT JOIN users u ON m.user_id = u.id 
+                 WHERE m.message_id = :message_id AND m.is_deleted = false 
+                 LIMIT 1'
             );
             $stmt->execute(['message_id' => $messageId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -370,6 +425,7 @@ class ChatService
             if ($row) {
                 return [
                     'username' => $row['username'],
+                    'display_name' => $row['display_name'],
                     'message' => mb_substr($row['message'], 0, 100), // Truncate to 100 chars for quote
                 ];
             }
@@ -378,6 +434,39 @@ class ChatService
         }
         
         return null;
+    }
+    
+    /**
+     * Get display name for a username (from authenticated users table)
+     * Returns null if user is not authenticated or has no display_name
+     */
+    private function getDisplayNameForUsername(string $username): ?string
+    {
+        try {
+            // Check Redis cache first
+            $cacheKey = 'display_name:' . $username;
+            $cached = $this->redis->get($this->prefixKey($cacheKey));
+            if ($cached !== false) {
+                return $cached === '' ? null : $cached;
+            }
+            
+            // Fetch from database
+            $stmt = $this->pdo->prepare(
+                'SELECT display_name FROM users WHERE username = :username AND is_active = true LIMIT 1'
+            );
+            $stmt->execute(['username' => $username]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            $displayName = $row ? $row['display_name'] : null;
+            
+            // Cache result for 5 minutes (empty string for null to differentiate from cache miss)
+            $this->redis->setex($this->prefixKey($cacheKey), 300, $displayName ?? '');
+            
+            return $displayName;
+        } catch (\PDOException $e) {
+            error_log("Failed to get display name for username: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -529,6 +618,18 @@ class ChatService
             // Authenticated users are allowed to have multiple sessions (different devices)
             // Continue to registration below
         } else {
+            // Check if username conflicts with any user's display name
+            $stmt = $this->pdo->prepare(
+                'SELECT id, username FROM users WHERE display_name = :username'
+            );
+            $stmt->execute(['username' => $username]);
+            $userWithDisplayName = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($userWithDisplayName !== false) {
+                error_log("Registration blocked: username '{$username}' conflicts with a registered user's display name");
+                return false;
+            }
+            
             // Check if username matches a fake user nickname
             $stmt = $this->pdo->prepare(
                 'SELECT id, nickname FROM fake_users WHERE nickname = :username'
@@ -722,9 +823,11 @@ class ChatService
                     a.last_heartbeat,
                     p.age,
                     p.location,
-                    p.sex
+                    p.sex,
+                    u.display_name
                  FROM sessions a
                  LEFT JOIN user_profiles p ON a.username = p.username
+                 LEFT JOIN users u ON a.user_id = u.id
                  ORDER BY a.username, a.joined_at ASC'
             );
             

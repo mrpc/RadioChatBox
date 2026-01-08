@@ -1047,11 +1047,14 @@ class RadioChatBox {
     showProfileModal() {
         const modal = document.getElementById('profile-modal');
         const profileNickname = document.getElementById('profile-nickname');
+        const profileDisplayName = document.getElementById('profile-display-name');
+        const profileDisplayNameField = document.getElementById('profile-display-name-field');
         const profileAge = document.getElementById('profile-age');
         const profileSex = document.getElementById('profile-sex');
         const profileLocation = document.getElementById('profile-location');
         const profileEditFields = document.getElementById('profile-edit-fields');
         const profileSaveBtn = document.getElementById('profile-save');
+        const profileSaveDisplayNameBtn = document.getElementById('profile-save-displayname');
         const profileError = document.getElementById('profile-error');
         
         // Populate country dropdown
@@ -1061,11 +1064,28 @@ class RadioChatBox {
         profileNickname.value = this.username;
         profileError.textContent = '';
         
+        // Check if user is authenticated (has userId from login)
+        const isAuthenticated = !!this.userId;
+        
+        // Show display name field for authenticated users
+        if (isAuthenticated && profileDisplayNameField) {
+            profileDisplayNameField.style.display = 'block';
+            profileSaveDisplayNameBtn.style.display = 'inline-block';
+            
+            // Load current display name
+            this.loadCurrentProfile(profileDisplayName, profileAge, profileSex, profileLocation);
+        } else if (profileDisplayNameField) {
+            profileDisplayNameField.style.display = 'none';
+            profileSaveDisplayNameBtn.style.display = 'none';
+        }
+        
         // Load current profile if profile fields are enabled
         if (this.settings.require_profile === 'true') {
             profileEditFields.style.display = 'block';
-            profileSaveBtn.style.display = 'block';
-            this.loadCurrentProfile(profileAge, profileSex, profileLocation);
+            profileSaveBtn.style.display = 'inline-block';
+            if (!isAuthenticated) {
+                this.loadCurrentProfile(profileDisplayName, profileAge, profileSex, profileLocation);
+            }
         } else {
             profileEditFields.style.display = 'none';
             profileSaveBtn.style.display = 'none';
@@ -1077,6 +1097,7 @@ class RadioChatBox {
         const closeBtn = document.getElementById('profile-close');
         const logoutBtn = document.getElementById('profile-logout');
         const saveBtn = document.getElementById('profile-save');
+        const saveDisplayNameBtn = document.getElementById('profile-save-displayname');
         
         closeBtn.onclick = () => {
             modal.style.display = 'none';
@@ -1090,17 +1111,24 @@ class RadioChatBox {
         
         if (saveBtn) {
             saveBtn.onclick = async () => {
-                await this.saveProfile(profileAge, profileSex, profileLocation, profileError, saveBtn);
+                await this.saveProfile(profileDisplayName, profileAge, profileSex, profileLocation, profileError, saveBtn);
+            };
+        }
+        
+        if (saveDisplayNameBtn) {
+            saveDisplayNameBtn.onclick = async () => {
+                await this.saveDisplayNameOnly(profileDisplayName, profileError, saveDisplayNameBtn);
             };
         }
     }
     
-    async loadCurrentProfile(ageInput, sexInput, locationInput) {
+    async loadCurrentProfile(displayNameInput, ageInput, sexInput, locationInput) {
         try {
             const response = await fetch(`${this.apiUrl}/api/user-profile.php?username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (data.success && data.profile) {
+                displayNameInput.value = data.profile.display_name || '';
                 ageInput.value = data.profile.age || '';
                 sexInput.value = data.profile.sex || '';
                 locationInput.value = data.profile.location || '';
@@ -1110,7 +1138,8 @@ class RadioChatBox {
         }
     }
     
-    async saveProfile(ageInput, sexInput, locationInput, errorDiv, saveBtn) {
+    async saveProfile(displayNameInput, ageInput, sexInput, locationInput, errorDiv, saveBtn) {
+        const displayName = displayNameInput.value.trim();
         const age = parseInt(ageInput.value);
         const sex = sexInput.value;
         const location = locationInput.value;
@@ -1143,6 +1172,7 @@ class RadioChatBox {
                 body: JSON.stringify({
                     username: this.username,
                     sessionId: this.sessionId,
+                    displayName: displayName || null,
                     age: age,
                     sex: sex,
                     location: location
@@ -1167,6 +1197,47 @@ class RadioChatBox {
             }
         } catch (error) {
             console.error('Error updating profile:', error);
+            errorDiv.textContent = 'Network error. Please try again.';
+        } finally {
+            saveBtn.disabled = false;
+        }
+    }
+    
+    async saveDisplayNameOnly(displayNameInput, errorDiv, saveBtn) {
+        const displayName = displayNameInput.value.trim();
+        
+        saveBtn.disabled = true;
+        errorDiv.textContent = '';
+        
+        try {
+            const response = await fetch(`${this.apiUrl}/api/update-profile.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: this.username,
+                    sessionId: this.sessionId,
+                    displayName: displayName || null
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Close the modal without alert
+                document.getElementById('profile-modal').style.display = 'none';
+                
+                // Reload history to show updated display name
+                // Wait for server to clear cache and complete database update
+                setTimeout(() => {
+                    this.reloadHistory();
+                }, 800);
+            } else {
+                errorDiv.textContent = data.error || 'Failed to update display name';
+            }
+        } catch (error) {
+            console.error('Error updating display name:', error);
             errorDiv.textContent = 'Network error. Please try again.';
         } finally {
             saveBtn.disabled = false;
@@ -1359,7 +1430,21 @@ class RadioChatBox {
             });
 
             this.eventSource.addEventListener('message', (e) => {
-                this.handleMessage(JSON.parse(e.data));
+                const messageData = JSON.parse(e.data);
+                
+                // Check if this is a special event type
+                if (messageData.type === 'refresh_history') {
+                    // Display name changed: clear local display name cache and refresh
+                    if (this.displayNameCache) {
+                        try { this.displayNameCache.clear(); } catch (_) {}
+                    }
+                    // Proactively reload active users to repopulate cache
+                    this.loadActiveUsers();
+                    // Reload message history to reflect new names
+                    this.reloadHistory();
+                } else {
+                    this.handleMessage(messageData);
+                }
             });
 
             this.eventSource.addEventListener('history', (e) => {
@@ -1393,7 +1478,11 @@ class RadioChatBox {
                 } else if (data.count !== undefined && data.users !== undefined) {
                     // Normal user list update
                     this.activeUsersCount.textContent = data.count;
+                    this.activeUsersList = data.users; // Store for filtering conversations
                     this.renderActiveUsers(data.users);
+                    
+                    // Update display names for existing conversations from active users list
+                    this.updateConversationDisplayNames(data.users);
                 }
             });
             
@@ -1567,6 +1656,19 @@ class RadioChatBox {
                 this.activeUsersList = data.users; // Store for filtering conversations
                 this.activeUsersCount.textContent = data.count;
                 this.renderActiveUsers(data.users);
+
+                // Update local display name cache and conversation display names
+                if (!this.displayNameCache) {
+                    this.displayNameCache = new Map();
+                } else {
+                    this.displayNameCache.clear();
+                }
+                data.users.forEach(u => {
+                    if (u.display_name) {
+                        this.displayNameCache.set(u.username, u.display_name);
+                    }
+                });
+                this.updateConversationDisplayNames(data.users);
             }
         } catch (error) {
             console.error('Failed to load active users:', error);
@@ -1577,6 +1679,9 @@ class RadioChatBox {
         this.activeUsersContainer.innerHTML = users.map(user => {
             const isCurrentUser = user.username === this.username;
             const canMessage = !isCurrentUser && (this.chatMode === 'private' || this.chatMode === 'both');
+            
+            // Use display_name if available, otherwise username
+            const displayName = user.display_name || user.username;
             
             // Get profile display elements
             let profileDisplay = '';
@@ -1596,7 +1701,7 @@ class RadioChatBox {
             
             return `<div class="active-user ${sexClass} ${isCurrentUser ? 'current-user' : ''} ${canMessage ? 'clickable' : ''}" 
                          ${canMessage ? `onclick="window.chatBox.startPrivateChat('${this.escapeHtml(user.username).replace(/'/g, '&#39;')}')"` : ''}>
-                <span class="user-name">${this.escapeHtml(user.username)}</span>
+                <span class="user-name">${this.escapeHtml(displayName)}</span>
                 ${profileDisplay ? `<span class="user-profile">${profileDisplay}</span>` : ''}
                 ${isCurrentUser ? '<span class="user-badge">(you)</span>' : ''}
                 ${canMessage ? '<span class="pm-icon">💬</span>' : ''}
@@ -1627,9 +1732,13 @@ class RadioChatBox {
         // Mark conversation as read
         this.markConversationAsRead(username);
         
+        // Get display name for this user from conversations or fetch it
+        const conv = this.conversations.get(username);
+        const displayName = conv?.displayName || username;
+        
         // Update UI
         if (this.privateChatWith) {
-            this.privateChatWith.textContent = username;
+            this.privateChatWith.textContent = displayName;
         }
         if (this.privateChatHeader) {
             this.privateChatHeader.style.display = 'flex';
@@ -1643,7 +1752,7 @@ class RadioChatBox {
         }
         if (this.messageInput) {
             this.messageInput.disabled = false;
-            this.messageInput.placeholder = `Send private message to ${username}...`;
+            this.messageInput.placeholder = `Send private message to ${displayName}...`;
         }
         if (this.sendButton) {
             this.sendButton.disabled = false;
@@ -1659,6 +1768,60 @@ class RadioChatBox {
             
             if (data.success && data.messages) {
                 this.privateChat.messages = data.messages;
+                
+                // Extract display_name from the loaded messages and update conversation
+                let otherUserDisplayName = null;
+                if (data.messages.length > 0) {
+                    const firstMsg = data.messages[0];
+                    otherUserDisplayName = firstMsg.from_username === username 
+                        ? firstMsg.from_display_name 
+                        : firstMsg.to_display_name;
+                }
+                
+                // If no display name from messages, try cache or active users list
+                if (!otherUserDisplayName) {
+                    if (this.displayNameCache) {
+                        otherUserDisplayName = this.displayNameCache.get(username);
+                    }
+                    if (!otherUserDisplayName && this.activeUsersList) {
+                        const activeUser = this.activeUsersList.find(u => u.username === username);
+                        if (activeUser?.display_name) {
+                            otherUserDisplayName = activeUser.display_name;
+                        }
+                    }
+                }
+                
+                
+                    
+                if (otherUserDisplayName) {
+                    // Update the conversation with the display name
+                    const conv = this.conversations.get(username);
+                    if (conv) {
+                        conv.displayName = otherUserDisplayName;
+                        this.conversations.set(username, conv);
+                    } else {
+                        this.conversations.set(username, {
+                            displayName: otherUserDisplayName,
+                            lastMessage: '',
+                            unreadCount: 0,
+                            timestamp: Date.now()
+                        });
+                    }
+                    
+                    // Update UI with display name
+                    if (this.privateChatWith) {
+                        this.privateChatWith.textContent = otherUserDisplayName;
+                    }
+                    if (this.messageInput) {
+                        this.messageInput.placeholder = `Send private message to ${otherUserDisplayName}...`;
+                    }
+                    
+                    // Re-render conversations panel to show updated display name
+                    this.renderConversations();
+                } else {
+                    
+                }
+                
                 this.renderPrivateMessages();
             }
         } catch (error) {
@@ -1748,9 +1911,14 @@ class RadioChatBox {
             const timeString = timestamp.toLocaleTimeString();
             const fullDate = timestamp.toLocaleString();
             
+            // Use display_name if available, otherwise use username
+            const displayName = isFromMe 
+                ? 'You' 
+                : (msg.from_display_name || msg.from_username);
+            
             let content = `
                 <div class="message-header">
-                    <strong class="message-username">${this.escapeHtml(isFromMe ? 'You' : msg.from_username)}</strong>
+                    <strong class="message-username">${this.escapeHtml(displayName)}</strong>
                     <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
                 </div>
             `;
@@ -1822,6 +1990,21 @@ class RadioChatBox {
         }
 
         this.scrollToBottom();
+    }
+
+    async reloadHistory() {
+        // Fetch fresh history from server
+        try {
+            const response = await fetch(`${this.apiUrl}/api/history.php`);
+            const data = await response.json();
+            
+            if (data.success && data.messages) {
+                
+                this.loadHistory(data.messages);
+            }
+        } catch (error) {
+            console.error('Failed to reload history:', error);
+        }
     }
 
     handleMessage(messageData) {
@@ -1920,11 +2103,20 @@ class RadioChatBox {
     }
 
     addMessageToUI(messageData, animate = true) {
+        // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
+        const msgId = messageData.id || messageData.message_id;
+
+        // Deduplicate: if a message with the same id is already in the container, skip
+        if (msgId && this.messagesContainer && this.messagesContainer.querySelector(`.message[data-message-id="${msgId}"]`)) {
+            if (animate) {
+                this.scrollToBottom();
+            }
+            return;
+        }
+
         const messageDiv = document.createElement('div');
         const isOwnMessage = messageData.username === this.username;
         messageDiv.className = `message ${isOwnMessage ? 'own-message' : ''}`;
-        // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
-        const msgId = messageData.id || messageData.message_id;
         messageDiv.dataset.messageId = msgId;
         
         // Track the highest message ID we've seen
@@ -2000,6 +2192,7 @@ class RadioChatBox {
         // Build reply quote HTML if this is a reply
         let replyQuoteHTML = '';
         if (messageData.reply_data && messageData.reply_data.username) {
+            const replyDisplayName = messageData.reply_data.display_name || messageData.reply_data.username;
             const truncatedMessage = messageData.reply_data.message.length > 50 
                 ? messageData.reply_data.message.substring(0, 50) + '...'
                 : messageData.reply_data.message;
@@ -2007,16 +2200,18 @@ class RadioChatBox {
                 <div class="reply-quote">
                     <div class="reply-quote-bar"></div>
                     <div class="reply-quote-content">
-                        <span class="reply-quote-username">${this.escapeHtml(messageData.reply_data.username)}</span>
+                        <span class="reply-quote-username">${this.escapeHtml(replyDisplayName)}</span>
                         <span class="reply-quote-message">${this.escapeHtml(truncatedMessage)}</span>
                     </div>
                 </div>
             `;
         }
+        
+        const displayName = messageData.display_name || messageData.username;
 
         messageDiv.innerHTML = `
             <div class="message-header">
-                <span class="message-username">${this.escapeHtml(messageData.username)}</span>
+                <span class="message-username">${this.escapeHtml(displayName)}</span>
                 <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
             </div>
             ${replyQuoteHTML}
@@ -2531,6 +2726,9 @@ class RadioChatBox {
     handlePrivateMessage(messageData) {
         const isFromMe = messageData.from_username === this.username;
         const otherUser = isFromMe ? messageData.to_username : messageData.from_username;
+        const otherUserDisplayName = isFromMe ? messageData.to_display_name : messageData.from_display_name;
+        
+        
         
         // Track analytics for received messages
         if (!isFromMe && window.analytics) {
@@ -2539,7 +2737,7 @@ class RadioChatBox {
         
         // Update conversations list
         const displayText = messageData.message || (messageData.attachment ? '[Photo]' : '');
-        this.updateConversation(otherUser, displayText, isFromMe);
+        this.updateConversation(otherUser, displayText, isFromMe, otherUserDisplayName);
 
         // Show tab notification if not from self
         if (!isFromMe) {
@@ -2582,7 +2780,9 @@ class RadioChatBox {
             // Add to private chat messages and re-render
             this.privateChat.messages.push({
                 from_username: messageData.from_username,
+                from_display_name: messageData.from_display_name,
                 to_username: messageData.to_username,
+                to_display_name: messageData.to_display_name,
                 message: messageData.message || '',
                 attachment: messageData.attachment || null,
                 created_at: new Date(messageData.timestamp * 1000).toISOString()
@@ -2600,10 +2800,14 @@ class RadioChatBox {
                 minute: '2-digit'
             });
             
+            // Prefer display names where available
+            const fromLabel = isFromMe ? 'You' : this.escapeHtml(otherUserDisplayName || messageData.from_username);
+            const toLabel = isFromMe ? this.escapeHtml(otherUserDisplayName || otherUser) : 'you';
+
             let content = `
                 <div class="message-header">
-                    <span class="message-username">${isFromMe ? 'You' : this.escapeHtml(messageData.from_username)}</span>
-                    <span class="private-indicator">🔒 Private to ${isFromMe ? this.escapeHtml(otherUser) : 'you'}</span>
+                    <span class="message-username">${fromLabel}</span>
+                    <span class="private-indicator">🔒 Private to ${toLabel}</span>
                     <span class="message-time">${timeString}</span>
                 </div>
             `;
@@ -2672,7 +2876,10 @@ class RadioChatBox {
             }
             
             // Update conversation with sent message
-            this.updateConversation(toUsername, message || '[Photo]', true);
+            // Get existing display name from conversation
+            const conv = this.conversations.get(toUsername);
+            const displayName = conv?.displayName || toUsername;
+            this.updateConversation(toUsername, message || '[Photo]', true, displayName);
             
             return true;
         } catch (error) {
@@ -2824,9 +3031,29 @@ class RadioChatBox {
                 data.messages.forEach(msg => {
                     const otherUser = msg.from_username === this.username ? msg.to_username : msg.from_username;
                     const existing = conversationMap.get(otherUser);
+
+                    // Resolve display name for the conversation partner from message, cache, or active users
+                    let displayName = null;
+                    if (otherUser === msg.from_username && msg.from_display_name) {
+                        displayName = msg.from_display_name;
+                    } else if (otherUser === msg.to_username && msg.to_display_name) {
+                        displayName = msg.to_display_name;
+                    }
+                    // Fallback to cached display names
+                    if (!displayName && this.displayNameCache) {
+                        displayName = this.displayNameCache.get(otherUser) || null;
+                    }
+                    // Fallback to active users list
+                    if (!displayName && Array.isArray(this.activeUsersList)) {
+                        const au = this.activeUsersList.find(u => u.username === otherUser);
+                        if (au && au.display_name) {
+                            displayName = au.display_name;
+                        }
+                    }
                     
                     if (!existing || new Date(msg.created_at) > new Date(existing.timestamp)) {
                         conversationMap.set(otherUser, {
+                            displayName: displayName || existing?.displayName || null,
                             lastMessage: msg.message,
                             timestamp: new Date(msg.created_at).getTime(),
                             unreadCount: 0 // We'll keep the unread count from real-time updates
@@ -2839,6 +3066,8 @@ class RadioChatBox {
                     const existing = this.conversations.get(username);
                     if (existing) {
                         conv.unreadCount = existing.unreadCount;
+                        // Preserve existing displayName if we don't have one yet
+                        conv.displayName = conv.displayName || existing.displayName || null;
                     }
                     this.conversations.set(username, conv);
                 });
@@ -2878,10 +3107,11 @@ class RadioChatBox {
         
         this.conversationsList.innerHTML = conversationsArray.map(([username, conv]) => {
             const hasUnread = conv.unreadCount > 0;
+            const displayName = conv.displayName || username;
             return `
                 <div class="conversation-item ${hasUnread ? 'unread' : ''}" onclick="window.chatBox.openConversation('${this.escapeHtml(username).replace(/'/g, '&#39;')}')">
                     <div>
-                        <div class="conversation-user">${this.escapeHtml(username)}</div>
+                        <div class="conversation-user">${this.escapeHtml(displayName)}</div>
                         <div class="conversation-preview">${this.escapeHtml(conv.lastMessage)}</div>
                     </div>
                     ${hasUnread ? `<span class="conversation-badge">${conv.unreadCount}</span>` : ''}
@@ -2903,16 +3133,33 @@ class RadioChatBox {
         this.startPrivateChat(username);
     }
     
-    updateConversation(username, message, isFromMe) {
+    updateConversation(username, message, isFromMe, displayName = null) {
         const existing = this.conversations.get(username);
         
+        // If no display name provided, try to get it from multiple sources
+        if (!displayName && !existing?.displayName) {
+            // Try active users list first
+            const activeUser = this.activeUsersList?.find(u => u.username === username);
+            if (activeUser?.display_name) {
+                displayName = activeUser.display_name;
+            }
+            // Fallback to cached display names
+            if (!displayName && this.displayNameCache) {
+                displayName = this.displayNameCache.get(username);
+            }
+        }
+        
+        
+        
         this.conversations.set(username, {
+            displayName: displayName || existing?.displayName || username,
             lastMessage: message,
             unreadCount: (existing?.unreadCount || 0) + (isFromMe ? 0 : 1),
             timestamp: Date.now()
         });
         
         this.updateUnreadBadge();
+        this.renderConversations();
     }
     
     markConversationAsRead(username) {
@@ -2921,6 +3168,52 @@ class RadioChatBox {
             conv.unreadCount = 0;
             this.conversations.set(username, conv);
             this.updateUnreadBadge();
+        }
+    }
+    
+    updateConversationDisplayNames(activeUsers) {
+        // Update display names for existing conversations based on active users list
+        if (!activeUsers || !Array.isArray(activeUsers)) return;
+        
+        
+        
+        // Create a map of username -> display_name from active users
+        const displayNameMap = new Map();
+        activeUsers.forEach(user => {
+            if (user.display_name) {
+                displayNameMap.set(user.username, user.display_name);
+            }
+        });
+        
+        
+        
+        // Store the display name map for future use when conversations are created
+        if (!this.displayNameCache) {
+            this.displayNameCache = new Map();
+        }
+        displayNameMap.forEach((displayName, username) => {
+            this.displayNameCache.set(username, displayName);
+        });
+        
+        // Update conversations that have matching users
+        let updated = false;
+        this.conversations.forEach((conv, username) => {
+            const displayName = displayNameMap.get(username);
+            // Update if we have a display name from activeUsers and it's different from current
+            // Also update if current displayName equals username (fallback was used)
+            if (displayName && (conv.displayName !== displayName || conv.displayName === username)) {
+                
+                conv.displayName = displayName;
+                this.conversations.set(username, conv);
+                updated = true;
+            }
+        });
+        
+        
+        
+        // Re-render conversations panel if any were updated
+        if (updated) {
+            this.renderConversations();
         }
     }
     

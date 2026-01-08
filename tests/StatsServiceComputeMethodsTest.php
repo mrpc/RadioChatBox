@@ -62,6 +62,13 @@ class StatsServiceComputeMethodsTest extends TestCase
             self::$pdo->exec("DELETE FROM stats_hourly WHERE stat_hour > NOW() - INTERVAL '25 hours'");
             self::$pdo->exec("DELETE FROM stats_daily WHERE stat_date >= CURRENT_DATE - INTERVAL '1 day'");
             
+            // Delete ALL messages from today to ensure clean state for real-time count testing
+            // This is necessary because getSummary() now includes real-time message counts
+            self::$pdo->exec("DELETE FROM messages WHERE created_at >= CURRENT_DATE");
+            
+            // Delete sessions from today for clean user count testing
+            self::$pdo->exec("DELETE FROM sessions WHERE last_heartbeat >= CURRENT_DATE");
+            
             // Clear Redis cache
             self::$redis->flushAll();
         } catch (\Exception $e) {

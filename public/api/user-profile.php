@@ -32,21 +32,35 @@ if (empty($username)) {
 try {
     $db = Database::getPDO();
     
-    // Get user profile
+    // First check if this is a registered user (authenticated)
+    $userStmt = $db->prepare("SELECT id, username, display_name FROM users WHERE username = :username");
+    $userStmt->execute(['username' => $username]);
+    $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Get user profile data if exists
     $stmt = $db->prepare("
-        SELECT age, sex, location 
-        FROM user_profiles 
+        SELECT age, sex, location
+        FROM user_profiles
         WHERE username = :username
+        LIMIT 1
     ");
     $stmt->execute(['username' => $username]);
     $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    // If no profile exists, create empty profile but include display_name from users table
     if (!$profile) {
-        echo json_encode([
-            'success' => true,
-            'profile' => null
-        ]);
-        exit;
+        $profile = [
+            'age' => null,
+            'sex' => null,
+            'location' => null
+        ];
+    }
+    
+    // Add display_name from users table if user is authenticated
+    if ($user) {
+        $profile['display_name'] = $user['display_name'];
+    } else {
+        $profile['display_name'] = null;
     }
     
     echo json_encode([
