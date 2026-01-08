@@ -1249,6 +1249,10 @@
                             </div>
                         </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                            <button class="btn btn-info" onclick="clearMessagesCache()" style="padding: 16px;">
+                                <span>💬</span>
+                                <span>Clear Messages Cache</span>
+                            </button>
                             <button class="btn btn-warning" onclick="flushRedisCache()" style="padding: 16px;">
                                 <span>🔄</span>
                                 <span>Flush Redis Cache</span>
@@ -3204,6 +3208,32 @@
             } catch (error) {
                 console.error('Failed to clear chat:', error);
                 alert('Failed to clear chat');
+            }
+        }
+
+        async function clearMessagesCache() {
+            if (!confirm('Clear message cache?\n\nThis will:\n- Clear cached message history (will reload from database)\n- NOT affect user sessions or logins\n- NOT affect rate limits\n\nUsers will stay connected.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/clear-messages-cache.php', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Message cache cleared!\n\nCleared keys: ${data.keys_cleared.join(', ') || 'none'}`);
+                    // Reload messages since cache is now empty
+                    loadMessages(1);
+                } else {
+                    alert('Failed to clear message cache: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to clear message cache:', error);
+                alert('Failed to clear message cache');
             }
         }
 
