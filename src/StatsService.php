@@ -647,6 +647,31 @@ class StatsService
             );
         }
 
+        // Get real-time message counts from messages table for today
+        // This ensures new messages show up immediately without waiting for hourly cron
+        if ($todayStats) {
+            $today = date('Y-m-d');
+            $todayStart = $today . ' 00:00:00';
+            $todayEnd = $today . ' 23:59:59';
+            
+            // Count total public messages today
+            $stmt = $this->pdo->prepare("
+                SELECT COUNT(*) as count 
+                FROM messages 
+                WHERE created_at >= :today_start 
+                AND created_at <= :today_end 
+                AND is_deleted = FALSE
+            ");
+            $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
+            $realTimeMessages = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Use real-time count if higher than aggregated stats
+            $todayStats['total_messages'] = max(
+                $todayStats['total_messages'] ?? 0,
+                (int)($realTimeMessages['count'] ?? 0)
+            );
+        }
+
         $summary = [
             'today' => $todayStats,
             'this_week' => $weekStats,
