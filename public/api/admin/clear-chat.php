@@ -30,7 +30,8 @@ try {
         $stmt->execute();
         $deletedCount = $stmt->rowCount();
         
-        // Clear Redis cache to remove messages from history immediately
+        // Clear Redis message cache to remove all messages immediately
+        // Cache will be repopulated from database (with is_deleted filter) on next request
         $prefix = Database::getRedisPrefix();
         $redis->del($prefix . 'chat:messages');
         

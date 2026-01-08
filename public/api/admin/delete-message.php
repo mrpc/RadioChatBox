@@ -53,16 +53,10 @@ try {
     $redis = Database::getRedis();
     $prefix = Database::getRedisPrefix();
     
-    // Remove from Redis cache - need to find and remove the JSON string containing this message_id
-    $messages = $redis->lRange($prefix . 'chat:messages', 0, -1);
-    foreach ($messages as $msgJson) {
-        $msg = json_decode($msgJson, true);
-        if (isset($msg['id']) && $msg['id'] === $messageId) {
-            // Remove from Redis list
-            $redis->lRem($prefix . 'chat:messages', $msgJson, 1);
-            break;
-        }
-    }
+    // Clear entire message cache instead of trying to find exact JSON match
+    // This prevents stale data from JSON encoding mismatches (whitespace, property order)
+    // The cache will be repopulated from database on next getHistory() call
+    $redis->del($prefix . 'chat:messages');
     
     $deleteEvent = [
         'type' => 'message_deleted',
