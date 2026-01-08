@@ -2399,6 +2399,10 @@ body.metal-theme #message-input::placeholder {
     color: rgba(255, 255, 255, 0.4);
 }
 
+body.metal-theme #gif-search-input {
+    color: #000000;
+}
+
 body.metal-theme #message-input:focus {
     border-color: #8B0000;
     box-shadow: 0 0 5px rgba(139, 0, 0, 0.5);
