@@ -6297,6 +6297,12 @@
                                 <strong>${today.photo_uploads || 0}</strong>
                             </div>
                             ` : ''}
+                            ${radioEnabled ? `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                <span style="color: #6b7280;">Avg Radio Listeners:</span>
+                                <strong>${today.radio_listeners_avg || 0}</strong>
+                            </div>
+                            ` : ''}
                             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
                                 <span style="color: #6b7280;">New Registrations:</span>
                                 <strong>${today.new_registrations || 0}</strong>
