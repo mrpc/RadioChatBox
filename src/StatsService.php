@@ -670,6 +670,28 @@ class StatsService
                 $todayStats['total_messages'] ?? 0,
                 (int)($realTimeMessages['count'] ?? 0)
             );
+            
+            // Count registered and guest users active today from sessions
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    COUNT(DISTINCT CASE WHEN user_id IS NOT NULL THEN username END) as registered_users,
+                    COUNT(DISTINCT CASE WHEN user_id IS NULL THEN username END) as guest_users
+                FROM sessions 
+                WHERE last_heartbeat >= :today_start 
+                AND last_heartbeat <= :today_end
+            ");
+            $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
+            $realTimeUsers = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Use real-time counts if higher than aggregated stats
+            $todayStats['registered_users'] = max(
+                $todayStats['registered_users'] ?? 0,
+                (int)($realTimeUsers['registered_users'] ?? 0)
+            );
+            $todayStats['guest_users'] = max(
+                $todayStats['guest_users'] ?? 0,
+                (int)($realTimeUsers['guest_users'] ?? 0)
+            );
         }
 
         $summary = [
