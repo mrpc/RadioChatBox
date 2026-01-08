@@ -554,7 +554,7 @@ class RadioChatBox {
                 
                 // Check if user is admin (also check stored role if userRole not set yet)
                 const userRole = this.userRole || this.getStorage('userRole');
-                if (userRole && ['root', 'administrator', 'moderator'].includes(userRole)) {
+                if (userRole && ['root'].includes(userRole)) {
                     if (data.nowPlaying.listeners !== null && data.nowPlaying.listeners !== undefined) {
                         el.title = `${data.nowPlaying.listeners} listener${data.nowPlaying.listeners === 1 ? '' : 's'}`;
                     }
