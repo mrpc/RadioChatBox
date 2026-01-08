@@ -793,20 +793,24 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION aggregate_daily_stats(target_date DATE)
 RETURNS void AS $$
 DECLARE
+    v_active_users INTEGER;
+    v_guest_users INTEGER;
+    v_registered_users INTEGER;
+    v_total_messages INTEGER;
+    v_private_messages INTEGER;
+    v_photo_uploads INTEGER;
+    v_new_registrations INTEGER;
+    v_radio_avg INTEGER;
+    v_radio_peak INTEGER;
+    v_peak_concurrent INTEGER;
     v_day_start TIMESTAMP;
     v_day_end TIMESTAMP;
 BEGIN
     v_day_start := target_date::TIMESTAMP;
     v_day_end := v_day_start + INTERVAL '1 day';
     
-    INSERT INTO stats_daily (
-        stat_date, active_users, guest_users, registered_users,
-        total_messages, private_messages, photo_uploads,
-        new_registrations, radio_listeners_avg, radio_listeners_peak,
-        peak_concurrent_users
-    )
+    -- Sum from hourly stats (more efficient than raw data)
     SELECT
-        target_date,
         MAX(active_users),
         MAX(guest_users),
         MAX(registered_users),
@@ -814,11 +818,35 @@ BEGIN
         SUM(private_messages),
         SUM(photo_uploads),
         SUM(new_registrations),
-        AVG(radio_listeners)::INTEGER,
-        MAX(radio_listeners),
+        AVG(radio_listeners_avg)::INTEGER,
+        MAX(radio_listeners_peak),
         MAX(peak_concurrent_users)
+    INTO
+        v_active_users, v_guest_users, v_registered_users,
+        v_total_messages, v_private_messages, v_photo_uploads,
+        v_new_registrations, v_radio_avg, v_radio_peak, v_peak_concurrent
     FROM stats_hourly
-    WHERE stat_hour >= v_day_start AND stat_hour < v_day_end
+    WHERE stat_hour >= v_day_start AND stat_hour < v_day_end;
+    
+    INSERT INTO stats_daily (
+        stat_date, active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners_avg, radio_listeners_peak,
+        peak_concurrent_users
+    )
+    VALUES (
+        target_date,
+        COALESCE(v_active_users, 0),
+        COALESCE(v_guest_users, 0),
+        COALESCE(v_registered_users, 0),
+        COALESCE(v_total_messages, 0),
+        COALESCE(v_private_messages, 0),
+        COALESCE(v_photo_uploads, 0),
+        COALESCE(v_new_registrations, 0),
+        COALESCE(v_radio_avg, 0),
+        COALESCE(v_radio_peak, 0),
+        COALESCE(v_peak_concurrent, 0)
+    )
     ON CONFLICT (stat_date) DO UPDATE SET
         active_users = EXCLUDED.active_users,
         guest_users = EXCLUDED.guest_users,
