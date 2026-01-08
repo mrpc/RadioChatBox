@@ -1331,6 +1331,7 @@ class RadioChatBox {
         this.privateChatWith = document.getElementById('private-chat-with');
         this.backToPublicBtn = document.getElementById('back-to-public');
         this.conversationsToggle = document.getElementById('conversations-toggle');
+        this.adminPanelBtn = document.getElementById('admin-panel-btn');
         this.conversationsPanel = document.getElementById('conversations-panel');
         this.closeConversationsBtn = document.getElementById('close-conversations');
         this.conversationsList = document.getElementById('conversations-list');
@@ -1387,6 +1388,18 @@ class RadioChatBox {
         
         if (this.closeConversationsBtn) {
             this.closeConversationsBtn.addEventListener('click', () => this.closeConversationsPanel());
+        }
+        
+        // Admin panel button
+        if (this.adminPanelBtn) {
+            this.adminPanelBtn.addEventListener('click', () => {
+                window.open('/admin/index.html', '_blank');
+            });
+        }
+        
+        // Show admin panel button for root users
+        if (this.userRole === 'root' && this.adminPanelBtn) {
+            this.adminPanelBtn.style.display = '';
         }
 
         // Sound toggle button

@@ -205,6 +205,12 @@
                             <path d="M12 1v6m0 6v6m5.2-14.2l-4.2 4.2m0 6l-4.2 4.2M23 12h-6m-6 0H1m14.2 5.2l-4.2-4.2m0-6l-4.2-4.2" />
                         </svg>
                     </button>
+                    <button id="admin-panel-btn" class="icon-button" title="Admin Panel" style="display: none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+                        </svg>
+                    </button>
                 </div>
                 <div id="status">
                     <span id="status-indicator" class="status-connecting"></span>
