@@ -612,10 +612,15 @@ class StatsService
         $cacheKey = 'stats:summary';
         $cached = $this->redis->get($cacheKey);
         
-        // Return cached value if available - cache is only valid for 5 minutes anyway
-        // Detailed validation happens server-side in getSummary if needed
+        // Check cache for historical data (this week, month, year)
+        // but ALWAYS recompute today's stats for real-time accuracy
+        $useFullCache = false;
         if ($cached !== false) {
-            return json_decode($cached, true);
+            $cachedData = json_decode($cached, true);
+            // Use cache for everything except today (which gets real-time recompute)
+            if (isset($cachedData['this_week']) && isset($cachedData['this_month'])) {
+                $useFullCache = true;
+            }
         }
 
         $today = date('Y-m-d');
@@ -654,22 +659,30 @@ class StatsService
             $todayStart = $today . ' 00:00:00';
             $todayEnd = $today . ' 23:59:59';
             
-            // Count total public messages today
-            $stmt = $this->pdo->prepare("
-                SELECT COUNT(*) as count 
-                FROM messages 
-                WHERE created_at >= :today_start 
-                AND created_at <= :today_end 
-                AND is_deleted = FALSE
-            ");
-            $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
-            $realTimeMessages = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Use real-time count if higher than aggregated stats
-            $todayStats['total_messages'] = max(
-                $todayStats['total_messages'] ?? 0,
-                (int)($realTimeMessages['count'] ?? 0)
-            );
+            try {
+                // Count total public messages today
+                $stmt = $this->pdo->prepare("
+                    SELECT COUNT(*) as count 
+                    FROM messages 
+                    WHERE created_at >= :today_start 
+                    AND created_at <= :today_end 
+                    AND is_deleted = FALSE
+                ");
+                $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
+                $realTimeMessages = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($realTimeMessages && isset($realTimeMessages['count'])) {
+                    error_log("StatsService: Real-time message count: {$realTimeMessages['count']}, Aggregated: {$todayStats['total_messages']}");
+                    // Use real-time count if higher than aggregated stats
+                    $todayStats['total_messages'] = max(
+                        $todayStats['total_messages'] ?? 0,
+                        (int)($realTimeMessages['count'] ?? 0)
+                    );
+                    error_log("StatsService: Final total_messages: {$todayStats['total_messages']}");
+                }
+            } catch (\Exception $e) {
+                error_log("StatsService: Error querying real-time messages: " . $e->getMessage());
+            }
             
             // Count registered and guest users active today from sessions
             $stmt = $this->pdo->prepare("
@@ -702,6 +715,15 @@ class StatsService
             'latest_snapshot' => $latestSnapshot,
             'generated_at' => date('Y-m-d H:i:s')
         ];
+
+        // If we have a full cache, use its historical data but keep our fresh today stats
+        if ($useFullCache && $cached !== false) {
+            $cachedData = json_decode($cached, true);
+            // Keep our freshly computed today stats, but use cached historical data
+            $summary['this_week'] = $cachedData['this_week'] ?? $weekStats;
+            $summary['this_month'] = $cachedData['this_month'] ?? $monthStats;
+            $summary['this_year'] = $cachedData['this_year'] ?? $yearStats;
+        }
 
         // Cache for 5 minutes
         $this->redis->setex($cacheKey, 300, json_encode($summary));
