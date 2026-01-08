@@ -1818,13 +1818,6 @@
                 const tab = document.querySelector('.tab-content.active');
                 if (tab && tab.id === 'nickname-bans-tab') loadKickedUsers();
             }, 60000);
-
-            // Load on tab switch
-            const origSwitchTab = switchTab;
-            switchTab = function(tabName, updateHistory = true) {
-                origSwitchTab(tabName, updateHistory);
-                if (tabName === 'nickname-bans') loadKickedUsers();
-            }
             </script>
             </div>
 
@@ -2846,6 +2839,15 @@
             closeMobileSidebar();
         }
         
+        // Wrap switchTab to handle nickname-bans tab refresh
+        (function() {
+            const origSwitchTab = switchTab;
+            switchTab = function(tabName, updateHistory = true) {
+                origSwitchTab(tabName, updateHistory);
+                if (tabName === 'nickname-bans') loadKickedUsers();
+            };
+        })();
+        
         // Handle browser back/forward navigation
         window.addEventListener('popstate', function(event) {
             if (event.state && event.state.tab) {
@@ -2919,83 +2921,119 @@
                 const kpiListenersNowEl = document.getElementById('kpi-listeners-now');
                 
                 // Load active users count (real users only)
-                const usersResponse = await fetch('/api/admin/active-users.php', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                const usersData = await usersResponse.json();
-                if (usersData.success && kpiActiveUsersEl) {
-                    // Count only real users (exclude fake users)
-                    const realUsersCount = usersData.users.filter(u => !u.is_fake).length;
-                    kpiActiveUsersEl.textContent = realUsersCount;
+                try {
+                    const usersResponse = await fetch('/api/admin/active-users.php', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    if (usersResponse.ok) {
+                        const usersData = await usersResponse.json();
+                        if (usersData.success && kpiActiveUsersEl) {
+                            // Count only real users (exclude fake users)
+                            const realUsersCount = usersData.users.filter(u => !u.is_fake).length;
+                            kpiActiveUsersEl.textContent = realUsersCount;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load active users:', e);
                 }
                 
                 // Load today's stats from summary
-                const statsResponse = await fetch('/api/admin/stats.php?granularity=summary', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                const statsData = await statsResponse.json();
-                if (statsData.data && statsData.data.today && kpiMessagesTodayEl) {
-                    // Use aggregated today's messages from stats
-                    kpiMessagesTodayEl.textContent = statsData.data.today.total_messages || 0;
+                try {
+                    const statsResponse = await fetch('/api/admin/stats.php?granularity=summary', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    if (statsResponse.ok) {
+                        const statsData = await statsResponse.json();
+                        if (statsData.data && statsData.data.today && kpiMessagesTodayEl) {
+                            // Use aggregated today's messages from stats
+                            kpiMessagesTodayEl.textContent = statsData.data.today.total_messages || 0;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load stats:', e);
                 }
                 
                 // Load messages for recent messages dashboard
-                const messagesResponse = await fetch('/api/admin/messages.php?limit=100', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                const messagesData = await messagesResponse.json();
-                if (messagesData.success) {
-                    const includePrivate = messagesData.include_private || false;
-                    const chatMode = messagesData.chat_mode || 'both';
-                    loadDashboardRecentMessages(messagesData.messages.slice(0, 100), includePrivate, chatMode);
-                    
-                    // Recent Messages section is always visible regardless of chat mode
+                try {
+                    const messagesResponse = await fetch('/api/admin/messages.php?limit=100', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    if (messagesResponse.ok) {
+                        const messagesData = await messagesResponse.json();
+                        if (messagesData.success) {
+                            const includePrivate = messagesData.include_private || false;
+                            const chatMode = messagesData.chat_mode || 'both';
+                            loadDashboardRecentMessages(messagesData.messages.slice(0, 100), includePrivate, chatMode);
+                            
+                            // Recent Messages section is always visible regardless of chat mode
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load messages:', e);
                 }
                 
                 // Load fake users
-                const fakeUsersResponse = await fetch('/api/admin/fake-users.php', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                const fakeUsersData = await fakeUsersResponse.json();
-                if (fakeUsersData.success && kpiFakeUsersEl) {
-                    const activeFake = fakeUsersData.users.filter(u => u.is_active).length;
-                    kpiFakeUsersEl.textContent = activeFake;
+                try {
+                    const fakeUsersResponse = await fetch('/api/admin/fake-users.php', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    if (fakeUsersResponse.ok) {
+                        const fakeUsersData = await fakeUsersResponse.json();
+                        if (fakeUsersData.success && kpiFakeUsersEl) {
+                            const activeFake = fakeUsersData.users.filter(u => u.is_active).length;
+                            kpiFakeUsersEl.textContent = activeFake;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load fake users:', e);
                 }
                 
                 // Load IP bans
-                const bansResponse = await fetch('/api/admin/ban-ip.php', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                const bansData = await bansResponse.json();
-                if (bansData.success && kpiIpBansEl) {
-                    kpiIpBansEl.textContent = bansData.banned_ips.length;
+                try {
+                    const bansResponse = await fetch('/api/admin/ban-ip.php', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    if (bansResponse.ok) {
+                        const bansData = await bansResponse.json();
+                        if (bansData.success && kpiIpBansEl) {
+                            kpiIpBansEl.textContent = bansData.banned_ips.length;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load IP bans:', e);
                 }
                 
                 // Load radio status (Shoutcast listeners)
-                const radioResponse = await fetch('/api/now-playing.php');
-                const radioData = await radioResponse.json();
-                const kpiListenersCard = document.getElementById('kpi-listeners-card');
-                
-                if (kpiListenersEl && radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
-                    // Radio is enabled and active - show the widget
-                    if (kpiListenersCard) {
-                        kpiListenersCard.style.display = '';
-                    }
-                    
-                    const listeners = radioData.nowPlaying.listeners ?? '-';
-                    kpiListenersEl.textContent = listeners;
-                    
-                    // Show what's playing
-                    let nowPlayingText = 'Now Playing';
-                    if (radioData.nowPlaying.display) {
-                        nowPlayingText = radioData.nowPlaying.display.substring(0, 50);
-                        if (radioData.nowPlaying.display.length > 50) {
-                            nowPlayingText += '...';
+                try {
+                    const radioResponse = await fetch('/api/now-playing.php');
+                    if (radioResponse.ok) {
+                        const radioData = await radioResponse.json();
+                        const kpiListenersCard = document.getElementById('kpi-listeners-card');
+                        
+                        if (kpiListenersEl && radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
+                            // Radio is enabled and active - show the widget
+                            if (kpiListenersCard) {
+                                kpiListenersCard.style.display = '';
+                            }
+                            
+                            const listeners = radioData.nowPlaying.listeners ?? '-';
+                            kpiListenersEl.textContent = listeners;
+                            
+                            // Show what's playing
+                            let nowPlayingText = 'Now Playing';
+                            if (radioData.nowPlaying.display) {
+                                nowPlayingText = radioData.nowPlaying.display.substring(0, 50);
+                                if (radioData.nowPlaying.display.length > 50) {
+                                    nowPlayingText += '...';
+                                }
+                            }
+                            if (kpiListenersNowEl) {
+                                kpiListenersNowEl.textContent = nowPlayingText;
+                            }
                         }
                     }
-                    if (kpiListenersNowEl) {
-                        kpiListenersNowEl.textContent = nowPlayingText;
-                    }
+                } catch (e) {
+                    console.error('Failed to load radio status:', e);
                 }
             } catch (error) {
                 console.error('Failed to load dashboard KPIs:', error);
