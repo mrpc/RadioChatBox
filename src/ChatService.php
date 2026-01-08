@@ -87,7 +87,9 @@ class ChatService
         $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($messageData));
         $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
         
-        // No TTL needed - list is already limited by lTrim and messages are persisted in PostgreSQL
+        // Set TTL to prevent stale cache (24 hours)
+        // This ensures Redis cache doesn't become permanently out of sync with PostgreSQL
+        $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), 86400);
 
         // Publish to subscribers
         $this->redis->publish($this->prefixKey(self::PUBSUB_CHANNEL), json_encode($messageData));
@@ -188,11 +190,17 @@ class ChatService
             // DB returns DESC (newest first), we need to push them so newest is at position 0
             // Use lPush which adds to the head, so push in reverse order (oldest first)
             if (!empty($messages)) {
+                // Clear existing cache first to prevent duplicates or stale data
+                $this->redis->del($this->prefixKey(self::MESSAGES_KEY));
+                
                 // Reverse so we push oldest first, making newest end up at position 0
                 foreach (array_reverse($messages) as $msg) {
                     $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($msg));
                 }
                 $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
+                
+                // Set TTL to prevent stale cache (24 hours)
+                $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), 86400);
             }
             
             // Return in chronological order (oldest first) to match getHistory() behavior
