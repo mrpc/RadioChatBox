@@ -4961,7 +4961,10 @@
             const statisticsNav = document.querySelector('.nav-item[data-tab="statistics"]');
             const fakeUsersKpi = document.querySelector('.kpi-card:has(#kpi-fake-users)');
             const listenersKpi = document.getElementById('kpi-listeners-card');
-            const settingsDashboardBtn = document.querySelector('button.btn.btn-success[onclick*="switchTab(''settings'')"]') || document.querySelector('button[onclick*="settings"]');
+            const settingsDashboardBtn = 
+                document.querySelector(`button.btn.btn-success[onclick*="switchTab('settings')"]`) ||
+                document.querySelector(`button[onclick*="switchTab('settings')"]`) ||
+                document.querySelector('button[onclick*="settings"]');
             const manageFakeUsersBtn = document.querySelector('button[onclick*="fake-users"]');
             const minimumUsersGroup = document.getElementById('setting-minimum-users-group');
 
