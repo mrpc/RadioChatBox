@@ -151,14 +151,40 @@ class AdminAuth
                 return null;
             }
             
-            list($username) = explode(':', $credentials, 2);
+            list($identifier) = explode(':', $credentials, 2);
             
+            // The identifier could be either username or email
+            // First try to look up directly in case it's a username with active session
             $redis = Database::getRedis();
             $prefix = Database::getRedisPrefix();
             
-            $sessionData = $redis->get($prefix . "admin_session:{$username}");
+            $sessionData = $redis->get($prefix . "admin_session:{$identifier}");
             if ($sessionData) {
                 return json_decode($sessionData, true);
+            }
+            
+            // If not found, look up the identifier in database to get the actual username
+            // This handles the case where someone logged in with email instead of username
+            try {
+                $db = Database::getPDO();
+                $stmt = $db->prepare("
+                    SELECT username FROM users
+                    WHERE username = :identifier OR email = :identifier
+                    LIMIT 1
+                ");
+                $stmt->execute(['identifier' => $identifier]);
+                $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($user) {
+                    $actualUsername = $user['username'];
+                    // Try to get session with the actual username
+                    $sessionData = $redis->get($prefix . "admin_session:{$actualUsername}");
+                    if ($sessionData) {
+                        return json_decode($sessionData, true);
+                    }
+                }
+            } catch (\Exception $e) {
+                error_log("AdminAuth::getCurrentUser database lookup error: " . $e->getMessage());
             }
             
             return null;
