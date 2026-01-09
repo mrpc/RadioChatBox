@@ -358,24 +358,27 @@ class ChatService
     private function storeMessageInDB(array $messageData): void
     {
         try {
-            // Look up user_id for authenticated users
+            // Look up user_id and display_name for authenticated users
             $userId = null;
-            $userStmt = $this->pdo->prepare('SELECT id FROM users WHERE username = :username LIMIT 1');
+            $displayName = null;
+            $userStmt = $this->pdo->prepare('SELECT id, display_name FROM users WHERE username = :username LIMIT 1');
             $userStmt->execute(['username' => $messageData['username']]);
             $userRow = $userStmt->fetch(\PDO::FETCH_ASSOC);
             if ($userRow) {
                 $userId = $userRow['id'];
+                $displayName = $userRow['display_name'];
             }
             
             $stmt = $this->pdo->prepare(
-                'INSERT INTO messages (message_id, username, user_id, message, ip_address, created_at, reply_to) 
-                 VALUES (:message_id, :username, :user_id, :message, :ip_address, :created_at, :reply_to)'
+                'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to) 
+                 VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to)'
             );
 
             $result = $stmt->execute([
                 'message_id' => $messageData['id'],
                 'username' => $messageData['username'],
                 'user_id' => $userId,
+                'display_name' => $displayName,
                 'message' => $messageData['message'],
                 'ip_address' => $messageData['ip'],
                 'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),

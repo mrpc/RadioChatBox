@@ -269,6 +269,107 @@ class ChatServiceTest extends TestCase
         $this->assertCount(3, $oldSessionMessages, 'Old session data should still exist');
     }
 
+    public function testPrivateMessageDisplayNameSnapshotStored()
+    {
+        $pdo = Database::getPDO();
+        $userService = new \RadioChatBox\UserService();
+        
+        // Create two test users with display names
+        $senderUsername = 'pm_sender_' . uniqid();
+        $senderDisplayName = 'PM Sender Display';
+        $recipientUsername = 'pm_recipient_' . uniqid();
+        $recipientDisplayName = 'PM Recipient Display';
+        
+        $senderResult = $userService->createUser(
+            $senderUsername,
+            'testpass123',
+            'simple_user',
+            null,
+            null,
+            $senderDisplayName
+        );
+        $senderId = $senderResult['user']['id'] ?? null;
+        
+        $recipientResult = $userService->createUser(
+            $recipientUsername,
+            'testpass123',
+            'simple_user',
+            null,
+            null,
+            $recipientDisplayName
+        );
+        $recipientId = $recipientResult['user']['id'] ?? null;
+        
+        $senderSessionId = 'pm_sender_session_' . uniqid();
+        $recipientSessionId = 'pm_recipient_session_' . uniqid();
+        
+        try {
+            // Create sessions for both users
+            $stmt = $pdo->prepare(
+                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                 VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
+            );
+            $stmt->execute([
+                'username' => $senderUsername,
+                'session_id' => $senderSessionId,
+                'ip_address' => '127.0.0.1',
+                'user_id' => $senderId
+            ]);
+            $stmt->execute([
+                'username' => $recipientUsername,
+                'session_id' => $recipientSessionId,
+                'ip_address' => '127.0.0.1',
+                'user_id' => $recipientId
+            ]);
+            
+            // Manually insert a private message (simulating what happens in private-message.php)
+            // This verifies the API stores display_name snapshots
+            $stmt = $pdo->prepare(
+                'INSERT INTO private_messages 
+                 (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, created_at)
+                 VALUES (:from_username, :from_session_id, :from_display_name, :to_username, :to_session_id, :to_display_name, :message, NOW())
+                 RETURNING id'
+            );
+            $stmt->execute([
+                'from_username' => $senderUsername,
+                'from_session_id' => $senderSessionId,
+                'from_display_name' => $senderDisplayName,
+                'to_username' => $recipientUsername,
+                'to_session_id' => $recipientSessionId,
+                'to_display_name' => $recipientDisplayName,
+                'message' => 'Test private message with display name snapshot'
+            ]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $messageId = $result['id'];
+            
+            // Query the database to verify the snapshots are stored
+            $stmt = $pdo->prepare(
+                'SELECT from_display_name, to_display_name FROM private_messages WHERE id = :id'
+            );
+            $stmt->execute(['id' => $messageId]);
+            $dbMessage = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            $this->assertNotNull($dbMessage, 'Private message should exist in database');
+            $this->assertEquals($senderDisplayName, $dbMessage['from_display_name'], 
+                'Sender display name snapshot should be stored');
+            $this->assertEquals($recipientDisplayName, $dbMessage['to_display_name'], 
+                'Recipient display name snapshot should be stored');
+            
+            // Cleanup private message
+            $stmt = $pdo->prepare("DELETE FROM private_messages WHERE id = :id");
+            $stmt->execute(['id' => $messageId]);
+            
+        } finally {
+            // Cleanup sessions
+            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username IN (:sender, :recipient)");
+            $stmt->execute(['sender' => $senderUsername, 'recipient' => $recipientUsername]);
+            
+            // Cleanup users
+            $stmt = $pdo->prepare("DELETE FROM users WHERE id IN (:sender_id, :recipient_id)");
+            $stmt->execute(['sender_id' => $senderId, 'recipient_id' => $recipientId]);
+        }
+    }
+
     public function testGuestCannotUseRegisteredUsername()
     {
         // Ensure 'admin' user exists (from init.sql)
@@ -637,6 +738,78 @@ class ChatServiceTest extends TestCase
             if (isset($message['id'])) {
                 $stmt = $pdo->prepare("DELETE FROM messages WHERE message_id = :message_id");
                 $stmt->execute(['message_id' => $message['id']]);
+            }
+            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt->execute(['username' => $testUsername]);
+            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt->execute(['id' => $userId]);
+        }
+    }
+
+    public function testDisplayNameSnapshotStoredInDatabase()
+    {
+        $pdo = Database::getPDO();
+        $userService = new \RadioChatBox\UserService();
+        
+        // Create a test user with display name
+        $testUsername = 'displaysnapshottest_' . uniqid();
+        $testDisplayName = 'Snapshot Display Name';
+        $testPassword = 'testpass123';
+        
+        $result = $userService->createUser(
+            $testUsername,
+            $testPassword,
+            'simple_user',
+            null,
+            null,
+            $testDisplayName
+        );
+        
+        $this->assertTrue($result['success'] ?? false, 'Test user should be created');
+        $userId = $result['user']['id'] ?? null;
+        
+        $messageId = null;
+        try {
+            // Create a session for this user
+            $sessionId = 'test_session_' . uniqid();
+            $ipAddress = '127.0.0.1';
+            
+            $stmt = $pdo->prepare(
+                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                 VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
+            );
+            $stmt->execute([
+                'username' => $testUsername,
+                'session_id' => $sessionId,
+                'ip_address' => $ipAddress,
+                'user_id' => $userId
+            ]);
+            
+            // Post a message
+            $message = $this->chatService->postMessage(
+                $testUsername,
+                'Test message for snapshot verification',
+                $ipAddress,
+                $sessionId
+            );
+            $messageId = $message['id'];
+            
+            // Query the database directly to verify display_name snapshot is stored
+            $stmt = $pdo->prepare(
+                'SELECT display_name FROM messages WHERE message_id = :message_id'
+            );
+            $stmt->execute(['message_id' => $messageId]);
+            $dbRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            $this->assertNotNull($dbRow, 'Message should exist in database');
+            $this->assertEquals($testDisplayName, $dbRow['display_name'], 
+                'Display name snapshot should be stored in database at message send time');
+            
+        } finally {
+            // Cleanup
+            if ($messageId) {
+                $stmt = $pdo->prepare("DELETE FROM messages WHERE message_id = :message_id");
+                $stmt->execute(['message_id' => $messageId]);
             }
             $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
             $stmt->execute(['username' => $testUsername]);

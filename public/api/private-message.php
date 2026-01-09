@@ -78,23 +78,7 @@ try {
             $toSessionId = $recipient['session_id'];
         }
         
-        // Store message with session IDs
-        $stmt = $db->prepare("
-            INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, NOW())
-            RETURNING id, created_at
-        ");
-        $stmt->execute([$fromUsername, $fromSessionId, $toUsername, $toSessionId, $message, $attachmentId]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        // Get attachment info if present
-        $attachmentData = null;
-        if ($attachmentId) {
-            $photoService = new \RadioChatBox\PhotoService();
-            $attachmentData = $photoService->getAttachment($attachmentId);
-        }
-        
-        // Get display names for sender and recipient
+        // Get display names for sender and recipient BEFORE storing message (for snapshot)
         $fromDisplayName = null;
         $toDisplayName = null;
         
@@ -107,6 +91,22 @@ try {
             if ($row['username'] === $toUsername) {
                 $toDisplayName = $row['display_name'];
             }
+        }
+        
+        // Store message with session IDs and display_name snapshots
+        $stmt = $db->prepare("
+            INSERT INTO private_messages (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, attachment_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            RETURNING id, created_at
+        ");
+        $stmt->execute([$fromUsername, $fromSessionId, $fromDisplayName, $toUsername, $toSessionId, $toDisplayName, $message, $attachmentId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Get attachment info if present
+        $attachmentData = null;
+        if ($attachmentId) {
+            $photoService = new \RadioChatBox\PhotoService();
+            $attachmentData = $photoService->getAttachment($attachmentId);
         }
         
         // Publish to Redis for real-time delivery

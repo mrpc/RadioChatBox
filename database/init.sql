@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT FALSE,
     reply_to VARCHAR(255) DEFAULT NULL,
-    user_id INTEGER  -- Foreign key constraint added later after users table exists
+    user_id INTEGER,  -- Foreign key constraint added later after users table exists
+    display_name VARCHAR(100)  -- Snapshot of display_name at send time (for audit trail)
 );
 
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
@@ -178,7 +179,9 @@ CREATE TABLE IF NOT EXISTS private_messages (
     message TEXT NOT NULL,
     attachment_id VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    read_at TIMESTAMP
+    read_at TIMESTAMP,
+    from_display_name VARCHAR(100),  -- Snapshot of sender display_name at send time (for audit trail)
+    to_display_name VARCHAR(100)  -- Snapshot of recipient display_name at send time (for audit trail)
 );
 
 CREATE INDEX idx_private_messages_to ON private_messages(to_username);
@@ -558,6 +561,16 @@ COMMENT ON COLUMN messages.user_id IS 'User ID if message sent by registered use
 -- Future flow: username + session_id + user_id (registered users)
 -- Registered users will have persistent user_id that survives across sessions
 -- Anonymous users will continue to use session_id only
+
+
+-- Migration 013: Display name snapshots for audit trail
+-- Stores display_name at message send time in both messages and private_messages tables
+-- UI continues to show CURRENT display_name via JOINs with users table
+-- Stored snapshots are for admin audit/forensic purposes only
+-- This preserves what name was used when message was actually sent
+COMMENT ON COLUMN messages.display_name IS 'Display name at time message was sent (snapshot for audit trail - UI shows current display_name via JOIN)';
+COMMENT ON COLUMN private_messages.from_display_name IS 'Sender display name at time message was sent (snapshot for audit trail - UI shows current display_name via JOIN)';
+COMMENT ON COLUMN private_messages.to_display_name IS 'Recipient display name at time message was sent (snapshot for audit trail - UI shows current display_name via JOIN)';
 
 
 -- Migration 004: Allow authenticated users to have multiple simultaneous sessions
