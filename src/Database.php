@@ -36,6 +36,11 @@ class Database
                     PDO::ATTR_TIMEOUT => 10,
                 ]
             );
+            
+            // Set PostgreSQL timezone to match server timezone
+            // This ensures timestamps are stored/retrieved in the correct timezone
+            $timezone = getenv('TZ') ?: 'Europe/Athens';
+            self::$pdo->exec("SET timezone = '$timezone'");
         }
 
         return self::$pdo;

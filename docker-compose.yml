@@ -17,6 +17,7 @@ services:
       - DB_NAME=radiochatbox
       - DB_USER=radiochatbox
       - DB_PASSWORD=radiochatbox_secret
+      - TZ=Europe/Athens
     depends_on:
       - redis
       - postgres
@@ -39,6 +40,8 @@ services:
       - POSTGRES_DB=radiochatbox
       - POSTGRES_USER=radiochatbox
       - POSTGRES_PASSWORD=radiochatbox_secret
+      - TZ=Europe/Athens
+      - PGTZ=Europe/Athens
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql

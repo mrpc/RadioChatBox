@@ -17,11 +17,12 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_pgsql gd
 
-# Configure PHP settings for file uploads
+# Configure PHP settings for file uploads and timezone
 RUN echo "upload_max_filesize = 50M" > /usr/local/etc/php/conf.d/uploads.ini \
     && echo "post_max_size = 50M" >> /usr/local/etc/php/conf.d/uploads.ini \
     && echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/uploads.ini \
-    && echo "memory_limit = 256M" >> /usr/local/etc/php/conf.d/uploads.ini
+    && echo "memory_limit = 256M" >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo "date.timezone = Europe/Athens" >> /usr/local/etc/php/conf.d/uploads.ini
 
 # Install Redis extension
 RUN pecl install redis \

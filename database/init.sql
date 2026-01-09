@@ -9,6 +9,17 @@
 -- - System settings
 
 -- ============================================================================
+-- CONFIGURATION
+-- ============================================================================
+
+-- Set default timezone for the database
+-- This ensures all timestamps are stored and displayed in the correct timezone
+ALTER DATABASE radiochatbox SET timezone TO 'Europe/Athens';
+
+-- Note: All timestamp columns use TIMESTAMPTZ (timestamp with time zone)
+-- to preserve timezone information and ensure correct display across timezones
+
+-- ============================================================================
 -- DROP EXISTING TABLES (for clean re-import)
 -- ============================================================================
 
@@ -51,7 +62,7 @@ CREATE TABLE IF NOT EXISTS messages (
     username VARCHAR(50) NOT NULL,
     message TEXT NOT NULL,
     ip_address VARCHAR(45) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT FALSE,
     reply_to VARCHAR(255) DEFAULT NULL,
     user_id INTEGER,  -- Foreign key constraint added later after users table exists
@@ -74,8 +85,8 @@ CREATE TABLE IF NOT EXISTS user_activity (
     username VARCHAR(50) UNIQUE NOT NULL,
     session_id VARCHAR(255),
     ip_address VARCHAR(45) NOT NULL,
-    first_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     message_count INTEGER DEFAULT 0,
     is_banned BOOLEAN DEFAULT FALSE,
     is_moderator BOOLEAN DEFAULT FALSE,
@@ -97,8 +108,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     username VARCHAR(50) NOT NULL,
     session_id VARCHAR(255) NOT NULL,
     ip_address VARCHAR(45) NOT NULL,
-    last_heartbeat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     user_id INTEGER,  -- Foreign key constraint added later after users table exists
     CONSTRAINT sessions_username_session_unique UNIQUE (username, session_id)
 );
@@ -123,7 +134,7 @@ CREATE TABLE IF NOT EXISTS fake_users (
     sex VARCHAR(10) CHECK (sex IN ('male', 'female', 'other')),
     location VARCHAR(100),
     is_active BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT valid_nickname CHECK (LENGTH(nickname) >= 3)
 );
 
@@ -143,7 +154,7 @@ CREATE TABLE IF NOT EXISTS admin_notifications (
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_admin_notifications_created_at ON admin_notifications(created_at DESC);
@@ -161,7 +172,7 @@ CREATE TABLE IF NOT EXISTS admin_notification_reads (
     id SERIAL PRIMARY KEY,
     notification_id INTEGER NOT NULL REFERENCES admin_notifications(id) ON DELETE CASCADE,
     admin_username VARCHAR(100) NOT NULL,
-    read_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    read_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(notification_id, admin_username)
 );
 
@@ -184,8 +195,8 @@ CREATE TABLE IF NOT EXISTS private_messages (
     to_username VARCHAR(100) NOT NULL,
     message TEXT NOT NULL,
     attachment_id VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    read_at TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    read_at TIMESTAMPTZ,
     from_display_name VARCHAR(100),  -- Snapshot of sender display_name at send time (for audit trail)
     to_display_name VARCHAR(100)  -- Snapshot of recipient display_name at send time (for audit trail)
 );
@@ -208,8 +219,8 @@ CREATE TABLE IF NOT EXISTS attachments (
     uploaded_by VARCHAR(50) NOT NULL,
     recipient VARCHAR(50),
     ip_address VARCHAR(45) NOT NULL,
-    uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '48 hours'),
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '48 hours'),
     is_deleted BOOLEAN DEFAULT FALSE
 );
 
@@ -230,7 +241,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     age VARCHAR(50),
     location VARCHAR(255),
     sex VARCHAR(20),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(username, session_id)
 );
 
@@ -245,8 +256,8 @@ CREATE TABLE IF NOT EXISTS banned_ips (
     id SERIAL PRIMARY KEY,
     ip_address VARCHAR(45) UNIQUE NOT NULL,
     reason TEXT,
-    banned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    banned_until TIMESTAMP,
+    banned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    banned_until TIMESTAMPTZ,
     banned_by VARCHAR(50)
 );
 
@@ -260,7 +271,7 @@ CREATE TABLE IF NOT EXISTS banned_nicknames (
     id SERIAL PRIMARY KEY,
     nickname VARCHAR(50) UNIQUE NOT NULL,
     reason TEXT,
-    banned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    banned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     banned_by VARCHAR(50)
 );
 
@@ -272,7 +283,7 @@ CREATE TABLE IF NOT EXISTS url_blacklist (
     pattern VARCHAR(500) NOT NULL UNIQUE,
     description TEXT,
     added_by VARCHAR(100),
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_url_blacklist_pattern ON url_blacklist(pattern);
@@ -286,8 +297,8 @@ CREATE TABLE IF NOT EXISTS settings (
     id SERIAL PRIMARY KEY,
     setting_key VARCHAR(100) UNIQUE NOT NULL,
     setting_value TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Performance optimization: Covering index for settings lookups
@@ -475,9 +486,9 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255),
     display_name VARCHAR(100),
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMPTZ,
     created_by INTEGER REFERENCES users(id),
     CONSTRAINT username_length CHECK (LENGTH(username) >= 3),
     CONSTRAINT valid_email CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
@@ -609,7 +620,7 @@ COMMENT ON COLUMN private_messages.to_display_name IS 'Recipient display name at
 -- Hourly statistics
 CREATE TABLE IF NOT EXISTS stats_hourly (
     id SERIAL PRIMARY KEY,
-    stat_hour TIMESTAMP NOT NULL,
+    stat_hour TIMESTAMPTZ NOT NULL,
     active_users INTEGER DEFAULT 0,
     guest_users INTEGER DEFAULT 0,
     registered_users INTEGER DEFAULT 0,
@@ -620,7 +631,7 @@ CREATE TABLE IF NOT EXISTS stats_hourly (
     radio_listeners_avg INTEGER DEFAULT 0,
     radio_listeners_peak INTEGER DEFAULT 0,
     peak_concurrent_users INTEGER DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(stat_hour)
 );
 
@@ -644,7 +655,7 @@ CREATE TABLE IF NOT EXISTS stats_daily (
     radio_listeners_avg INTEGER DEFAULT 0,
     radio_listeners_peak INTEGER DEFAULT 0,
     peak_concurrent_users INTEGER DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(stat_date)
 );
 
@@ -668,7 +679,7 @@ CREATE TABLE IF NOT EXISTS stats_weekly (
     radio_listeners_avg INTEGER DEFAULT 0,
     radio_listeners_peak INTEGER DEFAULT 0,
     peak_concurrent_users INTEGER DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(stat_year, stat_week)
 );
 
@@ -692,7 +703,7 @@ CREATE TABLE IF NOT EXISTS stats_monthly (
     radio_listeners_avg INTEGER DEFAULT 0,
     radio_listeners_peak INTEGER DEFAULT 0,
     peak_concurrent_users INTEGER DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(stat_year, stat_month)
 );
 
@@ -714,7 +725,7 @@ CREATE TABLE IF NOT EXISTS stats_yearly (
     radio_listeners_avg INTEGER DEFAULT 0,
     radio_listeners_peak INTEGER DEFAULT 0,
     peak_concurrent_users INTEGER DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_stats_yearly_year ON stats_yearly(stat_year DESC);
@@ -724,7 +735,7 @@ COMMENT ON TABLE stats_yearly IS 'Yearly aggregated statistics - one row per yea
 -- Real-time snapshots
 CREATE TABLE IF NOT EXISTS stats_snapshots (
     id SERIAL PRIMARY KEY,
-    snapshot_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    snapshot_time TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     concurrent_users INTEGER DEFAULT 0,
     radio_listeners INTEGER DEFAULT 0,
     active_sessions INTEGER DEFAULT 0
@@ -735,7 +746,7 @@ CREATE INDEX IF NOT EXISTS idx_stats_snapshots_time ON stats_snapshots(snapshot_
 COMMENT ON TABLE stats_snapshots IS 'Real-time snapshots taken every 5-15 minutes for calculating averages and peaks';
 
 -- Statistics aggregation functions
-CREATE OR REPLACE FUNCTION aggregate_hourly_stats(target_hour TIMESTAMP)
+CREATE OR REPLACE FUNCTION aggregate_hourly_stats(target_hour TIMESTAMPTZ)
 RETURNS void AS $$
 DECLARE
     v_active_users INTEGER;
@@ -748,8 +759,8 @@ DECLARE
     v_radio_listeners_avg INTEGER;
     v_radio_listeners_peak INTEGER;
     v_peak_concurrent INTEGER;
-    v_hour_start TIMESTAMP;
-    v_hour_end TIMESTAMP;
+    v_hour_start TIMESTAMPTZ;
+    v_hour_end TIMESTAMPTZ;
 BEGIN
     v_hour_start := date_trunc('hour', target_hour);
     v_hour_end := v_hour_start + INTERVAL '1 hour';
@@ -838,10 +849,10 @@ DECLARE
     v_radio_avg INTEGER;
     v_radio_peak INTEGER;
     v_peak_concurrent INTEGER;
-    v_day_start TIMESTAMP;
-    v_day_end TIMESTAMP;
+    v_day_start TIMESTAMPTZ;
+    v_day_end TIMESTAMPTZ;
 BEGIN
-    v_day_start := target_date::TIMESTAMP;
+    v_day_start := target_date::TIMESTAMPTZ;
     v_day_end := v_day_start + INTERVAL '1 day';
     
     -- Sum from hourly stats (more efficient than raw data)
@@ -1043,7 +1054,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION aggregate_hourly_stats(TIMESTAMP) IS 'Aggregate statistics for a specific hour from raw data and snapshots';
+COMMENT ON FUNCTION aggregate_hourly_stats(TIMESTAMPTZ) IS 'Aggregate statistics for a specific hour from raw data and snapshots';
 COMMENT ON FUNCTION aggregate_daily_stats(DATE) IS 'Aggregate daily statistics from hourly stats';
 COMMENT ON FUNCTION aggregate_weekly_stats(DATE) IS 'Aggregate weekly statistics from daily stats';
 COMMENT ON FUNCTION aggregate_monthly_stats(DATE) IS 'Aggregate monthly statistics from daily stats';
