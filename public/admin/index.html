@@ -2291,8 +2291,11 @@
                 }
             } catch (e) { /* no-op */ }
             await loadAllData();
-            // Connect to SSE stream for real-time notifications
-            connectAdminStream();
+            // Connect to SSE stream for real-time notifications (only for root/administrator)
+            const storedRole = localStorage.getItem('userRole');
+            if (storedRole === 'root' || storedRole === 'administrator' || storedRole === 'owner') {
+                connectAdminStream();
+            }
         }
 
         async function login() {
@@ -5011,8 +5014,10 @@
                     
                     applyRoleBasedRestrictions(data.user.role);
 
-                    // Connect to notifications stream
-                    connectNotificationsStream();
+                    // Connect to notifications stream only for root/administrator
+                    if (data.user.role === 'root' || data.user.role === 'administrator' || data.user.role === 'owner') {
+                        connectNotificationsStream();
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load current user:', error);
@@ -5041,8 +5046,10 @@
                 if (avatarEl && storedName) avatarEl.textContent = storedName.charAt(0).toUpperCase();
                 applyRoleBasedRestrictions(storedRole);
 
-                // Connect to notifications stream for legacy auth
-                connectNotificationsStream();
+                // Connect to notifications stream only for root/administrator
+                if (storedRole === 'root' || storedRole === 'administrator' || storedRole === 'owner') {
+                    connectNotificationsStream();
+                }
             }
         }
 
