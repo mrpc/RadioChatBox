@@ -71,34 +71,45 @@ class ChatService
         if (!empty($replyTo)) {
             $replyData = $this->getReplyMessageData($replyTo);
         }
-        
-        // Get display name if user is authenticated
-        $displayName = $this->getDisplayNameForUsername($username);
+
+        // PERFORMANCE OPTIMIZATION: Get user data once and pass to storeMessageInDB
+        // This eliminates duplicate query for same user data
+        $userData = $this->getUserDataForMessage($username);
 
         // Create message object
         $messageData = [
             'id' => uniqid('msg_', true),
             'username' => $username,
-            'display_name' => $displayName,
+            'display_name' => $userData['display_name'],
             'message' => $message,
             'timestamp' => time(),
             'ip' => $ipAddress,
             'reply_to' => $replyTo,
             'reply_data' => $replyData,
+            'user_id' => $userData['user_id'], // Pass user_id to avoid re-query
         ];
 
         // Store in Redis (for real-time)
         $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($messageData));
         $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
-        
+
         // Set TTL to prevent stale cache (24 hours)
         // This ensures Redis cache doesn't become permanently out of sync with PostgreSQL
         $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), 86400);
 
+        // PERFORMANCE OPTIMIZATION: Store in Redis HASH for O(1) reply lookups
+        $hashKey = $this->prefixKey('chat:messages:hash');
+        $this->redis->hSet($hashKey, $messageData['id'], json_encode([
+            'username' => $messageData['username'],
+            'display_name' => $messageData['display_name'],
+            'message' => $messageData['message']
+        ]));
+        $this->redis->expire($hashKey, 86400); // 24 hour TTL
+
         // Publish to subscribers
         $this->redis->publish($this->prefixKey(self::PUBSUB_CHANNEL), json_encode($messageData));
 
-        // Store in PostgreSQL (for persistence)
+        // Store in PostgreSQL (for persistence) - user data already fetched
         $this->storeMessageInDB($messageData);
 
         return $messageData;
@@ -106,77 +117,56 @@ class ChatService
 
     /**
      * Get message history from Redis
+     *
+     * OPTIMIZED: Now uses Redis HASH to track deleted messages instead of querying DB on every load.
+     * Display names are cached separately with their own TTL.
      */
     public function getHistory(int $limit = 50): array
     {
         $limit = min($limit, Config::get('chat')['history_limit']);
         $messages = $this->redis->lRange($this->prefixKey(self::MESSAGES_KEY), 0, $limit - 1);
-        
+
         // If Redis is empty, fallback to PostgreSQL
         if (empty($messages)) {
             return $this->loadHistoryFromDB($limit);
         }
-        
+
         $decodedMessages = array_map(function($msg) {
             return json_decode($msg, true);
         }, $messages);
-        
+
         if (empty($decodedMessages)) {
             return $this->loadHistoryFromDB($limit);
         }
-        
-        // Get all message IDs
-        $messageIds = array_filter(array_map(function($msg) {
-            return $msg['id'] ?? null;
-        }, $decodedMessages));
-        
-        if (empty($messageIds)) {
-            return array_reverse($decodedMessages);
+
+        // Filter out deleted messages using Redis HASH (PERFORMANCE OPTIMIZATION)
+        // This eliminates the need to query the database on every history load
+        $deletedKey = $this->prefixKey('chat:deleted_messages');
+        $filteredMessages = [];
+
+        foreach ($decodedMessages as $msg) {
+            $messageId = $msg['id'] ?? null;
+            if (!$messageId) {
+                continue;
+            }
+
+            // Check Redis HASH for deleted status (O(1) operation)
+            $isDeleted = $this->redis->hGet($deletedKey, $messageId);
+            if ($isDeleted === '1') {
+                continue; // Skip deleted messages
+            }
+
+            // Get current display_name from cache (already cached per-user)
+            if (isset($msg['username'])) {
+                $cachedDisplayName = $this->getDisplayNameForUsername($msg['username']);
+                if ($cachedDisplayName !== null) {
+                    $msg['display_name'] = $cachedDisplayName;
+                }
+            }
+
+            $filteredMessages[] = $msg;
         }
-        
-        // Batch query to check which messages are deleted AND get current display_names
-        $placeholders = str_repeat('?,', count($messageIds) - 1) . '?';
-        $stmt = $this->pdo->prepare("
-            SELECT m.message_id, m.is_deleted, u.display_name, m.username
-            FROM messages m
-            LEFT JOIN users u ON m.user_id = u.id
-            WHERE m.message_id IN ($placeholders)
-        ");
-        $stmt->execute(array_values($messageIds));
-        $dbData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Create lookup maps
-        $deletedIdsSet = [];
-        $displayNameMap = [];
-        foreach ($dbData as $row) {
-            if ($row['is_deleted']) {
-                $deletedIdsSet[$row['message_id']] = true;
-            }
-            if ($row['username']) {
-                $displayNameMap[$row['username']] = $row['display_name'];
-            }
-        }
-        
-        // Filter out deleted messages and update display_names with current values from DB
-        $filteredMessages = array_filter($decodedMessages, function($msg) use ($deletedIdsSet, $displayNameMap) {
-            if (isset($msg['id']) && isset($deletedIdsSet[$msg['id']])) {
-                return false;
-            }
-            // Update display_name with current value from database
-            if (isset($msg['username']) && array_key_exists($msg['username'], $displayNameMap)) {
-                $msg['display_name'] = $displayNameMap[$msg['username']];
-            }
-            return true;
-        });
-        
-        // Re-apply display_name updates to the array (filter doesn't modify by reference)
-        $filteredMessages = array_map(function($msg) use ($displayNameMap) {
-            if (isset($msg['username']) && array_key_exists($msg['username'], $displayNameMap)) {
-                $msg['display_name'] = $displayNameMap[$msg['username']];
-            }
-            return $msg;
-        }, array_values($filteredMessages));
-        
+
         return array_reverse($filteredMessages);
     }
 
@@ -253,37 +243,39 @@ class ChatService
 
     /**
      * Check if user can send a message (rate limiting)
+     *
+     * OPTIMIZED: Fetches both rate limit settings in single query instead of two
      */
     private function checkRateLimit(string $ipAddress): bool
     {
         // Get rate limit settings with caching
         $rateLimitMessages = 10; // default
         $rateLimitWindow = 60; // default
-        
+
         try {
             $cacheKey = 'settings:rate_limit';
             $cached = $this->redis->get($this->prefixKey($cacheKey));
-            
+
             if ($cached !== false) {
                 $settings = json_decode($cached, true);
                 $rateLimitMessages = $settings['messages'] ?? 10;
                 $rateLimitWindow = $settings['window'] ?? 60;
             } else {
-                // Cache miss - fetch from database
-                $stmt = $this->pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
-                
-                $stmt->execute(['rate_limit_messages']);
-                $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                if ($result) {
-                    $rateLimitMessages = (int)$result['setting_value'];
-                }
-                
-                $stmt->execute(['rate_limit_window']);
-                $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                if ($result) {
-                    $rateLimitWindow = (int)$result['setting_value'];
-                }
-                
+                // PERFORMANCE OPTIMIZATION: Fetch both settings in ONE query instead of two
+                $stmt = $this->pdo->prepare(
+                    "SELECT setting_key, setting_value FROM settings
+                     WHERE setting_key IN ('rate_limit_messages', 'rate_limit_window')"
+                );
+                $stmt->execute();
+                $results = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+                $rateLimitMessages = isset($results['rate_limit_messages'])
+                    ? (int)$results['rate_limit_messages']
+                    : 10;
+                $rateLimitWindow = isset($results['rate_limit_window'])
+                    ? (int)$results['rate_limit_window']
+                    : 60;
+
                 // Cache for 5 minutes
                 $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode([
                     'messages' => $rateLimitMessages,
@@ -294,20 +286,20 @@ class ChatService
             // Use defaults if unable to fetch from database
             error_log("Failed to get rate limit settings: " . $e->getMessage());
         }
-        
+
         $key = self::RATE_LIMIT_PREFIX . $ipAddress;
         $current = $this->redis->get($this->prefixKey($key));
-        
+
         if ($current !== false && (int)$current >= $rateLimitMessages) {
             // Track repeated violations for auto-ban
             $this->trackViolation($ipAddress, 'rate_limit');
             return false;
         }
-        
+
         // Increment counter
         $this->redis->incr($this->prefixKey($key));
         $this->redis->expire($this->prefixKey($key), $rateLimitWindow);
-        
+
         return true;
     }
     
@@ -354,23 +346,19 @@ class ChatService
     
     /**
      * Store message in PostgreSQL for permanent logging
+     *
+     * OPTIMIZED: Now receives user_id and display_name from messageData to avoid duplicate query
      */
     private function storeMessageInDB(array $messageData): void
     {
         try {
-            // Look up user_id and display_name for authenticated users
-            $userId = null;
-            $displayName = null;
-            $userStmt = $this->pdo->prepare('SELECT id, display_name FROM users WHERE username = :username LIMIT 1');
-            $userStmt->execute(['username' => $messageData['username']]);
-            $userRow = $userStmt->fetch(\PDO::FETCH_ASSOC);
-            if ($userRow) {
-                $userId = $userRow['id'];
-                $displayName = $userRow['display_name'];
-            }
-            
+            // PERFORMANCE OPTIMIZATION: Use user_id and display_name from messageData
+            // These were already fetched in postMessage() - no need to query again
+            $userId = $messageData['user_id'] ?? null;
+            $displayName = $messageData['display_name'] ?? null;
+
             $stmt = $this->pdo->prepare(
-                'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to) 
+                'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to)
                  VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to)'
             );
 
@@ -384,7 +372,7 @@ class ChatService
                 'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
                 'reply_to' => $messageData['reply_to'] ?? null,
             ]);
-            
+
             if (!$result) {
                 error_log("Failed to store message in database - execute returned false. Errors: " . json_encode($stmt->errorInfo()));
             }
@@ -397,15 +385,19 @@ class ChatService
     
     /**
      * Get reply message data for quoting
+     *
+     * OPTIMIZED: Uses Redis HASH for O(1) lookup instead of O(n) list scan
      */
     private function getReplyMessageData(string $messageId): ?array
     {
         try {
-            // First check Redis cache
-            $messages = $this->redis->lRange($this->prefixKey(self::MESSAGES_KEY), 0, -1);
-            foreach ($messages as $msg) {
-                $decoded = json_decode($msg, true);
-                if (isset($decoded['id']) && $decoded['id'] === $messageId) {
+            // PERFORMANCE OPTIMIZATION: Use Redis HASH for O(1) message lookup
+            $hashKey = $this->prefixKey('chat:messages:hash');
+            $cached = $this->redis->hGet($hashKey, $messageId);
+
+            if ($cached !== false) {
+                $decoded = json_decode($cached, true);
+                if ($decoded) {
                     return [
                         'username' => $decoded['username'],
                         'display_name' => $decoded['display_name'] ?? null,
@@ -413,63 +405,93 @@ class ChatService
                     ];
                 }
             }
-            
+
             // Fallback to database
             $stmt = $this->pdo->prepare(
-                'SELECT m.username, m.message, u.display_name 
-                 FROM messages m 
-                 LEFT JOIN users u ON m.user_id = u.id 
-                 WHERE m.message_id = :message_id AND m.is_deleted = false 
+                'SELECT m.username, m.message, u.display_name
+                 FROM messages m
+                 LEFT JOIN users u ON m.user_id = u.id
+                 WHERE m.message_id = :message_id AND m.is_deleted = false
                  LIMIT 1'
             );
             $stmt->execute(['message_id' => $messageId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            
+
             if ($row) {
-                return [
+                $replyData = [
                     'username' => $row['username'],
                     'display_name' => $row['display_name'],
                     'message' => mb_substr($row['message'], 0, 100), // Truncate to 100 chars for quote
                 ];
+
+                // Cache in Redis HASH for future lookups
+                $messageData = [
+                    'username' => $row['username'],
+                    'display_name' => $row['display_name'],
+                    'message' => $row['message']
+                ];
+                $this->redis->hSet($hashKey, $messageId, json_encode($messageData));
+                $this->redis->expire($hashKey, 86400); // 24 hour TTL
+
+                return $replyData;
             }
         } catch (\PDOException $e) {
             error_log("Failed to get reply message data: " . $e->getMessage());
+        } catch (\Exception $e) {
+            error_log("Redis error in getReplyMessageData: " . $e->getMessage());
         }
-        
+
         return null;
     }
     
+    /**
+     * Get user data (user_id and display_name) for message storage
+     * OPTIMIZED: Fetches both id and display_name in single query with caching
+     *
+     * @param string $username
+     * @return array ['user_id' => int|null, 'display_name' => string|null]
+     */
+    private function getUserDataForMessage(string $username): array
+    {
+        try {
+            // Check Redis cache first (cache both fields together)
+            $cacheKey = 'user_data:' . $username;
+            $cached = $this->redis->get($this->prefixKey($cacheKey));
+            if ($cached !== false) {
+                return json_decode($cached, true);
+            }
+
+            // Fetch from database (single query for both fields)
+            $stmt = $this->pdo->prepare(
+                'SELECT id, display_name FROM users WHERE username = :username AND is_active = true LIMIT 1'
+            );
+            $stmt->execute(['username' => $username]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            $userData = [
+                'user_id' => $row ? $row['id'] : null,
+                'display_name' => $row ? $row['display_name'] : null,
+            ];
+
+            // Cache result for 5 minutes
+            $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($userData));
+
+            return $userData;
+        } catch (\PDOException $e) {
+            error_log("Failed to get user data for username: " . $e->getMessage());
+            return ['user_id' => null, 'display_name' => null];
+        }
+    }
+
     /**
      * Get display name for a username (from authenticated users table)
      * Returns null if user is not authenticated or has no display_name
      */
     private function getDisplayNameForUsername(string $username): ?string
     {
-        try {
-            // Check Redis cache first
-            $cacheKey = 'display_name:' . $username;
-            $cached = $this->redis->get($this->prefixKey($cacheKey));
-            if ($cached !== false) {
-                return $cached === '' ? null : $cached;
-            }
-            
-            // Fetch from database
-            $stmt = $this->pdo->prepare(
-                'SELECT display_name FROM users WHERE username = :username AND is_active = true LIMIT 1'
-            );
-            $stmt->execute(['username' => $username]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            $displayName = $row ? $row['display_name'] : null;
-            
-            // Cache result for 5 minutes (empty string for null to differentiate from cache miss)
-            $this->redis->setex($this->prefixKey($cacheKey), 300, $displayName ?? '');
-            
-            return $displayName;
-        } catch (\PDOException $e) {
-            error_log("Failed to get display name for username: " . $e->getMessage());
-            return null;
-        }
+        // Use the optimized getUserDataForMessage method
+        $userData = $this->getUserDataForMessage($username);
+        return $userData['display_name'];
     }
 
     /**
@@ -757,31 +779,59 @@ class ChatService
 
     /**
      * Update user heartbeat
+     *
+     * OPTIMIZED: Rate-limits user list updates to reduce SSE spam
      */
     public function updateHeartbeat(string $username, string $sessionId): bool
     {
         try {
             // Clean up inactive sessions first (this might change the user list)
             $this->cleanupInactiveSessions();
-            
+
             $stmt = $this->pdo->prepare(
-                'UPDATE sessions 
-                 SET last_heartbeat = NOW() 
+                'UPDATE sessions
+                 SET last_heartbeat = NOW()
                  WHERE username = :username AND session_id = :session_id'
             );
-            
+
             $result = $stmt->execute([
                 'username' => $username,
                 'session_id' => $sessionId,
             ]);
-            
-            // Publish user update after heartbeat
-            $this->publishUserUpdate();
-            
+
+            // PERFORMANCE OPTIMIZATION: Only publish user updates every 10 seconds
+            // Heartbeats happen frequently (every 10-30s per user), no need to spam SSE
+            $this->publishUserUpdateThrottled();
+
             return $result;
         } catch (\PDOException $e) {
             error_log("Failed to update heartbeat: " . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Publish user update with throttling (max once per 10 seconds)
+     * Reduces SSE spam from frequent heartbeat updates
+     */
+    private function publishUserUpdateThrottled(): void
+    {
+        try {
+            $rateLimitKey = $this->prefixKey('user_update:last_publish');
+            $lastPublish = $this->redis->get($rateLimitKey);
+
+            if ($lastPublish !== false) {
+                // Published recently, skip it
+                return;
+            }
+
+            // Set rate limit lock for 10 seconds
+            $this->redis->setex($rateLimitKey, 10, time());
+
+            // Actually publish the update
+            $this->publishUserUpdate();
+        } catch (\Exception $e) {
+            error_log("Failed to throttle user update: " . $e->getMessage());
         }
     }
 
@@ -862,16 +912,26 @@ class ChatService
     /**
      * Get all users including real and fake users
      * This is what should be used for the active users list display
+     *
+     * OPTIMIZED: Caches combined user list for 30 seconds to reduce DB load
      */
     public function getAllUsers(): array
     {
+        // PERFORMANCE OPTIMIZATION: Cache combined user list
+        $cacheKey = $this->prefixKey('chat:all_users');
+        $cached = $this->redis->get($cacheKey);
+
+        if ($cached !== false) {
+            return json_decode($cached, true);
+        }
+
         // Get real users
         $realUsers = $this->getActiveUsers();
-        
+
         // Get active fake users
         $fakeUserService = new FakeUserService();
         $fakeUsers = $fakeUserService->getActiveFakeUsers();
-        
+
         // Transform fake users to match real user format
         $formattedFakeUsers = array_map(function($user) {
             return [
@@ -884,9 +944,27 @@ class ChatService
                 'last_heartbeat' => null
             ];
         }, $fakeUsers);
-        
+
         // Combine and return
-        return array_merge($realUsers, $formattedFakeUsers);
+        $allUsers = array_merge($realUsers, $formattedFakeUsers);
+
+        // Cache for 30 seconds (short TTL because user list changes frequently)
+        $this->redis->setex($cacheKey, 30, json_encode($allUsers));
+
+        return $allUsers;
+    }
+
+    /**
+     * Invalidate the combined user list cache
+     * Call this when users join, leave, or fake users are balanced
+     */
+    private function invalidateUserListCache(): void
+    {
+        try {
+            $this->redis->del($this->prefixKey('chat:all_users'));
+        } catch (\Exception $e) {
+            error_log("Failed to invalidate user list cache: " . $e->getMessage());
+        }
     }
 
     /**
@@ -933,13 +1011,30 @@ class ChatService
 
     /**
      * Clean up inactive sessions (not seen in 5 minutes)
+     *
+     * OPTIMIZED: Rate-limited to run max once per 30 seconds to prevent table lock storms
      */
     private function cleanupInactiveSessions(): void
     {
         try {
+            // PERFORMANCE OPTIMIZATION: Rate limit cleanup to max once per 30 seconds
+            $rateLimitKey = $this->prefixKey('cleanup:last_run');
+            $lastRun = $this->redis->get($rateLimitKey);
+
+            if ($lastRun !== false) {
+                // Cleanup was run recently, skip it
+                return;
+            }
+
+            // Set rate limit lock for 30 seconds
+            $this->redis->setex($rateLimitKey, 30, time());
+
+            // Run the cleanup
             $this->pdo->exec("SELECT cleanup_inactive_sessions()");
         } catch (\PDOException $e) {
             error_log("Failed to cleanup inactive sessions: " . $e->getMessage());
+        } catch (\Exception $e) {
+            error_log("Failed to check cleanup rate limit: " . $e->getMessage());
         }
     }
 
@@ -1280,16 +1375,19 @@ class ChatService
     {
         try {
             $this->cleanupInactiveSessions();
-            
+
+            // PERFORMANCE OPTIMIZATION: Invalidate cache before fetching fresh data
+            $this->invalidateUserListCache();
+
             // Use getAllUsers() to include fake users
             $users = $this->getAllUsers();
             $count = count($users);
-            
+
             $updateData = json_encode([
                 'count' => $count,
                 'users' => $users
             ]);
-            
+
             $this->redis->publish(self::USER_UPDATE_CHANNEL, $updateData);
         } catch (\Exception $e) {
             error_log("Failed to publish user update: " . $e->getMessage());

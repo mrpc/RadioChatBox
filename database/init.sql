@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS user_activity (
 CREATE INDEX idx_user_activity_username ON user_activity(username);
 CREATE INDEX idx_user_activity_ip_address ON user_activity(ip_address);
 CREATE INDEX idx_user_activity_user ON user_activity(user_id);
+-- Performance optimization: Covering index for user activity stats queries
+CREATE INDEX idx_user_activity_username_stats ON user_activity(username, last_seen, message_count);
 
 COMMENT ON TABLE user_activity IS 'Historical participation tracking - auto-populated by trigger when messages are sent (audit log of all chat participants)';
 COMMENT ON COLUMN user_activity.user_id IS 'References authenticated user account (NULL for anonymous participants, NOT NULL for registered users)';
@@ -105,6 +107,10 @@ CREATE INDEX idx_sessions_username ON sessions(username);
 CREATE INDEX idx_sessions_last_heartbeat ON sessions(last_heartbeat);
 CREATE INDEX idx_sessions_session_id ON sessions(session_id);
 CREATE INDEX idx_sessions_user ON sessions(user_id);
+-- Performance optimization: Composite index for session validation
+CREATE INDEX idx_sessions_validation ON sessions(session_id, username);
+-- Performance optimization: Partial index for user_id lookups
+CREATE INDEX idx_sessions_user_id ON sessions(user_id) WHERE user_id IS NOT NULL;
 
 COMMENT ON TABLE sessions IS 'Currently active chat sessions - includes both anonymous users (user_id NULL) and authenticated users (user_id NOT NULL)';
 COMMENT ON COLUMN sessions.user_id IS 'References authenticated user account (NULL for anonymous users, NOT NULL for logged-in users)';
@@ -246,6 +252,8 @@ CREATE TABLE IF NOT EXISTS banned_ips (
 
 CREATE INDEX idx_banned_ips_ip_address ON banned_ips(ip_address);
 CREATE INDEX idx_banned_ips_banned_until ON banned_ips(banned_until) WHERE banned_until IS NOT NULL;
+-- Performance optimization: Index for active ban lookups (permanent bans)
+CREATE INDEX idx_banned_ips_permanent ON banned_ips(ip_address) WHERE banned_until IS NULL;
 
 -- Nickname bans
 CREATE TABLE IF NOT EXISTS banned_nicknames (
@@ -281,6 +289,9 @@ CREATE TABLE IF NOT EXISTS settings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Performance optimization: Covering index for settings lookups
+CREATE INDEX idx_settings_key_value ON settings(setting_key, setting_value);
 
 -- ============================================================================
 -- FUNCTIONS & TRIGGERS
@@ -478,6 +489,8 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_is_active ON users(is_active);
 CREATE UNIQUE INDEX idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX idx_users_display_name_unique ON users(display_name) WHERE display_name IS NOT NULL;
+-- Performance optimization: Covering index for active user queries with display names
+CREATE INDEX idx_users_active_display ON users(is_active, username, display_name) WHERE is_active = true;
 
 COMMENT ON TABLE users IS 'Authenticated user accounts with passwords and role-based access (admins, moderators, future registered chat users)';
 
@@ -527,6 +540,11 @@ ADD COLUMN IF NOT EXISTS to_session_id VARCHAR(255);
 -- Create indexes for session-based queries
 CREATE INDEX IF NOT EXISTS idx_private_messages_from_session ON private_messages(from_username, from_session_id);
 CREATE INDEX IF NOT EXISTS idx_private_messages_to_session ON private_messages(to_username, to_session_id);
+
+-- Performance optimization: Composite index for conversation queries
+CREATE INDEX IF NOT EXISTS idx_pm_conversation ON private_messages(from_username, to_username, from_session_id, to_session_id);
+-- Performance optimization: Composite index for conversation ordering
+CREATE INDEX IF NOT EXISTS idx_pm_created_at ON private_messages(from_username, to_username, created_at DESC);
 
 -- Add comment explaining the change
 COMMENT ON COLUMN private_messages.from_session_id IS 'Session ID of sender - ensures message isolation between different users using same username';

@@ -182,7 +182,10 @@ class UserService
             // Clear user cache
             $this->clearUsersCache();
             $this->clearUserSession($user['username']);
-            
+
+            // PERFORMANCE OPTIMIZATION FIX: Clear user-specific data cache
+            $this->clearUserDataCache($user['username']);
+
             return [
                 'success' => true,
                 'user' => $this->sanitizeUser($user)
@@ -454,6 +457,7 @@ class UserService
     
     /**
      * Clear users cache in Redis
+     * ENHANCED: Also clears display name and user data caches from performance optimizations
      */
     private function clearUsersCache(): void
     {
@@ -462,6 +466,15 @@ class UserService
             // Clear both active and all users cache
             $this->redis->del($prefix . 'users:list:active');
             $this->redis->del($prefix . 'users:list:all');
+
+            // PERFORMANCE OPTIMIZATION FIX: Clear all display name related caches
+            // This ensures updated display names are reflected everywhere
+            $this->redis->del($prefix . 'chat:all_users'); // Combined user list
+            $this->redis->del($prefix . 'chat:messages'); // Message history
+            $this->redis->del($prefix . 'chat:messages:hash'); // Message hash for replies
+
+            // Note: Individual user_data:{username} caches will expire naturally in 5 minutes
+            // or can be cleared per-user if we know which user was updated
         } catch (\Exception $e) {
             error_log("UserService::clearUsersCache error: " . $e->getMessage());
         }
@@ -469,7 +482,7 @@ class UserService
     
     /**
      * Clear user session in Redis (force re-login)
-     * 
+     *
      * @param string $username Username
      */
     private function clearUserSession(string $username): void
@@ -481,7 +494,26 @@ class UserService
             error_log("UserService::clearUserSession error: " . $e->getMessage());
         }
     }
-    
+
+    /**
+     * Clear user-specific data caches (display_name, user_data)
+     * PERFORMANCE OPTIMIZATION FIX: Clears caches added during optimization
+     *
+     * @param string $username Username
+     */
+    private function clearUserDataCache(string $username): void
+    {
+        try {
+            $prefix = Database::getRedisPrefix();
+            // Clear legacy display_name cache
+            $this->redis->del($prefix . "display_name:{$username}");
+            // Clear new user_data cache (includes both user_id and display_name)
+            $this->redis->del($prefix . "user_data:{$username}");
+        } catch (\Exception $e) {
+            error_log("UserService::clearUserDataCache error: " . $e->getMessage());
+        }
+    }
+
     /**
      * Get role level (for comparison)
      * 

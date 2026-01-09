@@ -52,18 +52,23 @@ try {
     // Publish deletion to Redis for real-time update
     $redis = Database::getRedis();
     $prefix = Database::getRedisPrefix();
-    
-    // Clear entire message cache instead of trying to find exact JSON match
-    // This prevents stale data from JSON encoding mismatches (whitespace, property order)
-    // The cache will be repopulated from database on next getHistory() call
+
+    // PERFORMANCE OPTIMIZATION: Mark as deleted in Redis HASH instead of clearing entire cache
+    // This allows getHistory() to filter without querying the database
+    $redis->hSet($prefix . 'chat:deleted_messages', $messageId, '1');
+    // Set expiry on the hash key to match message cache TTL (24 hours)
+    $redis->expire($prefix . 'chat:deleted_messages', 86400);
+
+    // Also clear the message cache to force refresh (keeps behavior consistent)
+    // Consider removing this in the future once Redis HASH filtering is fully tested
     $redis->del($prefix . 'chat:messages');
-    
+
     $deleteEvent = [
         'type' => 'message_deleted',
         'message_id' => $messageId,
         'timestamp' => time()
     ];
-    
+
     $redis->publish($prefix . 'chat:updates', json_encode($deleteEvent));
 
     echo json_encode([

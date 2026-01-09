@@ -154,21 +154,39 @@ try {
                 'user_id' => $session['user_id']
             ]);
             
-            // Clear display name cache
+            // Clear ALL caches related to this user's display name
             $redis = Database::getRedis();
             $prefix = Database::getRedisPrefix();
+
+            // Clear old display_name cache (legacy)
             $redis->del($prefix . 'display_name:' . $username);
-            
+
+            // Clear NEW user_data cache (from performance optimization)
+            $redis->del($prefix . 'user_data:' . $username);
+
             // Clear message history cache to force reload with new display name
             $redis->del($prefix . 'chat:messages');
-            
+
+            // Clear combined user list cache (includes display names)
+            $redis->del($prefix . 'chat:all_users');
+
+            // Clear message hash (may contain old display names)
+            $redis->del($prefix . 'chat:messages:hash');
+
             // Small delay to ensure database commit and cache clear complete
             usleep(100000); // 100ms
-            
+
             // Publish a history refresh event to all connected clients
             $redis->publish($prefix . 'chat:updates', json_encode([
                 'type' => 'refresh_history',
                 'reason' => 'display_name_changed'
+            ]));
+
+            // Publish user list update event (to refresh display names in user list)
+            $redis->publish($prefix . 'chat:user_updates', json_encode([
+                'type' => 'display_name_changed',
+                'username' => $username,
+                'display_name' => $finalDisplayName
             ]));
         }
     }
