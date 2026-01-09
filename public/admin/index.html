@@ -3110,8 +3110,9 @@
                         const kpiListenersCard = document.getElementById('kpi-listeners-card');
                         
                         // Check if radio is enabled and has status available
-                        if (kpiListenersEl && radioData.success && radioData.nowPlaying) {
-                            // Always show the widget if we have radio data (even if offline/inactive), unless hidden by CSS
+                        // Only show the widget if the radio status is active (URL is configured)
+                        if (kpiListenersEl && radioData.success && radioData.nowPlaying && radioData.nowPlaying.active) {
+                            // Show the widget only if radio is active
                             // Don't override CSS hiding - moderators have it hidden via body.moderator-role class
                             if (kpiListenersCard && currentUserRole !== 'moderator') {
                                 kpiListenersCard.style.display = '';
