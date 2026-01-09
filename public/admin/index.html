@@ -3217,14 +3217,10 @@
                     : new Date(msg.timestamp || msg.created_at);
                 const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleString();
 
-                // Build clickable user links
+                // Build user display (no links, just plain text)
                 const fromUsername = isPrivate ? msg.from_username : msg.username;
                 const toUsername = isPrivate ? msg.to_username : null;
-                const fromArg = String(fromUsername).replace(/`/g, '\\`');
-                const toArg = toUsername != null ? String(toUsername).replace(/`/g, '\\`') : '';
-                const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;">${escapeHtml(fromUsername)}</a>`;
-                const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;">${escapeHtml(toUsername)}</a>` : '';
-                const displayUserHTML = isPrivate ? `${fromLink} → ${toLink}` : fromLink;
+                const displayUserHTML = isPrivate ? `${escapeHtml(fromUsername)} → ${escapeHtml(toUsername)}` : escapeHtml(fromUsername);
 
                 html += `
                     <tr style="${rowStyle}">
