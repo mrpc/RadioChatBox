@@ -3217,10 +3217,15 @@
                     : new Date(msg.timestamp || msg.created_at);
                 const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleString();
 
-                // Build user display (no links, just plain text)
+                // Build clickable user links with better styling
                 const fromUsername = isPrivate ? msg.from_username : msg.username;
                 const toUsername = isPrivate ? msg.to_username : null;
-                const displayUserHTML = isPrivate ? `${escapeHtml(fromUsername)} → ${escapeHtml(toUsername)}` : escapeHtml(fromUsername);
+                const fromArg = String(fromUsername).replace(/`/g, '\\`');
+                const toArg = toUsername != null ? String(toUsername).replace(/`/g, '\\`') : '';
+                const linkStyle = 'color: #374151; text-decoration: none; font-weight: 600; cursor: pointer; padding: 2px 4px; border-radius: 3px; transition: all 0.2s;';
+                const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(fromUsername)}</a>`;
+                const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(toUsername)}</a>` : '';
+                const displayUserHTML = isPrivate ? `${fromLink} → ${toLink}` : fromLink;
 
                 html += `
                     <tr style="${rowStyle}">
