@@ -2370,9 +2370,14 @@
             // Disconnect SSE streams
             disconnectAdminStream();
             disconnectImpersonateChatStream();
+            // Also disconnect notifications stream if active
+            if (notificationsStream && notificationsStream.abort) {
+                try { notificationsStream.abort(); } catch (e) {}
+            }
             
             authToken = null;
             adminSessionToken = null;
+            currentUserRole = null;
             localStorage.removeItem('adminToken');
             localStorage.removeItem('isAdmin'); // Remove admin flag
             
@@ -6918,6 +6923,11 @@
             const type = notificationsFilter === 'fake_user_dm' ? 'fake_user_dm' : null;
 
             try {
+                // Skip when not authenticated or without proper role
+                const hasAccess = currentUserRole === 'root' || currentUserRole === 'administrator' || currentUserRole === 'owner';
+                if (!authToken || !hasAccess) {
+                    return;
+                }
                 const params = new URLSearchParams();
                 if (unreadOnly) params.append('unread_only', 'true');
                 if (type) params.append('type', type);
@@ -6926,6 +6936,10 @@
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
 
+                // If unauthorized/forbidden (e.g., after logout), do not alert
+                if (response.status === 401 || response.status === 403) {
+                    return;
+                }
                 if (!response.ok) {
                     throw new Error('Failed to fetch notifications');
                 }
@@ -6938,7 +6952,11 @@
                 }
             } catch (error) {
                 console.error('Error fetching notifications:', error);
-                alert('Failed to load notifications');
+                // Only show alert if still authenticated and has access
+                const hasAccess = currentUserRole === 'root' || currentUserRole === 'administrator' || currentUserRole === 'owner';
+                if (authToken && hasAccess) {
+                    alert('Failed to load notifications');
+                }
             }
         }
 
