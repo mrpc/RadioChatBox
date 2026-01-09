@@ -660,10 +660,11 @@ class ChatService
             // Insert or update active session
             // Note: ON CONFLICT now uses (username, session_id) to allow multiple sessions for authenticated users
             $stmt = $this->pdo->prepare(
-                'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
-                 VALUES (:username, :session_id, :ip_address, NOW(), NOW())
+                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                 VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
                  ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
+                     user_id = :user_id,
                      last_heartbeat = NOW()'
             );
             
@@ -671,6 +672,7 @@ class ChatService
                 'username' => $username,
                 'session_id' => $sessionId,
                 'ip_address' => $ipAddress,
+                'user_id' => $registeredUser !== false ? $registeredUser['id'] : null,
             ]);
             
             // Track IP address in user_activity even if no message is sent yet
