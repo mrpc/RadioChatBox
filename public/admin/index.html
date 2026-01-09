@@ -1033,6 +1033,25 @@
             background: var(--gray-50);
             border-radius: 0 0 12px 12px;
         }
+
+        /* Moderator-restricted items - start hidden to prevent flash */
+        body.moderator-role #dashboard-clear-messages-btn,
+        body.moderator-role #dashboard-flush-redis-btn,
+        body.moderator-role #messages-flush-redis-btn,
+        body.moderator-role #kpi-listeners-card {
+            display: none !important;
+        }
+
+        /* Hide admin panel until role is verified to prevent widget flash */
+        #admin-panel {
+            visibility: hidden;
+        }
+
+        body.moderator-role #admin-panel,
+        body.root-role #admin-panel,
+        body.administrator-role #admin-panel {
+            visibility: visible;
+        }
     </style>
 </head>
 <body>
@@ -1198,12 +1217,12 @@
                         <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('users')" title="Click to view all active users">
                             <div class="kpi-header">
                                 <div>
-                                    <div class="kpi-title">Active Users (Real)</div>
+                                    <div class="kpi-title" id="kpi-active-users-title">Active Users (Real)</div>
                                 </div>
                                 <div class="kpi-icon primary">👥</div>
                             </div>
                             <div class="kpi-value" id="kpi-active-users">-</div>
-                            <div class="kpi-change neutral">Currently online (real users)</div>
+                            <div class="kpi-change neutral" id="kpi-active-users-subline">Currently online (real users)</div>
                         </div>
                         
                         <div class="kpi-card" style="cursor: pointer;" onclick="switchTab('messages')" title="Click to view all messages">
@@ -1249,15 +1268,15 @@
                             </div>
                         </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                            <button class="btn btn-info" onclick="clearMessagesCache()" style="padding: 16px;">
+                            <button class="btn btn-info" id="dashboard-clear-messages-btn" onclick="clearMessagesCache()" style="padding: 16px;">
                                 <span>💬</span>
                                 <span>Clear Messages Cache</span>
                             </button>
-                            <button class="btn btn-warning" onclick="flushRedisCache()" style="padding: 16px;">
+                            <button class="btn btn-warning" id="dashboard-flush-redis-btn" onclick="flushRedisCache()" style="padding: 16px;">
                                 <span>🔄</span>
                                 <span>Flush Redis Cache</span>
                             </button>
-                            <button class="btn btn-danger" onclick="clearPublicChat()" style="padding: 16px;">
+                            <button class="btn btn-danger" id="dashboard-clear-chat-btn" onclick="clearPublicChat()" style="padding: 16px;">
                                 <span>🗑️</span>
                                 <span>Clear Public Chat</span>
                             </button>
@@ -1332,10 +1351,10 @@
                                     <option value="public">Public Only</option>
                                     <option value="private">Private Only</option>
                                 </select>
-                                <button class="btn btn-warning" onclick="flushRedisCache()">
-                                    � Flush Cache
+                                <button class="btn btn-warning" onclick="flushRedisCache()" id="messages-flush-redis-btn">
+                                    🔄 Flush Cache
                                 </button>
-                                <button class="btn btn-danger" onclick="clearPublicChat()">
+                                <button class="btn btn-danger" id="messages-clear-chat-btn" onclick="clearPublicChat()">
                                     🗑️ Clear Chat
                                 </button>
                             </div>
@@ -1718,7 +1737,7 @@
 
             <!-- IP Bans Tab -->
             <div id="ip-bans-tab" class="tab-content">
-                <div class="section">
+                <div class="section" id="ip-ban-add-section">
                     <h2>Add IP Ban</h2>
                     <div class="form-group">
                         <label>IP Address</label>
@@ -1743,7 +1762,7 @@
 
             <!-- Nickname Bans Tab -->
             <div id="nickname-bans-tab" class="tab-content">
-                <div class="section">
+                <div class="section" id="nickname-ban-add-section">
                     <h2>Add Nickname Ban</h2>
                     <div class="form-group">
                         <label>Nickname</label>
@@ -2246,6 +2265,31 @@
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('admin-panel').style.display = 'block';
             document.getElementById('admin-panel').classList.add('active');
+            // Apply early role-based restrictions using stored role to avoid flash of restricted items
+            try {
+                const storedRole = localStorage.getItem('userRole');
+                if (storedRole) {
+                    currentUserRole = storedRole;
+                    // Add CSS class to body immediately to hide moderator items and show admin panel
+                    if (storedRole === 'moderator') {
+                        document.body.classList.add('moderator-role');
+                    } else if (storedRole === 'root' || storedRole === 'owner') {
+                        document.body.classList.add('root-role');
+                    } else if (storedRole === 'administrator') {
+                        document.body.classList.add('administrator-role');
+                    }
+                    applyRoleBasedRestrictions(storedRole);
+                    const storedName = localStorage.getItem('chatNickname');
+                    if (storedName) {
+                        const nameEl = document.getElementById('user-name');
+                        const avatarEl = document.getElementById('user-avatar');
+                        if (nameEl) nameEl.textContent = storedName;
+                        if (avatarEl && storedName) avatarEl.textContent = storedName.charAt(0).toUpperCase();
+                        const roleEl = document.getElementById('user-role');
+                        if (roleEl) roleEl.textContent = storedRole;
+                    }
+                }
+            } catch (e) { /* no-op */ }
             await loadAllData();
             // Connect to SSE stream for real-time notifications
             connectAdminStream();
@@ -2332,7 +2376,20 @@
                 }
                 
                 // Apply initial role-based restrictions immediately to avoid showing restricted items
-                try { applyRoleBasedRestrictions(loginData.user.role); } catch (e) { /* no-op */ }
+                try {
+                    const role = loginData.user.role;
+                    if (role === 'moderator') {
+                        document.body.classList.add('moderator-role');
+                        document.body.classList.remove('root-role', 'administrator-role');
+                    } else if (role === 'root' || role === 'owner') {
+                        document.body.classList.add('root-role');
+                        document.body.classList.remove('moderator-role', 'administrator-role');
+                    } else if (role === 'administrator') {
+                        document.body.classList.add('administrator-role');
+                        document.body.classList.remove('moderator-role', 'root-role');
+                    }
+                    applyRoleBasedRestrictions(role);
+                } catch (e) { /* no-op */ }
                 errorDiv.textContent = '';
                 await showAdminPanel();
             } catch (error) {
@@ -2747,7 +2804,7 @@
         function switchTab(tabName, updateHistory = true) {
             // Role-based guard: prevent moderators from accessing restricted tabs via hash/direct calls
             if (currentUserRole === 'moderator') {
-                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'settings', 'statistics']);
+                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'settings', 'statistics', 'photos', 'url-whitelist', 'url-blacklist']);
                 if (restrictedTabs.has(tabName)) {
                     tabName = 'dashboard';
                     updateHistory = true;
@@ -3051,8 +3108,9 @@
                         
                         // Check if radio is enabled and has status available
                         if (kpiListenersEl && radioData.success && radioData.nowPlaying) {
-                            // Always show the widget if we have radio data (even if offline/inactive)
-                            if (kpiListenersCard) {
+                            // Always show the widget if we have radio data (even if offline/inactive), unless hidden by CSS
+                            // Don't override CSS hiding - moderators have it hidden via body.moderator-role class
+                            if (kpiListenersCard && currentUserRole !== 'moderator') {
                                 kpiListenersCard.style.display = '';
                             }
                             
@@ -3389,6 +3447,7 @@
 
                 if (data.success) {
                     const table = document.getElementById('ip-bans-table');
+                    const readOnly = currentUserRole === 'moderator';
                     table.innerHTML = `
                         <table>
                             <thead>
@@ -3397,7 +3456,7 @@
                                     <th>Reason</th>
                                     <th>Banned At</th>
                                     <th>Expires</th>
-                                    <th>Action</th>
+                                    ${readOnly ? '' : '<th>Action</th>'}
                                 </tr>
                             </thead>
                             <tbody>
@@ -3407,9 +3466,7 @@
                                         <td>${escapeHtml(ban.reason || 'N/A')}</td>
                                         <td>${new Date(ban.banned_at).toLocaleString()}</td>
                                         <td>${ban.banned_until ? new Date(ban.banned_until).toLocaleString() : 'Permanent'}</td>
-                                        <td>
-                                            <button class="btn btn-success" onclick="unbanIP('${ban.ip_address}')">Unban</button>
-                                        </td>
+                                        ${readOnly ? '' : `<td><button class="btn btn-success" onclick="unbanIP('${ban.ip_address}')">Unban</button></td>`}
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -3430,6 +3487,7 @@
 
                 if (data.success) {
                     const table = document.getElementById('nickname-bans-table');
+                    const readOnly = currentUserRole === 'moderator';
                     table.innerHTML = `
                         <table>
                             <thead>
@@ -3437,7 +3495,7 @@
                                     <th>Nickname</th>
                                     <th>Reason</th>
                                     <th>Banned At</th>
-                                    <th>Action</th>
+                                    ${readOnly ? '' : '<th>Action</th>'}
                                 </tr>
                             </thead>
                             <tbody>
@@ -3445,10 +3503,8 @@
                                     <tr>
                                         <td>${escapeHtml(ban.nickname)}</td>
                                         <td>${escapeHtml(ban.reason || 'N/A')}</td>
-                                        <td>${new Date(ban.banned_at).toLocaleString()}</td>
-                                        <td>
-                                            <button class="btn btn-success" onclick="unbanNickname('${escapeHtml(ban.nickname)}')">Unban</button>
-                                        </td>
+                                        <td>${new Date(ban.b_at || ban.banned_at).toLocaleString()}</td>
+                                        ${readOnly ? '' : `<td><button class=\"btn btn-success\" onclick=\"unbanNickname('${escapeHtml(ban.nickname)}')\">Unban</button></td>`}
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -3911,32 +3967,35 @@
                     });
                     messagesHtml += `</tbody></table>${paginationHtml}`;
                     
-                    // Private messages - show as conversation list
-                    let privateMessagesHtml = '<h3>Private Conversations</h3>';
-                    if (user.private_messages && user.private_messages.length > 0) {
-                        // Group by conversation partner
-                        const conversations = {};
-                        user.private_messages.forEach(msg => {
-                            const partner = msg.from_username === username ? msg.to_username : msg.from_username;
-                            if (!conversations[partner]) {
-                                conversations[partner] = [];
-                            }
-                            conversations[partner].push(msg);
-                        });
-                        
-                        privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                        Object.keys(conversations).forEach(partner => {
-                            const count = conversations[partner].length;
-                            privateMessagesHtml += `
-                                <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(partner)}')">
-                                    💬 ${escapeHtml(partner)} (${count})
-                                </button>
-                            `;
-                        });
-                        privateMessagesHtml += '</div>';
-                        privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
-                    } else {
-                        privateMessagesHtml += '<p>No private messages</p>';
+                    // Private messages - show as conversation list (hidden for moderators)
+                    let privateMessagesHtml = '';
+                    if (currentUserRole !== 'moderator') {
+                        privateMessagesHtml = '<h3>Private Conversations</h3>';
+                        if (user.private_messages && user.private_messages.length > 0) {
+                            // Group by conversation partner
+                            const conversations = {};
+                            user.private_messages.forEach(msg => {
+                                const partner = msg.from_username === username ? msg.to_username : msg.from_username;
+                                if (!conversations[partner]) {
+                                    conversations[partner] = [];
+                                }
+                                conversations[partner].push(msg);
+                            });
+                            
+                            privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
+                            Object.keys(conversations).forEach(partner => {
+                                const count = conversations[partner].length;
+                                privateMessagesHtml += `
+                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(partner)}')">
+                                        💬 ${escapeHtml(partner)} (${count})
+                                    </button>
+                                `;
+                            });
+                            privateMessagesHtml += '</div>';
+                            privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
+                        } else {
+                            privateMessagesHtml += '<p>No private messages</p>';
+                        }
                     }
 
                     document.getElementById('user-details-content').innerHTML = 
@@ -4074,32 +4133,35 @@
                     });
                     messagesHtml += `</tbody></table>${paginationHtml}`;
                     
-                    // Private messages - show as conversation list
-                    let privateMessagesHtml = '<h3>Private Conversations</h3>';
-                    if (user.private_messages && user.private_messages.length > 0) {
-                        // Group by conversation partner
-                        const conversations = {};
-                        user.private_messages.forEach(msg => {
-                            const partner = msg.from_username === username ? msg.to_username : msg.from_username;
-                            if (!conversations[partner]) {
-                                conversations[partner] = [];
-                            }
-                            conversations[partner].push(msg);
-                        });
-                        
-                        privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                        Object.keys(conversations).forEach(partner => {
-                            const count = conversations[partner].length;
-                            privateMessagesHtml += `
-                                <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(partner)}')">
-                                    💬 ${escapeHtml(partner)} (${count})
-                                </button>
-                            `;
-                        });
-                        privateMessagesHtml += '</div>';
-                        privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
-                    } else {
-                        privateMessagesHtml += '<p>No private messages</p>';
+                    // Private messages - show as conversation list (hidden for moderators)
+                    let privateMessagesHtml = '';
+                    if (currentUserRole !== 'moderator') {
+                        privateMessagesHtml = '<h3>Private Conversations</h3>';
+                        if (user.private_messages && user.private_messages.length > 0) {
+                            // Group by conversation partner
+                            const conversations = {};
+                            user.private_messages.forEach(msg => {
+                                const partner = msg.from_username === username ? msg.to_username : msg.from_username;
+                                if (!conversations[partner]) {
+                                    conversations[partner] = [];
+                                }
+                                conversations[partner].push(msg);
+                            });
+                            
+                            privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
+                            Object.keys(conversations).forEach(partner => {
+                                const count = conversations[partner].length;
+                                privateMessagesHtml += `
+                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(partner)}')">
+                                        💬 ${escapeHtml(partner)} (${count})
+                                    </button>
+                                `;
+                            });
+                            privateMessagesHtml += '</div>';
+                            privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
+                        } else {
+                            privateMessagesHtml += '<p>No private messages</p>';
+                        }
                     }
 
                     document.getElementById('inactive-user-details-content').innerHTML = 
@@ -4931,6 +4993,18 @@
                     currentUserRole = data.user.role;
                     currentUsername = data.user.username;
                     
+                    // Add CSS class based on role
+                    if (data.user.role === 'moderator') {
+                        document.body.classList.add('moderator-role');
+                        document.body.classList.remove('root-role', 'administrator-role');
+                    } else if (data.user.role === 'root' || data.user.role === 'owner') {
+                        document.body.classList.add('root-role');
+                        document.body.classList.remove('moderator-role', 'administrator-role');
+                    } else if (data.user.role === 'administrator') {
+                        document.body.classList.add('administrator-role');
+                        document.body.classList.remove('moderator-role', 'root-role');
+                    }
+                    
                     // Update header user info
                     document.getElementById('user-name').textContent = data.user.username;
                     document.getElementById('user-avatar').textContent = data.user.username.charAt(0).toUpperCase();
@@ -4942,9 +5016,30 @@
                 }
             } catch (error) {
                 console.error('Failed to load current user:', error);
-                // Assume root for legacy auth
-                currentUserRole = 'root';
-                document.getElementById('user-role').textContent = 'root';
+                // Safe fallback: use stored role/username or default to moderator to avoid overexposure
+                const storedRole = localStorage.getItem('userRole') || 'moderator';
+                const storedName = localStorage.getItem('chatNickname') || 'User';
+                currentUserRole = storedRole;
+                
+                // Add CSS class based on stored role
+                if (storedRole === 'moderator') {
+                    document.body.classList.add('moderator-role');
+                    document.body.classList.remove('root-role', 'administrator-role');
+                } else if (storedRole === 'root' || storedRole === 'owner') {
+                    document.body.classList.add('root-role');
+                    document.body.classList.remove('moderator-role', 'administrator-role');
+                } else if (storedRole === 'administrator') {
+                    document.body.classList.add('administrator-role');
+                    document.body.classList.remove('moderator-role', 'root-role');
+                }
+                
+                const roleEl = document.getElementById('user-role');
+                if (roleEl) roleEl.textContent = storedRole;
+                const nameEl = document.getElementById('user-name');
+                if (nameEl) nameEl.textContent = storedName;
+                const avatarEl = document.getElementById('user-avatar');
+                if (avatarEl && storedName) avatarEl.textContent = storedName.charAt(0).toUpperCase();
+                applyRoleBasedRestrictions(storedRole);
 
                 // Connect to notifications stream for legacy auth
                 connectNotificationsStream();
@@ -4959,6 +5054,9 @@
             const notificationsNav = document.getElementById('nav-notifications');
             const fakeUsersNav = document.querySelector('.nav-item[data-tab="fake-users"]');
             const statisticsNav = document.querySelector('.nav-item[data-tab="statistics"]');
+            const photosNav = document.querySelector('.nav-item[data-tab="photos"]');
+            const urlWhitelistNav = document.querySelector('.nav-item[data-tab="url-whitelist"]');
+            const urlBlacklistNav = document.querySelector('.nav-item[data-tab="url-blacklist"]');
             const fakeUsersKpi = document.querySelector('.kpi-card:has(#kpi-fake-users)');
             const listenersKpi = document.getElementById('kpi-listeners-card');
             const settingsDashboardBtn = 
@@ -4966,7 +5064,14 @@
                 document.querySelector(`button[onclick*="switchTab('settings')"]`) ||
                 document.querySelector('button[onclick*="settings"]');
             const manageFakeUsersBtn = document.querySelector('button[onclick*="fake-users"]');
+            const dashClearMsgBtn = document.getElementById('dashboard-clear-messages-btn');
+            const dashFlushRedisBtn = document.getElementById('dashboard-flush-redis-btn');
+            const dashClearChatBtn = document.getElementById('dashboard-clear-chat-btn');
+            const msgFlushRedisBtn = document.getElementById('messages-flush-redis-btn');
+            const msgClearChatBtn = document.getElementById('messages-clear-chat-btn');
             const minimumUsersGroup = document.getElementById('setting-minimum-users-group');
+            const activeUsersTitle = document.getElementById('kpi-active-users-title');
+            const activeUsersSubline = document.getElementById('kpi-active-users-subline');
 
             // Update user role display
             document.getElementById('user-role').textContent = role;
@@ -4978,10 +5083,22 @@
                 if (notificationsNav) notificationsNav.style.display = 'none';
                 if (fakeUsersNav) fakeUsersNav.style.display = 'none';
                 if (statisticsNav) statisticsNav.style.display = 'none';
+                if (photosNav) photosNav.style.display = 'none';
+                if (urlWhitelistNav) urlWhitelistNav.style.display = 'none';
+                if (urlBlacklistNav) urlBlacklistNav.style.display = 'none';
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'none';
                 if (listenersKpi) listenersKpi.style.display = 'none';
                 if (settingsDashboardBtn) settingsDashboardBtn.style.display = 'none';
+                if (dashClearMsgBtn) dashClearMsgBtn.style.display = 'none';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
+                if (dashFlushRedisBtn) dashFlushRedisBtn.style.display = 'none';
+                if (msgFlushRedisBtn) msgFlushRedisBtn.style.display = 'none';
+                const ipAddSection = document.getElementById('ip-ban-add-section');
+                if (ipAddSection) ipAddSection.style.display = 'none';
+                const nicknameAddSection = document.getElementById('nickname-ban-add-section');
+                if (nicknameAddSection) nicknameAddSection.style.display = 'none';
+                if (activeUsersTitle) activeUsersTitle.textContent = 'Users';
+                if (activeUsersSubline) activeUsersSubline.textContent = 'Currently online';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'none';
             } else if (role === 'root' || role === 'owner') {
                 // Show all features for root/owner
@@ -4991,9 +5108,14 @@
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'block';
                 if (statisticsNav) statisticsNav.style.display = 'flex';
                 if (listenersKpi) listenersKpi.style.display = 'block';
+                if (photosNav) photosNav.style.display = 'flex';
+                if (urlWhitelistNav) urlWhitelistNav.style.display = 'flex';
+                if (urlBlacklistNav) urlBlacklistNav.style.display = 'flex';
                 if (settingsDashboardBtn) settingsDashboardBtn.style.display = 'inline-flex';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'flex';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'block';
+                if (activeUsersTitle) activeUsersTitle.textContent = 'Active Users (Real)';
+                if (activeUsersSubline) activeUsersSubline.textContent = 'Currently online (real users)';
             } else if (role === 'administrator') {
                 // Administrators can view notifications but not impersonate
                 if (notificationsNav) notificationsNav.style.display = 'flex';
@@ -5005,6 +5127,11 @@
                 if (statisticsNav) statisticsNav.style.display = 'flex';
                 if (listenersKpi) listenersKpi.style.display = 'block';
                 if (settingsDashboardBtn) settingsDashboardBtn.style.display = 'inline-flex';
+                if (photosNav) photosNav.style.display = 'flex';
+                if (urlWhitelistNav) urlWhitelistNav.style.display = 'flex';
+                if (urlBlacklistNav) urlBlacklistNav.style.display = 'flex';
+                if (activeUsersTitle) activeUsersTitle.textContent = 'Active Users (Real)';
+                if (activeUsersSubline) activeUsersSubline.textContent = 'Currently online (real users)';
             }
         }
 
