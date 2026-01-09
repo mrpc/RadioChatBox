@@ -2331,6 +2331,8 @@
                     console.warn('This usually means Redis is unavailable. Check server logs.');
                 }
                 
+                // Apply initial role-based restrictions immediately to avoid showing restricted items
+                try { applyRoleBasedRestrictions(loginData.user.role); } catch (e) { /* no-op */ }
                 errorDiv.textContent = '';
                 await showAdminPanel();
             } catch (error) {
@@ -2743,6 +2745,14 @@
         }
 
         function switchTab(tabName, updateHistory = true) {
+            // Role-based guard: prevent moderators from accessing restricted tabs via hash/direct calls
+            if (currentUserRole === 'moderator') {
+                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'settings', 'statistics']);
+                if (restrictedTabs.has(tabName)) {
+                    tabName = 'dashboard';
+                    updateHistory = true;
+                }
+            }
             // Update sidebar navigation
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
             const navItem = document.querySelector(`.nav-item[data-tab="${tabName}"]`);
@@ -3139,20 +3149,27 @@
             filteredMessages.forEach(msg => {
                 const isPrivate = msg.message_type === 'private';
                 const rowStyle = isPrivate ? 'background: #fff7ed;' : '';
-                
+
                 // Handle both Unix timestamps and ISO datetime strings from database
-                const date = typeof msg.timestamp === 'number' 
-                    ? new Date(msg.timestamp * 1000) 
+                const date = typeof msg.timestamp === 'number'
+                    ? new Date(msg.timestamp * 1000)
                     : new Date(msg.timestamp || msg.created_at);
                 const time = isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleString();
-                
-                const displayUser = isPrivate ? `${escapeHtml(msg.from_username)} → ${escapeHtml(msg.to_username)}` : escapeHtml(msg.username);
-                
+
+                // Build clickable user links
+                const fromUsername = isPrivate ? msg.from_username : msg.username;
+                const toUsername = isPrivate ? msg.to_username : null;
+                const fromArg = String(fromUsername).replace(/`/g, '\\`');
+                const toArg = toUsername != null ? String(toUsername).replace(/`/g, '\\`') : '';
+                const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;">${escapeHtml(fromUsername)}</a>`;
+                const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;">${escapeHtml(toUsername)}</a>` : '';
+                const displayUserHTML = isPrivate ? `${fromLink} → ${toLink}` : fromLink;
+
                 html += `
                     <tr style="${rowStyle}">
                         ${dashboardIncludesPrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                         <td>${time}</td>
-                        <td><strong>${displayUser}</strong></td>
+                        <td><strong>${displayUserHTML}</strong></td>
                         <td>${escapeHtml(msg.message.substring(0, 100))}${msg.message.length > 100 ? '...' : ''}</td>
                     </tr>
                 `;
@@ -3334,13 +3351,19 @@
                                 ${data.messages.map(msg => {
                                     const isPrivate = msg.message_type === 'private';
                                     const rowStyle = isPrivate ? 'background: #fff7ed;' : '';
+                                    const fromUsername = isPrivate ? msg.from_username : msg.username;
+                                    const toUsername = isPrivate ? msg.to_username : null;
+                                    const fromArg = String(fromUsername).replace(/`/g, '\\`');
+                                    const toArg = toUsername != null ? String(toUsername).replace(/`/g, '\\`') : '';
+                                    const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;">${escapeHtml(fromUsername)}</a>`;
+                                    const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;">${escapeHtml(toUsername)}</a>` : '-';
                                     return `
                                     <tr style="${rowStyle}">
                                         ${includePrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                                         <td>${new Date(msg.created_at).toLocaleString()}</td>
                                         ${includePrivate 
-                                            ? `<td>${escapeHtml(isPrivate ? msg.from_username : msg.username)}</td><td>${isPrivate ? escapeHtml(msg.to_username) : '-'}</td>`
-                                            : `<td>${escapeHtml(msg.username)}</td>`
+                                            ? `<td>${fromLink}</td><td>${toLink}</td>`
+                                            : `<td>${fromLink}</td>`
                                         }
                                         <td>${escapeHtml(msg.message)}</td>
                                         ${!includePrivate ? `<td>${msg.ip_address}</td>` : ''}
@@ -4477,7 +4500,11 @@
                                     
                                     return `
                                     <tr>
-                                        <td>${escapeHtml(user.username)}</td>
+                                        <td>
+                                            <a href="#inactive-user/${encodeURIComponent(user.username)}" onclick="switchTab('inactive-users'); setTimeout(() => viewInactiveUserDetails(\`${String(user.username).replace(/`/g, '\\`')}\`), 0); return false;">
+                                                ${escapeHtml(user.username)}
+                                            </a>
+                                        </td>
                                         <td>${escapeHtml(profile || 'N/A')}</td>
                                         <td>${user.last_message_at ? new Date(user.last_message_at).toLocaleString() : 'Never'}</td>
                                         <td>${user.message_count || 0}</td>
@@ -4931,7 +4958,10 @@
             const impersonateNav = document.getElementById('nav-impersonate');
             const notificationsNav = document.getElementById('nav-notifications');
             const fakeUsersNav = document.querySelector('.nav-item[data-tab="fake-users"]');
+            const statisticsNav = document.querySelector('.nav-item[data-tab="statistics"]');
             const fakeUsersKpi = document.querySelector('.kpi-card:has(#kpi-fake-users)');
+            const listenersKpi = document.getElementById('kpi-listeners-card');
+            const settingsDashboardBtn = document.querySelector('button.btn.btn-success[onclick*="switchTab(''settings'')"]') || document.querySelector('button[onclick*="settings"]');
             const manageFakeUsersBtn = document.querySelector('button[onclick*="fake-users"]');
             const minimumUsersGroup = document.getElementById('setting-minimum-users-group');
 
@@ -4944,7 +4974,10 @@
                 if (impersonateNav) impersonateNav.style.display = 'none';
                 if (notificationsNav) notificationsNav.style.display = 'none';
                 if (fakeUsersNav) fakeUsersNav.style.display = 'none';
+                if (statisticsNav) statisticsNav.style.display = 'none';
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'none';
+                if (listenersKpi) listenersKpi.style.display = 'none';
+                if (settingsDashboardBtn) settingsDashboardBtn.style.display = 'none';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'none';
             } else if (role === 'root' || role === 'owner') {
@@ -4953,6 +4986,9 @@
                 if (notificationsNav) notificationsNav.style.display = 'flex';
                 if (fakeUsersNav) fakeUsersNav.style.display = 'flex';
                 if (fakeUsersKpi) fakeUsersKpi.style.display = 'block';
+                if (statisticsNav) statisticsNav.style.display = 'flex';
+                if (listenersKpi) listenersKpi.style.display = 'block';
+                if (settingsDashboardBtn) settingsDashboardBtn.style.display = 'inline-flex';
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'flex';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'block';
             } else if (role === 'administrator') {
@@ -4963,6 +4999,9 @@
                 if (manageFakeUsersBtn) manageFakeUsersBtn.style.display = 'none';
                 if (impersonateNav) impersonateNav.style.display = 'none';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'none';
+                if (statisticsNav) statisticsNav.style.display = 'flex';
+                if (listenersKpi) listenersKpi.style.display = 'block';
+                if (settingsDashboardBtn) settingsDashboardBtn.style.display = 'inline-flex';
             }
         }
 
