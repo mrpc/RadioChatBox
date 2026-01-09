@@ -4565,11 +4565,7 @@
                                     
                                     return `
                                     <tr>
-                                        <td>
-                                            <a href="#inactive-user/${encodeURIComponent(user.username)}" onclick="switchTab('inactive-users'); setTimeout(() => viewInactiveUserDetails(\`${String(user.username).replace(/`/g, '\\`')}\`), 0); return false;">
-                                                ${escapeHtml(user.username)}
-                                            </a>
-                                        </td>
+                                        <td>${escapeHtml(user.username)}</td>
                                         <td>${escapeHtml(profile || 'N/A')}</td>
                                         <td>${user.last_message_at ? new Date(user.last_message_at).toLocaleString() : 'Never'}</td>
                                         <td>${user.message_count || 0}</td>
