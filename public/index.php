@@ -11,7 +11,7 @@
     <meta property="og:description" id="og-description" content="Real-time chat for radio shows">
     <meta property="og:type" id="og-type" content="website">
     <meta property="og:image" id="og-image" content="">
-    <link rel="icon" id="favicon" type="image/x-icon" href="">
+    <link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg">
     <!-- CSS with automatic cache-busting version based on file modification time -->
     <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(__DIR__ . '/css/style.css'); ?>">
     <!-- Twemoji library for emoji support on older Windows versions -->

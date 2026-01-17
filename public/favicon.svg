@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="96" cy="96" r="96" fill="url(#grad)"/>
+  
+  <!-- Chat bubble -->
+  <path d="M 48 60 L 144 60 Q 152 60 152 68 L 152 116 Q 152 124 144 124 L 72 124 L 60 140 L 72 124 L 48 124 Q 40 124 40 116 L 40 68 Q 40 60 48 60 Z" fill="white" opacity="0.95"/>
+  
+  <!-- Microphone icon inside chat bubble -->
+  <g transform="translate(96, 92)">
+    <!-- Microphone body -->
+    <rect x="-8" y="-16" width="16" height="20" rx="8" fill="#6366f1"/>
+    <!-- Microphone stand -->
+    <rect x="-2" y="4" width="4" height="12" fill="#6366f1"/>
+    <!-- Sound waves -->
+    <circle cx="0" cy="0" r="24" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.6"/>
+    <circle cx="0" cy="0" r="32" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.3"/>
+  </g>
+</svg>
