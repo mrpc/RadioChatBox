@@ -75,6 +75,7 @@ class RadioChatBox {
         this.isLoadingMoreMessages = false; // Prevent duplicate requests while loading
         this.messagesOffset = 0; // Track offset for pagination
         this.hasMoreMessages = true; // Flag to know if there are more messages to load
+        this.hasInitialScrolled = false; // Prevent infinite scroll from triggering before initial scroll to bottom
 
         this.init();
     }
@@ -1381,7 +1382,11 @@ class RadioChatBox {
             }
             
             // Infinite scroll: load more messages when user scrolls to top
-            if (!this.privateChat.active && container.scrollTop < 500 && !this.isLoadingMoreMessages && this.hasMoreMessages) {
+            // BUT: Don't trigger on initial load when scrollTop is 0 and we haven't scrolled to bottom yet
+            // hasInitialScrolled flag prevents loading more messages until after initial scroll to bottom
+            const shouldLoadMore = !this.privateChat.active && container.scrollTop < 500 && !this.isLoadingMoreMessages && this.hasMoreMessages && this.hasInitialScrolled;
+            if (shouldLoadMore) {
+                console.log('[Scroll event] Triggering loadMoreMessages, scrollTop=', container.scrollTop);
                 this.loadMoreMessages();
             }
         });
@@ -1907,10 +1912,12 @@ class RadioChatBox {
     
     async loadPublicMessages() {
         try {
+            console.log('[loadPublicMessages] Starting...');
             const response = await fetch(`${this.apiUrl}/api/history.php`);
             const data = await response.json();
             
             if (data.success && data.messages) {
+                console.log('[loadPublicMessages] Got', data.messages.length, 'messages');
                 // Reset pagination state for fresh history load
                 this.messagesOffset = data.messages.length;
                 this.hasMoreMessages = data.messages.length > 0;
@@ -1928,8 +1935,21 @@ class RadioChatBox {
                     });
                 }
                 
-                // Scroll to bottom after DOM is painted
-                requestAnimationFrame(() => this.scrollToBottom());
+                // Disable smooth scroll temporarily to prevent scroll events during animation
+                const container = document.getElementById('messages-container');
+                if (container) {
+                    const originalScrollBehavior = container.style.scrollBehavior;
+                    container.style.scrollBehavior = 'auto';
+                    
+                    // Scroll to bottom immediately
+                    container.scrollTop = container.scrollHeight;
+                    
+                    // Re-enable smooth scroll after a brief moment
+                    setTimeout(() => {
+                        container.style.scrollBehavior = originalScrollBehavior;
+                        this.hasInitialScrolled = true;
+                    }, 50);
+                }
             }
         } catch (error) {
             console.error('Failed to load public messages:', error);
@@ -2002,6 +2022,8 @@ class RadioChatBox {
             return;
         }
         
+        console.log('[loadHistory] Called with', messages.length, 'messages');
+        
         // Reset pagination state for fresh history load
         this.messagesOffset = messages.length;
         this.hasMoreMessages = messages.length > 0; // If we got messages, there might be more
@@ -2030,8 +2052,21 @@ class RadioChatBox {
             });
         }
 
-        // Scroll to bottom after DOM is painted
-        requestAnimationFrame(() => this.scrollToBottom());
+        // Disable smooth scroll temporarily to prevent scroll events during animation
+        const container = document.getElementById('messages-container');
+        if (container) {
+            const originalScrollBehavior = container.style.scrollBehavior;
+            container.style.scrollBehavior = 'auto';
+            
+            // Scroll to bottom immediately
+            container.scrollTop = container.scrollHeight;
+            
+            // Re-enable smooth scroll after a brief moment
+            setTimeout(() => {
+                container.style.scrollBehavior = originalScrollBehavior;
+                this.hasInitialScrolled = true;
+            }, 50);
+        }
     }
 
     async reloadHistory() {
@@ -2052,6 +2087,8 @@ class RadioChatBox {
     async loadMoreMessages() {
         // Prevent multiple simultaneous requests
         if (this.isLoadingMoreMessages) return;
+        
+        console.log('[loadMoreMessages] Called! hasInitialScrolled=', this.hasInitialScrolled);
         
         this.isLoadingMoreMessages = true;
         
@@ -2714,8 +2751,11 @@ class RadioChatBox {
     }
 
     scrollToBottom() {
-        const container = this.messagesContainer.parentElement;
-        container.scrollTop = container.scrollHeight;
+        // Simple scroll to bottom
+        const container = document.getElementById('messages-container');
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
     }
 
     async deleteMessage(messageId, button) {
