@@ -2022,8 +2022,6 @@ class RadioChatBox {
             return;
         }
         
-        console.log('[loadHistory] Called with', messages.length, 'messages');
-        
         // Reset pagination state for fresh history load
         this.messagesOffset = messages.length;
         this.hasMoreMessages = messages.length > 0; // If we got messages, there might be more
@@ -2216,6 +2214,10 @@ class RadioChatBox {
                 this.messagesContainer.appendChild(messagesFragment);
             }
             
+            // Get the scroll position BEFORE emoji parsing
+            const scrollHeightAfter = container.scrollHeight;
+            const heightDifference = scrollHeightAfter - scrollHeightBefore;
+            
             // Parse emojis for new messages
             if (typeof twemoji !== 'undefined') {
                 twemoji.parse(this.messagesContainer, {
@@ -2224,9 +2226,7 @@ class RadioChatBox {
                 });
             }
             
-            // Maintain scroll position: scroll down by the amount of new content added
-            const scrollHeightAfter = container.scrollHeight;
-            const heightDifference = scrollHeightAfter - scrollHeightBefore;
+            // Adjust scroll position after emoji parsing (which might cause layout shifts)
             container.scrollTop = heightDifference;
             
             // Update offset for next request
