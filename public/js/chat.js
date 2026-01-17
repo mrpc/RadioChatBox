@@ -2092,6 +2092,24 @@ class RadioChatBox {
             const offset = this.messagesOffset;
             const limit = 50;
             
+            // Get the first visible message before loading (for scroll anchor)
+            const container = document.getElementById('messages-container');
+            const messages = this.messagesContainer.querySelectorAll('.message');
+            let anchorMessage = null;
+            let anchorOffset = 0;
+            
+            if (messages.length > 0) {
+                // Find the first message that's at least partially visible
+                for (let msg of messages) {
+                    const rect = msg.getBoundingClientRect();
+                    if (rect.bottom > 0) {
+                        anchorMessage = msg;
+                        anchorOffset = rect.top; // Store the offset from top of viewport
+                        break;
+                    }
+                }
+            }
+            
             const response = await fetch(`${this.apiUrl}/api/history.php?offset=${offset}&limit=${limit}`);
             const data = await response.json();
             
@@ -2101,10 +2119,6 @@ class RadioChatBox {
                 this.isLoadingMoreMessages = false;
                 return;
             }
-            
-            // Get scroll height before adding new messages
-            const container = this.messagesContainer.parentElement;
-            const scrollHeightBefore = container.scrollHeight;
             
             // Prepend old messages to the top (in correct order)
             const messagesFragment = document.createDocumentFragment();
@@ -2210,10 +2224,6 @@ class RadioChatBox {
                 this.messagesContainer.appendChild(messagesFragment);
             }
             
-            // Get the scroll position BEFORE emoji parsing
-            const scrollHeightAfter = container.scrollHeight;
-            const heightDifference = scrollHeightAfter - scrollHeightBefore;
-            
             // Parse emojis for new messages
             if (typeof twemoji !== 'undefined') {
                 twemoji.parse(this.messagesContainer, {
@@ -2222,8 +2232,14 @@ class RadioChatBox {
                 });
             }
             
-            // Adjust scroll position after emoji parsing (which might cause layout shifts)
-            container.scrollTop = heightDifference;
+            // Restore scroll position to the anchor message
+            // This prevents jumping even if the user scrolled while waiting for the response
+            if (anchorMessage && anchorMessage.parentElement) {
+                // Scroll the anchor message to the same position it was before
+                const newRect = anchorMessage.getBoundingClientRect();
+                const scrollAdjustment = newRect.top - anchorOffset;
+                container.scrollTop = container.scrollTop + scrollAdjustment;
+            }
             
             // Update offset for next request
             this.messagesOffset += data.messages.length;
