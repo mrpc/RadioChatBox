@@ -1384,9 +1384,7 @@ class RadioChatBox {
             // Infinite scroll: load more messages when user scrolls to top
             // BUT: Don't trigger on initial load when scrollTop is 0 and we haven't scrolled to bottom yet
             // hasInitialScrolled flag prevents loading more messages until after initial scroll to bottom
-            const shouldLoadMore = !this.privateChat.active && container.scrollTop < 500 && !this.isLoadingMoreMessages && this.hasMoreMessages && this.hasInitialScrolled;
-            if (shouldLoadMore) {
-                console.log('[Scroll event] Triggering loadMoreMessages, scrollTop=', container.scrollTop);
+            if (!this.privateChat.active && container.scrollTop < 500 && !this.isLoadingMoreMessages && this.hasMoreMessages && this.hasInitialScrolled) {
                 this.loadMoreMessages();
             }
         });
@@ -2085,8 +2083,6 @@ class RadioChatBox {
     async loadMoreMessages() {
         // Prevent multiple simultaneous requests
         if (this.isLoadingMoreMessages) return;
-        
-        console.log('[loadMoreMessages] Called! hasInitialScrolled=', this.hasInitialScrolled);
         
         this.isLoadingMoreMessages = true;
         
