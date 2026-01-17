@@ -71,6 +71,11 @@ class RadioChatBox {
         this.activeUsersContainer = null;
         this.activeUsersCount = null;
 
+        // Infinite scroll state
+        this.isLoadingMoreMessages = false; // Prevent duplicate requests while loading
+        this.messagesOffset = 0; // Track offset for pagination
+        this.hasMoreMessages = true; // Flag to know if there are more messages to load
+
         this.init();
     }
 
@@ -1367,12 +1372,17 @@ class RadioChatBox {
             this.scrollToBottomBtn.addEventListener('click', () => this.scrollToBottom());
         }
         
-        // Detect scroll position to show/hide scroll button
+        // Detect scroll position to show/hide scroll button and handle infinite scroll
         const container = this.messagesContainer.parentElement;
         container.addEventListener('scroll', () => {
             const isScrolledUp = container.scrollHeight - container.scrollTop - container.clientHeight > 100;
             if (this.scrollToBottomBtn) {
                 this.scrollToBottomBtn.classList.toggle('show', isScrolledUp);
+            }
+            
+            // Infinite scroll: load more messages when user scrolls to top
+            if (!this.privateChat.active && container.scrollTop < 500 && !this.isLoadingMoreMessages && this.hasMoreMessages) {
+                this.loadMoreMessages();
             }
         });
         
@@ -1901,11 +1911,25 @@ class RadioChatBox {
             const data = await response.json();
             
             if (data.success && data.messages) {
+                // Reset pagination state for fresh history load
+                this.messagesOffset = data.messages.length;
+                this.hasMoreMessages = data.messages.length > 0;
+                
                 this.messagesContainer.innerHTML = '';
                 data.messages.forEach(msg => {
                     this.addMessageToUI(msg, false);
                 });
-                this.scrollToBottom();
+                
+                // Parse emojis
+                if (typeof twemoji !== 'undefined') {
+                    twemoji.parse(this.messagesContainer, {
+                        folder: 'svg',
+                        ext: '.svg'
+                    });
+                }
+                
+                // Scroll to bottom after DOM is painted
+                requestAnimationFrame(() => this.scrollToBottom());
             }
         } catch (error) {
             console.error('Failed to load public messages:', error);
@@ -1978,6 +2002,10 @@ class RadioChatBox {
             return;
         }
         
+        // Reset pagination state for fresh history load
+        this.messagesOffset = messages.length;
+        this.hasMoreMessages = messages.length > 0; // If we got messages, there might be more
+        
         // Clear existing messages
         this.messagesContainer.innerHTML = '';
 
@@ -2002,7 +2030,8 @@ class RadioChatBox {
             });
         }
 
-        this.scrollToBottom();
+        // Scroll to bottom after DOM is painted
+        requestAnimationFrame(() => this.scrollToBottom());
     }
 
     async reloadHistory() {
@@ -2017,6 +2046,164 @@ class RadioChatBox {
             }
         } catch (error) {
             console.error('Failed to reload history:', error);
+        }
+    }
+
+    async loadMoreMessages() {
+        // Prevent multiple simultaneous requests
+        if (this.isLoadingMoreMessages) return;
+        
+        this.isLoadingMoreMessages = true;
+        
+        try {
+            // Calculate offset based on how many messages we've loaded so far
+            // messagesOffset tracks the starting point for the next batch
+            const offset = this.messagesOffset;
+            const limit = 50;
+            
+            const response = await fetch(`${this.apiUrl}/api/history.php?offset=${offset}&limit=${limit}`);
+            const data = await response.json();
+            
+            if (!data.success || !data.messages || data.messages.length === 0) {
+                // No more messages available
+                this.hasMoreMessages = false;
+                this.isLoadingMoreMessages = false;
+                return;
+            }
+            
+            // Get scroll height before adding new messages
+            const container = this.messagesContainer.parentElement;
+            const scrollHeightBefore = container.scrollHeight;
+            
+            // Prepend old messages to the top (in correct order)
+            const messagesFragment = document.createDocumentFragment();
+            
+            data.messages.forEach(msg => {
+                // Create message element without animation since these are old
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                const msgId = msg.id || msg.message_id;
+                messageDiv.dataset.messageId = msgId;
+                messageDiv.dataset.username = msg.username;
+                messageDiv.dataset.timestamp = msg.timestamp;
+                
+                const timestamp = new Date(msg.timestamp * 1000);
+                const timeString = timestamp.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                const fullDate = timestamp.toLocaleString();
+                
+                // Check if user is admin
+                const isAdmin = localStorage.getItem('isAdmin') === 'true';
+                const deleteButton = isAdmin && msgId ? `
+                    <button class="delete-message-btn" data-message-id="${msgId}" title="Delete message">
+                        🗑️
+                    </button>
+                ` : '';
+                
+                // Add reply button for all messages
+                const replyButton = msgId ? `
+                    <button class="reply-message-btn" data-message-id="${msgId}" title="Reply to this message">
+                        ↩️
+                    </button>
+                ` : '';
+                
+                // Build reply quote HTML if this is a reply
+                let replyQuoteHTML = '';
+                if (msg.reply_data && msg.reply_data.username) {
+                    const replyDisplayName = msg.reply_data.display_name || msg.reply_data.username;
+                    const truncatedMessage = msg.reply_data.message.length > 50 
+                        ? msg.reply_data.message.substring(0, 50) + '...'
+                        : msg.reply_data.message;
+                    replyQuoteHTML = `
+                        <div class="reply-quote">
+                            <div class="reply-quote-bar"></div>
+                            <div class="reply-quote-content">
+                                <span class="reply-quote-username">${this.escapeHtml(replyDisplayName)}</span>
+                                <span class="reply-quote-message">${this.escapeHtml(truncatedMessage)}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Use display_name if available, otherwise use username
+                const displayName = msg.display_name || msg.username;
+                
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        <span class="message-username">${this.escapeHtml(displayName)}</span>
+                        <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
+                    </div>
+                    ${replyQuoteHTML}
+                    <div class="message-body">
+                        <div class="message-text">${this.formatMessageText(msg.message)}</div>
+                        <div class="message-actions">
+                            ${replyButton}
+                            ${deleteButton}
+                        </div>
+                    </div>
+                `;
+                
+                // Add event listener for delete button if admin
+                if (isAdmin) {
+                    const deleteBtn = messageDiv.querySelector('.delete-message-btn');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', (e) => {
+                            const button = e.target.closest('.delete-message-btn');
+                            const mId = button ? button.getAttribute('data-message-id') : null;
+                            this.deleteMessage(mId, button || e.target);
+                        });
+                    }
+                }
+                
+                // Add event listener for reply button
+                const replyBtn = messageDiv.querySelector('.reply-message-btn');
+                if (replyBtn) {
+                    replyBtn.addEventListener('click', (e) => {
+                        const button = e.target.closest('.reply-message-btn');
+                        const mId = button ? button.getAttribute('data-message-id') : null;
+                        this.setReplyState(mId, displayName, msg.message);
+                        this.showReplyPreview();
+                        this.messageInput.focus();
+                    });
+                }
+                
+                messagesFragment.appendChild(messageDiv);
+            });
+            
+            // Insert all messages at the beginning
+            if (this.messagesContainer.firstChild) {
+                this.messagesContainer.insertBefore(messagesFragment, this.messagesContainer.firstChild);
+            } else {
+                this.messagesContainer.appendChild(messagesFragment);
+            }
+            
+            // Parse emojis for new messages
+            if (typeof twemoji !== 'undefined') {
+                twemoji.parse(this.messagesContainer, {
+                    folder: 'svg',
+                    ext: '.svg'
+                });
+            }
+            
+            // Maintain scroll position: scroll down by the amount of new content added
+            const scrollHeightAfter = container.scrollHeight;
+            const heightDifference = scrollHeightAfter - scrollHeightBefore;
+            container.scrollTop = heightDifference;
+            
+            // Update offset for next request
+            this.messagesOffset += data.messages.length;
+            
+            // If we got fewer messages than requested, we've reached the end
+            if (data.messages.length < limit) {
+                this.hasMoreMessages = false;
+            }
+            
+        } catch (error) {
+            console.error('Failed to load more messages:', error);
+        } finally {
+            this.isLoadingMoreMessages = false;
         }
     }
 

@@ -242,6 +242,62 @@ class ChatService
     }
 
     /**
+     * Get message history with offset for pagination (infinite scroll)
+     * Returns older messages starting from a given offset
+     */
+    public function getHistoryWithOffset(int $limit = 50, int $offset = 0): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.reply_to,
+                        r.username as reply_username, r.message as reply_message,
+                        u.display_name, ru.display_name as reply_display_name
+                 FROM messages m
+                 LEFT JOIN messages r ON m.reply_to = r.message_id
+                 LEFT JOIN users u ON m.user_id = u.id
+                 LEFT JOIN users ru ON r.user_id = ru.id
+                 WHERE m.is_deleted = false 
+                 ORDER BY m.created_at DESC 
+                 LIMIT :limit OFFSET :offset'
+            );
+            $stmt->bindValue(':limit', min($limit, 100), PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Convert to the same format as Redis messages
+            $messages = array_map(function($row) {
+                $msg = [
+                    'id' => $row['message_id'],
+                    'username' => $row['username'],
+                    'display_name' => $row['display_name'],
+                    'message' => $row['message'],
+                    'timestamp' => strtotime($row['created_at']),
+                    'ip' => $row['ip_address'],
+                    'reply_to' => $row['reply_to'],
+                ];
+                
+                // Add reply data if exists
+                if (!empty($row['reply_to']) && !empty($row['reply_username'])) {
+                    $msg['reply_data'] = [
+                        'username' => $row['reply_username'],
+                        'display_name' => $row['reply_display_name'],
+                        'message' => mb_substr($row['reply_message'], 0, 100),
+                    ];
+                }
+                
+                return $msg;
+            }, $rows);
+            
+            // Return in chronological order (oldest first)
+            return array_reverse($messages);
+        } catch (\PDOException $e) {
+            error_log("Failed to load paginated history: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Check if user can send a message (rate limiting)
      *
      * OPTIMIZED: Fetches both rate limit settings in single query instead of two
