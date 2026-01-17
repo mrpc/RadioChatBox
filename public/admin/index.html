@@ -1091,7 +1091,7 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1>📻 RadioChatBox</h1>
+                <h1 id="sidebar-title">📻 RadioChatBox</h1>
                 <p>Admin Dashboard</p>
             </div>
             
@@ -2192,6 +2192,53 @@
         let authToken = localStorage.getItem('adminToken');
         let adminSessionToken = null; // Secure token for SSE connections
         let cachedSettings = null;
+        let pageTitle = 'RadioChatBox';  // Store dynamic chat title from settings
+
+        // Load page title, favicon, and logo early from public settings endpoint
+        fetch('/api/settings.php')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.settings) {
+                    // Update page title
+                    if (data.settings.page_title) {
+                        pageTitle = data.settings.page_title;
+                    }
+                }
+                
+                const sidebarTitle = document.getElementById('sidebar-title');
+                if (!sidebarTitle) return;
+                
+                // Handle branding (logo and favicon) - nested under settings
+                const branding = data.settings ? data.settings.branding : null;
+                if (branding) {
+                    // Update favicon
+                    if (branding.favicon_url && branding.favicon_url.trim()) {
+                        let favicon = document.querySelector("link[rel='icon']");
+                        if (!favicon) {
+                            favicon = document.createElement('link');
+                            favicon.rel = 'icon';
+                            document.head.appendChild(favicon);
+                        }
+                        favicon.href = branding.favicon_url + '?v=' + Date.now();
+                    }
+                    
+                    // Update logo or favicon in sidebar
+                    if (branding.logo_url && branding.logo_url.trim()) {
+                        // Use logo as sidebar title
+                        sidebarTitle.innerHTML = '<img src="' + branding.logo_url + '" alt="' + pageTitle + '" style="max-width: 100%; max-height: 40px; object-fit: contain;">';
+                    } else if (branding.favicon_url && branding.favicon_url.trim()) {
+                        // Use favicon as icon next to title
+                        sidebarTitle.innerHTML = '<img src="' + branding.favicon_url + '" alt="' + pageTitle + '" style="max-height: 24px; object-fit: contain; margin-right: 8px; vertical-align: middle;"> ' + pageTitle;
+                    } else {
+                        // Use default text with emoji and page title
+                        sidebarTitle.textContent = '📻 ' + pageTitle;
+                    }
+                } else {
+                    // If no branding data, still update with page title
+                    sidebarTitle.textContent = '📻 ' + pageTitle;
+                }
+            })
+            .catch(() => { /* ignore errors, use default */ });
 
         // Pagination helper function
         function renderPagination(pagination, functionName) {
@@ -2266,6 +2313,8 @@
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('admin-panel').style.display = 'block';
             document.getElementById('admin-panel').classList.add('active');
+            // Load settings early to get page title before tab switch
+            await loadSettings();
             // Apply early role-based restrictions using stored role to avoid flash of restricted items
             try {
                 const storedRole = localStorage.getItem('userRole');
@@ -2874,8 +2923,8 @@
             if (titles[tabName]) {
                 document.getElementById('page-title').textContent = titles[tabName].title;
                 document.getElementById('page-subtitle').textContent = titles[tabName].subtitle;
-                // Update browser title
-                document.title = `${titles[tabName].title} - Admin Panel`;
+                // Update browser title with dynamic chat title
+                document.title = `${titles[tabName].title} - ${pageTitle} Admin Panel`;
             }
             
             // Update browser history
@@ -4278,7 +4327,8 @@
 
                 if (data.success) {
                     const settings = data.settings;
-                    document.getElementById('setting-page-title').value = settings.page_title || 'RadioChatBox';
+                    pageTitle = settings.page_title || 'RadioChatBox';  // Store for use in page titles
+                    document.getElementById('setting-page-title').value = pageTitle;
                     document.getElementById('setting-radio-status-url').value = settings.radio_status_url || '';
                     document.getElementById('setting-color-scheme').value = settings.color_scheme || 'dark';
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
