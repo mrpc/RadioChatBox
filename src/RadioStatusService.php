@@ -138,6 +138,12 @@ class RadioStatusService
                         $display = $title;
                     }
                 }
+                // Fallback: if we have listeners but no display, use server_name
+                if (!$display && $listeners !== null && $listeners > 0) {
+                    if (isset($source['server_name']) && is_string($source['server_name'])) {
+                        $display = trim($source['server_name']);
+                    }
+                }
             }
         }
 
