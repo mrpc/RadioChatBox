@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: radiochatbox_apache
+    restart: on-failure
     ports:
       - "98:80"
     volumes:
@@ -27,6 +28,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: radiochatbox_redis
+    restart: on-failure
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -36,6 +38,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: radiochatbox_postgres
+    restart: on-failure
     environment:
       - POSTGRES_DB=radiochatbox
       - POSTGRES_USER=radiochatbox
