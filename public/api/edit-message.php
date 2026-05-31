@@ -42,9 +42,10 @@ try {
 
     $pdo = Database::getPDO();
 
-    // Fetch the original message and verify ownership + timing
+    // Fetch the original message and verify ownership + timing in one query
     $stmt = $pdo->prepare(
-        'SELECT m.message_id, m.username, m.created_at, m.is_deleted, s.user_id
+        'SELECT m.message_id, m.username, m.created_at, m.is_deleted, s.user_id,
+                EXTRACT(EPOCH FROM (NOW() - m.created_at)) AS age_seconds
          FROM messages m
          INNER JOIN sessions s ON s.username = m.username
          WHERE m.message_id = :message_id
@@ -66,12 +67,8 @@ try {
         exit;
     }
 
-    // Enforce 10-minute edit window
-    $createdAt = new DateTimeImmutable($row['created_at']);
-    $now       = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-    $ageSeconds = $now->getTimestamp() - $createdAt->getTimestamp();
-
-    if ($ageSeconds > 600) {
+    // Enforce 10-minute edit window (comparison done in PostgreSQL to avoid timezone issues)
+    if ((float)$row['age_seconds'] > 600) {
         http_response_code(403);
         echo json_encode(['error' => 'Edit window has expired (10 minutes)']);
         exit;
