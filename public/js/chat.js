@@ -1998,6 +1998,9 @@ class RadioChatBox {
             messageDiv.innerHTML = content;
             this.messagesContainer.appendChild(messageDiv);
             
+            // Fetch and render link preview for any URL in this message
+            this.attachLinkPreviews(messageDiv);
+
             // Parse emojis with Twemoji for older Windows support
             // Use attributes callback to prevent parsing inside GIF URLs
             if (typeof twemoji !== 'undefined') {
@@ -2498,6 +2501,9 @@ class RadioChatBox {
 
         this.messagesContainer.appendChild(messageDiv);
         
+        // Fetch and render link preview for any URL in this message
+        this.attachLinkPreviews(messageDiv);
+
         // Parse emojis with Twemoji for older Windows support
         if (typeof twemoji !== 'undefined') {
             twemoji.parse(messageDiv, {
@@ -3770,6 +3776,85 @@ class RadioChatBox {
         }
     }
     
+    /**
+     * Fetch Open Graph metadata for any URL links inside a rendered message element
+     * and inject a preview card. Only the first URL per message is previewed.
+     */
+    async attachLinkPreviews(element) {
+        const links = element.querySelectorAll('a.message-link[data-preview-url]');
+        if (links.length === 0) return;
+
+        // Only preview the first link in the message
+        const link = links[0];
+        const url = link.getAttribute('data-preview-url');
+        if (!url) return;
+
+        // Static in-memory cache shared across all messages
+        if (!RadioChatBox._previewCache) RadioChatBox._previewCache = {};
+
+        let preview;
+        if (url in RadioChatBox._previewCache) {
+            preview = RadioChatBox._previewCache[url];
+        } else {
+            try {
+                const resp = await fetch(`/api/link-preview.php?url=${encodeURIComponent(url)}`);
+                if (!resp.ok) {
+                    RadioChatBox._previewCache[url] = null;
+                    return;
+                }
+                preview = await resp.json();
+                if (preview.error || !preview.title) {
+                    RadioChatBox._previewCache[url] = null;
+                    return;
+                }
+                RadioChatBox._previewCache[url] = preview;
+            } catch (e) {
+                RadioChatBox._previewCache[url] = null;
+                return;
+            }
+        }
+
+        if (!preview || !preview.title) return;
+
+        // Build the preview card
+        const card = document.createElement('a');
+        card.className = 'link-preview';
+        card.href = url;
+        card.target = '_blank';
+        card.rel = 'noopener noreferrer';
+
+        let imageHtml = '';
+        if (preview.image) {
+            imageHtml = `<div class="link-preview-image">
+                <img src="${this.escapeHtml(preview.image)}" alt="" loading="lazy"
+                     onerror="this.closest('.link-preview-image').style.display='none'">
+            </div>`;
+        }
+
+        const desc = preview.description
+            ? `<div class="link-preview-description">${this.escapeHtml(
+                preview.description.length > 130
+                    ? preview.description.substring(0, 130) + '…'
+                    : preview.description
+              )}</div>`
+            : '';
+
+        card.innerHTML = `
+            ${imageHtml}
+            <div class="link-preview-body">
+                <div class="link-preview-domain">${this.escapeHtml(preview.domain)}</div>
+                <div class="link-preview-title">${this.escapeHtml(preview.title)}</div>
+                ${desc}
+            </div>
+        `;
+
+        // Insert after the .message-body element (below the text row, still inside the bubble)
+        const msgBody = element.querySelector('.message-body');
+        if (msgBody) {
+            msgBody.after(card);
+        }
+    }
+
     formatMessageText(text) {
         // Escape HTML first
         const escaped = this.escapeHtml(text);
@@ -3784,7 +3869,7 @@ class RadioChatBox {
         // Convert regular URLs to clickable links (excluding GIF URLs which are already handled)
         const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
         formatted = formatted.replace(urlRegex, (url) => {
-            return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`;
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link" data-preview-url="${url}">${url}</a>`;
         });
         
         return formatted;
