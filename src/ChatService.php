@@ -177,7 +177,7 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.reply_to,
+                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
                  FROM messages m
@@ -200,6 +200,7 @@ class ChatService
                     'display_name' => $row['display_name'],
                     'message' => $row['message'],
                     'timestamp' => strtotime($row['created_at']),
+                    'edited_at' => $row['edited_at'] ? (new \DateTimeImmutable($row['edited_at']))->format('c') : null,
                     'ip' => $row['ip_address'],
                     'reply_to' => $row['reply_to'],
                 ];
@@ -249,7 +250,7 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.reply_to,
+                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
                  FROM messages m
@@ -273,6 +274,7 @@ class ChatService
                     'display_name' => $row['display_name'],
                     'message' => $row['message'],
                     'timestamp' => strtotime($row['created_at']),
+                    'edited_at' => $row['edited_at'] ? (new \DateTimeImmutable($row['edited_at']))->format('c') : null,
                     'ip' => $row['ip_address'],
                     'reply_to' => $row['reply_to'],
                 ];

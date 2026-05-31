@@ -853,6 +853,97 @@ body {
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* Edit button */
+.edit-message-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.edit-message-btn:hover {
+    background: rgba(102, 126, 234, 0.1);
+}
+
+/* "edited" badge next to timestamp */
+.edited-badge {
+    font-size: 11px;
+    opacity: 0.5;
+    font-style: italic;
+    margin-left: 4px;
+}
+
+/* Inline edit form */
+.edit-inline-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.edit-inline-input {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 60px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(102, 126, 234, 0.4);
+    background: rgba(255, 255, 255, 0.9);
+    color: #1f2937;
+    font-size: 14px;
+    line-height: 1.5;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.edit-inline-input:focus {
+    border-color: #667eea;
+}
+
+.edit-inline-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.edit-cancel-btn,
+.edit-save-btn {
+    padding: 5px 14px;
+    border-radius: 5px;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.edit-cancel-btn {
+    background: rgba(0, 0, 0, 0.1);
+    color: #374151;
+}
+
+.edit-cancel-btn:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.edit-save-btn {
+    background: #667eea;
+    color: white;
+}
+
+.edit-save-btn:hover {
+    background: #5568d3;
+}
+
+.edit-save-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 /* Reply quote styling in messages */
 .reply-quote {
     display: flex;

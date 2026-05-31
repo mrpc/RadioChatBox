@@ -1531,6 +1531,11 @@ class RadioChatBox {
                 const data = JSON.parse(e.data);
                 this.handleMessageDeleted(data.message_id);
             });
+
+            this.eventSource.addEventListener('message_edited', (e) => {
+                const data = JSON.parse(e.data);
+                this.handleMessageEdited(data.message_id, data.message, data.edited_at);
+            });
             
             this.eventSource.addEventListener('reconnect', (e) => {
                 console.log('Server requested reconnect');
@@ -2308,6 +2313,127 @@ class RadioChatBox {
         const messages = this.messagesContainer.querySelectorAll(`.message[data-message-id="${messageId}"]`);
         messages.forEach(msg => msg.remove());
     }
+
+    handleMessageEdited(messageId, newText, editedAt) {
+        const msgEl = this.messagesContainer.querySelector(`.message[data-message-id="${messageId}"]`);
+        if (!msgEl) return;
+
+        // Update text
+        const textEl = msgEl.querySelector('.message-text');
+        if (textEl) {
+            textEl.innerHTML = this.formatMessageText(newText);
+        }
+
+        // Add/update the "edited" badge in the header
+        const header = msgEl.querySelector('.message-header');
+        if (header) {
+            let badge = header.querySelector('.edited-badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'edited-badge';
+                header.appendChild(badge);
+            }
+            badge.textContent = '(edited)';
+            badge.title = editedAt ? `Edited at ${new Date(editedAt).toLocaleTimeString()}` : 'Edited';
+        }
+
+        // Remove edit button – window may now be expired for all clients
+        // (actual expiry is enforced server-side; we just keep the UI tidy)
+        const editBtn = msgEl.querySelector('.edit-message-btn');
+        if (editBtn) editBtn.remove();
+
+        // Re-run link preview in case URLs changed
+        this.attachLinkPreviews(msgEl);
+    }
+
+    startEditMessage(messageId, msgEl, currentText) {
+        // Prevent double-editing
+        if (msgEl.querySelector('.edit-inline-form')) return;
+
+        const body = msgEl.querySelector('.message-body');
+        if (!body) return;
+
+        // Hide the normal text + actions while editing
+        body.style.display = 'none';
+
+        const form = document.createElement('div');
+        form.className = 'edit-inline-form';
+        form.innerHTML = `
+            <textarea class="edit-inline-input" maxlength="500">${this.escapeHtml(currentText)}</textarea>
+            <div class="edit-inline-actions">
+                <button class="edit-cancel-btn">Cancel</button>
+                <button class="edit-save-btn">Save</button>
+            </div>
+        `;
+        body.after(form);
+
+        const textarea = form.querySelector('.edit-inline-input');
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        // Cancel
+        form.querySelector('.edit-cancel-btn').addEventListener('click', () => {
+            form.remove();
+            body.style.display = '';
+        });
+
+        // Save on button click
+        form.querySelector('.edit-save-btn').addEventListener('click', () => {
+            this.submitEditMessage(messageId, msgEl, textarea.value.trim(), form, body);
+        });
+
+        // Save on Ctrl+Enter / Cmd+Enter, cancel on Escape
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                form.remove();
+                body.style.display = '';
+            } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                this.submitEditMessage(messageId, msgEl, textarea.value.trim(), form, body);
+            }
+        });
+    }
+
+    async submitEditMessage(messageId, msgEl, newText, form, body) {
+        if (!newText) return;
+
+        const saveBtn = form.querySelector('.edit-save-btn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = '…';
+
+        try {
+            const response = await fetch('/api/edit-message.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message_id: messageId,
+                    message:    newText,
+                    username:   this.username,
+                    sessionId:  this.sessionId,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.error) {
+                alert(data.error || 'Failed to edit message');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+                return;
+            }
+
+            // Update local UI immediately (SSE event will also arrive for other clients)
+            form.remove();
+            body.style.display = '';
+            this.handleMessageEdited(messageId, data.message, data.edited_at);
+
+        } catch (err) {
+            console.error('Edit message error:', err);
+            alert('Failed to edit message');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+        }
+    }
     
     playNotificationSound() {
         // Create a simple beep sound using Web Audio API
@@ -2440,6 +2566,21 @@ class RadioChatBox {
                 ↩️
             </button>
         ` : '';
+
+        // Edit button: only for own messages, only when within 10 min window
+        const isOwnMsg = messageData.username === this.username;
+        const msgAgeSeconds = Math.floor(Date.now() / 1000) - (messageData.timestamp || 0);
+        const canEdit = isOwnMsg && msgId && msgAgeSeconds < 600;
+        const editButton = canEdit ? `
+            <button class="edit-message-btn" data-message-id="${msgId}" title="Edit message">
+                ✏️
+            </button>
+        ` : '';
+
+        // Edited badge
+        const editedBadge = messageData.edited_at
+            ? `<span class="edited-badge" title="Edited">(edited)</span>`
+            : '';
         
         // Build reply quote HTML if this is a reply
         let replyQuoteHTML = '';
@@ -2465,12 +2606,14 @@ class RadioChatBox {
             <div class="message-header">
                 <span class="message-username">${this.escapeHtml(displayName)}</span>
                 <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
+                ${editedBadge}
             </div>
             ${replyQuoteHTML}
             <div class="message-body">
                 <div class="message-text">${this.formatMessageText(messageData.message)}</div>
                 <div class="message-actions">
                     ${replyButton}
+                    ${editButton}
                     ${deleteButton}
                 </div>
             </div>
@@ -2496,6 +2639,16 @@ class RadioChatBox {
                 const button = e.target.closest('.reply-message-btn');
                 const msgId = button ? button.getAttribute('data-message-id') : null;
                 this.setReplyState(msgId, messageData.username, messageData.message);
+            });
+        }
+
+        // Add event listener for edit button (own messages within 10 min)
+        const editBtn = messageDiv.querySelector('.edit-message-btn');
+        if (editBtn) {
+            editBtn.addEventListener('click', (e) => {
+                const button = e.target.closest('.edit-message-btn');
+                const msgId = button ? button.getAttribute('data-message-id') : null;
+                this.startEditMessage(msgId, messageDiv, messageData.message);
             });
         }
 
