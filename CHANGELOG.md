@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Link preview cards for URLs in chat messages
+  - Fetches Open Graph / Twitter Card metadata (title, description, image, domain)
+  - Preview card rendered below the message bubble, styled like Facebook/WhatsApp
+  - Client-side in-memory cache to avoid duplicate requests
+  - Server-side Redis cache (1 hour TTL) via new `/api/link-preview.php` endpoint
+  - SSRF protection: private and reserved IP ranges are blocked
+  - Graceful fallback: no card shown when the URL returns no usable metadata
+  - Theme-aware styles for dark, light, and metal themes
+- Message editing for public chat (own messages within 10 minutes)
+  - Edit button (✏️) appears on hover for own messages within the 10-minute window
+  - Inline editing directly inside the message bubble (no modal)
+  - Keyboard shortcuts: Ctrl+Enter to save, Escape to cancel
+  - Server-side ownership and timing validation via `/api/edit-message.php`
+  - Same `MessageFilter` pipeline applied to edited text
+  - Real-time SSE event (`message_edited`) updates all connected clients instantly
+  - `(edited)` badge shown next to timestamp for all users
+  - `edited_at` column added to `messages` table (migration `016_add_edited_at_to_messages.sql`)
+  - History loaded from database correctly reflects edited content and badge
 - Comprehensive statistics system with multi-level time granularity
   - Real-time snapshots of concurrent users, radio listeners, and active sessions
   - Hourly, daily, weekly, monthly, and yearly aggregated statistics
