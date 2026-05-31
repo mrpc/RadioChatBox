@@ -70,7 +70,16 @@ try {
     // Enforce 10-minute edit window (comparison done in PostgreSQL to avoid timezone issues)
     if ((float)$row['age_seconds'] > 600) {
         http_response_code(403);
-        echo json_encode(['error' => 'Edit window has expired (10 minutes)']);
+        echo json_encode([
+            'error'      => 'Edit window has expired (10 minutes)',
+            'age_seconds' => (float)$row['age_seconds'],
+            'created_at' => $row['created_at'],
+            'db_now'     => (function() use ($pdo) {
+                return $pdo->query("SELECT NOW() AS now")->fetchColumn();
+            })(),
+            'php_now'    => date('c'),
+            'php_tz'     => date_default_timezone_get(),
+        ]);
         exit;
     }
 
