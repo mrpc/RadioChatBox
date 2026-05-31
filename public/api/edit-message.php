@@ -43,17 +43,19 @@ try {
     $pdo = Database::getPDO();
 
     // Fetch the original message and verify ownership + timing in one query
-    $stmt = $pdo->prepare(
-        'SELECT m.message_id, m.username, m.created_at, m.is_deleted, s.user_id,
-                EXTRACT(EPOCH FROM (NOW() - m.created_at)) AS age_seconds
-         FROM messages m
-         INNER JOIN sessions s ON s.username = m.username
-         WHERE m.message_id = :message_id
-           AND m.username   = :username
-           AND s.session_id = :session_id
-           AND m.is_deleted = false
-         LIMIT 1'
-    );
+        $stmt = $pdo->prepare(
+                'SELECT m.message_id, m.username, m.created_at, m.is_deleted, s.user_id,
+                        EXTRACT(EPOCH FROM (
+                            NOW() - ((m.created_at AT TIME ZONE current_setting($$TIMEZONE$$)) AT TIME ZONE $$UTC$$)
+                        )) AS age_seconds
+                 FROM messages m
+                 INNER JOIN sessions s ON s.username = m.username
+                 WHERE m.message_id = :message_id
+                     AND m.username   = :username
+                     AND s.session_id = :session_id
+                     AND m.is_deleted = false
+                 LIMIT 1'
+        );
     $stmt->execute([
         'message_id' => $messageId,
         'username'   => $username,
@@ -70,16 +72,7 @@ try {
     // Enforce 10-minute edit window (comparison done in PostgreSQL to avoid timezone issues)
     if ((float)$row['age_seconds'] > 600) {
         http_response_code(403);
-        echo json_encode([
-            'error'      => 'Edit window has expired (10 minutes)',
-            'age_seconds' => (float)$row['age_seconds'],
-            'created_at' => $row['created_at'],
-            'db_now'     => (function() use ($pdo) {
-                return $pdo->query("SELECT NOW() AS now")->fetchColumn();
-            })(),
-            'php_now'    => date('c'),
-            'php_tz'     => date_default_timezone_get(),
-        ]);
+        echo json_encode(['error' => 'Edit window has expired (10 minutes)']);
         exit;
     }
 
