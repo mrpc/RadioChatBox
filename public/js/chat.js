@@ -2314,7 +2314,7 @@ class RadioChatBox {
         messages.forEach(msg => msg.remove());
     }
 
-    handleMessageEdited(messageId, newText, editedAt) {
+    handleMessageEdited(messageId, newText, editedAt, timestamp) {
         const msgEl = this.messagesContainer.querySelector(`.message[data-message-id="${messageId}"]`);
         if (!msgEl) return;
 
@@ -2322,6 +2322,11 @@ class RadioChatBox {
         const textEl = msgEl.querySelector('.message-text');
         if (textEl) {
             textEl.innerHTML = this.formatMessageText(newText);
+        }
+
+        // Update timestamp if provided (for correct edit button logic)
+        if (typeof timestamp === 'number') {
+            msgEl.dataset.timestamp = timestamp;
         }
 
         // Add/update the "edited" badge in the header
@@ -2337,10 +2342,28 @@ class RadioChatBox {
             badge.title = editedAt ? `Edited at ${new Date(editedAt).toLocaleTimeString()}` : 'Edited';
         }
 
-        // Remove edit button – window may now be expired for all clients
-        // (actual expiry is enforced server-side; we just keep the UI tidy)
-        const editBtn = msgEl.querySelector('.edit-message-btn');
-        if (editBtn) editBtn.remove();
+        // Remove and re-render edit button if still within window
+        const oldEditBtn = msgEl.querySelector('.edit-message-btn');
+        if (oldEditBtn) oldEditBtn.remove();
+        // Re-render edit button if still allowed
+        const isOwnMsg = msgEl.dataset.username === this.username;
+        const msgTimestamp = typeof timestamp === 'number' ? timestamp : (msgEl.dataset.timestamp ? parseInt(msgEl.dataset.timestamp) : 0);
+        const msgAgeSeconds = Math.floor(Date.now() / 1000) - msgTimestamp;
+        const canEdit = isOwnMsg && messageId && msgAgeSeconds < 600;
+        if (canEdit) {
+            const actions = msgEl.querySelector('.message-actions');
+            if (actions) {
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-message-btn';
+                editBtn.setAttribute('data-message-id', messageId);
+                editBtn.title = 'Edit message';
+                editBtn.textContent = '✏️';
+                editBtn.addEventListener('click', (e) => {
+                    this.startEditMessage(messageId, msgEl, newText);
+                });
+                actions.insertBefore(editBtn, actions.firstChild.nextSibling); // after reply
+            }
+        }
 
         // Re-run link preview in case URLs changed
         this.attachLinkPreviews(msgEl);
