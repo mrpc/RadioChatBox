@@ -106,18 +106,19 @@ try {
     }
 
     // Publish real-time edit event to all SSE clients
+    $editedAtIso = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c');
     $editEvent = [
         'type'       => 'message_edited',
         'message_id' => $messageId,
         'message'    => $filtered,
-        'edited_at'  => $now->format('c'),
+        'edited_at'  => $editedAtIso,
     ];
     $redis->publish($prefix . 'chat:updates', json_encode($editEvent));
 
     echo json_encode([
         'success'   => true,
         'message'   => $filtered,
-        'edited_at' => $now->format('c'),
+        'edited_at' => $editedAtIso,
     ]);
 
 } catch (PDOException $e) {
