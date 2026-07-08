@@ -15,6 +15,13 @@ class MessageFilter
         $originalMessage = $message;
         $replacements = [];
 
+        // Protect GIF URLs from ALL filtering steps below. Their CDN paths hold
+        // long digit runs (e.g. Klipy hex hashes) that the phone-number filter
+        // would otherwise mangle, breaking the image. Restored at the end.
+        $gifExtract = self::extractGifUrls($message);
+        $message = $gifExtract['message'];
+        $gifUrls = $gifExtract['map'];
+
         // First check for dangerous content (applies to all messages)
         $dangerousCheck = self::checkDangerousContent($message);
         if (!$dangerousCheck['safe']) {
@@ -35,6 +42,9 @@ class MessageFilter
             $message = $phoneCheck['message'];
             $replacements[] = 'Phone number removed';
         }
+
+        // Restore protected GIF URLs
+        $message = self::restoreGifUrls($message, $gifUrls);
 
         return [
             'allowed' => true,
@@ -150,6 +160,41 @@ class MessageFilter
         return ['safe' => true, 'reason' => '', 'pattern' => ''];
     }
     
+    /**
+     * Extract Tenor/Giphy/Klipy GIF URLs into placeholders so that later
+     * filtering steps (URL removal, phone-number stripping) can't corrupt them.
+     * GIF CDN URLs contain long digit runs in their path (e.g. Klipy hex hashes)
+     * that the phone-number filter would otherwise replace with ***.
+     * Returns ['message' => $withPlaceholders, 'map' => [placeholder => url]].
+     */
+    private static function extractGifUrls(string $message): array
+    {
+        $gifUrls = [];
+
+        if (self::isGifEnabled()) {
+            $gifPattern = '/https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif/i';
+            preg_match_all($gifPattern, $message, $gifMatches);
+            foreach ($gifMatches[0] as $idx => $gifUrl) {
+                $placeholder = "___GIFPLACEHOLDER{$idx}___";
+                $gifUrls[$placeholder] = $gifUrl;
+                $message = str_replace($gifUrl, $placeholder, $message);
+            }
+        }
+
+        return ['message' => $message, 'map' => $gifUrls];
+    }
+
+    /**
+     * Restore GIF URL placeholders created by extractGifUrls().
+     */
+    private static function restoreGifUrls(string $message, array $gifUrls): string
+    {
+        foreach ($gifUrls as $placeholder => $gifUrl) {
+            $message = str_replace($placeholder, $gifUrl, $message);
+        }
+        return $message;
+    }
+
     /**
      * Replace URLs in message
      */

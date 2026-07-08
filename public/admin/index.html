@@ -5621,19 +5621,30 @@
         const impersonateGifRating = 'pg-13';
 
         // GIF provider definitions (mirror of GIF_PROVIDERS in public/js/chat.js).
-        // Klipy's response shape / CDN domain are best-effort from its docs and
-        // must be verified against a live API key.
-        function klipyFileUrl(item, sizeOrder) {
+        // Byte budgets for choosing a Klipy gif rendition (Klipy returns per-rendition size).
+        const KLIPY_PREVIEW_MAX_BYTES = 400 * 1024;
+        const KLIPY_SEND_MAX_BYTES = 1.5 * 1024 * 1024;
+        // Picks a gif rendition from a Klipy item by byte size: largest at/under
+        // maxBytes, else the smallest. Klipy md/hd gifs are often multi-MB and
+        // load slowly / hit browser decode limits, so cap the sent size.
+        function klipyPickGif(item, maxBytes) {
             if (!item) return null;
             const files = item.file || item.files || {};
-            for (const size of sizeOrder) {
+            const candidates = [];
+            for (const size of ['xs', 'sm', 'md', 'hd']) {
                 const entry = files[size];
                 if (!entry) continue;
-                const url = (entry.gif && entry.gif.url) || entry.url
-                    || (typeof entry === 'string' ? entry : null);
-                if (url) return url;
+                const gif = entry.gif || entry;
+                const url = (gif && gif.url) || (typeof entry === 'string' ? entry : null);
+                if (!url) continue;
+                candidates.push({ url, bytes: (gif && gif.size) || 0, size });
             }
-            return null;
+            if (!candidates.length) return null;
+            const underBudget = candidates
+                .filter(c => !maxBytes || c.bytes <= maxBytes)
+                .sort((a, b) => b.bytes - a.bytes);
+            if (underBudget.length) return underBudget[0];
+            return candidates.sort((a, b) => a.bytes - b.bytes)[0];
         }
         const IMPERSONATE_GIF_PROVIDERS = {
             giphy: {
@@ -5666,10 +5677,13 @@
                 getError: (data) => (data && data.result === false) ? 'API key' : null,
                 getItems: (data) => (data && data.data && data.data.data) || [],
                 getTitle: (it) => it.title || it.slug,
-                getPreviewUrl: (it) => klipyFileUrl(it, ['sm', 'xs', 'md', 'hd']),
+                getPreviewUrl: (it) => {
+                    const pick = klipyPickGif(it, KLIPY_PREVIEW_MAX_BYTES);
+                    return pick ? pick.url : null;
+                },
                 getSendUrl: (it) => {
-                    const raw = klipyFileUrl(it, ['md', 'hd', 'sm', 'xs']);
-                    return raw ? raw.split('?')[0] : raw;
+                    const pick = klipyPickGif(it, KLIPY_SEND_MAX_BYTES);
+                    return pick ? pick.url.split('?')[0] : null;
                 },
             },
         };

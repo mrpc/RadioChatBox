@@ -64,32 +64,51 @@ const GIF_PROVIDERS = {
         getTitle(item) {
             return item.title || item.slug;
         },
+        // Small, fast thumbnail for the picker grid
         getPreviewUrl(item) {
-            return klipyFileUrl(item, ['sm', 'xs', 'md', 'hd']);
+            const pick = klipyPickGif(item, KLIPY_PREVIEW_MAX_BYTES);
+            return pick ? pick.url : null;
         },
+        // For sending, Klipy's md/hd gifs are often multi-MB (up to ~6MB) which
+        // load slowly or hit browser GIF-decode limits and appear broken. Pick
+        // the largest rendition under a byte budget so chat GIFs stay reliable.
         getSendUrl(item) {
-            const raw = klipyFileUrl(item, ['md', 'hd', 'sm', 'xs']);
-            return raw ? raw.split('?')[0] : raw;
+            const pick = klipyPickGif(item, KLIPY_SEND_MAX_BYTES);
+            return pick ? pick.url.split('?')[0] : null;
         },
     },
 };
 
+// Byte budgets for choosing a Klipy gif rendition (Klipy returns per-rendition size)
+const KLIPY_PREVIEW_MAX_BYTES = 400 * 1024;   // thumbnails: keep the grid light
+const KLIPY_SEND_MAX_BYTES = 1.5 * 1024 * 1024; // sent gifs: reliable to load in chat
+
 /**
- * Extracts a GIF url from a Klipy result item, probing size keys in the given
- * order. Klipy nests urls under a per-size object; the exact wrapper key varies
- * by docs version (`file` vs `files`, and per-format `gif`), so probe defensively.
+ * Picks a gif rendition from a Klipy item by byte size: the largest one at or
+ * under maxBytes (best quality that still loads fast); if all exceed the budget,
+ * the smallest available. Klipy nests urls as item.file[size].gif.{url,size};
+ * the wrapper key varies by docs version (`file` vs `files`), so probe both.
+ * Returns {url, bytes, size} or null.
  */
-function klipyFileUrl(item, sizeOrder) {
+function klipyPickGif(item, maxBytes) {
     if (!item) return null;
     const files = item.file || item.files || {};
-    for (const size of sizeOrder) {
+    const candidates = [];
+    for (const size of ['xs', 'sm', 'md', 'hd']) {
         const entry = files[size];
         if (!entry) continue;
-        const url = (entry.gif && entry.gif.url) || entry.url
-            || (typeof entry === 'string' ? entry : null);
-        if (url) return url;
+        const gif = entry.gif || entry; // tolerate a flatter shape
+        const url = (gif && gif.url) || (typeof entry === 'string' ? entry : null);
+        if (!url) continue;
+        candidates.push({ url, bytes: (gif && gif.size) || 0, size });
     }
-    return null;
+    if (!candidates.length) return null;
+    const underBudget = candidates
+        .filter(c => !maxBytes || c.bytes <= maxBytes)
+        .sort((a, b) => b.bytes - a.bytes);
+    if (underBudget.length) return underBudget[0];
+    // Everything exceeds the budget — send the smallest we have.
+    return candidates.sort((a, b) => a.bytes - b.bytes)[0];
 }
 
 class RadioChatBox {
