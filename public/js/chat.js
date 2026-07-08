@@ -3,6 +3,95 @@
  * Real-time chat using Server-Sent Events (SSE)
  */
 
+/**
+ * GIF provider definitions. Each provider knows how to build its request URL
+ * and normalize its response so the picker code stays provider-agnostic.
+ *
+ * NOTE: Klipy's response shape and CDN domain are implemented best-effort from
+ * its public docs and MUST be verified against a live API key. If GIFs load but
+ * don't render inside messages, check the CDN host against the klipy.com entry
+ * in the GIF-rendering regexes (formatMessageText + MessageFilter.php).
+ */
+const GIF_PROVIDERS = {
+    giphy: {
+        label: 'Giphy',
+        docsUrl: 'https://developers.giphy.com/',
+        docsLabel: 'developers.giphy.com',
+        buildEndpoint(query, key, rating) {
+            return query
+                ? `https://api.giphy.com/v1/gifs/search?api_key=${key}&q=${encodeURIComponent(query)}&limit=12&rating=${rating}`
+                : `https://api.giphy.com/v1/gifs/trending?api_key=${key}&limit=12&rating=${rating}`;
+        },
+        // Giphy signals auth/quota errors via meta.status (e.g. 401/403/429)
+        getError(data) {
+            return (data && data.meta && data.meta.status >= 400) ? (data.meta.msg || 'API key') : null;
+        },
+        getItems(data) {
+            return (data && data.data) || [];
+        },
+        getTitle(item) {
+            return item.title;
+        },
+        getPreviewUrl(item) {
+            const img = item.images || {};
+            return (img.fixed_width_small && img.fixed_width_small.url)
+                || (img.fixed_width && img.fixed_width.url) || null;
+        },
+        getSendUrl(item) {
+            const img = item.images || {};
+            const raw = (img.downsized_medium && img.downsized_medium.url)
+                || (img.original && img.original.url) || null;
+            return raw ? raw.split('?')[0] : raw;
+        },
+    },
+    klipy: {
+        label: 'Klipy',
+        docsUrl: 'https://klipy.com/api',
+        docsLabel: 'klipy.com/api',
+        buildEndpoint(query, key, rating) {
+            // Klipy passes the app key in the path, not as a query param
+            return query
+                ? `https://api.klipy.com/api/v1/${key}/gifs/search?q=${encodeURIComponent(query)}&per_page=12&rating=${rating}`
+                : `https://api.klipy.com/api/v1/${key}/gifs/trending?per_page=12&rating=${rating}`;
+        },
+        // Klipy wraps success in { result: true, data: {...} }
+        getError(data) {
+            return (data && data.result === false) ? 'API key' : null;
+        },
+        getItems(data) {
+            return (data && data.data && data.data.data) || [];
+        },
+        getTitle(item) {
+            return item.title || item.slug;
+        },
+        getPreviewUrl(item) {
+            return klipyFileUrl(item, ['sm', 'xs', 'md', 'hd']);
+        },
+        getSendUrl(item) {
+            const raw = klipyFileUrl(item, ['md', 'hd', 'sm', 'xs']);
+            return raw ? raw.split('?')[0] : raw;
+        },
+    },
+};
+
+/**
+ * Extracts a GIF url from a Klipy result item, probing size keys in the given
+ * order. Klipy nests urls under a per-size object; the exact wrapper key varies
+ * by docs version (`file` vs `files`, and per-format `gif`), so probe defensively.
+ */
+function klipyFileUrl(item, sizeOrder) {
+    if (!item) return null;
+    const files = item.file || item.files || {};
+    for (const size of sizeOrder) {
+        const entry = files[size];
+        if (!entry) continue;
+        const url = (entry.gif && entry.gif.url) || entry.url
+            || (typeof entry === 'string' ? entry : null);
+        if (url) return url;
+    }
+    return null;
+}
+
 class RadioChatBox {
         // ...existing methods...
     constructor(apiUrl = '') {
@@ -3770,18 +3859,21 @@ class RadioChatBox {
             .then(res => res.json())
             .then(data => {
                 if (data.success && data.settings.gif_enabled === 'true') {
-                    // Load Tenor API key from settings
-                    this.tenorApiKey = data.settings.tenor_api_key || '';
-                    
-                    // Only show GIF button if Tenor API key is configured
-                    if (this.tenorApiKey && this.tenorApiKey.trim() !== '') {
+                    // Load GIF provider + API keys from settings
+                    this.gifProvider = data.settings.gif_provider || 'giphy';
+                    this.giphyApiKey = data.settings.giphy_api_key || '';
+                    this.klipyApiKey = data.settings.klipy_api_key || '';
+
+                    // Only show GIF button if the active provider has a key configured
+                    if (this.getGifApiKey().trim() !== '') {
                         gifButton.style.display = 'inline-block';
                     }
                 }
             })
             .catch(err => console.error('Failed to check GIF settings:', err));
-        
-        this.tenorClientKey = 'radiochatbox';
+
+        // Content rating for GIF results (g, pg, pg-13, r)
+        this.gifRating = 'pg-13';
         
         // Toggle GIF picker
         gifButton.addEventListener('click', (e) => {
@@ -3831,53 +3923,72 @@ class RadioChatBox {
         });
     }
     
+    // Returns the API key for the currently selected provider
+    getGifApiKey() {
+        return (this.gifProvider === 'klipy' ? this.klipyApiKey : this.giphyApiKey) || '';
+    }
+
+    // Provider abstraction (see GIF_PROVIDERS): builds the request URL and
+    // normalizes the response so the picker code is provider-agnostic.
+    getGifProviderConfig() {
+        return GIF_PROVIDERS[this.gifProvider] || GIF_PROVIDERS.giphy;
+    }
+
     async searchGifs(query) {
         const gifGrid = document.getElementById('gif-grid');
         const gifLoading = document.getElementById('gif-loading');
-        
+
         if (!gifGrid) return;
-        
+
         gifGrid.innerHTML = '';
         gifLoading.style.display = 'block';
-        
+
+        const provider = this.getGifProviderConfig();
+        const apiKey = this.getGifApiKey();
+
         // Check if API key is configured
-        if (!this.tenorApiKey) {
+        if (!apiKey) {
             gifLoading.style.display = 'none';
-            gifGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px;">⚠️ Tenor API key not configured.<br><br>Admin: Go to Settings and add your free API key from <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">Google Tenor</a></div>';
+            gifGrid.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px;">⚠️ ${provider.label} API key not configured.<br><br>Admin: Go to Settings and add your free API key from <a href="${provider.docsUrl}" target="_blank" style="color: #667eea;">${provider.docsLabel}</a></div>`;
             return;
         }
-        
+
         try {
-            // Use Tenor API v2
-            const endpoint = query 
-                ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${this.tenorApiKey}&client_key=${this.tenorClientKey}&limit=12`
-                : `https://tenor.googleapis.com/v2/featured?key=${this.tenorApiKey}&client_key=${this.tenorClientKey}&limit=12`;
-            
+            const endpoint = provider.buildEndpoint(query, apiKey, this.gifRating);
+
             const response = await fetch(endpoint);
             const data = await response.json();
-            
+
             gifLoading.style.display = 'none';
-            
-            if (data.results && data.results.length > 0) {
-                data.results.forEach(gif => {
+
+            const apiError = provider.getError(data);
+            if (apiError) {
+                throw new Error(apiError);
+            }
+
+            const items = provider.getItems(data);
+            if (items && items.length > 0) {
+                items.forEach(gif => {
+                    const previewUrl = provider.getPreviewUrl(gif);
+                    if (!previewUrl) return; // skip malformed items
+
                     const gifItem = document.createElement('div');
                     gifItem.className = 'gif-item';
-                    
+
                     const img = document.createElement('img');
-                    // Use tinygif for preview, mediumgif for sending
-                    img.src = gif.media_formats.tinygif?.url || gif.media_formats.gif?.url;
-                    img.alt = gif.content_description || 'GIF';
+                    img.src = previewUrl;
+                    img.alt = provider.getTitle(gif) || 'GIF';
                     img.loading = 'lazy';
-                    
+
                     gifItem.appendChild(img);
-                    
+
                     gifItem.addEventListener('click', () => {
-                        const gifUrl = gif.media_formats.mediumgif?.url || gif.media_formats.gif?.url;
+                        const gifUrl = provider.getSendUrl(gif);
                         this.insertGif(gifUrl);
                         document.getElementById('gif-picker').style.display = 'none';
                         document.getElementById('gif-button').classList.remove('active');
                     });
-                    
+
                     gifGrid.appendChild(gifItem);
                 });
             } else {
@@ -3886,8 +3997,8 @@ class RadioChatBox {
         } catch (error) {
             console.error('Error fetching GIFs:', error);
             gifLoading.style.display = 'none';
-            const errorMsg = error.message && error.message.includes('API key') 
-                ? 'Invalid API key. Admin: Update your Tenor API key in Settings.'
+            const errorMsg = error.message && error.message.toLowerCase().includes('key')
+                ? `Invalid API key. Admin: Update your ${provider.label} API key in Settings.`
                 : 'Failed to load GIFs. Please try again.';
             gifGrid.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px;">${errorMsg}</div>`;
         }
@@ -3896,7 +4007,13 @@ class RadioChatBox {
     insertGif(gifUrl) {
         // Send GIF directly via API to bypass browser emoji autocorrect
         // The input field emoji conversion was breaking the URL
-        
+
+        // Giphy/Klipy URLs carry query params after ".gif" (e.g. ?cid=...) that the
+        // GIF-rendering regex doesn't match, so strip them to keep the message clean.
+        if (gifUrl) {
+            gifUrl = gifUrl.split('?')[0];
+        }
+
         // If in private chat mode, send as private message
         if (this.privateChat.active && this.privateChat.withUser) {
             this.sendPrivateMessage(this.privateChat.withUser, gifUrl, null);
@@ -4036,14 +4153,14 @@ class RadioChatBox {
         const escaped = this.escapeHtml(text);
         
         // Detect Tenor/Giphy GIF URLs and render as images
-        const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)/gi;
+        const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif)/gi;
         let formatted = escaped.replace(gifRegex, (url) => {
             // Use a data attribute to mark this as a GIF to prevent Twemoji parsing on the URL
             return `<br><span class="gif-url" data-gif-url="${url}"><img src="${url}" alt="GIF" class="message-gif" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px;"></span>`;
         });
         
         // Convert regular URLs to clickable links (excluding GIF URLs which are already handled)
-        const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
+        const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
         formatted = formatted.replace(urlRegex, (url) => {
             return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link" data-preview-url="${url}">${url}</a>`;
         });

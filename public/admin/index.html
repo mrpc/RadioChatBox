@@ -1957,17 +1957,34 @@
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-gif-enabled" style="width: auto;">
-                            Enable GIF Selector (Tenor Integration)
+                            Enable GIF Selector
                         </label>
                         <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Allow users to search and share GIFs from Tenor. Requires a free API key from <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">Google Tenor</a>.
+                            Allow users to search and share GIFs. Choose a provider below and add its API key.
                         </small>
                     </div>
                     <div class="form-group">
-                        <label>Tenor API Key (Optional)</label>
-                        <input type="text" id="setting-tenor-api-key" placeholder="Enter your Tenor API key">
+                        <label>GIF Provider</label>
+                        <select id="setting-gif-provider">
+                            <option value="giphy">Giphy (free tier: 1,000 req/hour)</option>
+                            <option value="klipy">Klipy (free, unlimited)</option>
+                        </select>
                         <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Get a free API key at <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">developers.google.com/tenor</a>
+                            Only the selected provider's API key is used. Tenor's API was shut down by Google on June 30, 2026.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Giphy API Key</label>
+                        <input type="text" id="setting-giphy-api-key" placeholder="Enter your Giphy API key">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Get a free API key at <a href="https://developers.giphy.com/" target="_blank" style="color: #667eea;">developers.giphy.com</a>
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Klipy API Key</label>
+                        <input type="text" id="setting-klipy-api-key" placeholder="Enter your Klipy API key">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Get a free API key at <a href="https://klipy.com/api" target="_blank" style="color: #667eea;">klipy.com/api</a>
                         </small>
                     </div>
                     <div class="form-group" id="setting-minimum-users-group">
@@ -3311,11 +3328,12 @@
                     cachedSettings = await settingsRes.json();
                 }
                 if (cachedSettings && cachedSettings.success) {
-                    // Show GIF button if Tenor API key is configured
-                    const tenorKey = cachedSettings.settings.tenor_api_key || '';
+                    // Show GIF button if the active provider's API key is configured
+                    impersonateGifProvider = cachedSettings.settings.gif_provider || 'giphy';
+                    impersonateGiphyApiKey = cachedSettings.settings.giphy_api_key || '';
+                    impersonateKlipyApiKey = cachedSettings.settings.klipy_api_key || '';
                     const gifEnabled = cachedSettings.settings.gif_enabled === 'true' || cachedSettings.settings.gif_enabled === '1';
-                    if ((gifEnabled && tenorKey.trim()) || tenorKey.trim()) {
-                        impersonateTenorApiKey = tenorKey;
+                    if ((gifEnabled && getImpersonateGifKey().trim()) || getImpersonateGifKey().trim()) {
                         const gifBtn = document.getElementById('impersonate-gif-button');
                         if (gifBtn) {
                             gifBtn.style.display = 'inline-block';
@@ -4335,7 +4353,9 @@
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
-                    document.getElementById('setting-tenor-api-key').value = settings.tenor_api_key || '';
+                    document.getElementById('setting-gif-provider').value = settings.gif_provider || 'giphy';
+                    document.getElementById('setting-giphy-api-key').value = settings.giphy_api_key || '';
+                    document.getElementById('setting-klipy-api-key').value = settings.klipy_api_key || '';
                     
                     // Update fake user form requirements based on require_profile
                     updateFakeUserFormRequirements(settings.require_profile === 'true');
@@ -4478,7 +4498,9 @@
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
-                tenor_api_key: document.getElementById('setting-tenor-api-key').value,
+                gif_provider: document.getElementById('setting-gif-provider').value,
+                giphy_api_key: document.getElementById('setting-giphy-api-key').value,
+                klipy_api_key: document.getElementById('setting-klipy-api-key').value,
                 max_photo_size_mb: document.getElementById('setting-max-photo-size-mb').value,
                 minimum_users: document.getElementById('setting-minimum-users').value,
                 rate_limit_messages: document.getElementById('setting-rate-limit-messages').value,
@@ -5482,13 +5504,13 @@
             const escaped = escapeHtml(text);
             
             // Detect Tenor/Giphy GIF URLs and render as images
-            const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)/gi;
+            const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif)/gi;
             let formatted = escaped.replace(gifRegex, (url) => {
                 return `<br><img src="${url}" alt="GIF" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px;">`;
             });
             
             // Convert regular URLs to clickable links (excluding GIF URLs which are already handled)
-            const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
+            const urlRegex = /(https?:\/\/(?!(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif)[^\s<]+)/gi;
             formatted = formatted.replace(urlRegex, (url) => {
                 return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline;">${url}</a>`;
             });
@@ -5593,8 +5615,70 @@
         }
 
         // GIF picker for impersonate
-        let impersonateTenorApiKey = '';
-        const impersonateTenorClientKey = 'radiochatbox';
+        let impersonateGifProvider = 'giphy';
+        let impersonateGiphyApiKey = '';
+        let impersonateKlipyApiKey = '';
+        const impersonateGifRating = 'pg-13';
+
+        // GIF provider definitions (mirror of GIF_PROVIDERS in public/js/chat.js).
+        // Klipy's response shape / CDN domain are best-effort from its docs and
+        // must be verified against a live API key.
+        function klipyFileUrl(item, sizeOrder) {
+            if (!item) return null;
+            const files = item.file || item.files || {};
+            for (const size of sizeOrder) {
+                const entry = files[size];
+                if (!entry) continue;
+                const url = (entry.gif && entry.gif.url) || entry.url
+                    || (typeof entry === 'string' ? entry : null);
+                if (url) return url;
+            }
+            return null;
+        }
+        const IMPERSONATE_GIF_PROVIDERS = {
+            giphy: {
+                label: 'Giphy',
+                docsUrl: 'https://developers.giphy.com/',
+                docsLabel: 'Giphy Developers',
+                buildEndpoint: (q, key, rating) => q
+                    ? `https://api.giphy.com/v1/gifs/search?api_key=${key}&q=${encodeURIComponent(q)}&limit=12&rating=${rating}`
+                    : `https://api.giphy.com/v1/gifs/trending?api_key=${key}&limit=12&rating=${rating}`,
+                getError: (data) => (data && data.meta && data.meta.status >= 400) ? (data.meta.msg || 'API key') : null,
+                getItems: (data) => (data && data.data) || [],
+                getTitle: (it) => it.title,
+                getPreviewUrl: (it) => {
+                    const img = it.images || {};
+                    return (img.fixed_width_small && img.fixed_width_small.url) || (img.fixed_width && img.fixed_width.url) || null;
+                },
+                getSendUrl: (it) => {
+                    const img = it.images || {};
+                    const raw = (img.downsized_medium && img.downsized_medium.url) || (img.original && img.original.url) || null;
+                    return raw ? raw.split('?')[0] : raw;
+                },
+            },
+            klipy: {
+                label: 'Klipy',
+                docsUrl: 'https://klipy.com/api',
+                docsLabel: 'klipy.com/api',
+                buildEndpoint: (q, key, rating) => q
+                    ? `https://api.klipy.com/api/v1/${key}/gifs/search?q=${encodeURIComponent(q)}&per_page=12&rating=${rating}`
+                    : `https://api.klipy.com/api/v1/${key}/gifs/trending?per_page=12&rating=${rating}`,
+                getError: (data) => (data && data.result === false) ? 'API key' : null,
+                getItems: (data) => (data && data.data && data.data.data) || [],
+                getTitle: (it) => it.title || it.slug,
+                getPreviewUrl: (it) => klipyFileUrl(it, ['sm', 'xs', 'md', 'hd']),
+                getSendUrl: (it) => {
+                    const raw = klipyFileUrl(it, ['md', 'hd', 'sm', 'xs']);
+                    return raw ? raw.split('?')[0] : raw;
+                },
+            },
+        };
+        function getImpersonateGifKey() {
+            return (impersonateGifProvider === 'klipy' ? impersonateKlipyApiKey : impersonateGiphyApiKey) || '';
+        }
+        function getImpersonateGifProviderConfig() {
+            return IMPERSONATE_GIF_PROVIDERS[impersonateGifProvider] || IMPERSONATE_GIF_PROVIDERS.giphy;
+        }
 
         function toggleImpersonateGifPicker() {
             console.log('toggleImpersonateGifPicker called');
@@ -5653,47 +5737,55 @@
             gifGrid.innerHTML = '';
             gifLoading.style.display = 'block';
             
+            const provider = getImpersonateGifProviderConfig();
+            const apiKey = getImpersonateGifKey();
+
             // Check if API key is configured
-            if (!impersonateTenorApiKey) {
+            if (!apiKey) {
                 gifLoading.style.display = 'none';
-                gifGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px; grid-column: 1/-1;">⚠️ Tenor API key not configured.<br><br>Admin: Go to Settings and add your free API key from <a href="https://developers.google.com/tenor/guides/quickstart" target="_blank" style="color: #667eea;">Google Tenor</a></div>';
+                gifGrid.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px; grid-column: 1/-1;">⚠️ ${provider.label} API key not configured.<br><br>Admin: Go to Settings and add your free API key from <a href="${provider.docsUrl}" target="_blank" style="color: #667eea;">${provider.docsLabel}</a></div>`;
                 return;
             }
-            
+
             try {
-                // Use Tenor API v2
-                const endpoint = query 
-                    ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${impersonateTenorApiKey}&client_key=${impersonateTenorClientKey}&limit=12`
-                    : `https://tenor.googleapis.com/v2/featured?key=${impersonateTenorApiKey}&client_key=${impersonateTenorClientKey}&limit=12`;
-                
+                const endpoint = provider.buildEndpoint(query, apiKey, impersonateGifRating);
+
                 const response = await fetch(endpoint);
                 const data = await response.json();
-                
+
                 gifLoading.style.display = 'none';
-                
-                if (data.results && data.results.length > 0) {
-                    data.results.forEach(gif => {
+
+                const apiError = provider.getError(data);
+                if (apiError) {
+                    throw new Error(apiError);
+                }
+
+                const items = provider.getItems(data);
+                if (items && items.length > 0) {
+                    items.forEach(gif => {
+                        const previewUrl = provider.getPreviewUrl(gif);
+                        if (!previewUrl) return; // skip malformed items
+
                         const gifItem = document.createElement('div');
                         gifItem.style.cssText = 'cursor: pointer; border-radius: 6px; overflow: hidden; border: 2px solid #e5e7eb; transition: transform 0.2s;';
                         gifItem.onmouseover = () => gifItem.style.transform = 'scale(1.05)';
                         gifItem.onmouseout = () => gifItem.style.transform = 'scale(1)';
-                        
+
                         const img = document.createElement('img');
-                        // Use tinygif for preview, mediumgif for sending
-                        img.src = gif.media_formats.tinygif?.url || gif.media_formats.gif?.url;
-                        img.alt = gif.content_description || 'GIF';
+                        img.src = previewUrl;
+                        img.alt = provider.getTitle(gif) || 'GIF';
                         img.loading = 'lazy';
                         img.style.cssText = 'width: 100%; height: 100px; object-fit: cover;';
-                        
+
                         gifItem.appendChild(img);
-                        
+
                         gifItem.addEventListener('click', () => {
-                            const gifUrl = gif.media_formats.mediumgif?.url || gif.media_formats.gif?.url;
+                            const gifUrl = provider.getSendUrl(gif);
                             insertGifIntoImpersonate(gifUrl);
                             document.getElementById('impersonate-gif-picker').style.display = 'none';
                             document.getElementById('impersonate-gif-button').classList.remove('active');
                         });
-                        
+
                         gifGrid.appendChild(gifItem);
                     });
                 } else {
@@ -5702,8 +5794,8 @@
             } catch (error) {
                 console.error('Error fetching GIFs:', error);
                 gifLoading.style.display = 'none';
-                const errorMsg = error.message && error.message.includes('API key') 
-                    ? 'Invalid API key. Admin: Update your Tenor API key in Settings.'
+                const errorMsg = error.message && error.message.toLowerCase().includes('key')
+                    ? `Invalid API key. Admin: Update your ${provider.label} API key in Settings.`
                     : 'Failed to load GIFs. Please try again.';
                 gifGrid.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444; font-size: 13px; grid-column: 1/-1;">${errorMsg}</div>`;
             }
@@ -5904,8 +5996,10 @@
                     
                     // Update GIF button visibility based on cached settings
                     if (cachedSettings && cachedSettings.success && cachedSettings.settings.gif_enabled === 'true') {
-                        impersonateTenorApiKey = cachedSettings.settings.tenor_api_key || '';
-                        if (impersonateTenorApiKey && impersonateTenorApiKey.trim() !== '') {
+                        impersonateGifProvider = cachedSettings.settings.gif_provider || 'giphy';
+                        impersonateGiphyApiKey = cachedSettings.settings.giphy_api_key || '';
+                        impersonateKlipyApiKey = cachedSettings.settings.klipy_api_key || '';
+                        if (getImpersonateGifKey().trim() !== '') {
                             document.getElementById('impersonate-gif-button').style.display = 'inline-block';
                         }
                     }

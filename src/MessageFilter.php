@@ -160,10 +160,10 @@ class MessageFilter
         // Check if GIF feature is enabled
         $gifEnabled = self::isGifEnabled();
         
-        // Extract Tenor and Giphy GIF URLs to preserve them (only if GIF is enabled)
+        // Extract Tenor, Giphy and Klipy GIF URLs to preserve them (only if GIF is enabled)
         $gifUrls = [];
         if ($gifEnabled) {
-            $gifPattern = '/https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com)\/[^\s]+\.gif/i';
+            $gifPattern = '/https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif/i';
             preg_match_all($gifPattern, $message, $gifMatches);
             if (!empty($gifMatches[0])) {
                 foreach ($gifMatches[0] as $idx => $gifUrl) {

@@ -24,7 +24,9 @@ try {
     
     // Apply defaults for settings that may not exist in database yet
     $settings['gif_enabled'] = $settings['gif_enabled'] ?? 'true';
-    $settings['tenor_api_key'] = $settings['tenor_api_key'] ?? '';
+    $settings['gif_provider'] = $settings['gif_provider'] ?? 'giphy';
+    $settings['giphy_api_key'] = $settings['giphy_api_key'] ?? '';
+    $settings['klipy_api_key'] = $settings['klipy_api_key'] ?? '';
     
     // Add SEO meta tags
     $settings['seo'] = $settingsService->getSeoMeta();
