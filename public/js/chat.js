@@ -677,6 +677,7 @@ class RadioChatBox {
                 el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
                 // Remember the current track so it can be pinned to a message.
                 this.currentTrack = data.nowPlaying.display;
+                this._nowPlayingMeta = data.nowPlaying.meta || null;
                 this.updatePinTrackButton();
                 // Fetch the cover art (only when the track actually changes).
                 this.updateNowPlayingCover(data.nowPlaying.artist || '', data.nowPlaying.title || data.nowPlaying.display || '');
@@ -731,6 +732,8 @@ class RadioChatBox {
                         this._galleryPhotos = [{ url: full, from: this.currentTrack || '' }];
                         this.openLightbox(0);
                     });
+                    img.addEventListener('mouseenter', () => this.showNowPlayingCard(img));
+                    img.addEventListener('mouseleave', () => this.scheduleHideNowPlayingCard());
                     img._lightboxBound = true;
                 }
                 // A cover replaces the mic logo.
@@ -754,6 +757,54 @@ class RadioChatBox {
         // Restore the mic logo if a radio stream is configured.
         const mic = document.getElementById('mic-logo');
         if (mic && this._micConfigured) mic.style.display = 'inline';
+    }
+
+    /** Hover card next to the now-playing cover with track/album/artist info. */
+    showNowPlayingCard(anchor) {
+        clearTimeout(this._npCardTimer);
+        const full = anchor.dataset.full;
+        const meta = this._nowPlayingMeta || {};
+        // Nothing useful to show beyond the cover? Still show the enlarged cover.
+        let card = this._npCard;
+        if (!card) {
+            card = document.createElement('div');
+            card.className = 'now-playing-card';
+            card.addEventListener('mouseenter', () => clearTimeout(this._npCardTimer));
+            card.addEventListener('mouseleave', () => this.scheduleHideNowPlayingCard());
+            document.body.appendChild(card);
+            this._npCard = card;
+        }
+
+        const rows = [];
+        if (meta.artist) rows.push(`<div><span class="np-label">Artist:</span> ${this.escapeHtml(meta.artist)}</div>`);
+        if (meta.album) rows.push(`<div><span class="np-label">Album:</span> ${this.escapeHtml(meta.album)}</div>`);
+        if (meta.year) rows.push(`<div><span class="np-label">Year:</span> ${this.escapeHtml(meta.year)}</div>`);
+        if (meta.genre) rows.push(`<div><span class="np-label">Genre:</span> ${this.escapeHtml(meta.genre)}</div>`);
+
+        card.innerHTML = `
+            ${full ? `<img class="np-card-cover" src="${this.escapeHtml(full)}" alt="">` : ''}
+            <div class="np-card-body">
+                <div class="np-card-title">${this.escapeHtml(this.currentTrack || '')}</div>
+                ${rows.join('') || '<div style="color:#9ca3af;">No extra info yet</div>'}
+            </div>`;
+
+        const rect = anchor.getBoundingClientRect();
+        card.style.display = 'flex';
+        card.style.top = `${window.scrollY + rect.bottom + 6}px`;
+        // clamp horizontally
+        const w = card.offsetWidth || 300;
+        let left = window.scrollX + rect.left;
+        const maxLeft = window.scrollX + document.documentElement.clientWidth - w - 8;
+        if (left > maxLeft) left = maxLeft;
+        if (left < window.scrollX + 8) left = window.scrollX + 8;
+        card.style.left = `${left}px`;
+    }
+
+    scheduleHideNowPlayingCard() {
+        clearTimeout(this._npCardTimer);
+        this._npCardTimer = setTimeout(() => {
+            if (this._npCard) this._npCard.style.display = 'none';
+        }, 200);
     }
 
     // ===================== Pin current track to a message =====================

@@ -56,7 +56,25 @@ class TrackStatsService
             $prev = null;
         }
         if ($prev === $display) {
-            return null; // Same track still playing.
+            return null; // Same track still playing (fast Redis check).
+        }
+
+        // Authoritative DB safeguard: if the most-recently recorded play is the
+        // same track, do NOT record again. This does not rely on the Redis
+        // pointer (which can be lost/flushed), so it prevents duplicate rows for
+        // the same consecutive track regardless of Redis state.
+        try {
+            $stmt = $this->pdo->query(
+                'SELECT t.display FROM track_plays tp
+                 JOIN tracks t ON tp.track_id = t.id
+                 ORDER BY tp.played_at DESC LIMIT 1'
+            );
+            $lastDisplay = $stmt->fetchColumn();
+            if ($lastDisplay !== false && $lastDisplay === $display) {
+                return null; // same as the previous recorded play
+            }
+        } catch (\PDOException $e) {
+            // Non-fatal: fall through to record.
         }
 
         $listeners = isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null
@@ -716,6 +734,45 @@ class TrackStatsService
             'current' => $current,
             'top_tracks' => $this->getTopTracks($from, $to, $topLimit),
         ];
+    }
+
+    /**
+     * Stored metadata for the currently-playing track (by its display string),
+     * for the front-end hover card. Cover falls back track → album → artist.
+     *
+     * @return array{artist:?string, album:?string, year:?string, genre:?string, cover:?string}|null
+     */
+    public function getCurrentTrackMeta(string $display): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT t.artist, t.genre, t.release_date, t.cover_file,
+                        al.title AS album_title, al.release_date AS album_release_date, al.cover_file AS album_cover,
+                        ar.image_file AS artist_image
+                 FROM tracks t
+                 LEFT JOIN albums al ON t.album_id = al.id
+                 LEFT JOIN artists ar ON t.artist_id = ar.id
+                 WHERE t.display = :d
+                 LIMIT 1'
+            );
+            $stmt->execute(['d' => $display]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                return null;
+            }
+            $rd = $row['release_date'] ?: $row['album_release_date'];
+            $year = ($rd && preg_match('/^(\d{4})/', (string)$rd, $m)) ? $m[1] : null;
+            return [
+                'artist' => $row['artist'] ?: null,
+                'album' => $row['album_title'] ?: null,
+                'year' => $year,
+                'genre' => $row['genre'] ?: null,
+                'cover' => $row['cover_file'] ?: ($row['album_cover'] ?: ($row['artist_image'] ?: null)),
+            ];
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getCurrentTrackMeta failed: ' . $e->getMessage());
+            return null;
+        }
     }
 
     /** Distinct genres already present in the database (tracks + albums). */

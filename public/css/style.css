@@ -451,6 +451,49 @@ body {
     margin-left: auto;
 }
 
+/* Now-playing hover card (track/album/artist info + larger cover) */
+.now-playing-card {
+    position: absolute;
+    z-index: 11000;
+    display: none;
+    gap: 12px;
+    max-width: 360px;
+    padding: 12px;
+    background: #ffffff;
+    color: #333;
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.now-playing-card .np-card-cover {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.now-playing-card .np-card-body {
+    font-size: 13px;
+    line-height: 1.6;
+    min-width: 0;
+}
+
+.now-playing-card .np-card-title {
+    font-weight: 700;
+    margin-bottom: 6px;
+    word-break: break-word;
+}
+
+.now-playing-card .np-label {
+    color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+    .now-playing-card { background: #1e1e1e; color: #eee; }
+    .now-playing-card .np-label { color: #9ca3af; }
+}
+
 /* Now-playing cover: fills the header height, flush to the left.
    Fixed height (never align-self:stretch + aspect-ratio, which can blow up to
    the image's intrinsic size when the header wraps). */

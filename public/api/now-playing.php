@@ -35,6 +35,15 @@ try {
         error_log('Track play recording failed: ' . $e->getMessage());
     }
 
+    // Attach stored metadata for the current track (for the hover card).
+    if (!empty($now['active']) && !empty($now['display'])) {
+        try {
+            $now['meta'] = (new \RadioChatBox\TrackStatsService())->getCurrentTrackMeta($now['display']);
+        } catch (Exception $e) {
+            $now['meta'] = null;
+        }
+    }
+
     echo json_encode([
         'success' => true,
         'nowPlaying' => $now,
