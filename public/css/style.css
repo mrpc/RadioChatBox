@@ -551,7 +551,9 @@ body {
 #messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    /* No top padding: a sticky private-chat header must pin flush to the very
+       top with no gap. The top spacing lives on #messages instead. */
+    padding: 0 20px 20px 20px;
     background: #f9fafb;
     position: relative;
     scroll-behavior: smooth;
@@ -562,6 +564,7 @@ body {
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
+    padding-top: 20px;
 }
 
 /* Center content when messages container has centered placeholder */
@@ -2226,7 +2229,7 @@ body.embedded-mode .emoji-toggle-btn {
     position: sticky;
     top: 0;
     z-index: 20;
-    margin: 0 -20px 12px -20px;
+    margin: 0 -20px 0 -20px;
 }
 
 #private-chat-with {
