@@ -26,6 +26,14 @@ try {
     $svc = new RadioStatusService();
     $now = $svc->getNowPlaying();
 
+    // Record the track for play statistics (de-duplicated: only inserts on
+    // an actual track change, guarded against concurrent pollers).
+    try {
+        (new \RadioChatBox\TrackStatsService())->recordPlay($now);
+    } catch (Exception $e) {
+        error_log('Track play recording failed: ' . $e->getMessage());
+    }
+
     echo json_encode([
         'success' => true,
         'nowPlaying' => $now,

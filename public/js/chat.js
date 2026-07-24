@@ -673,7 +673,10 @@ class RadioChatBox {
             const data = await resp.json();
             if (data && data.success && data.nowPlaying && data.nowPlaying.active && data.nowPlaying.display) {
                 el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
-                
+                // Remember the current track so it can be pinned to a message.
+                this.currentTrack = data.nowPlaying.display;
+                this.updatePinTrackButton();
+
                 // Check if user is admin (also check stored role if userRole not set yet)
                 const userRole = this.userRole || this.getStorage('userRole');
                 if (userRole && ['root'].includes(userRole)) {
@@ -687,13 +690,72 @@ class RadioChatBox {
                 el.style.display = 'block';
             } else {
                 el.style.display = 'none';
+                this.currentTrack = null;
+                this.updatePinTrackButton();
             }
         } catch (e) {
             // hide on error
             el.style.display = 'none';
         }
     }
-    
+
+    // ===================== Pin current track to a message =====================
+
+    /** Show/hide the pin button based on track availability + public chat. */
+    updatePinTrackButton() {
+        if (!this.pinTrackButton) return;
+        const available = !!this.currentTrack
+            && !(this.privateChat && this.privateChat.active)
+            && (this.chatMode === 'public' || this.chatMode === 'both');
+
+        if (!available) {
+            this.pinTrackButton.style.display = 'none';
+            if (this.pinTrackActive) {
+                this.pinTrackActive = false;
+                this.pinTrackButton.classList.remove('active');
+                this.renderPinTrackChip();
+            }
+            return;
+        }
+
+        this.pinTrackButton.style.display = 'inline-flex';
+        if (!this.pinTrackActive) {
+            this.pinTrackButton.title = `Pin the current track (${this.currentTrack}) to your message`;
+        }
+    }
+
+    /** Toggle whether the current track is attached to the next message. */
+    setPinTrack(active) {
+        this.pinTrackActive = !!active && !!this.currentTrack;
+        if (this.pinTrackButton) {
+            this.pinTrackButton.classList.toggle('active', this.pinTrackActive);
+            this.pinTrackButton.title = this.pinTrackActive
+                ? `Pinned: ${this.currentTrack}`
+                : (this.currentTrack ? `Pin the current track (${this.currentTrack}) to your message` : 'Pin the current track');
+        }
+        this.renderPinTrackChip();
+    }
+
+    /** Render (or remove) the little chip above the input showing the pinned track. */
+    renderPinTrackChip() {
+        if (this._pinChip) {
+            this._pinChip.remove();
+            this._pinChip = null;
+        }
+        if (!this.pinTrackActive || !this.currentTrack) return;
+
+        const chip = document.createElement('div');
+        chip.className = 'pin-track-chip';
+        chip.innerHTML = `<span class="pin-track-chip-label">📌 🎵 ${this.escapeHtml(this.currentTrack)}</span>
+                          <button class="pin-track-remove" title="Remove">✕</button>`;
+        const inputContainer = document.getElementById('chat-input-container');
+        if (inputContainer && inputContainer.parentNode) {
+            inputContainer.parentNode.insertBefore(chip, inputContainer);
+        }
+        chip.querySelector('.pin-track-remove').addEventListener('click', () => this.setPinTrack(false));
+        this._pinChip = chip;
+    }
+
     populateCountryDropdown() {
         const locationSelect = document.getElementById('location-input');
         if (!locationSelect || typeof COUNTRIES === 'undefined') return;
@@ -1465,6 +1527,7 @@ class RadioChatBox {
         // Photo upload elements
         this.photoButton = document.getElementById('photo-button');
         this.photoInput = document.getElementById('photo-input');
+        this.pinTrackButton = document.getElementById('pin-track-button');
         this.selectedPhoto = null;
         this.photoPreviewElement = null;
 
@@ -1570,7 +1633,12 @@ class RadioChatBox {
         if (this.photoButton) {
             this.photoButton.addEventListener('click', () => this.photoInput.click());
         }
-        
+
+        // Pin-current-track button
+        if (this.pinTrackButton) {
+            this.pinTrackButton.addEventListener('click', () => this.setPinTrack(!this.pinTrackActive));
+        }
+
         if (this.photoInput) {
             this.photoInput.addEventListener('change', (e) => this.handlePhotoSelect(e));
         }
@@ -2450,7 +2518,11 @@ class RadioChatBox {
                 
                 // Use display_name if available, otherwise use username
                 const displayName = msg.display_name || msg.username;
-                
+
+                const pinnedTrackHTML = msg.pinned_track
+                    ? `<div class="pinned-track" title="Track playing when this message was sent">🎵 ${this.escapeHtml(msg.pinned_track)}</div>`
+                    : '';
+
                 messageDiv.innerHTML = `
                     <div class="message-header">
                         <span class="message-username" data-username="${this.escapeHtml(msg.username)}">${this.escapeHtml(displayName)}</span>
@@ -2458,6 +2530,7 @@ class RadioChatBox {
                     </div>
                     ${replyQuoteHTML}
                     <div class="message-body">
+                        ${pinnedTrackHTML}
                         <div class="message-text">${this.formatMessageText(msg.message)}</div>
                         <div class="message-actions">
                             ${replyButton}
@@ -2901,6 +2974,11 @@ class RadioChatBox {
         
         const displayName = messageData.display_name || messageData.username;
 
+        // Pinned "now playing" track badge
+        const pinnedTrackHTML = messageData.pinned_track
+            ? `<div class="pinned-track" title="Track playing when this message was sent">🎵 ${this.escapeHtml(messageData.pinned_track)}</div>`
+            : '';
+
         messageDiv.innerHTML = `
             <div class="message-header">
                 <span class="message-username" data-username="${this.escapeHtml(messageData.username)}">${this.escapeHtml(displayName)}</span>
@@ -2909,6 +2987,7 @@ class RadioChatBox {
             </div>
             ${replyQuoteHTML}
             <div class="message-body">
+                ${pinnedTrackHTML}
                 <div class="message-text">${this.formatMessageText(messageData.message)}</div>
                 <div class="message-actions">
                     ${replyButton}
@@ -3361,7 +3440,12 @@ class RadioChatBox {
                 if (this.replyState.active && this.replyState.messageId) {
                     messagePayload.replyTo = this.replyState.messageId;
                 }
-                
+
+                // Include the pinned track if the user attached "now playing".
+                if (this.pinTrackActive && this.currentTrack) {
+                    messagePayload.pinned_track = this.currentTrack;
+                }
+
                 const response = await fetch(`${this.apiUrl}/api/send.php`, {
                     method: 'POST',
                     headers: {
@@ -3378,7 +3462,10 @@ class RadioChatBox {
                 
                 // Clear reply state after sending
                 this.clearReplyState();
-                
+
+                // Clear the pinned-track attachment after sending
+                this.setPinTrack(false);
+
                 // Track analytics event
                 if (window.analytics) {
                     window.analytics.trackMessageSent('public');
