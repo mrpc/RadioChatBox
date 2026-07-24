@@ -676,6 +676,8 @@ class RadioChatBox {
                 // Remember the current track so it can be pinned to a message.
                 this.currentTrack = data.nowPlaying.display;
                 this.updatePinTrackButton();
+                // Fetch the cover art (only when the track actually changes).
+                this.updateNowPlayingCover(data.nowPlaying.artist || '', data.nowPlaying.title || data.nowPlaying.display || '');
 
                 // Check if user is admin (also check stored role if userRole not set yet)
                 const userRole = this.userRole || this.getStorage('userRole');
@@ -692,10 +694,41 @@ class RadioChatBox {
                 el.style.display = 'none';
                 this.currentTrack = null;
                 this.updatePinTrackButton();
+                this.hideNowPlayingCover();
             }
         } catch (e) {
             // hide on error
             el.style.display = 'none';
+        }
+    }
+
+    /** Fetch + show the cover art for the current track (cached; only on change). */
+    async updateNowPlayingCover(artist, title) {
+        const img = document.getElementById('now-playing-cover');
+        if (!img) return;
+        const key = `${artist}|${title}`;
+        if (key === this._coverKey) return; // already handled this track
+        this._coverKey = key;
+        try {
+            const params = new URLSearchParams({ artist, title });
+            const resp = await fetch(`${this.apiUrl}/api/artwork.php?${params.toString()}`);
+            const data = await resp.json();
+            if (data && data.success && data.cover && key === this._coverKey) {
+                img.src = data.cover;
+                img.style.display = 'inline-block';
+            } else if (key === this._coverKey) {
+                this.hideNowPlayingCover();
+            }
+        } catch (e) {
+            this.hideNowPlayingCover();
+        }
+    }
+
+    hideNowPlayingCover() {
+        const img = document.getElementById('now-playing-cover');
+        if (img) {
+            img.style.display = 'none';
+            img.removeAttribute('src');
         }
     }
 

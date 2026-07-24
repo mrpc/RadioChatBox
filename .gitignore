@@ -16,6 +16,10 @@ deploy.log
 !/public/uploads/photos/.gitkeep
 /public/uploads/logos/*
 !/public/uploads/logos/.gitkeep
+/public/uploads/artwork/*
+!/public/uploads/artwork/.gitkeep
+/public/uploads/artwork/artist/*
+!/public/uploads/artwork/artist/.gitkeep
 
 # IDE
 .idea/

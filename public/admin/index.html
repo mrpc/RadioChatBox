@@ -3086,7 +3086,9 @@
                 const s = data.summary || {};
                 const tracks = data.tracks || [];
                 let html = `<button class="btn" onclick="switchTrackStatsView('artists')" style="margin-bottom:14px; background:#e5e7eb;">← Back to artists</button>`;
-                html += `<h3 style="margin:0 0 6px;">🎤 ${escapeHtml(data.artist || artist)}</h3>`;
+                html += `<div style="display:flex; gap:12px; align-items:center; margin-bottom:6px;">
+                    <img id="artist-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:50%; object-fit:cover;">
+                    <h3 style="margin:0;">🎤 ${escapeHtml(data.artist || artist)}</h3></div>`;
                 html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${s.plays || 0}</strong> · Tracks: <strong>${s.tracks || tracks.length}</strong> · First: ${escapeHtml(formatTrackDateTime(s.first_played))} · Last: ${escapeHtml(formatTrackDateTime(s.last_played))}</p>`;
                 if (tracks.length === 0) {
                     html += '<p style="color:#9ca3af;">No tracks recorded.</p>';
@@ -3103,10 +3105,25 @@
                     html += `</tbody></table>`;
                 }
                 content.innerHTML = html;
+                loadDetailCover(`mode=artist&artist=${encodeURIComponent(data.artist || artist)}`, 'artist_image', 'artist-detail-cover');
             } catch (e) {
                 content.innerHTML = '';
                 err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
             }
+        }
+
+        // Fetch artwork.php and set the given <img> if a URL comes back.
+        async function loadDetailCover(qs, field, imgId) {
+            try {
+                const resp = await fetch(`/api/artwork.php?${qs}`);
+                const data = await resp.json();
+                const url = data && data.success ? data[field] : null;
+                const img = document.getElementById(imgId);
+                if (img && url) {
+                    img.src = url;
+                    img.style.display = 'block';
+                }
+            } catch (e) { /* non-fatal */ }
         }
 
         async function showTrackHistory(trackId) {
@@ -3119,7 +3136,9 @@
                 const t = data.track || {};
                 const plays = data.plays || [];
                 let html = `<button class="btn" onclick="switchTrackStatsView(trackStatsView)" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
-                html += `<h3 style="margin:0 0 6px;">${escapeHtml(t.display || '')}</h3>`;
+                html += `<div style="display:flex; gap:12px; align-items:center; margin-bottom:6px;">
+                    <img id="track-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:6px; object-fit:cover;">
+                    <h3 style="margin:0;">${escapeHtml(t.display || '')}</h3></div>`;
                 html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${t.play_count || plays.length}</strong> · First: ${escapeHtml(formatTrackDateTime(t.first_played_at))} · Last: ${escapeHtml(formatTrackDateTime(t.last_played_at))}</p>`;
                 if (plays.length === 0) {
                     html += '<p style="color:#9ca3af;">No plays recorded.</p>';
@@ -3133,6 +3152,8 @@
                     html += `</tbody></table>`;
                 }
                 content.innerHTML = html;
+                const coverQs = new URLSearchParams({ artist: t.artist || '', title: t.title || t.display || '' }).toString();
+                loadDetailCover(coverQs, 'cover', 'track-detail-cover');
             } catch (e) {
                 content.innerHTML = '';
                 err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
