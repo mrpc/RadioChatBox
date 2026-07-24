@@ -59,7 +59,8 @@ try {
             @flush();
         }
         try {
-            (new \RadioChatBox\TrackStatsService())->enrichTrack($newTrackId);
+            // Pass the feed so any feed-provided album/cover art is used.
+            (new \RadioChatBox\TrackStatsService())->enrichTrack($newTrackId, $now);
         } catch (Exception $e) {
             error_log('Inline track enrichment failed: ' . $e->getMessage());
         }

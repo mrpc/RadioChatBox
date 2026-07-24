@@ -1968,6 +1968,10 @@
                         <label>Stream Status JSON URL (Icecast/Shoutcast)</label>
                         <input type="url" id="setting-radio-status-url" placeholder="https://example.com/status-json.xsl">
                         <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">If set, the chat header shows the current song/artist.</small>
+                        <div style="margin-top: 8px;">
+                            <button type="button" class="btn" onclick="checkFeedCapabilities()" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">🔍 Check feed</button>
+                            <div id="feed-capabilities" style="margin-top: 8px; font-size: 13px;"></div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Color Scheme</label>
@@ -3017,6 +3021,19 @@
             'Contemporary Christian','Christian Rock','Merengue','Salsa','Thrash Metal','Anime','JPop','Synthpop'
         ];
 
+        // Metal subgenres (not in the ID3v1 list) — added to the genre picker.
+        const METAL_SUBGENRES = [
+            'Heavy Metal', 'Power Metal', 'Speed Metal', 'Thrash Metal', 'Death Metal',
+            'Melodic Death Metal', 'Technical Death Metal', 'Brutal Death Metal', 'Blackened Death Metal',
+            'Black Metal', 'Symphonic Black Metal', 'Atmospheric Black Metal', 'Melodic Black Metal',
+            'Doom Metal', 'Funeral Doom', 'Stoner Metal', 'Sludge Metal', 'Drone Metal', 'Post-Metal',
+            'Progressive Metal', 'Symphonic Metal', 'Gothic Metal', 'Folk Metal', 'Viking Metal',
+            'Pagan Metal', 'Groove Metal', 'Nu Metal', 'Alternative Metal', 'Industrial Metal',
+            'Metalcore', 'Deathcore', 'Melodic Metalcore', 'Grindcore', 'Goregrind', 'Djent',
+            'Mathcore', 'Avant-garde Metal', 'Neoclassical Metal', 'Crossover Thrash', 'Christian Metal',
+            'Glam Metal', 'NWOBHM', 'Melodic Metal', 'Blackgaze', 'Deathrock'
+        ];
+
         async function loadGenreOptions() {
             try {
                 const data = await trackStatsFetch('mode=genre-list');
@@ -3032,6 +3049,7 @@
             const set = new Set();
             (trackDbGenres || []).forEach(g => { if (g) set.add(g); });
             ID3V1_GENRES.forEach(g => set.add(g));
+            METAL_SUBGENRES.forEach(g => set.add(g));
             if (cur) set.add(cur);
             const opts = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
             const listId = id + '-list';
@@ -5184,6 +5202,34 @@
                 thread.style.display = 'none';
                 thread.innerHTML = '';
             });
+        }
+
+        async function checkFeedCapabilities() {
+            const box = document.getElementById('feed-capabilities');
+            box.innerHTML = 'Checking…';
+            try {
+                const resp = await fetch(`/api/now-playing.php?t=${Date.now()}`, { cache: 'no-cache' });
+                const data = await resp.json();
+                const np = data.nowPlaying || {};
+                if (!np.active) {
+                    box.innerHTML = '<span style="color:#9ca3af;">Feed not reachable or no current song.</span>';
+                    return;
+                }
+                const yn = v => v ? '<span style="color:#10b981;">✓</span>' : '<span style="color:#ef4444;">✗</span>';
+                const na = '<em style="color:#9ca3af;">not provided by feed</em>';
+                box.innerHTML = `
+                    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px;">
+                        <div><strong>Feed provides:</strong></div>
+                        <div>Artist: ${yn(np.artist)} ${np.artist ? escapeHtml(np.artist) : na}</div>
+                        <div>Title: ${yn(np.title)} ${np.title ? escapeHtml(np.title) : na}</div>
+                        <div>Album: ${yn(np.album)} ${np.album ? escapeHtml(np.album) : na}</div>
+                        <div>Cover art: ${yn(np.feed_cover)} ${np.feed_cover ? `<a href="${escapeHtml(np.feed_cover)}" target="_blank" rel="noopener">view</a>` : na}</div>
+                        <div>Listeners: ${yn(np.listeners != null)} ${np.listeners != null ? np.listeners : na}</div>
+                        <div style="color:#6b7280;margin-top:6px;">Album/art missing? Then they're inferred from Deezer/iTunes and can be corrected per track in Track Stats.</div>
+                    </div>`;
+            } catch (e) {
+                box.innerHTML = `<span style="color:#ef4444;">Error: ${escapeHtml(e.message)}</span>`;
+            }
         }
 
         async function loadSettings() {

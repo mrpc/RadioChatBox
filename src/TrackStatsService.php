@@ -190,7 +190,7 @@ class TrackStatsService
      * links) for one track. Marks the track enriched afterwards regardless, so
      * it is not retried automatically (admin can re-fetch manually).
      */
-    public function enrichTrack(int $trackId): bool
+    public function enrichTrack(int $trackId, array $feed = []): bool
     {
         $track = $this->getTrackById($trackId);
         if (!$track) {
@@ -203,7 +203,26 @@ class TrackStatsService
             return false;
         }
 
-        $meta = (new ArtworkService())->getDeepMeta($artist, $title);
+        // The feed sometimes provides the album and/or cover art directly —
+        // more authoritative than a Deezer guess (fixes wrong artwork for songs
+        // on multiple albums).
+        $feedAlbum = trim((string)($feed['album'] ?? ''));
+        $feedCover = trim((string)($feed['feed_cover'] ?? ''));
+
+        $artwork = new ArtworkService();
+        $meta = $artwork->getDeepMeta($artist, $title, $feedAlbum);
+
+        // Feed-provided album/cover win over the inferred ones.
+        if ($feedAlbum !== '') {
+            $meta['album_title'] = $feedAlbum;
+        }
+        if ($feedCover !== '') {
+            $stored = $artwork->storeImageFromUrl($feedCover);
+            if (!empty($stored['full'])) {
+                $meta['cover'] = $stored['full'];
+            }
+        }
+
         $artistId = $track['artist_id'] ?? ($artist !== '' ? $this->upsertArtist($artist) : null);
 
         // Enrich the artist row (image + external ids).

@@ -182,6 +182,37 @@ class RadioStatusService
             }
         }
 
+        // Optional album + cover art, if the feed provides them (many don't).
+        // Scans common rich-now-playing shapes (e.g. AzuraCast now_playing.song).
+        $album = null;
+        $feedCover = null;
+        $np = null;
+        if (isset($data['now_playing']) && is_array($data['now_playing'])) {
+            $np = $data['now_playing']['song'] ?? $data['now_playing'];
+        }
+        $scan = [];
+        if (is_array($np)) {
+            $scan[] = $np;
+            if (!$artist && !empty($np['artist']) && is_string($np['artist'])) $artist = trim($np['artist']);
+            if (!$title && !empty($np['title']) && is_string($np['title'])) $title = trim($np['title']);
+        }
+        $scan[] = $data;
+        if (isset($data['stream']) && is_array($data['stream'])) $scan[] = $data['stream'];
+        foreach ($scan as $obj) {
+            if (!is_array($obj)) continue;
+            if ($album === null && !empty($obj['album']) && is_string($obj['album'])) {
+                $album = trim($obj['album']);
+            }
+            if ($feedCover === null) {
+                foreach (['art', 'artwork', 'cover', 'coverart', 'image'] as $k) {
+                    if (!empty($obj[$k]) && is_string($obj[$k]) && preg_match('~^https?://~i', $obj[$k])) {
+                        $feedCover = trim($obj[$k]);
+                        break;
+                    }
+                }
+            }
+        }
+
         $active = $display !== null && $display !== '';
         return [
             'active' => $active,
@@ -189,6 +220,8 @@ class RadioStatusService
             'artist' => $artist,
             'title' => $title,
             'listeners' => $listeners,
+            'album' => $active ? $album : null,
+            'feed_cover' => $active ? $feedCover : null,
         ];
     }
 

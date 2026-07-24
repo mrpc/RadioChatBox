@@ -131,10 +131,11 @@ class ArtworkService
      *
      * @return array<string, mixed>
      */
-    public function getDeepMeta(string $artist, string $title): array
+    public function getDeepMeta(string $artist, string $title, string $album = ''): array
     {
         $artist = trim($artist);
         $title = trim($title);
+        $album = trim($album);
         $query = trim($artist . ' ' . $title);
 
         $out = [
@@ -148,11 +149,26 @@ class ArtworkService
             return $out;
         }
 
-        $json = $this->httpGet('https://api.deezer.com/search?limit=1&q=' . rawurlencode($query));
+        // Prefer a precise advanced query (and album when the feed provides it),
+        // falling back to a free-text search if it returns nothing.
         $item = null;
-        if ($json !== null) {
-            $d = json_decode($json, true);
-            $item = $d['data'][0] ?? null;
+        if ($artist !== '' && $title !== '') {
+            $adv = 'artist:"' . $artist . '" track:"' . $title . '"';
+            if ($album !== '') {
+                $adv .= ' album:"' . $album . '"';
+            }
+            $json = $this->httpGet('https://api.deezer.com/search?limit=1&q=' . rawurlencode($adv));
+            if ($json !== null) {
+                $d = json_decode($json, true);
+                $item = $d['data'][0] ?? null;
+            }
+        }
+        if (!is_array($item)) {
+            $json = $this->httpGet('https://api.deezer.com/search?limit=1&q=' . rawurlencode($query));
+            if ($json !== null) {
+                $d = json_decode($json, true);
+                $item = $d['data'][0] ?? null;
+            }
         }
 
         if (!is_array($item)) {
@@ -336,6 +352,21 @@ class ArtworkService
     private function thumbName(string $file): string
     {
         return preg_replace('/\.jpg$/i', '_thumb.jpg', $file);
+    }
+
+    /**
+     * Download an image from a URL (e.g. the stream feed's cover art) and store
+     * it locally with a thumbnail. Returns web paths.
+     *
+     * @return array{full:?string, thumb:?string}
+     */
+    public function storeImageFromUrl(string $url): array
+    {
+        $bytes = $this->httpGet($url, true);
+        if ($bytes === null) {
+            return ['full' => null, 'thumb' => null];
+        }
+        return $this->saveUploadedImage($bytes, 'feed');
     }
 
     /**
