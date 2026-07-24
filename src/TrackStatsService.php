@@ -523,16 +523,16 @@ class TrackStatsService
      * persist it so it appears in the lists (not only the live detail view).
      * Returns the stored/looked-up image path or null.
      */
-    public function ensureArtistImage(string $artist): ?string
+    public function ensureArtistImage(string $artist, bool $force = false): ?string
     {
         $row = $this->getArtistRowByName($artist);
         if (!$row) {
             return null;
         }
-        if (!empty($row['image_file'])) {
+        if (!$force && !empty($row['image_file'])) {
             return $row['image_file'];
         }
-        $img = (new ArtworkService())->getArtistImage($artist);
+        $img = (new ArtworkService())->getArtistImage($artist, $force);
         $file = $img['artist_image'] ?? null;
         if ($file) {
             try {

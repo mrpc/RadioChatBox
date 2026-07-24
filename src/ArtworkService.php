@@ -82,14 +82,17 @@ class ArtworkService
         return $result;
     }
 
-    /** Artist image only (for the artist drill-down view). */
-    public function getArtistImage(string $artist): array
+    /** Artist image only (for the artist drill-down view). $force bypasses cache. */
+    public function getArtistImage(string $artist, bool $force = false): array
     {
         $artist = trim($artist);
         if ($artist === '') {
             return ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
         }
         $cacheKey = $this->prefix . 'artwork:artist:' . md5(mb_strtolower($artist));
+        if ($force) {
+            $this->redis->del($cacheKey);
+        }
         $cached = $this->redis->get($cacheKey);
         if ($cached !== false) {
             $data = json_decode($cached, true);

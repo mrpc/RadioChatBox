@@ -3101,6 +3101,20 @@
             } catch (e) { alert(e.message); }
         }
 
+        async function enrichArtistNow() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            if (err) err.innerHTML = '';
+            if (content) content.innerHTML = '⏳ Fetching artist image from the music API…';
+            try {
+                await trackStatsPost({ action: 'enrich-artist', artist: currentArtistName });
+                showArtistHistory(currentArtistName);
+            } catch (e) {
+                if (err) err.innerHTML = `<div style="color:#ef4444;">Re-fetch failed: ${escapeHtml(e.message)}</div>`;
+                showArtistHistory(currentArtistName);
+            }
+        }
+
         async function saveArtistMeta(artistId) {
             try {
                 await trackStatsPost({
@@ -3357,7 +3371,10 @@
                 if (ar && ar.id) {
                     const inpS = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;';
                     html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:16px;">
-                        <strong style="display:block;margin-bottom:10px;">Edit artist</strong>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <strong>Edit artist</strong>
+                            <button class="btn" onclick="enrichArtistNow()" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">↻ Re-fetch from API</button>
+                        </div>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
                             <label>Genre<br><input id="edit-artist-genre" value="${escapeHtml(ar.genre || '')}" style="${inpS}width:100%;"></label>
                             <label>External link<br><input id="edit-artist-url" value="${escapeHtml(ar.external_url || '')}" style="${inpS}width:100%;"></label>

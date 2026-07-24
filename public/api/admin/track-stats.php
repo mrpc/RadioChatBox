@@ -49,6 +49,13 @@ try {
             }
             $service->enrichTrack($trackId);
             echo json_encode(['success' => true]);
+        } elseif ($action === 'enrich-artist') {
+            $artist = trim($input['artist'] ?? '');
+            if ($artist === '') {
+                throw new InvalidArgumentException('artist is required');
+            }
+            $service->ensureArtistImage($artist, true); // force re-fetch
+            echo json_encode(['success' => true]);
         } else {
             throw new InvalidArgumentException('Unknown action');
         }
