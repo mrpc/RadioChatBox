@@ -490,7 +490,9 @@ class TrackStatsService
             }
             if (array_key_exists('excluded_from_stats', $data)) {
                 $sets[] = 'excluded_from_stats = :excl';
-                $params['excl'] = !empty($data['excluded_from_stats']);
+                // Bind as 'true'/'false' text: PDO turns a PHP false into '' which
+                // PostgreSQL rejects for a boolean column.
+                $params['excl'] = !empty($data['excluded_from_stats']) ? 'true' : 'false';
             }
             if ($sets) {
                 $this->pdo->prepare('UPDATE tracks SET ' . implode(', ', $sets) . ' WHERE id = :id')
@@ -521,7 +523,8 @@ class TrackStatsService
             }
             if (array_key_exists('excluded_from_stats', $data)) {
                 $sets[] = 'excluded_from_stats = :excl';
-                $params['excl'] = !empty($data['excluded_from_stats']);
+                // 'true'/'false' text — PDO binds PHP false as '' which PG rejects.
+                $params['excl'] = !empty($data['excluded_from_stats']) ? 'true' : 'false';
             }
             if (!$sets) {
                 return true;
