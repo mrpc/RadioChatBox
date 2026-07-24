@@ -2119,6 +2119,16 @@ body.embedded-mode .emoji-toggle-btn {
     color: #667eea;
 }
 
+.conversation-item.offline {
+    opacity: 0.6;
+}
+
+.conversation-offline {
+    font-size: 0.75em;
+    font-weight: normal;
+    color: #9ca3af;
+}
+
 /* Unread Badge */
 .badge {
     position: absolute;

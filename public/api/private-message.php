@@ -55,14 +55,16 @@ try {
         $fromUsername = MessageFilter::sanitizeForOutput(trim($fromUsername));
         $toUsername = MessageFilter::sanitizeForOutput(trim($toUsername));
         
-        // Check if recipient exists in active users or is an active fake user
-        $stmt = $db->prepare("SELECT session_id FROM sessions WHERE username = ?");
+        // Check if recipient has a live session (most recent one if multiple devices)
+        $stmt = $db->prepare("SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1");
         $stmt->execute([$toUsername]);
         $recipient = $stmt->fetch();
-        
+
         $isFakeUser = false;
-        if (!$recipient) {
-            // Check if it's an active fake user
+        if ($recipient) {
+            $toSessionId = $recipient['session_id'];
+        } else {
+            // No live session. Check if it's an active fake user.
             $stmt = $db->prepare("SELECT nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE");
             $stmt->execute([$toUsername]);
             $fakeUser = $stmt->fetch();
@@ -72,10 +74,33 @@ try {
                 $toSessionId = 'fake_' . md5($toUsername);
                 $isFakeUser = true;
             } else {
-                throw new RuntimeException('Recipient is not online');
+                // Grace period: the recipient has no live session, but they may
+                // have just gone offline (browser reload / unstable connection).
+                // Fall back to their most recent known session id from previous
+                // messages so the DM is delivered when they reconnect (the client
+                // keeps the same session id in localStorage). This lets short
+                // disconnects continue a conversation instead of hard-failing.
+                $stmt = $db->prepare("
+                    SELECT session_id FROM (
+                        SELECT to_session_id AS session_id, created_at
+                        FROM private_messages WHERE to_username = ?
+                        UNION ALL
+                        SELECT from_session_id AS session_id, created_at
+                        FROM private_messages WHERE from_username = ?
+                    ) recent
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ");
+                $stmt->execute([$toUsername, $toUsername]);
+                $recentSessionId = $stmt->fetchColumn();
+
+                if ($recentSessionId) {
+                    $toSessionId = $recentSessionId;
+                } else {
+                    // Never had a session and is not a fake user: unknown recipient.
+                    throw new RuntimeException('Recipient is not online');
+                }
             }
-        } else {
-            $toSessionId = $recipient['session_id'];
         }
         
         // Get display names for sender and recipient BEFORE storing message (for snapshot)

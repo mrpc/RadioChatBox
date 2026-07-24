@@ -640,6 +640,14 @@ class RadioChatBox {
     initNowPlaying() {
         try {
             const urlSet = !!(this.settings && this.settings.radio_status_url && this.settings.radio_status_url.trim() !== '');
+
+            // Only show the microphone logo when a radio stream is actually
+            // configured. Otherwise users mistakenly assume they can voice chat.
+            const micLogo = document.getElementById('mic-logo');
+            if (micLogo) {
+                micLogo.style.display = urlSet ? 'inline' : 'none';
+            }
+
             const el = document.getElementById('now-playing');
             if (!urlSet || !el) {
                 if (el) el.style.display = 'none';
@@ -3636,24 +3644,29 @@ class RadioChatBox {
         
         // Get set of active usernames for quick lookup
         const activeUsernames = new Set(this.activeUsersList.map(u => u.username));
-        
-        // Convert to array, filter to only online users, and sort by timestamp (most recent first)
+
+        // Show ALL conversations (including with users who are currently offline).
+        // Previously offline users were filtered out, which meant an unread
+        // conversation with a user who went offline could never be opened to
+        // clear it — leaving the unread badge stuck on forever. Keeping offline
+        // conversations visible lets the user open them (clearing the unread
+        // count) and message users who just dropped off (unstable connections).
         const conversationsArray = Array.from(this.conversations.entries())
-            .filter(([username]) => activeUsernames.has(username))
             .sort((a, b) => b[1].timestamp - a[1].timestamp);
-        
+
         if (conversationsArray.length === 0) {
-            this.conversationsList.innerHTML = '<div class="empty-conversations">No conversations with online users</div>';
+            this.conversationsList.innerHTML = '<div class="empty-conversations">No conversations yet</div>';
             return;
         }
-        
+
         this.conversationsList.innerHTML = conversationsArray.map(([username, conv]) => {
             const hasUnread = conv.unreadCount > 0;
+            const isOnline = activeUsernames.has(username);
             const displayName = conv.displayName || username;
             return `
-                <div class="conversation-item ${hasUnread ? 'unread' : ''}" onclick="window.chatBox.openConversation('${this.escapeHtml(username).replace(/'/g, '&#39;')}')">
+                <div class="conversation-item ${hasUnread ? 'unread' : ''} ${isOnline ? '' : 'offline'}" onclick="window.chatBox.openConversation('${this.escapeHtml(username).replace(/'/g, '&#39;')}')">
                     <div>
-                        <div class="conversation-user">${this.escapeHtml(displayName)}</div>
+                        <div class="conversation-user">${this.escapeHtml(displayName)}${isOnline ? '' : ' <span class="conversation-offline">(offline)</span>'}</div>
                         <div class="conversation-preview">${this.escapeHtml(conv.lastMessage)}</div>
                     </div>
                     ${hasUnread ? `<span class="conversation-badge">${conv.unreadCount}</span>` : ''}
