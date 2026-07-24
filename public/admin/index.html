@@ -1106,6 +1106,10 @@
                         <span class="icon">📈</span>
                         <span>Statistics</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('track-stats')" data-tab="track-stats">
+                        <span class="icon">🎵</span>
+                        <span>Track Stats</span>
+                    </div>
                 </div>
                 
                 <div class="nav-section">
@@ -1335,6 +1339,43 @@
                         
                         <div id="stats-error" style="margin-top: 20px;"></div>
                         <div id="stats-content" style="margin-top: 30px;"></div>
+                    </div>
+                </div>
+
+                <!-- Track Stats Tab -->
+                <div id="track-stats-tab" class="tab-content">
+                    <div class="section">
+                        <h2>🎵 Track Stats</h2>
+                        <p style="color: #6b7280; margin-bottom: 20px;">
+                            What the radio has played: popularity over a period and a play log per day.
+                        </p>
+
+                        <!-- Sub-tabs -->
+                        <div style="display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb;">
+                            <button class="btn" onclick="switchTrackStatsView('summary')" id="track-tab-summary" style="background: #667eea; color: white; margin-bottom: -2px; border-bottom: 3px solid #667eea;">Popular</button>
+                            <button class="btn" onclick="switchTrackStatsView('log')" id="track-tab-log" style="background: transparent; color: #6b7280;">Daily Log</button>
+                        </div>
+
+                        <!-- Popular controls -->
+                        <div id="track-summary-controls" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                            <label style="color: #6b7280;">Period:</label>
+                            <select id="track-period" onchange="loadTrackSummary()" style="padding: 8px; border-radius: 6px; border: 1px solid #d1d5db;">
+                                <option value="1">Last 24 hours</option>
+                                <option value="7" selected>Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="365">Last year</option>
+                            </select>
+                        </div>
+
+                        <!-- Daily log controls -->
+                        <div id="track-log-controls" style="display: none; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                            <label style="color: #6b7280;">Date:</label>
+                            <input type="date" id="track-log-date" onchange="loadTrackLog()" style="padding: 8px; border-radius: 6px; border: 1px solid #d1d5db;">
+                        </div>
+
+                        <div id="track-stats-error" style="margin-top: 10px;"></div>
+                        <div id="track-stats-content" style="margin-top: 10px;">Loading…</div>
                     </div>
                 </div>
 
@@ -2876,10 +2917,119 @@
             currentImpersonateConversation = null;
         }
 
+        // ===================== Track Stats tab =====================
+        let trackStatsView = 'summary';
+        let trackStatsInited = false;
+
+        function initTrackStats() {
+            if (!trackStatsInited) {
+                const d = document.getElementById('track-log-date');
+                if (d && !d.value) d.value = new Date().toISOString().slice(0, 10);
+                trackStatsInited = true;
+            }
+            switchTrackStatsView(trackStatsView);
+        }
+
+        function switchTrackStatsView(view) {
+            trackStatsView = view;
+            const sumBtn = document.getElementById('track-tab-summary');
+            const logBtn = document.getElementById('track-tab-log');
+            sumBtn.style.background = view === 'summary' ? '#667eea' : 'transparent';
+            sumBtn.style.color = view === 'summary' ? 'white' : '#6b7280';
+            logBtn.style.background = view === 'log' ? '#667eea' : 'transparent';
+            logBtn.style.color = view === 'log' ? 'white' : '#6b7280';
+            document.getElementById('track-summary-controls').style.display = view === 'summary' ? 'flex' : 'none';
+            document.getElementById('track-log-controls').style.display = view === 'log' ? 'flex' : 'none';
+            if (view === 'summary') loadTrackSummary(); else loadTrackLog();
+        }
+
+        async function trackStatsFetch(qs) {
+            const resp = await fetch(`/api/admin/track-stats.php?${qs}`, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Failed to load track stats');
+            return data;
+        }
+
+        function formatTrackDateTime(s) {
+            if (!s) return '-';
+            const d = new Date(String(s).replace(' ', 'T'));
+            return isNaN(d.getTime()) ? String(s) : d.toLocaleString();
+        }
+
+        const TRACK_TH = 'text-align:left; padding:8px 10px; border-bottom:2px solid #e5e7eb; color:#6b7280; font-size:13px;';
+        const TRACK_TD = 'padding:8px 10px; border-bottom:1px solid #f1f3f5;';
+
+        async function loadTrackSummary() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const days = document.getElementById('track-period').value || '7';
+                const data = await trackStatsFetch(`mode=summary&days=${encodeURIComponent(days)}`);
+                const s = data.summary || {};
+                const totals = s.totals || {};
+                const top = s.top_tracks || [];
+                let html = `<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
+                    <div class="kpi-card" style="flex:1; min-width:160px;"><div style="font-size:13px;color:#6b7280;">Total plays</div><div style="font-size:28px;font-weight:700;">${totals.total_plays || 0}</div></div>
+                    <div class="kpi-card" style="flex:1; min-width:160px;"><div style="font-size:13px;color:#6b7280;">Unique tracks</div><div style="font-size:28px;font-weight:700;">${totals.unique_tracks || 0}</div></div>
+                </div>`;
+                if (top.length === 0) {
+                    html += '<p style="color:#9ca3af;">No plays recorded in this period.</p>';
+                } else {
+                    html += `<h3 style="margin:0 0 10px;">Most played</h3>`;
+                    html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
+                    top.forEach((t, i) => {
+                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(t.display)}</td>
+                            <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
+                    });
+                    html += `</tbody></table>`;
+                }
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function loadTrackLog() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const date = document.getElementById('track-log-date').value || new Date().toISOString().slice(0, 10);
+                const data = await trackStatsFetch(`mode=log&date=${encodeURIComponent(date)}`);
+                const plays = data.plays || [];
+                if (plays.length === 0) {
+                    content.innerHTML = '<p style="color:#9ca3af;">Nothing played on this date.</p>';
+                    return;
+                }
+                let html = `<p style="color:#6b7280;">${plays.length} plays on ${escapeHtml(date)}</p>`;
+                html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                    <th style="${TRACK_TH} width:180px;">Time</th><th style="${TRACK_TH}">Track</th>
+                    <th style="${TRACK_TH} width:90px;">Listeners</th></tr></thead><tbody>`;
+                plays.forEach(p => {
+                    html += `<tr><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(p.played_at))}</td>
+                        <td style="${TRACK_TD}">${escapeHtml(p.display)}</td>
+                        <td style="${TRACK_TD}">${p.listeners ?? '-'}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
         function switchTab(tabName, updateHistory = true) {
             // Role-based guard: prevent moderators from accessing restricted tabs via hash/direct calls
             if (currentUserRole === 'moderator') {
-                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'settings', 'statistics', 'photos', 'url-whitelist', 'url-blacklist']);
+                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'settings', 'statistics', 'track-stats', 'photos', 'url-whitelist', 'url-blacklist']);
                 if (restrictedTabs.has(tabName)) {
                     tabName = 'dashboard';
                     updateHistory = true;
@@ -2939,7 +3089,8 @@
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
                 'settings': {title: 'System Settings', subtitle: 'Configure chat behavior'},
-                'statistics': {title: 'Statistics Dashboard', subtitle: 'View and analyze chat analytics'}
+                'statistics': {title: 'Statistics Dashboard', subtitle: 'View and analyze chat analytics'},
+                'track-stats': {title: 'Track Stats', subtitle: 'Radio play history and popularity'}
             };
             
             if (titles[tabName]) {
@@ -2959,6 +3110,8 @@
             // Auto-load data when switching to certain tabs
             if (tabName === 'impersonate') {
                 refreshImpersonateConversations();
+            } else if (tabName === 'track-stats') {
+                initTrackStats();
             } else if (tabName === 'notifications') {
                 refreshNotifications();
             } else if (tabName === 'users') {
