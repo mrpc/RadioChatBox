@@ -660,6 +660,17 @@ body {
     border: 2px solid #fbbf24;
 }
 
+/* Inline DM notification box in public chat - clickable to open private chat */
+.message.private-message.clickable-private {
+    cursor: pointer;
+    transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.message.private-message.clickable-private:hover {
+    filter: brightness(0.97);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
 /* Private message sent by you - align right, different color */
 .message.private-message.sent {
     background: #dbeafe;
