@@ -628,11 +628,11 @@ class TrackStatsService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT t.id AS track_id, t.display, t.title,
+                'SELECT t.id AS track_id, t.display, t.title, t.genre,
                         COUNT(*) AS plays, MAX(tp.played_at) AS last_played
                  FROM track_plays tp JOIN tracks t ON tp.track_id = t.id
                  WHERE t.artist = :artist
-                 GROUP BY t.id, t.display, t.title
+                 GROUP BY t.id, t.display, t.title, t.genre
                  ORDER BY plays DESC, last_played DESC
                  LIMIT :limit'
             );
@@ -950,12 +950,12 @@ class TrackStatsService
         }
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT t.id AS track_id, t.display, t.artist,
+                'SELECT t.id AS track_id, t.display, t.artist, t.genre,
                         COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
                  FROM tracks t
                  LEFT JOIN track_plays tp ON tp.track_id = t.id
                  WHERE t.display ILIKE :q OR t.artist ILIKE :q OR t.title ILIKE :q
-                 GROUP BY t.id, t.display, t.artist
+                 GROUP BY t.id, t.display, t.artist, t.genre
                  ORDER BY plays DESC, MAX(tp.played_at) DESC NULLS LAST
                  LIMIT :limit'
             );
@@ -974,7 +974,7 @@ class TrackStatsService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT t.id AS track_id, t.display, t.artist,
+                'SELECT t.id AS track_id, t.display, t.artist, t.genre,
                         COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
                  FROM tracks t
                  LEFT JOIN track_plays tp ON tp.track_id = t.id
@@ -982,7 +982,7 @@ class TrackStatsService
                  WHERE t.genre = :genre
                    AND t.excluded_from_stats = FALSE
                    AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
-                 GROUP BY t.id, t.display, t.artist
+                 GROUP BY t.id, t.display, t.artist, t.genre
                  ORDER BY plays DESC, t.display ASC
                  LIMIT :limit'
             );

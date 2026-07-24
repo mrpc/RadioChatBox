@@ -3443,12 +3443,13 @@
                 html += bulkGenreBar();
                 html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
                     <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH}">Track</th><th style="${TRACK_TH}">Artist</th>
-                    <th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
+                    <th style="${TRACK_TH}">Genre</th><th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
                 tracks.forEach(t => {
                     html += `<tr>
                         <td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td>
                         <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
                         <td style="${TRACK_TD}">${escapeHtml(t.artist || '')}</td>
+                        <td style="${TRACK_TD}">${t.genre ? escapeHtml(t.genre) : '<span style="color:#9ca3af;">—</span>'}</td>
                         <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
                 });
                 html += `</tbody></table>`;
@@ -3574,11 +3575,12 @@
                     html += bulkGenreBar();
                     html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
                         <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
-                        <th style="${TRACK_TH}">Artist</th><th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
+                        <th style="${TRACK_TH}">Artist</th><th style="${TRACK_TH}">Genre</th><th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
                         html += `<tr><td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td><td style="${TRACK_TD}">${i + 1}</td>
                             <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}">${escapeHtml(t.artist || '')}</td>
+                            <td style="${TRACK_TD}">${t.genre ? escapeHtml(t.genre) : '<span style="color:#9ca3af;">—</span>'}</td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
                     });
                     html += `</tbody></table>`;
@@ -3693,10 +3695,11 @@
                     html += bulkGenreBar();
                     html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
                         <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
-                        <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
+                        <th style="${TRACK_TH}">Genre</th><th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
                         html += `<tr><td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td><td style="${TRACK_TD}">${i + 1}</td>
                             <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}">${t.genre ? escapeHtml(t.genre) : '<span style="color:#9ca3af;">—</span>'}</td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
                     });
                     html += `</tbody></table>`;
