@@ -864,6 +864,34 @@ class TrackStatsService
         }
     }
 
+    /** Search tracks by title/artist/display. */
+    public function searchTracks(string $query, int $limit = 100): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return [];
+        }
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT t.id AS track_id, t.display, t.artist,
+                        COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
+                 FROM tracks t
+                 LEFT JOIN track_plays tp ON tp.track_id = t.id
+                 WHERE t.display ILIKE :q OR t.artist ILIKE :q OR t.title ILIKE :q
+                 GROUP BY t.id, t.display, t.artist
+                 ORDER BY plays DESC, MAX(tp.played_at) DESC NULLS LAST
+                 LIMIT :limit'
+            );
+            $stmt->bindValue(':q', '%' . $query . '%');
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::searchTracks failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
     /** Tracks of a given genre with play counts (excludes flagged items). */
     public function getTracksByGenre(string $genre, int $limit = 500): array
     {

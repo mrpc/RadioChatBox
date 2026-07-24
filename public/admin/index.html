@@ -1357,6 +1357,7 @@
                             <button class="btn" onclick="switchTrackStatsView('albums')" id="track-tab-albums" style="background: transparent; color: #6b7280;">Top Albums</button>
                             <button class="btn" onclick="switchTrackStatsView('genres')" id="track-tab-genres" style="background: transparent; color: #6b7280;">Top Genres</button>
                             <button class="btn" onclick="switchTrackStatsView('index')" id="track-tab-index" style="background: transparent; color: #6b7280;">A–Z Artists</button>
+                            <button class="btn" onclick="switchTrackStatsView('search')" id="track-tab-search" style="background: transparent; color: #6b7280;">🔎 Search</button>
                             <button class="btn" onclick="switchTrackStatsView('log')" id="track-tab-log" style="background: transparent; color: #6b7280;">Daily Log</button>
                         </div>
 
@@ -1376,6 +1377,11 @@
                         <div id="track-log-controls" style="display: none; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                             <label style="color: #6b7280;">Date:</label>
                             <input type="date" id="track-log-date" onchange="loadTrackLog()" style="padding: 8px; border-radius: 6px; border: 1px solid #d1d5db;">
+                        </div>
+
+                        <!-- Search controls -->
+                        <div id="track-search-controls" style="display: none; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="track-search-input" placeholder="Search track or artist…" oninput="onTrackSearchInput()" autocomplete="off" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; width: 320px; max-width: 100%;">
                         </div>
 
                         <div id="track-stats-error" style="margin-top: 10px;"></div>
@@ -3098,7 +3104,7 @@
             const tabs = {
                 summary: 'track-tab-summary', artists: 'track-tab-artists',
                 albums: 'track-tab-albums', genres: 'track-tab-genres',
-                index: 'track-tab-index', log: 'track-tab-log'
+                index: 'track-tab-index', search: 'track-tab-search', log: 'track-tab-log'
             };
             Object.entries(tabs).forEach(([v, id]) => {
                 const btn = document.getElementById(id);
@@ -3110,12 +3116,14 @@
             const periodViews = ['summary', 'artists', 'albums', 'genres'];
             document.getElementById('track-summary-controls').style.display = periodViews.includes(view) ? 'flex' : 'none';
             document.getElementById('track-log-controls').style.display = view === 'log' ? 'flex' : 'none';
+            document.getElementById('track-search-controls').style.display = view === 'search' ? 'flex' : 'none';
             setTrackStatsHash('view/' + view);
             if (view === 'summary') loadTrackSummary();
             else if (view === 'artists') loadTrackArtists();
             else if (view === 'albums') loadTrackAlbums();
             else if (view === 'genres') loadTrackGenres();
             else if (view === 'index') loadArtistIndex();
+            else if (view === 'search') loadTrackSearch();
             else loadTrackLog();
         }
 
@@ -3399,6 +3407,47 @@
                     html += `<tr><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(p.played_at))}</td>
                         <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(p.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(p.display)}</a></td>
                         <td style="${TRACK_TD}">${p.listeners ?? '-'}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        let _trackSearchTimer = null;
+        function onTrackSearchInput() {
+            clearTimeout(_trackSearchTimer);
+            _trackSearchTimer = setTimeout(loadTrackSearch, 300);
+        }
+
+        async function loadTrackSearch() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            const q = (document.getElementById('track-search-input') || {}).value || '';
+            if (q.trim() === '') {
+                content.innerHTML = '<p style="color:#9ca3af;">Type to search for a track or artist…</p>';
+                return;
+            }
+            content.innerHTML = 'Searching…';
+            try {
+                const data = await trackStatsFetch(`mode=search&q=${encodeURIComponent(q.trim())}`);
+                const tracks = data.tracks || [];
+                if (tracks.length === 0) {
+                    content.innerHTML = `<p style="color:#9ca3af;">No tracks match “${escapeHtml(q.trim())}”.</p>`;
+                    return;
+                }
+                let html = `<p style="color:#6b7280;">${tracks.length} result${tracks.length === 1 ? '' : 's'}</p>`;
+                html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+                    <th style="${TRACK_TH}">Track</th><th style="${TRACK_TH}">Artist</th>
+                    <th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
+                tracks.forEach(t => {
+                    html += `<tr>
+                        <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
+                        <td style="${TRACK_TD}">${escapeHtml(t.artist || '')}</td>
+                        <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
                 });
                 html += `</tbody></table>`;
                 content.innerHTML = html;
@@ -8697,9 +8746,7 @@
                     }
                 }, 200);
             } else if (hash.startsWith('track-stats')) {
-                switchTab('track-stats', false);
-                const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
-                if (rest) restoreTrackStatsFromHash(rest);
+                maybeRestoreTrackStats();
             } else if (hash) {
                 // Normal tab hash
                 switchTab(hash, false);

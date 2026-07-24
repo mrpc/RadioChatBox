@@ -165,6 +165,15 @@ try {
             'artists' => $service->getAllArtists(),
         ]);
 
+    } elseif ($mode === 'search') {
+        $q = trim($_GET['q'] ?? '');
+        echo json_encode([
+            'success' => true,
+            'mode' => 'search',
+            'q' => $q,
+            'tracks' => $q === '' ? [] : $service->searchTracks($q),
+        ]);
+
     } elseif ($mode === 'genre') {
         $genre = trim($_GET['genre'] ?? '');
         if ($genre === '') {
