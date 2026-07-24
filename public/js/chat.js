@@ -1451,6 +1451,7 @@ class RadioChatBox {
         // Private chat elements
         this.privateChatHeader = document.getElementById('private-chat-header');
         this.privateChatWith = document.getElementById('private-chat-with');
+        this.blockUserBtn = document.getElementById('block-user-btn');
         this.backToPublicBtn = document.getElementById('back-to-public');
         this.conversationsToggle = document.getElementById('conversations-toggle');
         this.adminPanelBtn = document.getElementById('admin-panel-btn');
@@ -1475,8 +1476,24 @@ class RadioChatBox {
         // Event listeners
         this.sendButton.addEventListener('click', () => this.sendMessage());
         this.messageInput.addEventListener('keypress', (e) => {
+            // Don't send while the @mention autocomplete is capturing Enter.
+            if (e.key === 'Enter' && this._mentionActive) return;
             if (e.key === 'Enter') this.sendMessage();
         });
+        // @mention autocomplete (public chat)
+        this.messageInput.addEventListener('input', () => this.handleMentionInput());
+        this.messageInput.addEventListener('keydown', (e) => this.handleMentionKeydown(e));
+        this.messageInput.addEventListener('blur', () => setTimeout(() => this.closeMentionDropdown(), 150));
+
+        // Click a username inside the conversation (sender name or @mention) to
+        // open a small popover offering to start a private chat with them.
+        if (this.messagesContainer) {
+            this.messagesContainer.addEventListener('click', (e) => {
+                const nameEl = e.target.closest('.message-username[data-username], .mention[data-username]');
+                if (!nameEl) return;
+                this.openUserActionsPopover(nameEl.getAttribute('data-username'), nameEl);
+            });
+        }
         
         // Emoji picker
         this.initEmojiPicker();
@@ -1508,6 +1525,11 @@ class RadioChatBox {
         // Private chat back button
         if (this.backToPublicBtn) {
             this.backToPublicBtn.addEventListener('click', () => this.exitPrivateChat());
+        }
+
+        // Block/unblock button in the private chat header
+        if (this.blockUserBtn) {
+            this.blockUserBtn.addEventListener('click', () => this.toggleBlockCurrentUser());
         }
         
         // Conversations panel toggle
@@ -1652,7 +1674,12 @@ class RadioChatBox {
                 const data = JSON.parse(e.data);
                 this.handleMessageEdited(data.message_id, data.message, data.edited_at);
             });
-            
+
+            this.eventSource.addEventListener('reaction', (e) => {
+                const data = JSON.parse(e.data);
+                this.handleReactionUpdate(data);
+            });
+
             this.eventSource.addEventListener('reconnect', (e) => {
                 console.log('Server requested reconnect');
                 this.eventSource.close();
@@ -1730,7 +1757,7 @@ class RadioChatBox {
                 }
             } else {
                 // Fetch missed public messages
-                const response = await fetch(`${this.apiUrl}/api/history.php`);
+                const response = await fetch(`${this.apiUrl}/api/history.php?username=${encodeURIComponent(this.username)}`);
                 const data = await response.json();
                 
                 if (data.success && data.messages) {
@@ -1890,7 +1917,17 @@ class RadioChatBox {
         if (this.privateChatHeader) {
             this.privateChatHeader.style.display = 'flex';
         }
-        
+
+        // Switch the view to the (currently empty) private conversation right
+        // away. This clears the public messages immediately so we never show
+        // public chat under the private header even if the history fetch below
+        // is slow or fails.
+        this.renderPrivateMessages();
+
+        // Load block state for this conversation (updates the Block/Unblock
+        // button and disables input if a mutual block is in effect).
+        this.loadBlockState(username);
+
         // Show and enable input container
         const inputContainer = document.getElementById('chat-input-container');
         if (inputContainer) {
@@ -2028,11 +2065,113 @@ class RadioChatBox {
             this.loadPublicMessages();
         }
     }
-    
+
+    // ===================== DM blocking =====================
+
+    /**
+     * Fetch and apply block state for the conversation with `username`.
+     * Updates the Block/Unblock button and disables input on a mutual block.
+     */
+    /** Fetch block state between the current user and `withUser`. */
+    async getBlockState(withUser) {
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/block.php?username=${encodeURIComponent(this.username)}&with_user=${encodeURIComponent(withUser)}`);
+            const data = await resp.json();
+            if (data.success) {
+                return { i_blocked: !!data.i_blocked, is_blocked_between: !!data.is_blocked_between };
+            }
+        } catch (e) {
+            // Non-fatal.
+        }
+        return { i_blocked: false, is_blocked_between: false };
+    }
+
+    /** POST a block/unblock action. Returns the parsed response. */
+    async setBlock(targetUsername, action) {
+        const resp = await fetch(`${this.apiUrl}/api/block.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: action,
+                username: this.username,
+                session_id: this.sessionId,
+                target_username: targetUsername
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed');
+        return data;
+    }
+
+    async loadBlockState(username) {
+        if (!this.blockUserBtn) return;
+        this._blockState = await this.getBlockState(username);
+        // Only meaningful for the conversation we're still viewing.
+        if (this.privateChat.active && this.privateChat.withUser === username) {
+            this.applyBlockUI(username);
+        }
+    }
+
+    /**
+     * Render the Block/Unblock button and enable/disable input based on
+     * this._blockState for the given conversation partner.
+     */
+    applyBlockUI(username) {
+        const state = this._blockState || { i_blocked: false, is_blocked_between: false };
+
+        if (this.blockUserBtn) {
+            this.blockUserBtn.style.display = 'inline-flex';
+            this.blockUserBtn.textContent = state.i_blocked ? '✅ Unblock' : '🚫 Block';
+            this.blockUserBtn.classList.toggle('is-blocked', state.i_blocked);
+        }
+
+        // On any active block (either direction), messaging is not possible.
+        const inputContainer = document.getElementById('chat-input-container');
+        if (state.is_blocked_between) {
+            if (this.messageInput) {
+                this.messageInput.disabled = true;
+                this.messageInput.placeholder = state.i_blocked
+                    ? `You blocked ${username}. Unblock to chat.`
+                    : `You can't message ${username}.`;
+            }
+            if (this.sendButton) this.sendButton.disabled = true;
+            if (inputContainer) inputContainer.classList.add('input-blocked');
+        } else {
+            if (this.messageInput) {
+                this.messageInput.disabled = false;
+                this.messageInput.placeholder = `Send private message to ${username}...`;
+            }
+            if (this.sendButton) this.sendButton.disabled = false;
+            if (inputContainer) inputContainer.classList.remove('input-blocked');
+        }
+    }
+
+    /** Toggle block/unblock for the currently open private conversation. */
+    async toggleBlockCurrentUser() {
+        const target = this.privateChat.withUser;
+        if (!target) return;
+
+        const currentlyBlocked = this._blockState && this._blockState.i_blocked;
+        const action = currentlyBlocked ? 'unblock' : 'block';
+
+        if (action === 'block' && !confirm(`Block ${target}? You will no longer be able to exchange private messages.`)) {
+            return;
+        }
+
+        try {
+            await this.setBlock(target, action);
+            // Refresh authoritative state from the server.
+            await this.loadBlockState(target);
+        } catch (e) {
+            console.error('Error toggling block:', e);
+            alert(e.message);
+        }
+    }
+
     async loadPublicMessages() {
         try {
             console.log('[loadPublicMessages] Starting...');
-            const response = await fetch(`${this.apiUrl}/api/history.php`);
+            const response = await fetch(`${this.apiUrl}/api/history.php?username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -2192,7 +2331,7 @@ class RadioChatBox {
     async reloadHistory() {
         // Fetch fresh history from server
         try {
-            const response = await fetch(`${this.apiUrl}/api/history.php`);
+            const response = await fetch(`${this.apiUrl}/api/history.php?username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -2234,7 +2373,7 @@ class RadioChatBox {
                 }
             }
             
-            const response = await fetch(`${this.apiUrl}/api/history.php?offset=${offset}&limit=${limit}`);
+            const response = await fetch(`${this.apiUrl}/api/history.php?offset=${offset}&limit=${limit}&username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (!data.success || !data.messages || data.messages.length === 0) {
@@ -2301,7 +2440,7 @@ class RadioChatBox {
                 
                 messageDiv.innerHTML = `
                     <div class="message-header">
-                        <span class="message-username">${this.escapeHtml(displayName)}</span>
+                        <span class="message-username" data-username="${this.escapeHtml(msg.username)}">${this.escapeHtml(displayName)}</span>
                         <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
                     </div>
                     ${replyQuoteHTML}
@@ -2337,7 +2476,15 @@ class RadioChatBox {
                         this.messageInput.focus();
                     });
                 }
-                
+
+                // Emoji reactions (public messages)
+                this.setupReactions(messageDiv, msgId, msg.reactions || [], msg.username === this.username);
+
+                // Highlight older messages that mention the current user.
+                if (this.messageMentionsMe(msg.message)) {
+                    messageDiv.classList.add('mentions-me');
+                }
+
                 messagesFragment.appendChild(messageDiv);
             });
             
@@ -2743,7 +2890,7 @@ class RadioChatBox {
 
         messageDiv.innerHTML = `
             <div class="message-header">
-                <span class="message-username">${this.escapeHtml(displayName)}</span>
+                <span class="message-username" data-username="${this.escapeHtml(messageData.username)}">${this.escapeHtml(displayName)}</span>
                 <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
                 ${editedBadge}
             </div>
@@ -2791,6 +2938,18 @@ class RadioChatBox {
             });
         }
 
+        // Emoji reactions (public messages)
+        this.setupReactions(messageDiv, msgId, messageData.reactions || [], isOwnMessage);
+
+        // Highlight messages that mention the current user, and notify on new ones.
+        if (this.messageMentionsMe(messageData.message)) {
+            messageDiv.classList.add('mentions-me');
+            if (!isOwnMessage && animate) {
+                if (this.soundEnabled) this.playNotificationSound();
+                this.showTitleNotification('💬 You were mentioned!');
+            }
+        }
+
         this.messagesContainer.appendChild(messageDiv);
         
         // Fetch and render link preview for any URL in this message
@@ -2811,7 +2970,182 @@ class RadioChatBox {
             this.scrollToBottom();
         }
     }
-    
+
+    // ===================== Emoji reactions =====================
+
+    /** Allowed reaction emojis (must match ReactionService::ALLOWED_EMOJIS). */
+    getAllowedReactions() {
+        return ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+    }
+
+    /**
+     * Add the react (＋) button and reactions bar to a message node and render
+     * any existing reactions. `reactions` = [{emoji,count,mine}].
+     * You cannot react to your own messages, so the react button and pill
+     * clicks are disabled for own messages (others' reactions still render).
+     */
+    setupReactions(messageDiv, msgId, reactions = [], isOwn = false) {
+        if (!msgId) return;
+        if (!this.myReactions) this.myReactions = new Map();
+
+        if (!isOwn) {
+            const actions = messageDiv.querySelector('.message-actions');
+            if (actions && !actions.querySelector('.react-message-btn')) {
+                const btn = document.createElement('button');
+                btn.className = 'react-message-btn';
+                btn.setAttribute('data-message-id', msgId);
+                btn.title = 'Add reaction';
+                btn.textContent = '😊';
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.openReactionPicker(msgId, btn);
+                });
+                actions.appendChild(btn);
+            }
+        }
+
+        const body = messageDiv.querySelector('.message-body');
+        let bar = body ? body.querySelector('.message-reactions') : null;
+        if (body && !bar) {
+            bar = document.createElement('div');
+            bar.className = 'message-reactions';
+            bar.setAttribute('data-message-id', msgId);
+            if (isOwn) {
+                bar.classList.add('own-reactions');
+            }
+            body.appendChild(bar);
+        }
+
+        // Render directly into the bar element: the message node may not be in
+        // the messages container yet (history/pagination build it detached), so
+        // we can't rely on a container query here.
+        // Reactions coming from history/DB carry authoritative "mine" flags.
+        this.renderReactionBar(msgId, reactions, { authoritative: true, el: bar });
+    }
+
+    /**
+     * Render the reactions bar for a message.
+     * opts.authoritative: reactions include correct per-viewer "mine" flags
+     * (history load / our own toggle response) so we reset the local mine-set;
+     * otherwise (SSE broadcast, counts only) we keep the existing mine-set.
+     */
+    renderReactionBar(msgId, reactions, opts = {}) {
+        if (!this.myReactions) this.myReactions = new Map();
+        let mineSet = this.myReactions.get(msgId) || new Set();
+        if (opts.authoritative) {
+            mineSet = new Set((reactions || []).filter(r => r.mine).map(r => r.emoji));
+        }
+        this.myReactions.set(msgId, mineSet);
+
+        // Prefer an explicitly provided bar element (message node may still be
+        // detached during history/pagination rendering); otherwise look it up.
+        const container = opts.el
+            || (this.messagesContainer && this.messagesContainer.querySelector(`.message-reactions[data-message-id="${msgId}"]`));
+        if (!container) return;
+
+        // Own messages: reactions are display-only (you can't react to yourself).
+        const interactive = !container.classList.contains('own-reactions');
+
+        const list = (reactions || []).filter(r => r.count > 0);
+        container.innerHTML = list.map(r => {
+            const active = mineSet.has(r.emoji) ? 'active' : '';
+            const cls = `reaction-pill ${active} ${interactive ? '' : 'static'}`.trim();
+            return `<button class="${cls}" data-emoji="${r.emoji}"${interactive ? '' : ' disabled'}>${r.emoji} <span class="reaction-count">${r.count}</span></button>`;
+        }).join('');
+        container.style.display = list.length ? 'flex' : 'none';
+
+        if (interactive) {
+            container.querySelectorAll('.reaction-pill').forEach(pill => {
+                pill.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleReaction(msgId, pill.getAttribute('data-emoji'));
+                });
+            });
+        }
+    }
+
+    /** Real-time reaction update (SSE): counts only, preserve our mine-set. */
+    handleReactionUpdate(data) {
+        if (!data || !data.message_id) return;
+        const counts = data.counts || {};
+        const reactions = Object.keys(counts).map(emoji => ({ emoji, count: counts[emoji], mine: false }));
+        this.renderReactionBar(data.message_id, reactions, { authoritative: false });
+    }
+
+    /** Toggle one of our reactions via the API. */
+    async toggleReaction(msgId, emoji) {
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/react.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message_id: msgId,
+                    username: this.username,
+                    session_id: this.sessionId,
+                    emoji: emoji
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to react');
+            // Response carries authoritative reactions (with our mine flags).
+            this.renderReactionBar(msgId, data.reactions, { authoritative: true });
+        } catch (error) {
+            console.error('Error toggling reaction:', error);
+        }
+    }
+
+    /** Open the emoji picker popover anchored to the react button. */
+    openReactionPicker(msgId, anchorBtn) {
+        this.closeReactionPicker();
+        const picker = document.createElement('div');
+        picker.className = 'reaction-picker';
+        picker.innerHTML = this.getAllowedReactions()
+            .map(e => `<button class="reaction-option" data-emoji="${e}">${e}</button>`)
+            .join('');
+        document.body.appendChild(picker);
+
+        // Position under the button, but clamp within the viewport so it never
+        // renders off-screen (e.g. for right-aligned own messages / edge cases).
+        const rect = anchorBtn.getBoundingClientRect();
+        const pickerWidth = picker.offsetWidth || 220;
+        const margin = 8;
+        let left = window.scrollX + rect.left;
+        const maxLeft = window.scrollX + document.documentElement.clientWidth - pickerWidth - margin;
+        if (left > maxLeft) left = maxLeft;
+        if (left < window.scrollX + margin) left = window.scrollX + margin;
+        picker.style.top = `${window.scrollY + rect.bottom + 4}px`;
+        picker.style.left = `${left}px`;
+
+        picker.querySelectorAll('.reaction-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleReaction(msgId, opt.getAttribute('data-emoji'));
+                this.closeReactionPicker();
+            });
+        });
+
+        this._reactionPicker = picker;
+        setTimeout(() => {
+            this._reactionPickerOutside = (ev) => {
+                if (this._reactionPicker && !this._reactionPicker.contains(ev.target)) {
+                    this.closeReactionPicker();
+                }
+            };
+            document.addEventListener('click', this._reactionPickerOutside);
+        }, 0);
+    }
+
+    closeReactionPicker() {
+        if (this._reactionPicker) {
+            this._reactionPicker.remove();
+            this._reactionPicker = null;
+        }
+        if (this._reactionPickerOutside) {
+            document.removeEventListener('click', this._reactionPickerOutside);
+            this._reactionPickerOutside = null;
+        }
+    }
+
     shouldShowDaySeparator(messageDate) {
         const messagesInContainer = this.messagesContainer.children;
         if (messagesInContainer.length === 0) return true;
@@ -4205,8 +4539,248 @@ class RadioChatBox {
         formatted = formatted.replace(urlRegex, (url) => {
             return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link" data-preview-url="${url}">${url}</a>`;
         });
-        
+
+        // Highlight @mentions. Only match when preceded by start/space/paren so we
+        // don't touch @ inside URLs or emails. Self-mentions get an extra class.
+        const myName = (this.username || '').toLowerCase();
+        formatted = formatted.replace(/(^|[\s(])@([A-Za-z0-9_]{2,50})/g, (match, pre, name) => {
+            const isMe = name.toLowerCase() === myName;
+            return `${pre}<span class="mention${isMe ? ' mention-me' : ''}" data-username="${name}">@${name}</span>`;
+        });
+
         return formatted;
+    }
+
+    /** Escape a string for safe use inside a RegExp. */
+    escapeRegex(str) {
+        return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    /** True if `text` mentions the current user (@username, word-boundaried). */
+    messageMentionsMe(text) {
+        if (!text || !this.username) return false;
+        const re = new RegExp(`(^|[\\s(])@${this.escapeRegex(this.username)}\\b`, 'i');
+        return re.test(text);
+    }
+
+    // ===================== @mention autocomplete =====================
+
+    /** Detect an @token at the caret and show/hide the autocomplete dropdown. */
+    handleMentionInput() {
+        if (!this.messageInput) return;
+        // Only in public chat (mentions target active public users).
+        if (this.privateChat && this.privateChat.active) {
+            this.closeMentionDropdown();
+            return;
+        }
+
+        const value = this.messageInput.value;
+        const caret = this.messageInput.selectionStart || 0;
+        const before = value.substring(0, caret);
+        const match = before.match(/(^|[\s(])@([A-Za-z0-9_]*)$/);
+
+        if (!match) {
+            this.closeMentionDropdown();
+            return;
+        }
+
+        const query = match[2].toLowerCase();
+        this._mentionStart = caret - match[2].length - 1; // index of '@'
+
+        const users = (this.activeUsersList || [])
+            .filter(u => u.username && u.username.toLowerCase() !== (this.username || '').toLowerCase())
+            .filter(u => {
+                const uname = u.username.toLowerCase();
+                const dname = (u.display_name || '').toLowerCase();
+                return query === '' || uname.startsWith(query) || dname.startsWith(query);
+            })
+            .slice(0, 8);
+
+        if (users.length === 0) {
+            this.closeMentionDropdown();
+            return;
+        }
+
+        this._mentionMatches = users;
+        this._mentionIndex = 0;
+        this.renderMentionDropdown();
+    }
+
+    renderMentionDropdown() {
+        let dropdown = this._mentionDropdown;
+        if (!dropdown) {
+            dropdown = document.createElement('div');
+            dropdown.className = 'mention-dropdown';
+            document.body.appendChild(dropdown);
+            this._mentionDropdown = dropdown;
+        }
+
+        dropdown.innerHTML = this._mentionMatches.map((u, i) => {
+            const display = u.display_name || u.username;
+            const sub = u.display_name ? `<span class="mention-sub">@${this.escapeHtml(u.username)}</span>` : '';
+            return `<div class="mention-item ${i === this._mentionIndex ? 'active' : ''}" data-index="${i}">
+                        <span class="mention-name">${this.escapeHtml(display)}</span> ${sub}
+                    </div>`;
+        }).join('');
+
+        // Position above the input.
+        const rect = this.messageInput.getBoundingClientRect();
+        dropdown.style.left = `${window.scrollX + rect.left}px`;
+        dropdown.style.width = `${Math.min(rect.width, 320)}px`;
+        // Show, then place its bottom just above the input.
+        dropdown.style.top = '0px';
+        dropdown.style.display = 'block';
+        const dh = dropdown.offsetHeight;
+        dropdown.style.top = `${window.scrollY + rect.top - dh - 4}px`;
+
+        this._mentionActive = true;
+
+        dropdown.querySelectorAll('.mention-item').forEach(item => {
+            // mousedown (not click) so it fires before the input's blur handler.
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const idx = parseInt(item.getAttribute('data-index'), 10);
+                this.selectMention(idx);
+            });
+        });
+    }
+
+    handleMentionKeydown(e) {
+        if (!this._mentionActive || !this._mentionMatches) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this._mentionIndex = (this._mentionIndex + 1) % this._mentionMatches.length;
+            this.renderMentionDropdown();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this._mentionIndex = (this._mentionIndex - 1 + this._mentionMatches.length) % this._mentionMatches.length;
+            this.renderMentionDropdown();
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            this.selectMention(this._mentionIndex);
+        } else if (e.key === 'Escape') {
+            this.closeMentionDropdown();
+        }
+    }
+
+    selectMention(index) {
+        const user = this._mentionMatches && this._mentionMatches[index];
+        if (!user || this._mentionStart == null) {
+            this.closeMentionDropdown();
+            return;
+        }
+
+        const value = this.messageInput.value;
+        const caret = this.messageInput.selectionStart || 0;
+        const insert = `@${user.username} `;
+        const newValue = value.substring(0, this._mentionStart) + insert + value.substring(caret);
+        this.messageInput.value = newValue;
+
+        const newCaret = this._mentionStart + insert.length;
+        this.messageInput.setSelectionRange(newCaret, newCaret);
+        this.messageInput.focus();
+
+        this.closeMentionDropdown();
+    }
+
+    closeMentionDropdown() {
+        this._mentionActive = false;
+        this._mentionMatches = null;
+        this._mentionStart = null;
+        if (this._mentionDropdown) {
+            this._mentionDropdown.remove();
+            this._mentionDropdown = null;
+        }
+    }
+
+    // ============ Username click → DM popover (public + private mode) ============
+
+    /**
+     * Show a popover next to a clicked username offering to start a DM.
+     * Only when both public and private chat are enabled (chat_mode 'both')
+     * and the name isn't the current user.
+     */
+    openUserActionsPopover(username, anchorEl) {
+        if (!username || !anchorEl) return;
+        if (username.toLowerCase() === (this.username || '').toLowerCase()) return;
+        if (this.chatMode !== 'both') return;
+
+        this.closeUserActionsPopover();
+
+        const pop = document.createElement('div');
+        pop.className = 'user-actions-popover';
+        pop.innerHTML = `
+            <div class="user-actions-name">${this.escapeHtml(username)}</div>
+            <button class="user-action-dm">💬 Send private message</button>
+            <button class="user-action-block">🚫 Block</button>
+        `;
+        document.body.appendChild(pop);
+
+        // Position under the name, clamped to the viewport.
+        const rect = anchorEl.getBoundingClientRect();
+        const w = pop.offsetWidth || 200;
+        const margin = 8;
+        let left = window.scrollX + rect.left;
+        const maxLeft = window.scrollX + document.documentElement.clientWidth - w - margin;
+        if (left > maxLeft) left = maxLeft;
+        if (left < window.scrollX + margin) left = window.scrollX + margin;
+        pop.style.left = `${left}px`;
+        pop.style.top = `${window.scrollY + rect.bottom + 4}px`;
+
+        pop.querySelector('.user-action-dm').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.closeUserActionsPopover();
+            this.startPrivateChat(username);
+        });
+
+        const blockBtn = pop.querySelector('.user-action-block');
+        blockBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const action = blockBtn.dataset.action === 'unblock' ? 'unblock' : 'block';
+            if (action === 'block' && !confirm(`Block ${username}? You will no longer be able to exchange private messages.`)) {
+                return;
+            }
+            try {
+                await this.setBlock(username, action);
+                // If we're currently in a private chat with this user, refresh it.
+                if (this.privateChat.active && this.privateChat.withUser === username) {
+                    await this.loadBlockState(username);
+                }
+            } catch (err) {
+                alert(err.message);
+            }
+            this.closeUserActionsPopover();
+        });
+
+        // Resolve the current block state to set the button label.
+        this.getBlockState(username).then(state => {
+            if (this._userPopover !== pop) return; // popover changed/closed
+            blockBtn.dataset.action = state.i_blocked ? 'unblock' : 'block';
+            blockBtn.textContent = state.i_blocked ? '✅ Unblock' : '🚫 Block';
+            blockBtn.classList.toggle('is-blocked', state.i_blocked);
+        });
+
+        this._userPopover = pop;
+        setTimeout(() => {
+            this._userPopoverOutside = (ev) => {
+                if (this._userPopover && !this._userPopover.contains(ev.target)) {
+                    this.closeUserActionsPopover();
+                }
+            };
+            document.addEventListener('click', this._userPopoverOutside);
+        }, 0);
+    }
+
+    closeUserActionsPopover() {
+        if (this._userPopover) {
+            this._userPopover.remove();
+            this._userPopover = null;
+        }
+        if (this._userPopoverOutside) {
+            document.removeEventListener('click', this._userPopoverOutside);
+            this._userPopoverOutside = null;
+        }
     }
     
     decodeEmojiToText(text) {

@@ -864,6 +864,245 @@ body {
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* ===================== Emoji reactions ===================== */
+.react-message-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.react-message-btn:hover {
+    background: rgba(102, 126, 234, 0.1);
+}
+
+.message-reactions {
+    display: none;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.reaction-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f1f3f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.reaction-pill:hover {
+    background: #e9ecef;
+}
+
+.reaction-pill.active {
+    background: rgba(102, 126, 234, 0.15);
+    border-color: #667eea;
+}
+
+.reaction-pill .reaction-count {
+    font-size: 12px;
+    color: #555;
+    font-weight: 600;
+}
+
+.reaction-pill.active .reaction-count {
+    color: #667eea;
+}
+
+.reaction-picker {
+    position: absolute;
+    z-index: 10000;
+    display: flex;
+    gap: 2px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 20px;
+    padding: 4px 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.reaction-option {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    transition: transform 0.1s, background 0.15s;
+}
+
+.reaction-option:hover {
+    transform: scale(1.25);
+    background: #f1f3f5;
+}
+
+@media (prefers-color-scheme: dark) {
+    .reaction-pill {
+        background: #2a2a2a;
+        border-color: #3a3a3a;
+    }
+    .reaction-pill:hover { background: #333; }
+    .reaction-pill .reaction-count { color: #bbb; }
+    .reaction-picker {
+        background: #1e1e1e;
+        border-color: #3a3a3a;
+    }
+    .reaction-option:hover { background: #2a2a2a; }
+}
+
+/* Static (non-clickable) reaction pills on own messages */
+.reaction-pill.static {
+    cursor: default;
+}
+
+/* ===================== @mentions ===================== */
+.mention {
+    color: #667eea;
+    font-weight: 600;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 4px;
+    padding: 0 3px;
+    cursor: pointer;
+}
+
+.mention:hover {
+    text-decoration: underline;
+}
+
+/* A mention of the current user stands out more strongly */
+.mention.mention-me {
+    color: #fff;
+    background: #667eea;
+}
+
+/* Whole message highlighted when it mentions the current user */
+.message.mentions-me {
+    background: rgba(102, 126, 234, 0.08);
+    border-left: 3px solid #667eea;
+    padding-left: 8px;
+    border-radius: 4px;
+}
+
+/* Sender name is clickable to open the DM popover */
+.message-username[data-username] {
+    cursor: pointer;
+}
+
+.message-username[data-username]:hover {
+    text-decoration: underline;
+}
+
+/* @mention autocomplete dropdown */
+.mention-dropdown {
+    position: absolute;
+    z-index: 10000;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.mention-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.mention-item.active,
+.mention-item:hover {
+    background: rgba(102, 126, 234, 0.12);
+}
+
+.mention-item .mention-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.mention-item .mention-sub {
+    font-size: 12px;
+    color: #888;
+}
+
+/* Username → DM popover */
+.user-actions-popover {
+    position: absolute;
+    z-index: 10001;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    padding: 6px;
+    min-width: 180px;
+}
+
+.user-actions-popover .user-actions-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: #555;
+    padding: 4px 8px 6px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-actions-popover .user-action-dm,
+.user-actions-popover .user-action-block {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+}
+
+.user-actions-popover .user-action-dm:hover {
+    background: rgba(102, 126, 234, 0.12);
+}
+
+.user-actions-popover .user-action-block:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.user-actions-popover .user-action-block.is-blocked:hover {
+    background: rgba(34, 197, 94, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+    .mention-item .mention-name { color: #eee; }
+    .mention-dropdown,
+    .user-actions-popover {
+        background: #1e1e1e;
+        border-color: #3a3a3a;
+    }
+    .user-actions-popover .user-actions-name { color: #bbb; border-color: #333; }
+    .user-actions-popover .user-action-dm,
+    .user-actions-popover .user-action-block { color: #eee; }
+    .message.mentions-me { background: rgba(102, 126, 234, 0.15); }
+}
+
 /* Edit button */
 .edit-message-btn {
     background: transparent;
@@ -1971,8 +2210,8 @@ body.embedded-mode .emoji-toggle-btn {
     color: white;
     padding: 15px 20px;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 10px;
     border-bottom: 3px solid rgba(255, 255, 255, 0.2);
     animation: slideDown 0.3s ease;
 }
@@ -1980,6 +2219,48 @@ body.embedded-mode .emoji-toggle-btn {
 #private-chat-with {
     font-size: 18px;
     font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Block / Unblock button in the private chat header */
+#block-user-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+#block-user-btn:hover {
+    background: rgba(239, 68, 68, 0.85);
+    border-color: rgba(239, 68, 68, 0.9);
+}
+
+/* When the user is currently blocked by me, the button offers "Unblock" */
+#block-user-btn.is-blocked {
+    background: rgba(34, 197, 94, 0.25);
+    border-color: rgba(34, 197, 94, 0.6);
+}
+
+#block-user-btn.is-blocked:hover {
+    background: rgba(34, 197, 94, 0.85);
+    border-color: rgba(34, 197, 94, 0.9);
+}
+
+/* Input disabled because of an active block */
+#chat-input-container.input-blocked {
+    opacity: 0.6;
 }
 
 #private-chat-with::before {

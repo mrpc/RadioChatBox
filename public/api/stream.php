@@ -34,6 +34,8 @@ try {
     // Send current history (if public mode enabled)
     if ($chatMode === 'public' || $chatMode === 'both') {
         $history = $chatService->getHistory(50);
+        // Attach emoji reactions (with per-viewer "mine" flags) so they render on load.
+        $history = (new \RadioChatBox\ReactionService())->attachToMessages($history, $username);
         echo "event: history\n";
         echo "data: " . json_encode($history) . "\n\n";
         flush();
@@ -115,6 +117,10 @@ try {
                             flush();
                         } elseif ($msgData['type'] === 'message_deleted') {
                             echo "event: message_deleted\n";
+                            echo "data: " . $message . "\n\n";
+                            flush();
+                        } elseif ($msgData['type'] === 'reaction') {
+                            echo "event: reaction\n";
                             echo "data: " . $message . "\n\n";
                             flush();
                         } else {

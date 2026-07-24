@@ -71,17 +71,40 @@ try {
         exit;
     }
     
-    // Get recipient's session_id
-    $stmt = $pdo->prepare("SELECT session_id FROM sessions WHERE username = ?");
+    // Get recipient's session_id (most recent live session if multiple devices)
+    $stmt = $pdo->prepare("SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1");
     $stmt->execute([$toUsername]);
     $recipient = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$recipient) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Recipient is not online']);
-        exit;
+
+    if ($recipient) {
+        $toSessionId = $recipient['session_id'];
+    } else {
+        // Grace period: recipient has no live session but may have just gone
+        // offline (browser reload / unstable connection). Fall back to their most
+        // recent known session id from previous messages so the DM reaches them
+        // when they reconnect (same session id persists in localStorage). Mirrors
+        // the logic in public/api/private-message.php.
+        $stmt = $pdo->prepare("
+            SELECT session_id FROM (
+                SELECT to_session_id AS session_id, created_at
+                FROM private_messages WHERE to_username = ?
+                UNION ALL
+                SELECT from_session_id AS session_id, created_at
+                FROM private_messages WHERE from_username = ?
+            ) recent
+            ORDER BY created_at DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$toUsername, $toUsername]);
+        $toSessionId = $stmt->fetchColumn();
+
+        if (!$toSessionId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Recipient is not online']);
+            exit;
+        }
     }
-    
+
     // Filter message
     $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'admin';
     if (!empty($message)) {
@@ -99,7 +122,7 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, NOW())
         RETURNING id, created_at
     ");
-    $stmt->execute([$impersonateAs, $fakeSessionId, $toUsername, $recipient['session_id'], $message, $attachmentId]);
+    $stmt->execute([$impersonateAs, $fakeSessionId, $toUsername, $toSessionId, $message, $attachmentId]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Get attachment info if present
