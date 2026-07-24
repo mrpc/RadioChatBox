@@ -21,7 +21,7 @@ class ReactionService
     private const PUBSUB_CHANNEL = 'chat:updates';
 
     /** Allowed reaction emojis (server-enforced whitelist). */
-    private const ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+    private const ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🤘'];
 
     public function __construct()
     {

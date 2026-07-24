@@ -2975,7 +2975,7 @@ class RadioChatBox {
 
     /** Allowed reaction emojis (must match ReactionService::ALLOWED_EMOJIS). */
     getAllowedReactions() {
-        return ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+        return ['👍', '❤️', '😂', '😮', '😢', '🔥', '🤘'];
     }
 
     /**
