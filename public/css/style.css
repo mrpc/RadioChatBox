@@ -2220,12 +2220,13 @@ body.embedded-mode .emoji-toggle-btn {
     border-bottom: 3px solid rgba(255, 255, 255, 0.2);
     animation: slideDown 0.3s ease;
     /* Stay pinned at the top of the scrolling chat so Back/Block are always
-       reachable without scrolling. Negative margins cancel the container's
-       20px padding so it spans edge-to-edge and sits flush at the top. */
+       reachable without scrolling. Negative horizontal margins cancel the
+       container's side padding so it spans edge-to-edge; no negative top
+       margin, so it never overlaps the first message. */
     position: sticky;
     top: 0;
     z-index: 20;
-    margin: -20px -20px 12px -20px;
+    margin: 0 -20px 12px -20px;
 }
 
 #private-chat-with {
