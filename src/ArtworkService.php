@@ -19,7 +19,7 @@ class ArtworkService
     private string $webBase = '/uploads/artwork';
 
     private const POSITIVE_TTL = 2592000; // 30 days
-    private const NEGATIVE_TTL = 86400;   // 1 day
+    private const NEGATIVE_TTL = 600;     // 10 min — short, so transient failures self-heal
     private const HTTP_TIMEOUT = 5;
     private const THUMB_MAX = 100;        // max thumbnail dimension (px)
 
@@ -70,10 +70,13 @@ class ArtworkService
 
         $result = $this->lookupAndStore($artist, $title, $query);
 
-        if ($result['cover'] === null && $result['artist_image'] === null) {
-            $this->redis->setex($cacheKey, self::NEGATIVE_TTL, '0'); // negative
-        } else {
+        if ($result['cover'] !== null || $result['artist_image'] !== null) {
             $this->redis->setex($cacheKey, self::POSITIVE_TTL, json_encode($result));
+        } elseif (($result['source'] ?? null) === null) {
+            // Genuine no-match from every provider → cache negative briefly.
+            // If a provider DID match but the image failed to download (e.g. the
+            // uploads dir isn't writable), don't cache — so it retries once fixed.
+            $this->redis->setex($cacheKey, self::NEGATIVE_TTL, '0');
         }
 
         return $result;
@@ -330,6 +333,45 @@ class ArtworkService
     private function thumbName(string $file): string
     {
         return preg_replace('/\.jpg$/i', '_thumb.jpg', $file);
+    }
+
+    /**
+     * Save an admin-uploaded image (raw bytes) into the artwork dir as JPEG,
+     * generating a thumbnail. Returns web paths.
+     *
+     * @return array{full:?string, thumb:?string}
+     */
+    public function saveUploadedImage(string $bytes, string $subdir = 'uploads'): array
+    {
+        if (@getimagesizefromstring($bytes) === false || !function_exists('imagecreatefromstring')) {
+            return ['full' => null, 'thumb' => null];
+        }
+        $dir = $this->diskDir . '/' . $subdir;
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        try {
+            $img = @imagecreatefromstring($bytes);
+            if ($img === false) {
+                return ['full' => null, 'thumb' => null];
+            }
+            $file = $subdir . '/' . bin2hex(random_bytes(8)) . '.jpg';
+            $disk = $this->diskDir . '/' . $file;
+            @imagejpeg($img, $disk, 90);
+            imagedestroy($img);
+            @chmod($disk, 0644);
+
+            $thumbDisk = $this->diskDir . '/' . $this->thumbName($file);
+            $this->makeThumbnail($disk, $thumbDisk);
+
+            return [
+                'full' => $this->webBase . '/' . $file,
+                'thumb' => is_file($thumbDisk) ? $this->webBase . '/' . $this->thumbName($file) : $this->webBase . '/' . $file,
+            ];
+        } catch (\Throwable $e) {
+            error_log('ArtworkService::saveUploadedImage failed: ' . $e->getMessage());
+            return ['full' => null, 'thumb' => null];
+        }
     }
 
     private function saveImage(string $url, string $disk): bool

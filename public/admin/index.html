@@ -2948,6 +2948,7 @@
             // Period control for all period views; date control for the log.
             document.getElementById('track-summary-controls').style.display = (view === 'log') ? 'none' : 'flex';
             document.getElementById('track-log-controls').style.display = view === 'log' ? 'flex' : 'none';
+            setTrackStatsHash('view/' + view);
             if (view === 'summary') loadTrackSummary();
             else if (view === 'artists') loadTrackArtists();
             else if (view === 'albums') loadTrackAlbums();
@@ -3058,9 +3059,35 @@
         }
 
         async function enrichTrackNow(trackId) {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            if (err) err.innerHTML = '';
+            if (content) content.innerHTML = '⏳ Fetching metadata from the music API… (this can take a few seconds)';
             try {
                 await trackStatsPost({ action: 'enrich', track_id: trackId });
                 showTrackHistory(trackId);
+            } catch (e) {
+                if (err) err.innerHTML = `<div style="color:#ef4444;">Re-fetch failed: ${escapeHtml(e.message)}</div>`;
+                showTrackHistory(trackId);
+            }
+        }
+
+        async function uploadArtwork(type, id, inputId, refreshFn) {
+            const inp = document.getElementById(inputId);
+            if (!inp || !inp.files || !inp.files[0]) { alert('Choose an image first'); return; }
+            const fd = new FormData();
+            fd.append('type', type);
+            fd.append('id', id);
+            fd.append('file', inp.files[0]);
+            try {
+                const resp = await fetch('/api/admin/track-artwork-upload.php', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }, // no Content-Type: browser sets multipart boundary
+                    body: fd
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.error || 'Upload failed');
+                refreshFn();
             } catch (e) { alert(e.message); }
         }
 
@@ -3205,6 +3232,7 @@
             const err = document.getElementById('track-stats-error');
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
+            setTrackStatsHash('artist/' + encodeURIComponent(artist));
             try {
                 const data = await trackStatsFetch(`mode=artist&artist=${encodeURIComponent(artist)}`);
                 const s = data.summary || {};
@@ -3226,6 +3254,10 @@
                             <label>External link<br><input id="edit-artist-url" value="${escapeHtml(ar.external_url || '')}" style="${inpS}width:100%;"></label>
                         </div>
                         <label style="display:block;margin-top:10px;"><input type="checkbox" id="edit-artist-excluded" ${ar.excluded_from_stats ? 'checked' : ''}> Exclude this artist from stats — still shown in the log</label>
+                        <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <label>Upload photo: <input type="file" id="upload-artist-photo" accept="image/*"></label>
+                            <button class="btn" onclick="uploadArtwork('artist_image', ${parseInt(ar.id,10)}, 'upload-artist-photo', () => showArtistHistory(${JSON.stringify(artist)}))" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">⬆ Upload</button>
+                        </div>
                         <button class="btn" onclick="saveArtistMeta(${parseInt(ar.id,10)}, ${JSON.stringify(artist)})" style="background:#10b981;color:white;padding:8px 16px;margin-top:12px;">💾 Save</button>
                     </div>`;
                 }
@@ -3273,6 +3305,7 @@
             const err = document.getElementById('track-stats-error');
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
+            setTrackStatsHash('track/' + trackId);
             try {
                 const data = await trackStatsFetch(`mode=track&track_id=${encodeURIComponent(trackId)}`);
                 const t = data.track || {};
@@ -3298,6 +3331,10 @@
                         <label>External link (YouTube/Spotify…)<br><input id="edit-track-url" value="${escapeHtml(t.external_url || '')}" style="${inpStyle}width:100%;"></label>
                     </div>
                     <label style="display:block;margin-top:10px;"><input type="checkbox" id="edit-track-excluded" ${t.excluded_from_stats ? 'checked' : ''}> Exclude from stats (e.g. jingle) — still shown in the log</label>
+                    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <label>Upload cover: <input type="file" id="upload-track-cover" accept="image/*"></label>
+                        <button class="btn" onclick="uploadArtwork('track_cover', ${parseInt(trackId,10)}, 'upload-track-cover', () => showTrackHistory(${parseInt(trackId,10)}))" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">⬆ Upload</button>
+                    </div>
                     <button class="btn" onclick="saveTrackMeta(${parseInt(trackId,10)})" style="background:#10b981;color:white;padding:8px 16px;margin-top:12px;">💾 Save</button>
                 </div>`;
 
@@ -3313,11 +3350,38 @@
                     html += `</tbody></table>`;
                 }
                 content.innerHTML = html;
-                const coverQs = new URLSearchParams({ artist: t.artist || '', title: t.title || t.display || '' }).toString();
-                loadDetailCover(coverQs, 'cover', 'track-detail-cover');
+                // Prefer a stored/uploaded cover (track → album → artist), else live lookup.
+                const storedCover = t.cover_file || t.album_cover_file || t.artist_image_file;
+                const coverImg = document.getElementById('track-detail-cover');
+                if (storedCover && coverImg) {
+                    coverImg.src = storedCover;
+                    coverImg.style.display = 'block';
+                } else {
+                    const coverQs = new URLSearchParams({ artist: t.artist || '', title: t.title || t.display || '' }).toString();
+                    loadDetailCover(coverQs, 'cover', 'track-detail-cover');
+                }
             } catch (e) {
                 content.innerHTML = '';
                 err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        // Deep-link the current Track Stats sub-view into the URL hash so a
+        // refresh restores it (replaceState = no history spam / no event).
+        function setTrackStatsHash(sub) {
+            try { history.replaceState({ tab: 'track-stats' }, '', '#track-stats/' + sub); } catch (e) { /* ignore */ }
+        }
+
+        function restoreTrackStatsFromHash(rest) {
+            if (rest.startsWith('track/')) {
+                const id = parseInt(rest.slice(6), 10);
+                if (id) setTimeout(() => showTrackHistory(id), 150);
+            } else if (rest.startsWith('artist/')) {
+                const n = decodeURIComponent(rest.slice(7));
+                setTimeout(() => showArtistHistory(n), 150);
+            } else if (rest.startsWith('view/')) {
+                const v = rest.slice(5);
+                setTimeout(() => switchTrackStatsView(v), 150);
             }
         }
 
@@ -3470,6 +3534,10 @@
                     const username = decodeURIComponent(hash.substring('inactive-user/'.length));
                     switchTab('inactive-users', false);
                     setTimeout(() => viewInactiveUserDetails(username), 100);
+                } else if (hash.startsWith('track-stats')) {
+                    switchTab('track-stats', false);
+                    const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
+                    if (rest) restoreTrackStatsFromHash(rest);
                 } else {
                     const tab = hash || 'dashboard';
                     switchTab(tab, false);
@@ -3491,6 +3559,10 @@
                 const username = decodeURIComponent(hash.substring('inactive-user/'.length));
                 switchTab('inactive-users', false);
                 setTimeout(() => viewInactiveUserDetails(username), 100);
+            } else if (hash.startsWith('track-stats')) {
+                switchTab('track-stats', false);
+                const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
+                if (rest) restoreTrackStatsFromHash(rest);
             } else {
                 const initialTab = hash || 'dashboard';
                 // Replace state for initial load so back button works correctly
@@ -8232,6 +8304,10 @@
                         restoreImpersonateState();
                     }
                 }, 200);
+            } else if (hash.startsWith('track-stats')) {
+                switchTab('track-stats', false);
+                const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
+                if (rest) restoreTrackStatsFromHash(rest);
             } else if (hash) {
                 // Normal tab hash
                 switchTab(hash, false);
@@ -8246,13 +8322,17 @@
                 // If it's an impersonate route
                 if (hash.startsWith('impersonate/')) {
                     switchTab('impersonate', false);
-                    
+
                     // Load conversations and restore state
                     setTimeout(() => {
                         refreshImpersonateConversations().then(() => {
                             restoreImpersonateState();
                         });
                     }, 500);
+                } else if (hash.startsWith('track-stats')) {
+                    switchTab('track-stats', false);
+                    const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
+                    if (rest) restoreTrackStatsFromHash(rest);
                 } else {
                     // Normal tab
                     switchTab(hash, false);
