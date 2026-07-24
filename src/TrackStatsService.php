@@ -518,6 +518,33 @@ class TrackStatsService
         }
     }
 
+    /**
+     * Make sure an artist has a stored image: if missing, look it up once and
+     * persist it so it appears in the lists (not only the live detail view).
+     * Returns the stored/looked-up image path or null.
+     */
+    public function ensureArtistImage(string $artist): ?string
+    {
+        $row = $this->getArtistRowByName($artist);
+        if (!$row) {
+            return null;
+        }
+        if (!empty($row['image_file'])) {
+            return $row['image_file'];
+        }
+        $img = (new ArtworkService())->getArtistImage($artist);
+        $file = $img['artist_image'] ?? null;
+        if ($file) {
+            try {
+                $this->pdo->prepare('UPDATE artists SET image_file = :f, updated_at = NOW() WHERE id = :id')
+                    ->execute(['f' => $file, 'id' => $row['id']]);
+            } catch (\PDOException $e) {
+                error_log('TrackStatsService::ensureArtistImage failed: ' . $e->getMessage());
+            }
+        }
+        return $file;
+    }
+
     /** The artists row for a given name (id, editable meta), or null. */
     public function getArtistRowByName(string $name): ?array
     {

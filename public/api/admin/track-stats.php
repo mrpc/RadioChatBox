@@ -136,6 +136,8 @@ try {
             echo json_encode(['error' => 'Artist not found']);
             exit;
         }
+        // Persist the artist image if missing, so it also shows up in the lists.
+        $service->ensureArtistImage($artist);
         echo json_encode([
             'success' => true,
             'mode' => 'artist',

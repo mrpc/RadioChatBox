@@ -3404,7 +3404,15 @@
                     html += `</tbody></table>`;
                 }
                 content.innerHTML = html;
-                loadDetailCover(`mode=artist&artist=${encodeURIComponent(data.artist || artist)}`, 'artist_image', 'artist-detail-cover');
+                // Prefer the stored/persisted artist image, else live lookup.
+                const storedArtistImg = ar && ar.image_file;
+                const aImg = document.getElementById('artist-detail-cover');
+                if (storedArtistImg && aImg) {
+                    aImg.src = storedArtistImg;
+                    aImg.style.display = 'block';
+                } else {
+                    loadDetailCover(`mode=artist&artist=${encodeURIComponent(data.artist || artist)}`, 'artist_image', 'artist-detail-cover');
+                }
             } catch (e) {
                 content.innerHTML = '';
                 err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
