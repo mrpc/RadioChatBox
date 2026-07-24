@@ -3023,15 +3023,36 @@
 
         // Metal subgenres (not in the ID3v1 list) — added to the genre picker.
         const METAL_SUBGENRES = [
-            'Heavy Metal', 'Power Metal', 'Speed Metal', 'Thrash Metal', 'Death Metal',
-            'Melodic Death Metal', 'Technical Death Metal', 'Brutal Death Metal', 'Blackened Death Metal',
-            'Black Metal', 'Symphonic Black Metal', 'Atmospheric Black Metal', 'Melodic Black Metal',
-            'Doom Metal', 'Funeral Doom', 'Stoner Metal', 'Sludge Metal', 'Drone Metal', 'Post-Metal',
-            'Progressive Metal', 'Symphonic Metal', 'Gothic Metal', 'Folk Metal', 'Viking Metal',
-            'Pagan Metal', 'Groove Metal', 'Nu Metal', 'Alternative Metal', 'Industrial Metal',
-            'Metalcore', 'Deathcore', 'Melodic Metalcore', 'Grindcore', 'Goregrind', 'Djent',
-            'Mathcore', 'Avant-garde Metal', 'Neoclassical Metal', 'Crossover Thrash', 'Christian Metal',
-            'Glam Metal', 'NWOBHM', 'Melodic Metal', 'Blackgaze', 'Deathrock'
+            // Traditional / heavy / speed / power
+            'Metal', 'Heavy Metal', 'Traditional Heavy Metal', 'NWOBHM', 'NWOTHM',
+            'Speed Metal', 'Power Metal', 'US Power Metal', 'Symphonic Power Metal',
+            'Progressive Power Metal', 'Epic Metal', 'True Metal', 'Melodic Metal',
+            // Thrash
+            'Thrash Metal', 'Teutonic Thrash Metal', 'Crossover Thrash', 'Groove Metal',
+            // Death
+            'Death Metal', 'Old School Death Metal', 'Melodic Death Metal', 'Technical Death Metal',
+            'Progressive Death Metal', 'Brutal Death Metal', 'Slam Death Metal', 'Blackened Death Metal',
+            'Death \'n\' Roll', 'Death-Doom Metal',
+            // Black
+            'Black Metal', 'Melodic Black Metal', 'Symphonic Black Metal', 'Atmospheric Black Metal',
+            'Depressive Black Metal', 'Raw Black Metal', 'Post-Black Metal', 'Pagan Black Metal',
+            'Blackened Thrash Metal', 'War Metal', 'Blackgaze',
+            // Doom / sludge / stoner / drone / post
+            'Doom Metal', 'Traditional Doom Metal', 'Epic Doom Metal', 'Funeral Doom Metal',
+            'Stoner Metal', 'Stoner Doom', 'Sludge Metal', 'Drone Metal', 'Post-Metal', 'Desert Rock',
+            // Gothic / symphonic / folk
+            'Gothic Metal', 'Symphonic Metal', 'Operatic Metal',
+            'Folk Metal', 'Viking Metal', 'Pagan Metal', 'Celtic Metal', 'Oriental Metal', 'Medieval Metal',
+            // Progressive / avant / djent
+            'Progressive Metal', 'Djent', 'Technical Metal', 'Avant-garde Metal', 'Experimental Metal', 'Math Metal',
+            // Groove / nu / alt / industrial
+            'Nu Metal', 'Rap Metal', 'Funk Metal', 'Alternative Metal', 'Industrial Metal', 'Cyber Metal',
+            // -core family
+            'Metalcore', 'Melodic Metalcore', 'Deathcore', 'Mathcore', 'Nu Metalcore',
+            'Grindcore', 'Goregrind', 'Pornogrind', 'Powerviolence', 'Beatdown Hardcore',
+            // Other
+            'Glam Metal', 'Neoclassical Metal', 'Shred', 'Christian Metal', 'Unblack Metal',
+            'Kawaii Metal', 'Nintendocore', 'Metallic Hardcore'
         ];
 
         async function loadGenreOptions() {
