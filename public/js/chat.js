@@ -3342,14 +3342,23 @@ class RadioChatBox {
         } else {
             // Not in private chat mode - show inline with indicator
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message private-message';
-            
+            messageDiv.className = 'message private-message clickable-private';
+            messageDiv.title = `Click to open private chat with ${this.escapeHtml(otherUserDisplayName || otherUser)}`;
+
+            // Clicking the notification box opens the private conversation with
+            // the other user (ignore clicks on the attachment image, which has
+            // its own open-in-new-tab behavior).
+            messageDiv.addEventListener('click', (e) => {
+                if (e.target.closest('.message-photo')) return;
+                this.startPrivateChat(otherUser);
+            });
+
             const timestamp = new Date(messageData.timestamp * 1000);
             const timeString = timestamp.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
-            
+
             // Prefer display names where available
             const fromLabel = isFromMe ? 'You' : this.escapeHtml(otherUserDisplayName || messageData.from_username);
             const toLabel = isFromMe ? this.escapeHtml(otherUserDisplayName || otherUser) : 'you';
@@ -3361,22 +3370,22 @@ class RadioChatBox {
                     <span class="message-time">${timeString}</span>
                 </div>
             `;
-            
+
             if (messageData.message) {
                 content += `<div class="message-text">${this.formatMessageText(messageData.message)}</div>`;
             }
-            
+
             if (messageData.attachment) {
                 content += `
                     <div class="message-photo">
-                        <img src="${this.escapeHtml(messageData.attachment.file_path)}" 
-                             alt="Photo" 
-                             onclick="window.open('${this.escapeHtml(messageData.attachment.file_path)}', '_blank')"
+                        <img src="${this.escapeHtml(messageData.attachment.file_path)}"
+                             alt="Photo"
+                             onclick="event.stopPropagation(); window.open('${this.escapeHtml(messageData.attachment.file_path)}', '_blank')"
                              loading="lazy">
                     </div>
                 `;
             }
-            
+
             messageDiv.innerHTML = content;
             this.messagesContainer.appendChild(messageDiv);
             
