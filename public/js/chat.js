@@ -4540,13 +4540,16 @@ class RadioChatBox {
             return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link" data-preview-url="${url}">${url}</a>`;
         });
 
-        // Highlight @mentions. Only match when preceded by start/space/paren so we
-        // don't touch @ inside URLs or emails. Self-mentions get an extra class.
-        const myName = (this.username || '').toLowerCase();
-        formatted = formatted.replace(/(^|[\s(])@([A-Za-z0-9_]{2,50})/g, (match, pre, name) => {
-            const isMe = name.toLowerCase() === myName;
-            return `${pre}<span class="mention${isMe ? ' mention-me' : ''}" data-username="${name}">@${name}</span>`;
-        });
+        // Highlight ONLY a mention of the CURRENT user (@myusername). Other
+        // people's @mentions are left as plain text. Works for any username,
+        // including non-ASCII (Greek) and punctuation. Runs against the
+        // already-escaped text.
+        if (this.username) {
+            const escName = this.escapeHtml(this.username);
+            const selfRe = new RegExp(`(^|[\\s(])@${this.escapeRegex(escName)}(?=$|[\\s.,!?;:)\\]"'<])`, 'gu');
+            formatted = formatted.replace(selfRe, (match, pre) =>
+                `${pre}<span class="mention mention-me" data-username="${escName}">@${escName}</span>`);
+        }
 
         return formatted;
     }
@@ -4556,10 +4559,14 @@ class RadioChatBox {
         return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    /** True if `text` mentions the current user (@username, word-boundaried). */
+    /**
+     * True if `text` mentions the current user (@username). Uses an explicit
+     * boundary lookahead instead of \b so it also works for non-ASCII usernames
+     * (Greek, punctuation, etc.), where \b is unreliable.
+     */
     messageMentionsMe(text) {
         if (!text || !this.username) return false;
-        const re = new RegExp(`(^|[\\s(])@${this.escapeRegex(this.username)}\\b`, 'i');
+        const re = new RegExp(`(^|[\\s(])@${this.escapeRegex(this.username)}(?=$|[\\s.,!?;:)\\]"'<])`, 'iu');
         return re.test(text);
     }
 
@@ -4577,7 +4584,8 @@ class RadioChatBox {
         const value = this.messageInput.value;
         const caret = this.messageInput.selectionStart || 0;
         const before = value.substring(0, caret);
-        const match = before.match(/(^|[\s(])@([A-Za-z0-9_]*)$/);
+        // Allow Unicode letters/digits in the typed query (Greek, etc.).
+        const match = before.match(/(^|[\s(])@([\p{L}\p{N}_]*)$/u);
 
         if (!match) {
             this.closeMentionDropdown();
