@@ -34,7 +34,7 @@ class ChatService
     /**
      * Post a new message to the chat
      */
-    public function postMessage(string $username, string $message, string $ipAddress, string $sessionId = '', ?string $replyTo = null): array
+    public function postMessage(string $username, string $message, string $ipAddress, string $sessionId = '', ?string $replyTo = null, ?string $pinnedTrack = null): array
     {
         // Validate inputs
         if (empty($username) || empty($message)) {
@@ -45,6 +45,15 @@ class ChatService
         $maxLength = 500;
         if (mb_strlen($message) > $maxLength) {
             throw new \InvalidArgumentException("Message too long (max {$maxLength} characters)");
+        }
+
+        // Normalize the optional pinned track (snapshot of now-playing).
+        $pinnedTrack = $pinnedTrack !== null ? trim($pinnedTrack) : null;
+        if ($pinnedTrack === '') {
+            $pinnedTrack = null;
+        }
+        if ($pinnedTrack !== null) {
+            $pinnedTrack = mb_substr($pinnedTrack, 0, 500);
         }
         
         if (mb_strlen($username) > 50) {
@@ -87,6 +96,7 @@ class ChatService
             'reply_to' => $replyTo,
             'reply_data' => $replyData,
             'user_id' => $userData['user_id'], // Pass user_id to avoid re-query
+            'pinned_track' => $pinnedTrack,
         ];
 
         // Store in Redis (for real-time)
@@ -177,21 +187,21 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to,
+                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to, m.pinned_track,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
                  FROM messages m
                  LEFT JOIN messages r ON m.reply_to = r.message_id
                  LEFT JOIN users u ON m.user_id = u.id
                  LEFT JOIN users ru ON r.user_id = ru.id
-                 WHERE m.is_deleted = false 
-                 ORDER BY m.created_at DESC 
+                 WHERE m.is_deleted = false
+                 ORDER BY m.created_at DESC
                  LIMIT :limit'
             );
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
             $stmt->execute();
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Convert to the same format as Redis messages
             $messages = array_map(function($row) {
                 $msg = [
@@ -203,6 +213,7 @@ class ChatService
                     'edited_at' => $row['edited_at'] ? (new \DateTimeImmutable($row['edited_at']))->format('c') : null,
                     'ip' => $row['ip_address'],
                     'reply_to' => $row['reply_to'],
+                    'pinned_track' => $row['pinned_track'] ?? null,
                 ];
                 
                 // Add reply data if exists
@@ -250,22 +261,22 @@ class ChatService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to,
+                'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to, m.pinned_track,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
                  FROM messages m
                  LEFT JOIN messages r ON m.reply_to = r.message_id
                  LEFT JOIN users u ON m.user_id = u.id
                  LEFT JOIN users ru ON r.user_id = ru.id
-                 WHERE m.is_deleted = false 
-                 ORDER BY m.created_at DESC 
+                 WHERE m.is_deleted = false
+                 ORDER BY m.created_at DESC
                  LIMIT :limit OFFSET :offset'
             );
             $stmt->bindValue(':limit', min($limit, 100), PDO::PARAM_INT);
             $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
             $stmt->execute();
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Convert to the same format as Redis messages
             $messages = array_map(function($row) {
                 $msg = [
@@ -277,8 +288,9 @@ class ChatService
                     'edited_at' => $row['edited_at'] ? (new \DateTimeImmutable($row['edited_at']))->format('c') : null,
                     'ip' => $row['ip_address'],
                     'reply_to' => $row['reply_to'],
+                    'pinned_track' => $row['pinned_track'] ?? null,
                 ];
-                
+
                 // Add reply data if exists
                 if (!empty($row['reply_to']) && !empty($row['reply_username'])) {
                     $msg['reply_data'] = [
@@ -287,10 +299,10 @@ class ChatService
                         'message' => mb_substr($row['reply_message'], 0, 100),
                     ];
                 }
-                
+
                 return $msg;
             }, $rows);
-            
+
             // Return in chronological order (oldest first)
             return array_reverse($messages);
         } catch (\PDOException $e) {
@@ -416,8 +428,8 @@ class ChatService
             $displayName = $messageData['display_name'] ?? null;
 
             $stmt = $this->pdo->prepare(
-                'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to)
-                 VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to)'
+                'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to, pinned_track)
+                 VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to, :pinned_track)'
             );
 
             $result = $stmt->execute([
@@ -429,6 +441,7 @@ class ChatService
                 'ip_address' => $messageData['ip'],
                 'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
                 'reply_to' => $messageData['reply_to'] ?? null,
+                'pinned_track' => $messageData['pinned_track'] ?? null,
             ]);
 
             if (!$result) {
