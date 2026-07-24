@@ -2256,6 +2256,11 @@
 
     <script>
         let authToken = localStorage.getItem('adminToken');
+        // Capture the hash at page load BEFORE any navigation mutates it, so the
+        // Track Stats deep-link (sub-view/track/artist) can be restored on refresh
+        // even though switchTab's auto-load rewrites the hash to view/summary.
+        const TRACK_STATS_INITIAL_HASH = window.location.hash.slice(1);
+        let trackStatsRestored = false;
         let adminSessionToken = null; // Secure token for SSE connections
         let cachedSettings = null;
         let pageTitle = 'RadioChatBox';  // Store dynamic chat title from settings
@@ -3372,6 +3377,17 @@
             try { history.replaceState({ tab: 'track-stats' }, '', '#track-stats/' + sub); } catch (e) { /* ignore */ }
         }
 
+        // Restore the Track Stats deep-link once, from the hash captured at load
+        // (guarded so competing load handlers don't reset it to the summary).
+        function maybeRestoreTrackStats() {
+            if (trackStatsRestored || !TRACK_STATS_INITIAL_HASH.startsWith('track-stats')) return;
+            trackStatsRestored = true;
+            switchTab('track-stats', false);
+            const rest = TRACK_STATS_INITIAL_HASH.length > 'track-stats/'.length
+                ? TRACK_STATS_INITIAL_HASH.substring('track-stats/'.length) : '';
+            if (rest) restoreTrackStatsFromHash(rest);
+        }
+
         function restoreTrackStatsFromHash(rest) {
             if (rest.startsWith('track/')) {
                 const id = parseInt(rest.slice(6), 10);
@@ -3560,9 +3576,7 @@
                 switchTab('inactive-users', false);
                 setTimeout(() => viewInactiveUserDetails(username), 100);
             } else if (hash.startsWith('track-stats')) {
-                switchTab('track-stats', false);
-                const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
-                if (rest) restoreTrackStatsFromHash(rest);
+                maybeRestoreTrackStats();
             } else {
                 const initialTab = hash || 'dashboard';
                 // Replace state for initial load so back button works correctly
@@ -8330,9 +8344,7 @@
                         });
                     }, 500);
                 } else if (hash.startsWith('track-stats')) {
-                    switchTab('track-stats', false);
-                    const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
-                    if (rest) restoreTrackStatsFromHash(rest);
+                    maybeRestoreTrackStats();
                 } else {
                     // Normal tab
                     switchTab(hash, false);
