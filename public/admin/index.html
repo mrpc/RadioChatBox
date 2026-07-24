@@ -3098,20 +3098,29 @@
             switchTrackStatsView(trackStatsView);
         }
 
+        // Highlight the sub-nav tab that owns the current view. Detail views
+        // (a single artist/album/track/genre) map back to their parent tab so
+        // the active tab stays consistent while drilling down.
+        const TRACK_TABS = {
+            summary: 'track-tab-summary', artists: 'track-tab-artists',
+            albums: 'track-tab-albums', genres: 'track-tab-genres',
+            index: 'track-tab-index', search: 'track-tab-search', log: 'track-tab-log'
+        };
+        function setTrackStatsActiveTab(view) {
+            Object.entries(TRACK_TABS).forEach(([v, id]) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                const on = view === v;
+                btn.style.background = on ? '#667eea' : 'transparent';
+                btn.style.color = on ? 'white' : '#6b7280';
+                btn.style.borderBottom = on ? '3px solid #667eea' : 'none';
+            });
+        }
+
         function switchTrackStatsView(view) {
             trackStatsView = view;
             tsEnter({ kind: 'view', arg: view });
-            const tabs = {
-                summary: 'track-tab-summary', artists: 'track-tab-artists',
-                albums: 'track-tab-albums', genres: 'track-tab-genres',
-                index: 'track-tab-index', search: 'track-tab-search', log: 'track-tab-log'
-            };
-            Object.entries(tabs).forEach(([v, id]) => {
-                const btn = document.getElementById(id);
-                if (!btn) return;
-                btn.style.background = view === v ? '#667eea' : 'transparent';
-                btn.style.color = view === v ? 'white' : '#6b7280';
-            });
+            setTrackStatsActiveTab(view);
             // Period control only for period-based stats views.
             const periodViews = ['summary', 'artists', 'albums', 'genres'];
             document.getElementById('track-summary-controls').style.display = periodViews.includes(view) ? 'flex' : 'none';
@@ -3591,6 +3600,7 @@
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
             tsEnter({ kind: 'genre', arg: genre });
+            setTrackStatsActiveTab('genres');
             setTrackStatsHash('genre/' + encodeURIComponent(genre));
             try {
                 const data = await trackStatsFetch(`mode=genre&genre=${encodeURIComponent(genre)}`);
@@ -3626,6 +3636,7 @@
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
             tsEnter({ kind: 'album', arg: albumId });
+            setTrackStatsActiveTab('albums');
             setTrackStatsHash('album/' + albumId);
             try {
                 const data = await trackStatsFetch(`mode=album&album_id=${encodeURIComponent(albumId)}`);
@@ -3685,6 +3696,7 @@
             content.innerHTML = 'Loading…';
             currentArtistName = artist;
             tsEnter({ kind: 'artist', arg: artist });
+            setTrackStatsActiveTab('artists');
             setTrackStatsHash('artist/' + encodeURIComponent(artist));
             try {
                 const data = await trackStatsFetch(`mode=artist&artist=${encodeURIComponent(artist)}`);
@@ -3790,6 +3802,7 @@
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
             tsEnter({ kind: 'track', arg: trackId });
+            setTrackStatsActiveTab('summary');
             setTrackStatsHash('track/' + trackId);
             try {
                 const data = await trackStatsFetch(`mode=track&track_id=${encodeURIComponent(trackId)}`);
