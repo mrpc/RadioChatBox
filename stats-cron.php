@@ -21,6 +21,10 @@
  * Example crontab entries:
  *   # Record snapshot every 5 minutes
  *   *\/5 * * * * cd /path/to/radiochatbox && php stats-cron.php snapshot >> logs/stats-cron.log 2>&1
+ *
+ *   # Record the current radio track every 2 minutes (keeps play history
+ *   # complete even with no chat traffic)
+ *   *\/2 * * * * cd /path/to/radiochatbox && php stats-cron.php track >> logs/stats-cron.log 2>&1
  *   
  *   # Aggregate hourly at 5 minutes past each hour
  *   5 * * * * cd /path/to/radiochatbox && php stats-cron.php hourly >> logs/stats-cron.log 2>&1
@@ -50,6 +54,8 @@ if (php_sapi_name() !== 'cli') {
 require_once __DIR__ . '/vendor/autoload.php';
 
 use RadioChatBox\StatsService;
+use RadioChatBox\RadioStatusService;
+use RadioChatBox\TrackStatsService;
 
 /**
  * Log message with timestamp
@@ -57,6 +63,21 @@ use RadioChatBox\StatsService;
 function logMessage(string $message): void
 {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
+}
+
+/**
+ * Record the currently-playing track (no-op if unchanged). Lets the play
+ * history stay complete even when no one is polling the chat.
+ */
+function recordCurrentTrack(): void
+{
+    try {
+        $nowPlaying = (new RadioStatusService())->getNowPlaying();
+        (new TrackStatsService())->recordPlay($nowPlaying);
+        logMessage('✓ Track recording checked');
+    } catch (\Throwable $e) {
+        logMessage('✗ Track recording failed: ' . $e->getMessage());
+    }
 }
 
 /**
@@ -73,6 +94,13 @@ try {
         case 'snapshot':
             $statsService->recordSnapshot(true); // Force recording even if auto-record disabled
             logMessage('✓ Snapshot recorded successfully');
+            recordCurrentTrack();
+            break;
+
+        case 'track':
+            // Record the current radio track (run frequently, e.g. every 1-2 min,
+            // so play history is captured even with no chat traffic).
+            recordCurrentTrack();
             break;
             
         case 'hourly':
@@ -104,7 +132,10 @@ try {
             // Record snapshot
             $statsService->recordSnapshot(true);
             logMessage('✓ Snapshot recorded');
-            
+
+            // Record current track
+            recordCurrentTrack();
+
             // Run all aggregations
             $statsService->aggregateHourlyStats();
             logMessage('✓ Hourly aggregation completed');

@@ -241,7 +241,7 @@
                 <button id="emoji-button" class="emoji-toggle-btn" title="Emojis">😊</button>
                 <button id="gif-button" class="gif-toggle-btn" title="GIFs" style="display: none;">GIF</button>
                 <button id="photo-button" class="photo-btn" title="Upload Photo" style="display: none;">📷</button>
-                <button id="pin-track-button" class="pin-track-btn" title="Pin the current track to your message" style="display: none;">📌</button>
+                <button id="pin-track-button" class="pin-track-btn" title="Attach the current track to your message" style="display: none;">🎵</button>
                 <input 
                     type="text" 
                     id="message-input" 

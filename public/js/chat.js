@@ -746,7 +746,7 @@ class RadioChatBox {
 
         const chip = document.createElement('div');
         chip.className = 'pin-track-chip';
-        chip.innerHTML = `<span class="pin-track-chip-label">📌 🎵 ${this.escapeHtml(this.currentTrack)}</span>
+        chip.innerHTML = `<span class="pin-track-chip-label">🎵 ${this.escapeHtml(this.currentTrack)}</span>
                           <button class="pin-track-remove" title="Remove">✕</button>`;
         const inputContainer = document.getElementById('chat-input-container');
         if (inputContainer && inputContainer.parentNode) {
@@ -2529,8 +2529,8 @@ class RadioChatBox {
                         <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
                     </div>
                     ${replyQuoteHTML}
+                    ${pinnedTrackHTML}
                     <div class="message-body">
-                        ${pinnedTrackHTML}
                         <div class="message-text">${this.formatMessageText(msg.message)}</div>
                         <div class="message-actions">
                             ${replyButton}
@@ -2986,8 +2986,8 @@ class RadioChatBox {
                 ${editedBadge}
             </div>
             ${replyQuoteHTML}
+            ${pinnedTrackHTML}
             <div class="message-body">
-                ${pinnedTrackHTML}
                 <div class="message-text">${this.formatMessageText(messageData.message)}</div>
                 <div class="message-actions">
                     ${replyButton}
