@@ -142,8 +142,29 @@ try {
             'artist' => $artist,
             'summary' => $summary,
             'artist_row' => $service->getArtistRowByName($artist),
+            'albums' => $service->getAlbumsByArtist($artist),
             'tracks' => $service->getArtistTracks($artist),
         ]);
+
+    } elseif ($mode === 'all-artists') {
+        echo json_encode([
+            'success' => true,
+            'mode' => 'all-artists',
+            'artists' => $service->getAllArtists(),
+        ]);
+
+    } elseif ($mode === 'album') {
+        $albumId = (int)($_GET['album_id'] ?? 0);
+        if ($albumId <= 0) {
+            throw new InvalidArgumentException('album_id is required');
+        }
+        $detail = $service->getAlbumDetail($albumId);
+        if (!$detail) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Album not found']);
+            exit;
+        }
+        echo json_encode(['success' => true, 'mode' => 'album'] + $detail);
 
     } elseif ($mode === 'track') {
         // Reverse log: all play times for one track.

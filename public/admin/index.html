@@ -1356,6 +1356,7 @@
                             <button class="btn" onclick="switchTrackStatsView('artists')" id="track-tab-artists" style="background: transparent; color: #6b7280;">Top Artists</button>
                             <button class="btn" onclick="switchTrackStatsView('albums')" id="track-tab-albums" style="background: transparent; color: #6b7280;">Top Albums</button>
                             <button class="btn" onclick="switchTrackStatsView('genres')" id="track-tab-genres" style="background: transparent; color: #6b7280;">Top Genres</button>
+                            <button class="btn" onclick="switchTrackStatsView('index')" id="track-tab-index" style="background: transparent; color: #6b7280;">A–Z Artists</button>
                             <button class="btn" onclick="switchTrackStatsView('log')" id="track-tab-log" style="background: transparent; color: #6b7280;">Daily Log</button>
                         </div>
 
@@ -2927,6 +2928,7 @@
 
         // ===================== Track Stats tab =====================
         let trackStatsView = 'summary';
+        let currentArtistName = ''; // current artist in the detail view (avoids embedding names in onclick)
         let trackStatsInited = false;
 
         function initTrackStats() {
@@ -2942,7 +2944,8 @@
             trackStatsView = view;
             const tabs = {
                 summary: 'track-tab-summary', artists: 'track-tab-artists',
-                albums: 'track-tab-albums', genres: 'track-tab-genres', log: 'track-tab-log'
+                albums: 'track-tab-albums', genres: 'track-tab-genres',
+                index: 'track-tab-index', log: 'track-tab-log'
             };
             Object.entries(tabs).forEach(([v, id]) => {
                 const btn = document.getElementById(id);
@@ -2950,14 +2953,16 @@
                 btn.style.background = view === v ? '#667eea' : 'transparent';
                 btn.style.color = view === v ? 'white' : '#6b7280';
             });
-            // Period control for all period views; date control for the log.
-            document.getElementById('track-summary-controls').style.display = (view === 'log') ? 'none' : 'flex';
+            // Period control only for period-based stats views.
+            const periodViews = ['summary', 'artists', 'albums', 'genres'];
+            document.getElementById('track-summary-controls').style.display = periodViews.includes(view) ? 'flex' : 'none';
             document.getElementById('track-log-controls').style.display = view === 'log' ? 'flex' : 'none';
             setTrackStatsHash('view/' + view);
             if (view === 'summary') loadTrackSummary();
             else if (view === 'artists') loadTrackArtists();
             else if (view === 'albums') loadTrackAlbums();
             else if (view === 'genres') loadTrackGenres();
+            else if (view === 'index') loadArtistIndex();
             else loadTrackLog();
         }
 
@@ -3096,7 +3101,7 @@
             } catch (e) { alert(e.message); }
         }
 
-        async function saveArtistMeta(artistId, artistName) {
+        async function saveArtistMeta(artistId) {
             try {
                 await trackStatsPost({
                     action: 'update-artist',
@@ -3105,7 +3110,7 @@
                     external_url: document.getElementById('edit-artist-url').value,
                     excluded_from_stats: document.getElementById('edit-artist-excluded').checked
                 });
-                showArtistHistory(artistName);
+                showArtistHistory(currentArtistName);
             } catch (e) { alert(e.message); }
         }
 
@@ -3124,11 +3129,14 @@
                 }
                 let html = `<h3 style="margin:0 0 10px;">Most played artists</h3>`;
                 html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
-                    <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Artist</th>
+                    <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH} width:52px;"></th><th style="${TRACK_TH}">Artist</th>
                     <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:80px;">Tracks</th>
                     <th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                 artists.forEach((a, i) => {
-                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                    const pic = a.image_file
+                        ? `<img src="${escapeHtml(a.image_file)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">`
+                        : '';
+                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${pic}</td>
                         <td style="${TRACK_TD}"><a href="#" class="track-artist-link" data-artist="${escapeHtml(a.artist)}" style="color:#667eea; cursor:pointer;">${escapeHtml(a.artist)}</a></td>
                         <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
                         <td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(a.last_played))}</td></tr>`;
@@ -3177,7 +3185,14 @@
                 const s = data.summary || {};
                 const totals = s.totals || {};
                 const top = s.top_tracks || [];
-                let html = `<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
+                let html = '';
+                if (s.current && s.current.id) {
+                    html += `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(102,126,234,0.08);border-radius:8px;">
+                        ▶ <strong>Now playing:</strong>
+                        <a href="#" onclick="showTrackHistory(${parseInt(s.current.id,10)});return false;" style="color:#667eea;">${escapeHtml(s.current.display || '')}</a>
+                    </div>`;
+                }
+                html += `<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
                     <div class="kpi-card" style="flex:1; min-width:160px;"><div style="font-size:13px;color:#6b7280;">Total plays</div><div style="font-size:28px;font-weight:700;">${totals.total_plays || 0}</div></div>
                     <div class="kpi-card" style="flex:1; min-width:160px;"><div style="font-size:13px;color:#6b7280;">Unique tracks</div><div style="font-size:28px;font-weight:700;">${totals.unique_tracks || 0}</div></div>
                 </div>`;
@@ -3232,11 +3247,100 @@
             }
         }
 
+        async function loadArtistIndex() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const data = await trackStatsFetch('mode=all-artists');
+                const artists = data.artists || [];
+                if (!artists.length) { content.innerHTML = '<p style="color:#9ca3af;">No artists yet.</p>'; return; }
+
+                const groups = {};
+                artists.forEach(a => {
+                    const c = (a.name || '?').trim().charAt(0).toUpperCase();
+                    const key = /[A-Z]/.test(c) ? c : '#';
+                    (groups[key] = groups[key] || []).push(a);
+                });
+                const letters = Object.keys(groups).sort();
+
+                let html = `<h3 style="margin:0 0 10px;">All artists (${artists.length})</h3>`;
+                html += `<div style="margin-bottom:14px;line-height:2;">` + letters.map(l =>
+                    `<a href="#" class="az-jump" data-letter="${l === '#' ? 'hash' : l}" style="margin-right:8px;color:#667eea;font-weight:600;">${l}</a>`
+                ).join('') + `</div>`;
+                letters.forEach(l => {
+                    html += `<h4 id="az-${l === '#' ? 'hash' : l}" style="margin:16px 0 8px;border-bottom:1px solid #e5e7eb;">${l}</h4>`;
+                    html += `<div style="display:flex;flex-wrap:wrap;gap:8px;">`;
+                    groups[l].forEach(a => {
+                        const pic = a.image_file
+                            ? `<img src="${escapeHtml(a.image_file)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">`
+                            : `<div style="width:40px;height:40px;border-radius:50%;background:#e5e7eb;flex-shrink:0;"></div>`;
+                        html += `<div class="az-artist" data-artist="${escapeHtml(a.name)}" style="display:flex;align-items:center;gap:8px;cursor:pointer;width:240px;padding:4px;border-radius:6px;">
+                            ${pic}<div style="min-width:0;"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.name)}</div>
+                            <div style="font-size:11px;color:#6b7280;">${a.plays} plays · ${a.tracks} tracks</div></div>
+                        </div>`;
+                    });
+                    html += `</div>`;
+                });
+                content.innerHTML = html;
+                content.querySelectorAll('.az-artist').forEach(el =>
+                    el.addEventListener('click', () => showArtistHistory(el.getAttribute('data-artist'))));
+                content.querySelectorAll('.az-jump').forEach(el =>
+                    el.addEventListener('click', (ev) => {
+                        ev.preventDefault();
+                        const t = document.getElementById('az-' + el.getAttribute('data-letter'));
+                        if (t) t.scrollIntoView({ behavior: 'smooth' });
+                    }));
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function showAlbumHistory(albumId) {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            setTrackStatsHash('album/' + albumId);
+            try {
+                const data = await trackStatsFetch(`mode=album&album_id=${encodeURIComponent(albumId)}`);
+                const al = data.album || {};
+                const tracks = data.tracks || [];
+                let html = `<button class="btn" onclick="switchTrackStatsView('albums')" style="margin-bottom:14px; background:#e5e7eb;">← Back to albums</button>`;
+                const cov = al.cover_file ? `<img src="${escapeHtml(al.cover_file)}" style="width:100px;height:100px;border-radius:8px;object-fit:cover;">` : '';
+                html += `<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;">${cov}<div>
+                    <h3 style="margin:0;">💿 ${escapeHtml(al.title || '')}</h3>
+                    <div style="color:#6b7280;">${escapeHtml(al.artist_name || '')}${al.release_date ? ' · ' + escapeHtml(al.release_date) : ''}${al.genre ? ' · ' + escapeHtml(al.genre) : ''}</div>
+                    ${al.external_url ? `<a href="${escapeHtml(al.external_url)}" target="_blank" rel="noopener" style="color:#667eea;">↗ Link</a>` : ''}
+                </div></div>`;
+                if (tracks.length === 0) {
+                    html += '<p style="color:#9ca3af;">No tracks.</p>';
+                } else {
+                    html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
+                    tracks.forEach((t, i) => {
+                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                            <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(t.track_id, 10)});return false;" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
+                    });
+                    html += `</tbody></table>`;
+                }
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
         async function showArtistHistory(artist) {
             const content = document.getElementById('track-stats-content');
             const err = document.getElementById('track-stats-error');
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
+            currentArtistName = artist;
             setTrackStatsHash('artist/' + encodeURIComponent(artist));
             try {
                 const data = await trackStatsFetch(`mode=artist&artist=${encodeURIComponent(artist)}`);
@@ -3261,10 +3365,28 @@
                         <label style="display:block;margin-top:10px;"><input type="checkbox" id="edit-artist-excluded" ${ar.excluded_from_stats ? 'checked' : ''}> Exclude this artist from stats — still shown in the log</label>
                         <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                             <label>Upload photo: <input type="file" id="upload-artist-photo" accept="image/*"></label>
-                            <button class="btn" onclick="uploadArtwork('artist_image', ${parseInt(ar.id,10)}, 'upload-artist-photo', () => showArtistHistory(${JSON.stringify(artist)}))" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">⬆ Upload</button>
+                            <button class="btn" onclick="uploadArtwork('artist_image', ${parseInt(ar.id,10)}, 'upload-artist-photo', () => showArtistHistory(currentArtistName))" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">⬆ Upload</button>
                         </div>
-                        <button class="btn" onclick="saveArtistMeta(${parseInt(ar.id,10)}, ${JSON.stringify(artist)})" style="background:#10b981;color:white;padding:8px 16px;margin-top:12px;">💾 Save</button>
+                        <button class="btn" onclick="saveArtistMeta(${parseInt(ar.id,10)})" style="background:#10b981;color:white;padding:8px 16px;margin-top:12px;">💾 Save</button>
                     </div>`;
+                }
+
+                // Albums by this artist
+                const albums = data.albums || [];
+                if (albums.length) {
+                    html += `<h4 style="margin:0 0 10px;">Albums</h4>`;
+                    html += `<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px;">`;
+                    albums.forEach(a => {
+                        const cov = a.cover_file
+                            ? `<img src="${escapeHtml(a.cover_file)}" style="width:100px;height:100px;object-fit:cover;border-radius:6px;">`
+                            : `<div style="width:100px;height:100px;background:#e5e7eb;border-radius:6px;"></div>`;
+                        html += `<div onclick="showAlbumHistory(${parseInt(a.album_id,10)})" style="width:100px;cursor:pointer;">
+                            ${cov}
+                            <div style="font-size:12px;margin-top:4px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.title || '')}</div>
+                            <div style="font-size:11px;color:#6b7280;">${a.plays} plays${a.release_date ? ' · ' + escapeHtml(String(a.release_date).substring(0,4)) : ''}</div>
+                        </div>`;
+                    });
+                    html += `</div>`;
                 }
 
                 if (tracks.length === 0) {
@@ -3321,6 +3443,15 @@
                     <h3 style="margin:0;">${escapeHtml(t.display || '')}</h3></div>`;
                 html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${t.play_count || plays.length}</strong> · First: ${escapeHtml(formatTrackDateTime(t.first_played_at))} · Last: ${escapeHtml(formatTrackDateTime(t.last_played_at))}</p>`;
 
+                // Artist / album links
+                let linkLine = '';
+                if (t.artist) linkLine += `by <a href="#" class="track-artist-link" data-artist="${escapeHtml(t.artist)}" style="color:#667eea;cursor:pointer;">${escapeHtml(t.artist)}</a>`;
+                if (t.album_id) linkLine += `${linkLine ? ' · ' : ''}Album: <a href="#" onclick="showAlbumHistory(${parseInt(t.album_id,10)});return false;" style="color:#667eea;">${escapeHtml(t.album_title || '')}</a>`;
+                else if (t.album_title) linkLine += `${linkLine ? ' · ' : ''}Album: ${escapeHtml(t.album_title)}`;
+                if (t.genre) linkLine += `${linkLine ? ' · ' : ''}Genre: ${escapeHtml(t.genre)}`;
+                if (t.external_url) linkLine += `${linkLine ? ' · ' : ''}<a href="${escapeHtml(t.external_url)}" target="_blank" rel="noopener" style="color:#667eea;">↗ Link</a>`;
+                if (linkLine) html += `<p style="margin:0 0 16px;">${linkLine}</p>`;
+
                 // ---- edit metadata panel ----
                 const rel = (t.release_date || '').substring(0, 10);
                 const inpStyle = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;';
@@ -3355,6 +3486,13 @@
                     html += `</tbody></table>`;
                 }
                 content.innerHTML = html;
+                // Artist link (data-attribute + listener; avoids breaking onclick with quotes).
+                content.querySelectorAll('.track-artist-link').forEach(link => {
+                    link.addEventListener('click', (ev) => {
+                        ev.preventDefault();
+                        showArtistHistory(link.getAttribute('data-artist'));
+                    });
+                });
                 // Prefer a stored/uploaded cover (track → album → artist), else live lookup.
                 const storedCover = t.cover_file || t.album_cover_file || t.artist_image_file;
                 const coverImg = document.getElementById('track-detail-cover');
@@ -3395,6 +3533,9 @@
             } else if (rest.startsWith('artist/')) {
                 const n = decodeURIComponent(rest.slice(7));
                 setTimeout(() => showArtistHistory(n), 150);
+            } else if (rest.startsWith('album/')) {
+                const id = parseInt(rest.slice(6), 10);
+                if (id) setTimeout(() => showAlbumHistory(id), 150);
             } else if (rest.startsWith('view/')) {
                 const v = rest.slice(5);
                 setTimeout(() => switchTrackStatsView(v), 150);

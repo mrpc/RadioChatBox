@@ -30,15 +30,18 @@ class TrackStatsService
      * Safe to call on every now-playing poll.
      *
      * @param array $nowPlaying Result of RadioStatusService::getNowPlaying()
+     * @return int|null The track id if a NEW play was recorded (track changed),
+     *                  or null if unchanged/skipped. Lets the caller enrich the
+     *                  just-recorded track promptly.
      */
-    public function recordPlay(array $nowPlaying): void
+    public function recordPlay(array $nowPlaying): ?int
     {
         if (empty($nowPlaying['active'])) {
-            return;
+            return null;
         }
         $display = trim((string)($nowPlaying['display'] ?? ''));
         if ($display === '') {
-            return;
+            return null;
         }
 
         $lastKey = $this->prefix . 'radio:last_track';
@@ -53,7 +56,7 @@ class TrackStatsService
             $prev = null;
         }
         if ($prev === $display) {
-            return; // Same track still playing.
+            return null; // Same track still playing.
         }
 
         $listeners = isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null
@@ -95,11 +98,13 @@ class TrackStatsService
             $play->execute(['track_id' => $trackId, 'listeners' => $listeners]);
 
             $this->pdo->commit();
+            return $trackId;
         } catch (\Throwable $e) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             error_log('TrackStatsService::recordPlay failed: ' . $e->getMessage());
+            return null;
         }
     }
 
@@ -345,6 +350,7 @@ class TrackStatsService
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT t.artist,
+                        MAX(ar.image_file)     AS image_file,
                         COUNT(*)               AS plays,
                         COUNT(DISTINCT t.id)   AS tracks,
                         MAX(tp.played_at)      AS last_played
@@ -661,13 +667,103 @@ class TrackStatsService
             error_log('TrackStatsService::getSummary perDay failed: ' . $e->getMessage());
         }
 
+        // The currently/most-recently played track (for a "now playing" link).
+        $current = null;
+        try {
+            $stmt = $this->pdo->query(
+                'SELECT t.id, t.display FROM track_plays tp
+                 JOIN tracks t ON tp.track_id = t.id
+                 ORDER BY tp.played_at DESC LIMIT 1'
+            );
+            $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getSummary current failed: ' . $e->getMessage());
+        }
+
         return [
             'from' => $from,
             'to' => $to,
             'days' => $days,
             'totals' => $totals,
             'per_day' => $perDay,
+            'current' => $current,
             'top_tracks' => $this->getTopTracks($from, $to, $topLimit),
         ];
+    }
+
+    /** Every artist, alphabetically, with all-time play/track counts. */
+    public function getAllArtists(): array
+    {
+        try {
+            $stmt = $this->pdo->query(
+                'SELECT ar.name, ar.image_file,
+                        COUNT(DISTINCT t.id) AS tracks,
+                        COUNT(tp.id)         AS plays
+                 FROM artists ar
+                 LEFT JOIN tracks t ON t.artist_id = ar.id
+                 LEFT JOIN track_plays tp ON tp.track_id = t.id
+                 GROUP BY ar.id, ar.name, ar.image_file
+                 ORDER BY LOWER(ar.name) ASC'
+            );
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getAllArtists failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /** Albums by an artist (all-time play counts), most-played first. */
+    public function getAlbumsByArtist(string $artist): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT al.id AS album_id, al.title, al.cover_file, al.release_date,
+                        COUNT(tp.id) AS plays, COUNT(DISTINCT t.id) AS tracks
+                 FROM albums al
+                 JOIN artists ar ON al.artist_id = ar.id
+                 LEFT JOIN tracks t ON t.album_id = al.id
+                 LEFT JOIN track_plays tp ON tp.track_id = t.id
+                 WHERE ar.name = :artist
+                 GROUP BY al.id, al.title, al.cover_file, al.release_date
+                 ORDER BY plays DESC, al.title ASC'
+            );
+            $stmt->execute(['artist' => $artist]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getAlbumsByArtist failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /** Album detail: the album row + its tracks with play counts. */
+    public function getAlbumDetail(int $albumId): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT al.id, al.title, al.cover_file, al.release_date, al.genre, al.external_url,
+                        ar.name AS artist_name
+                 FROM albums al LEFT JOIN artists ar ON al.artist_id = ar.id
+                 WHERE al.id = :id'
+            );
+            $stmt->execute(['id' => $albumId]);
+            $album = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$album) {
+                return null;
+            }
+
+            $t = $this->pdo->prepare(
+                'SELECT t.id AS track_id, t.display, COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
+                 FROM tracks t LEFT JOIN track_plays tp ON tp.track_id = t.id
+                 WHERE t.album_id = :id
+                 GROUP BY t.id, t.display
+                 ORDER BY plays DESC, t.display ASC'
+            );
+            $t->execute(['id' => $albumId]);
+
+            return ['album' => $album, 'tracks' => $t->fetchAll(PDO::FETCH_ASSOC)];
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getAlbumDetail failed: ' . $e->getMessage());
+            return null;
+        }
     }
 }
