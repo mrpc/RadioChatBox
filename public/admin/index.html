@@ -2931,6 +2931,73 @@
         let currentArtistName = ''; // current artist in the detail view (avoids embedding names in onclick)
         let trackDbGenres = null;   // distinct genres already in the DB (cached)
 
+        // ---- Track Stats navigation stack (so "Back" returns to the origin) ----
+        let tsStack = [];
+        let tsCurrent = null;
+        let tsBackInProgress = false;
+
+        function tsEnter(desc) {
+            if (desc.kind === 'view') {
+                tsStack = []; // the top sub-tabs are navigation roots
+            } else if (!tsBackInProgress && tsCurrent) {
+                tsStack.push(tsCurrent);
+            }
+            tsCurrent = desc;
+        }
+
+        // Deep-link href for a track-stats entity (real URL → opens in a new tab).
+        function tsHref(kind, arg) {
+            if (kind === 'artist' || kind === 'genre') return `#track-stats/${kind}/${encodeURIComponent(arg)}`;
+            return `#track-stats/${kind}/${arg}`;
+        }
+
+        // Render a track-stats deep-link "rest" (the part after 'track-stats/').
+        function routeTrackStatsRest(rest) {
+            const active = document.getElementById('track-stats-tab') &&
+                document.getElementById('track-stats-tab').classList.contains('active');
+            if (!active) switchTab('track-stats', false);
+            if (rest.startsWith('track/')) showTrackHistory(parseInt(rest.slice(6), 10));
+            else if (rest.startsWith('artist/')) showArtistHistory(decodeURIComponent(rest.slice(7)));
+            else if (rest.startsWith('album/')) showAlbumHistory(parseInt(rest.slice(6), 10));
+            else if (rest.startsWith('genre/')) showGenreDetail(decodeURIComponent(rest.slice(6)));
+            else if (rest.startsWith('view/')) switchTrackStatsView(rest.slice(5));
+            else switchTrackStatsView('summary');
+        }
+
+        // Live routing for a track-stats hash (back/forward, direct hash edit).
+        function routeTrackStatsHash() {
+            const hash = window.location.hash.slice(1);
+            if (!hash.startsWith('track-stats')) return;
+            const rest = hash.length > 'track-stats/'.length ? hash.substring('track-stats/'.length) : '';
+            routeTrackStatsRest(rest);
+        }
+
+        // One delegated click handler for every track-stats link: plain click
+        // renders in-page (SPA); Ctrl/Cmd/Shift/middle click falls through to the
+        // real href so it opens in a new tab.
+        function tsContentClick(e) {
+            const a = e.target.closest('a[href^="#track-stats/"]');
+            if (!a) return;
+            if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+            e.preventDefault();
+            routeTrackStatsRest(a.getAttribute('href').slice(1).substring('track-stats/'.length));
+        }
+
+        function trackStatsBack() {
+            const prev = tsStack.pop();
+            tsBackInProgress = true;
+            try {
+                if (!prev) { switchTrackStatsView('summary'); }
+                else if (prev.kind === 'view') switchTrackStatsView(prev.arg);
+                else if (prev.kind === 'track') showTrackHistory(prev.arg);
+                else if (prev.kind === 'artist') showArtistHistory(prev.arg);
+                else if (prev.kind === 'album') showAlbumHistory(prev.arg);
+                else if (prev.kind === 'genre') showGenreDetail(prev.arg);
+            } finally {
+                tsBackInProgress = false;
+            }
+        }
+
         // Standard ID3v1 + Winamp-extension genre list (the "mp3 protocol" genres).
         const ID3V1_GENRES = [
             'Blues','Classic Rock','Country','Dance','Disco','Funk','Grunge','Hip-Hop','Jazz','Metal',
@@ -2980,12 +3047,15 @@
                 if (d && !d.value) d.value = new Date().toISOString().slice(0, 10);
                 trackStatsInited = true;
                 loadGenreOptions(); // cache DB genres for the edit selects
+                const c = document.getElementById('track-stats-content');
+                if (c) c.addEventListener('click', tsContentClick); // SPA click + keep hrefs for new-tab
             }
             switchTrackStatsView(trackStatsView);
         }
 
         function switchTrackStatsView(view) {
             trackStatsView = view;
+            tsEnter({ kind: 'view', arg: view });
             const tabs = {
                 summary: 'track-tab-summary', artists: 'track-tab-artists',
                 albums: 'track-tab-albums', genres: 'track-tab-genres',
@@ -3043,7 +3113,7 @@
                 albums.forEach((a, i) => {
                     const cov = a.cover_file ? `<img src="${escapeHtml(a.cover_file)}" style="width:40px;height:40px;border-radius:4px;object-fit:cover;">` : '';
                     html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${cov}</td>
-                        <td style="${TRACK_TD}"><a href="#" onclick="showAlbumHistory(${parseInt(a.album_id,10)});return false;" style="color:#667eea;cursor:pointer;">${escapeHtml(a.title || '')}</a></td>
+                        <td style="${TRACK_TD}"><a href="${tsHref('album', parseInt(a.album_id,10))}" style="color:#667eea;cursor:pointer;">${escapeHtml(a.title || '')}</a></td>
                         <td style="${TRACK_TD}">${escapeHtml(a.artist_name || '')}</td>
                         <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
                         <td style="${TRACK_TD}">${escapeHtml(a.release_date || '-')}</td></tr>`;
@@ -3074,7 +3144,8 @@
                     <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Genre</th>
                     <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:80px;">Tracks</th></tr></thead><tbody>`;
                 genres.forEach((g, i) => {
-                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(g.genre)}</td>
+                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                        <td style="${TRACK_TD}"><a href="${tsHref('genre', g.genre)}" style="color:#667eea;cursor:pointer;">${escapeHtml(g.genre)}</a></td>
                         <td style="${TRACK_TD}"><strong>${g.plays}</strong></td><td style="${TRACK_TD}">${g.tracks}</td></tr>`;
                 });
                 html += `</tbody></table>`;
@@ -3195,19 +3266,12 @@
                         ? `<img src="${escapeHtml(a.image_file)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">`
                         : '';
                     html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${pic}</td>
-                        <td style="${TRACK_TD}"><a href="#" class="track-artist-link" data-artist="${escapeHtml(a.artist)}" style="color:#667eea; cursor:pointer;">${escapeHtml(a.artist)}</a></td>
+                        <td style="${TRACK_TD}"><a href="${tsHref('artist', a.artist)}" style="color:#667eea; cursor:pointer;">${escapeHtml(a.artist)}</a></td>
                         <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
                         <td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(a.last_played))}</td></tr>`;
                 });
                 html += `</tbody></table>`;
                 content.innerHTML = html;
-                // Attach artist drill-down listeners (avoids quoting issues in onclick).
-                content.querySelectorAll('.track-artist-link').forEach(link => {
-                    link.addEventListener('click', (ev) => {
-                        ev.preventDefault();
-                        showArtistHistory(link.getAttribute('data-artist'));
-                    });
-                });
             } catch (e) {
                 content.innerHTML = '';
                 err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
@@ -3247,7 +3311,7 @@
                 if (s.current && s.current.id) {
                     html += `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(102,126,234,0.08);border-radius:8px;">
                         ▶ <strong>Now playing:</strong>
-                        <a href="#" onclick="showTrackHistory(${parseInt(s.current.id,10)});return false;" style="color:#667eea;">${escapeHtml(s.current.display || '')}</a>
+                        <a href="${tsHref('track', parseInt(s.current.id,10))}" style="color:#667eea;">${escapeHtml(s.current.display || '')}</a>
                     </div>`;
                 }
                 html += `<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
@@ -3263,7 +3327,7 @@
                         <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                     top.forEach((t, i) => {
                         html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
-                            <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(t.track_id, 10)}); return false;" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
                     });
                     html += `</tbody></table>`;
@@ -3294,7 +3358,7 @@
                     <th style="${TRACK_TH} width:90px;">Listeners</th></tr></thead><tbody>`;
                 plays.forEach(p => {
                     html += `<tr><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(p.played_at))}</td>
-                        <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(p.track_id, 10)}); return false;" style="color:#667eea; cursor:pointer;">${escapeHtml(p.display)}</a></td>
+                        <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(p.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(p.display)}</a></td>
                         <td style="${TRACK_TD}">${p.listeners ?? '-'}</td></tr>`;
                 });
                 html += `</tbody></table>`;
@@ -3334,16 +3398,14 @@
                         const pic = a.image_file
                             ? `<img src="${escapeHtml(a.image_file)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">`
                             : `<div style="width:40px;height:40px;border-radius:50%;background:#e5e7eb;flex-shrink:0;"></div>`;
-                        html += `<div class="az-artist" data-artist="${escapeHtml(a.name)}" style="display:flex;align-items:center;gap:8px;cursor:pointer;width:240px;padding:4px;border-radius:6px;">
+                        html += `<a href="${tsHref('artist', a.name)}" style="display:flex;align-items:center;gap:8px;cursor:pointer;width:240px;padding:4px;border-radius:6px;text-decoration:none;color:inherit;">
                             ${pic}<div style="min-width:0;"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.name)}</div>
                             <div style="font-size:11px;color:#6b7280;">${a.plays} plays · ${a.tracks} tracks</div></div>
-                        </div>`;
+                        </a>`;
                     });
                     html += `</div>`;
                 });
                 content.innerHTML = html;
-                content.querySelectorAll('.az-artist').forEach(el =>
-                    el.addEventListener('click', () => showArtistHistory(el.getAttribute('data-artist'))));
                 content.querySelectorAll('.az-jump').forEach(el =>
                     el.addEventListener('click', (ev) => {
                         ev.preventDefault();
@@ -3356,17 +3418,51 @@
             }
         }
 
+        async function showGenreDetail(genre) {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            tsEnter({ kind: 'genre', arg: genre });
+            setTrackStatsHash('genre/' + encodeURIComponent(genre));
+            try {
+                const data = await trackStatsFetch(`mode=genre&genre=${encodeURIComponent(genre)}`);
+                const tracks = data.tracks || [];
+                let html = `<button class="btn" onclick="trackStatsBack()" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
+                html += `<h3 style="margin:0 0 12px;">🏷️ ${escapeHtml(genre)} <span style="color:#6b7280;font-weight:400;">(${tracks.length} tracks)</span></h3>`;
+                if (tracks.length === 0) {
+                    html += '<p style="color:#9ca3af;">No tracks.</p>';
+                } else {
+                    html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH}">Artist</th><th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
+                    tracks.forEach((t, i) => {
+                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                            <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}">${escapeHtml(t.artist || '')}</td>
+                            <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
+                    });
+                    html += `</tbody></table>`;
+                }
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
         async function showAlbumHistory(albumId) {
             const content = document.getElementById('track-stats-content');
             const err = document.getElementById('track-stats-error');
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
+            tsEnter({ kind: 'album', arg: albumId });
             setTrackStatsHash('album/' + albumId);
             try {
                 const data = await trackStatsFetch(`mode=album&album_id=${encodeURIComponent(albumId)}`);
                 const al = data.album || {};
                 const tracks = data.tracks || [];
-                let html = `<button class="btn" onclick="switchTrackStatsView('albums')" style="margin-bottom:14px; background:#e5e7eb;">← Back to albums</button>`;
+                let html = `<button class="btn" onclick="trackStatsBack()" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
                 const cov = al.cover_file ? `<img src="${escapeHtml(al.cover_file)}" style="width:100px;height:100px;border-radius:8px;object-fit:cover;">` : '';
                 html += `<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;">${cov}<div>
                     <h3 style="margin:0;">💿 ${escapeHtml(al.title || '')}</h3>
@@ -3381,7 +3477,7 @@
                         <th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
                         html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
-                            <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(t.track_id, 10)});return false;" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
                     });
                     html += `</tbody></table>`;
@@ -3399,12 +3495,13 @@
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
             currentArtistName = artist;
+            tsEnter({ kind: 'artist', arg: artist });
             setTrackStatsHash('artist/' + encodeURIComponent(artist));
             try {
                 const data = await trackStatsFetch(`mode=artist&artist=${encodeURIComponent(artist)}`);
                 const s = data.summary || {};
                 const tracks = data.tracks || [];
-                let html = `<button class="btn" onclick="switchTrackStatsView('artists')" style="margin-bottom:14px; background:#e5e7eb;">← Back to artists</button>`;
+                let html = `<button class="btn" onclick="trackStatsBack()" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
                 html += `<div style="display:flex; gap:12px; align-items:center; margin-bottom:6px;">
                     <img id="artist-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:50%; object-fit:cover;">
                     <h3 style="margin:0;">🎤 ${escapeHtml(data.artist || artist)}</h3></div>`;
@@ -3441,11 +3538,11 @@
                         const cov = a.cover_file
                             ? `<img src="${escapeHtml(a.cover_file)}" style="width:100px;height:100px;object-fit:cover;border-radius:6px;">`
                             : `<div style="width:100px;height:100px;background:#e5e7eb;border-radius:6px;"></div>`;
-                        html += `<div onclick="showAlbumHistory(${parseInt(a.album_id,10)})" style="width:100px;cursor:pointer;">
+                        html += `<a href="${tsHref('album', parseInt(a.album_id,10))}" style="width:100px;cursor:pointer;display:block;text-decoration:none;color:inherit;">
                             ${cov}
                             <div style="font-size:12px;margin-top:4px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.title || '')}</div>
                             <div style="font-size:11px;color:#6b7280;">${a.plays} plays${a.release_date ? ' · ' + escapeHtml(String(a.release_date).substring(0,4)) : ''}</div>
-                        </div>`;
+                        </a>`;
                     });
                     html += `</div>`;
                 }
@@ -3459,7 +3556,7 @@
                         <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
                         html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
-                            <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(t.track_id, 10)}); return false;" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
                     });
                     html += `</tbody></table>`;
@@ -3501,12 +3598,13 @@
             const err = document.getElementById('track-stats-error');
             err.innerHTML = '';
             content.innerHTML = 'Loading…';
+            tsEnter({ kind: 'track', arg: trackId });
             setTrackStatsHash('track/' + trackId);
             try {
                 const data = await trackStatsFetch(`mode=track&track_id=${encodeURIComponent(trackId)}`);
                 const t = data.track || {};
                 const plays = data.plays || [];
-                let html = `<button class="btn" onclick="switchTrackStatsView(trackStatsView)" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
+                let html = `<button class="btn" onclick="trackStatsBack()" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
                 html += `<div style="display:flex; gap:12px; align-items:center; margin-bottom:6px;">
                     <img id="track-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:6px; object-fit:cover;">
                     <h3 style="margin:0;">${escapeHtml(t.display || '')}</h3></div>`;
@@ -3514,8 +3612,8 @@
 
                 // Artist / album links
                 let linkLine = '';
-                if (t.artist) linkLine += `by <a href="#" class="track-artist-link" data-artist="${escapeHtml(t.artist)}" style="color:#667eea;cursor:pointer;">${escapeHtml(t.artist)}</a>`;
-                if (t.album_id) linkLine += `${linkLine ? ' · ' : ''}Album: <a href="#" onclick="showAlbumHistory(${parseInt(t.album_id,10)});return false;" style="color:#667eea;">${escapeHtml(t.album_title || '')}</a>`;
+                if (t.artist) linkLine += `by <a href="${tsHref('artist', t.artist)}" style="color:#667eea;cursor:pointer;">${escapeHtml(t.artist)}</a>`;
+                if (t.album_id) linkLine += `${linkLine ? ' · ' : ''}Album: <a href="${tsHref('album', parseInt(t.album_id,10))}" style="color:#667eea;">${escapeHtml(t.album_title || '')}</a>`;
                 else if (t.album_title) linkLine += `${linkLine ? ' · ' : ''}Album: ${escapeHtml(t.album_title)}`;
                 if (t.genre) linkLine += `${linkLine ? ' · ' : ''}Genre: ${escapeHtml(t.genre)}`;
                 if (t.external_url) linkLine += `${linkLine ? ' · ' : ''}<a href="${escapeHtml(t.external_url)}" target="_blank" rel="noopener" style="color:#667eea;">↗ Link</a>`;
@@ -3605,6 +3703,9 @@
             } else if (rest.startsWith('album/')) {
                 const id = parseInt(rest.slice(6), 10);
                 if (id) setTimeout(() => showAlbumHistory(id), 150);
+            } else if (rest.startsWith('genre/')) {
+                const g = decodeURIComponent(rest.slice(6));
+                setTimeout(() => showGenreDetail(g), 150);
             } else if (rest.startsWith('view/')) {
                 const v = rest.slice(5);
                 setTimeout(() => switchTrackStatsView(v), 150);
@@ -8554,7 +8655,7 @@
                         });
                     }, 500);
                 } else if (hash.startsWith('track-stats')) {
-                    maybeRestoreTrackStats();
+                    routeTrackStatsHash();
                 } else {
                     // Normal tab
                     switchTab(hash, false);

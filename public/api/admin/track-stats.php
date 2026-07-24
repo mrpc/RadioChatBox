@@ -165,6 +165,18 @@ try {
             'artists' => $service->getAllArtists(),
         ]);
 
+    } elseif ($mode === 'genre') {
+        $genre = trim($_GET['genre'] ?? '');
+        if ($genre === '') {
+            throw new InvalidArgumentException('genre is required');
+        }
+        echo json_encode([
+            'success' => true,
+            'mode' => 'genre',
+            'genre' => $genre,
+            'tracks' => $service->getTracksByGenre($genre),
+        ]);
+
     } elseif ($mode === 'album') {
         $albumId = (int)($_GET['album_id'] ?? 0);
         if ($albumId <= 0) {

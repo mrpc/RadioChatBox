@@ -845,6 +845,33 @@ class TrackStatsService
         }
     }
 
+    /** Tracks of a given genre with play counts (excludes flagged items). */
+    public function getTracksByGenre(string $genre, int $limit = 500): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT t.id AS track_id, t.display, t.artist,
+                        COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
+                 FROM tracks t
+                 LEFT JOIN track_plays tp ON tp.track_id = t.id
+                 LEFT JOIN artists ar ON t.artist_id = ar.id
+                 WHERE t.genre = :genre
+                   AND t.excluded_from_stats = FALSE
+                   AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
+                 GROUP BY t.id, t.display, t.artist
+                 ORDER BY plays DESC, t.display ASC
+                 LIMIT :limit'
+            );
+            $stmt->bindValue(':genre', $genre);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getTracksByGenre failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
     /** Album detail: the album row + its tracks with play counts. */
     public function getAlbumDetail(int $albumId): ?array
     {
