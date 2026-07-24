@@ -159,13 +159,16 @@ class FakeUserService
             error_log("Failed to get radio listeners for fake user balancing: " . $e->getMessage());
         }
         
-        // If radio listeners not available, fall back to minimum_users setting
+        // If radio listeners not available, fall back to minimum_users setting.
         if ($targetUserCount === null) {
             if ($minUsers <= 0) {
                 $this->deactivateAllFakeUsers();
                 return;
             }
-            $targetUserCount = $minUsers;
+            // No live radio number → use the admin-configured minimum with a
+            // ±10% jitter so the count drifts naturally instead of sitting on a
+            // constant value when there is no real traffic.
+            $targetUserCount = $this->getJitteredTarget($minUsers);
         }
 
         // Calculate how many fake users we need to reach target
@@ -185,6 +188,50 @@ class FakeUserService
             $toDeactivate = $currentActiveFake - $fakeUsersNeeded;
             $this->deactivateRandomFakeUsers($toDeactivate);
         }
+    }
+
+    /**
+     * Compute a target based on the configured minimum with a ±10% jitter.
+     *
+     * The result is cached in Redis for a few minutes so it stays stable across
+     * the frequent balance calls (every heartbeat); otherwise the visible user
+     * count would flicker constantly. A new random value is picked when the
+     * cache expires or when the admin changes the base minimum.
+     */
+    private function getJitteredTarget(int $minUsers): int
+    {
+        $cacheKey = $this->redisPrefix . 'fake_users:jitter_target';
+
+        try {
+            $cached = $this->redis->get($cacheKey);
+            if ($cached !== false) {
+                [$base, $target] = array_map('intval', explode(':', $cached) + [0, 0]);
+                if ($base === $minUsers) {
+                    return $target;
+                }
+            }
+        } catch (\Exception $e) {
+            // Fall through and recompute.
+        }
+
+        $delta = (int) floor($minUsers * 0.10);
+        $min = max(0, $minUsers - $delta);
+        $max = $minUsers + $delta;
+
+        try {
+            $target = ($max > $min) ? random_int($min, $max) : $minUsers;
+        } catch (\Exception $e) {
+            $target = $minUsers;
+        }
+
+        try {
+            // Refresh roughly every 3 minutes for a natural drift.
+            $this->redis->setex($cacheKey, 180, $minUsers . ':' . $target);
+        } catch (\Exception $e) {
+            // Non-fatal: without caching it just recomputes next call.
+        }
+
+        return $target;
     }
 
     /**
