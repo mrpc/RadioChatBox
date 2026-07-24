@@ -1452,6 +1452,7 @@ class RadioChatBox {
         this.privateChatHeader = document.getElementById('private-chat-header');
         this.privateChatWith = document.getElementById('private-chat-with');
         this.blockUserBtn = document.getElementById('block-user-btn');
+        this.galleryBtn = document.getElementById('gallery-btn');
         this.backToPublicBtn = document.getElementById('back-to-public');
         this.conversationsToggle = document.getElementById('conversations-toggle');
         this.adminPanelBtn = document.getElementById('admin-panel-btn');
@@ -1530,6 +1531,11 @@ class RadioChatBox {
         // Block/unblock button in the private chat header
         if (this.blockUserBtn) {
             this.blockUserBtn.addEventListener('click', () => this.toggleBlockCurrentUser());
+        }
+
+        // Gallery button in the private chat header
+        if (this.galleryBtn) {
+            this.galleryBtn.addEventListener('click', () => this.openPrivateGallery());
         }
         
         // Conversations panel toggle
@@ -2032,6 +2038,10 @@ class RadioChatBox {
         if (this.privateChatHeader) {
             this.privateChatHeader.style.display = 'none';
         }
+        if (this.galleryBtn) {
+            this.galleryBtn.style.display = 'none';
+        }
+        this.closePrivateGallery();
         
         // Reset input based on chat mode
         if (this.chatMode === 'private') {
@@ -2273,7 +2283,10 @@ class RadioChatBox {
                 });
             }
         });
-        
+
+        // Toggle the Gallery button based on whether the conversation has photos.
+        this.updatePrivateGalleryButton();
+
         this.scrollToBottom();
     }
 
@@ -4712,17 +4725,22 @@ class RadioChatBox {
     openUserActionsPopover(username, anchorEl) {
         if (!username || !anchorEl) return;
         if (username.toLowerCase() === (this.username || '').toLowerCase()) return;
-        if (this.chatMode !== 'both') return;
+
+        // Mention is available whenever public chat exists; DM/Block only when
+        // private messaging runs alongside public ('both').
+        const allowMention = this.chatMode === 'public' || this.chatMode === 'both';
+        const allowPrivate = this.chatMode === 'both';
+        if (!allowMention && !allowPrivate) return;
 
         this.closeUserActionsPopover();
 
         const pop = document.createElement('div');
         pop.className = 'user-actions-popover';
-        pop.innerHTML = `
-            <div class="user-actions-name">${this.escapeHtml(username)}</div>
-            <button class="user-action-dm">💬 Send private message</button>
-            <button class="user-action-block">🚫 Block</button>
-        `;
+        let html = `<div class="user-actions-name">${this.escapeHtml(username)}</div>`;
+        if (allowMention) html += `<button class="user-action-mention">@ Mention</button>`;
+        if (allowPrivate) html += `<button class="user-action-dm">💬 Send private message</button>`;
+        if (allowPrivate) html += `<button class="user-action-block">🚫 Block</button>`;
+        pop.innerHTML = html;
         document.body.appendChild(pop);
 
         // Position under the name, clamped to the viewport.
@@ -4736,38 +4754,52 @@ class RadioChatBox {
         pop.style.left = `${left}px`;
         pop.style.top = `${window.scrollY + rect.bottom + 4}px`;
 
-        pop.querySelector('.user-action-dm').addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.closeUserActionsPopover();
-            this.startPrivateChat(username);
-        });
+        const mentionBtn = pop.querySelector('.user-action-mention');
+        if (mentionBtn) {
+            mentionBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeUserActionsPopover();
+                this.insertMentionIntoInput(username);
+            });
+        }
+
+        const dmBtn = pop.querySelector('.user-action-dm');
+        if (dmBtn) {
+            dmBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeUserActionsPopover();
+                this.startPrivateChat(username);
+            });
+        }
 
         const blockBtn = pop.querySelector('.user-action-block');
-        blockBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const action = blockBtn.dataset.action === 'unblock' ? 'unblock' : 'block';
-            if (action === 'block' && !confirm(`Block ${username}? You will no longer be able to exchange private messages.`)) {
-                return;
-            }
-            try {
-                await this.setBlock(username, action);
-                // If we're currently in a private chat with this user, refresh it.
-                if (this.privateChat.active && this.privateChat.withUser === username) {
-                    await this.loadBlockState(username);
+        if (blockBtn) {
+            blockBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const action = blockBtn.dataset.action === 'unblock' ? 'unblock' : 'block';
+                if (action === 'block' && !confirm(`Block ${username}? You will no longer be able to exchange private messages.`)) {
+                    return;
                 }
-            } catch (err) {
-                alert(err.message);
-            }
-            this.closeUserActionsPopover();
-        });
+                try {
+                    await this.setBlock(username, action);
+                    // If we're currently in a private chat with this user, refresh it.
+                    if (this.privateChat.active && this.privateChat.withUser === username) {
+                        await this.loadBlockState(username);
+                    }
+                } catch (err) {
+                    alert(err.message);
+                }
+                this.closeUserActionsPopover();
+            });
 
-        // Resolve the current block state to set the button label.
-        this.getBlockState(username).then(state => {
-            if (this._userPopover !== pop) return; // popover changed/closed
-            blockBtn.dataset.action = state.i_blocked ? 'unblock' : 'block';
-            blockBtn.textContent = state.i_blocked ? '✅ Unblock' : '🚫 Block';
-            blockBtn.classList.toggle('is-blocked', state.i_blocked);
-        });
+            // Resolve the current block state to set the button label.
+            this.getBlockState(username).then(state => {
+                if (this._userPopover !== pop) return; // popover changed/closed
+                blockBtn.dataset.action = state.i_blocked ? 'unblock' : 'block';
+                blockBtn.textContent = state.i_blocked ? '✅ Unblock' : '🚫 Block';
+                blockBtn.classList.toggle('is-blocked', state.i_blocked);
+            });
+        }
 
         this._userPopover = pop;
         setTimeout(() => {
@@ -4788,6 +4820,162 @@ class RadioChatBox {
         if (this._userPopoverOutside) {
             document.removeEventListener('click', this._userPopoverOutside);
             this._userPopoverOutside = null;
+        }
+    }
+
+    /** Insert "@username " into the message input at the caret and focus it. */
+    insertMentionIntoInput(username) {
+        if (!this.messageInput) return;
+        const token = `@${username} `;
+        const el = this.messageInput;
+        const start = el.selectionStart ?? el.value.length;
+        const end = el.selectionEnd ?? el.value.length;
+        const before = el.value.substring(0, start);
+        const after = el.value.substring(end);
+        // Add a leading space if the preceding char isn't whitespace.
+        const sep = (before && !/\s$/.test(before)) ? ' ' : '';
+        el.value = before + sep + token + after;
+        const caret = (before + sep + token).length;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+    }
+
+    // ===================== Private conversation photo gallery =====================
+
+    /** All photo attachments in the current private conversation, oldest first. */
+    getPrivateGalleryPhotos() {
+        return (this.privateChat.messages || [])
+            .filter(m => m.attachment && m.attachment.file_path)
+            .map(m => ({
+                url: m.attachment.file_path,
+                from: m.from_display_name || m.from_username,
+                created_at: m.created_at
+            }));
+    }
+
+    /** Show/hide the Gallery button based on whether the conversation has photos. */
+    updatePrivateGalleryButton() {
+        if (!this.galleryBtn) return;
+        const photos = this.getPrivateGalleryPhotos();
+        if (photos.length > 0) {
+            this.galleryBtn.style.display = 'inline-flex';
+            this.galleryBtn.textContent = `🖼️ Gallery (${photos.length})`;
+        } else {
+            this.galleryBtn.style.display = 'none';
+        }
+    }
+
+    /** Open a modal with all conversation photos as a grid. */
+    openPrivateGallery() {
+        const photos = this.getPrivateGalleryPhotos();
+        if (photos.length === 0) return;
+        this._galleryPhotos = photos;
+
+        this.closePrivateGallery();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'gallery-modal-overlay';
+        overlay.innerHTML = `
+            <div class="gallery-modal">
+                <div class="gallery-modal-header">
+                    <span>🖼️ Photos with ${this.escapeHtml(this.privateChat.withUser || '')} (${photos.length})</span>
+                    <button class="gallery-close" title="Close">✕</button>
+                </div>
+                <div class="gallery-grid">
+                    ${photos.map((p, i) => `
+                        <div class="gallery-thumb" data-index="${i}">
+                            <img src="${this.escapeHtml(p.url)}" alt="Photo" loading="lazy">
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        this._galleryOverlay = overlay;
+
+        overlay.querySelector('.gallery-close').addEventListener('click', () => this.closePrivateGallery());
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closePrivateGallery();
+        });
+        overlay.querySelectorAll('.gallery-thumb').forEach(thumb => {
+            thumb.addEventListener('click', () => {
+                this.openLightbox(parseInt(thumb.getAttribute('data-index'), 10));
+            });
+        });
+    }
+
+    closePrivateGallery() {
+        this.closeLightbox();
+        if (this._galleryOverlay) {
+            this._galleryOverlay.remove();
+            this._galleryOverlay = null;
+        }
+    }
+
+    /** Open the full-size lightbox at a given photo index, with prev/next. */
+    openLightbox(index) {
+        const photos = this._galleryPhotos || [];
+        if (!photos.length) return;
+        this._lightboxIndex = Math.max(0, Math.min(index, photos.length - 1));
+
+        this.closeLightbox();
+
+        const lb = document.createElement('div');
+        lb.className = 'lightbox-overlay';
+        lb.innerHTML = `
+            <button class="lightbox-close" title="Close">✕</button>
+            <button class="lightbox-nav lightbox-prev" title="Previous">‹</button>
+            <img class="lightbox-image" src="" alt="Photo">
+            <button class="lightbox-nav lightbox-next" title="Next">›</button>
+            <div class="lightbox-caption"></div>
+        `;
+        document.body.appendChild(lb);
+        this._lightbox = lb;
+
+        lb.querySelector('.lightbox-close').addEventListener('click', () => this.closeLightbox());
+        lb.querySelector('.lightbox-prev').addEventListener('click', (e) => { e.stopPropagation(); this.lightboxStep(-1); });
+        lb.querySelector('.lightbox-next').addEventListener('click', (e) => { e.stopPropagation(); this.lightboxStep(1); });
+        lb.addEventListener('click', (e) => { if (e.target === lb) this.closeLightbox(); });
+
+        this._lightboxKeyHandler = (e) => {
+            if (e.key === 'Escape') this.closeLightbox();
+            else if (e.key === 'ArrowLeft') this.lightboxStep(-1);
+            else if (e.key === 'ArrowRight') this.lightboxStep(1);
+        };
+        document.addEventListener('keydown', this._lightboxKeyHandler);
+
+        this.renderLightbox();
+    }
+
+    lightboxStep(delta) {
+        const photos = this._galleryPhotos || [];
+        if (!photos.length) return;
+        this._lightboxIndex = (this._lightboxIndex + delta + photos.length) % photos.length;
+        this.renderLightbox();
+    }
+
+    renderLightbox() {
+        if (!this._lightbox) return;
+        const photos = this._galleryPhotos || [];
+        const p = photos[this._lightboxIndex];
+        if (!p) return;
+        this._lightbox.querySelector('.lightbox-image').src = p.url;
+        const caption = this._lightbox.querySelector('.lightbox-caption');
+        caption.textContent = `${p.from || ''} · ${this._lightboxIndex + 1}/${photos.length}`;
+        // Hide nav arrows when there is only one photo.
+        const single = photos.length <= 1;
+        this._lightbox.querySelector('.lightbox-prev').style.display = single ? 'none' : '';
+        this._lightbox.querySelector('.lightbox-next').style.display = single ? 'none' : '';
+    }
+
+    closeLightbox() {
+        if (this._lightbox) {
+            this._lightbox.remove();
+            this._lightbox = null;
+        }
+        if (this._lightboxKeyHandler) {
+            document.removeEventListener('keydown', this._lightboxKeyHandler);
+            this._lightboxKeyHandler = null;
         }
     }
     
