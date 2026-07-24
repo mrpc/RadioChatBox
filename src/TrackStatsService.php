@@ -193,6 +193,51 @@ class TrackStatsService
         }
     }
 
+    /** All-time summary for one artist (plays, distinct tracks, first/last). */
+    public function getArtistSummary(string $artist): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT COUNT(*) AS plays, COUNT(DISTINCT t.id) AS tracks,
+                        MIN(tp.played_at) AS first_played, MAX(tp.played_at) AS last_played
+                 FROM track_plays tp JOIN tracks t ON tp.track_id = t.id
+                 WHERE t.artist = :artist'
+            );
+            $stmt->execute(['artist' => $artist]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row || (int)$row['plays'] === 0) {
+                return null;
+            }
+            return $row;
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getArtistSummary failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** Tracks by one artist with play counts (all-time), most-played first. */
+    public function getArtistTracks(string $artist, int $limit = 200): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT t.id AS track_id, t.display, t.title,
+                        COUNT(*) AS plays, MAX(tp.played_at) AS last_played
+                 FROM track_plays tp JOIN tracks t ON tp.track_id = t.id
+                 WHERE t.artist = :artist
+                 GROUP BY t.id, t.display, t.title
+                 ORDER BY plays DESC, last_played DESC
+                 LIMIT :limit'
+            );
+            $stmt->bindValue(':artist', $artist);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getArtistTracks failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
     /** A single track's metadata, or null if not found. */
     public function getTrackById(int $trackId): ?array
     {

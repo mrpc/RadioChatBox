@@ -2972,12 +2972,20 @@
                     <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:80px;">Tracks</th>
                     <th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                 artists.forEach((a, i) => {
-                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(a.artist)}</td>
+                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                        <td style="${TRACK_TD}"><a href="#" class="track-artist-link" data-artist="${escapeHtml(a.artist)}" style="color:#667eea; cursor:pointer;">${escapeHtml(a.artist)}</a></td>
                         <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
                         <td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(a.last_played))}</td></tr>`;
                 });
                 html += `</tbody></table>`;
                 content.innerHTML = html;
+                // Attach artist drill-down listeners (avoids quoting issues in onclick).
+                content.querySelectorAll('.track-artist-link').forEach(link => {
+                    link.addEventListener('click', (ev) => {
+                        ev.preventDefault();
+                        showArtistHistory(link.getAttribute('data-artist'));
+                    });
+                });
             } catch (e) {
                 content.innerHTML = '';
                 err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
@@ -3061,6 +3069,39 @@
                         <td style="${TRACK_TD}">${p.listeners ?? '-'}</td></tr>`;
                 });
                 html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function showArtistHistory(artist) {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const data = await trackStatsFetch(`mode=artist&artist=${encodeURIComponent(artist)}`);
+                const s = data.summary || {};
+                const tracks = data.tracks || [];
+                let html = `<button class="btn" onclick="switchTrackStatsView('artists')" style="margin-bottom:14px; background:#e5e7eb;">← Back to artists</button>`;
+                html += `<h3 style="margin:0 0 6px;">🎤 ${escapeHtml(data.artist || artist)}</h3>`;
+                html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${s.plays || 0}</strong> · Tracks: <strong>${s.tracks || tracks.length}</strong> · First: ${escapeHtml(formatTrackDateTime(s.first_played))} · Last: ${escapeHtml(formatTrackDateTime(s.last_played))}</p>`;
+                if (tracks.length === 0) {
+                    html += '<p style="color:#9ca3af;">No tracks recorded.</p>';
+                } else {
+                    html += `<h4 style="margin:0 0 10px;">Tracks</h4>`;
+                    html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
+                    tracks.forEach((t, i) => {
+                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                            <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(t.track_id, 10)}); return false;" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
+                    });
+                    html += `</tbody></table>`;
+                }
                 content.innerHTML = html;
             } catch (e) {
                 content.innerHTML = '';

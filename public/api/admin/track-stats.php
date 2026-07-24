@@ -69,6 +69,26 @@ try {
             'artists' => $service->getTopArtists($from, $to, $limit),
         ]);
 
+    } elseif ($mode === 'artist') {
+        // Drill-down for one artist: summary + their tracks.
+        $artist = trim($_GET['artist'] ?? '');
+        if ($artist === '') {
+            throw new InvalidArgumentException('artist is required');
+        }
+        $summary = $service->getArtistSummary($artist);
+        if (!$summary) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Artist not found']);
+            exit;
+        }
+        echo json_encode([
+            'success' => true,
+            'mode' => 'artist',
+            'artist' => $artist,
+            'summary' => $summary,
+            'tracks' => $service->getArtistTracks($artist),
+        ]);
+
     } elseif ($mode === 'track') {
         // Reverse log: all play times for one track.
         $trackId = (int)($_GET['track_id'] ?? 0);
