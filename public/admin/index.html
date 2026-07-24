@@ -1352,14 +1352,15 @@
 
                         <!-- Sub-tabs -->
                         <div style="display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb;">
-                            <button class="btn" onclick="switchTrackStatsView('summary')" id="track-tab-summary" style="background: #667eea; color: white; margin-bottom: -2px; border-bottom: 3px solid #667eea;">Popular</button>
+                            <button class="btn" onclick="switchTrackStatsView('summary')" id="track-tab-summary" style="background: #667eea; color: white; margin-bottom: -2px; border-bottom: 3px solid #667eea;">Top Tracks</button>
+                            <button class="btn" onclick="switchTrackStatsView('artists')" id="track-tab-artists" style="background: transparent; color: #6b7280;">Top Artists</button>
                             <button class="btn" onclick="switchTrackStatsView('log')" id="track-tab-log" style="background: transparent; color: #6b7280;">Daily Log</button>
                         </div>
 
-                        <!-- Popular controls -->
+                        <!-- Period controls (Top Tracks / Top Artists) -->
                         <div id="track-summary-controls" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                             <label style="color: #6b7280;">Period:</label>
-                            <select id="track-period" onchange="loadTrackSummary()" style="padding: 8px; border-radius: 6px; border: 1px solid #d1d5db;">
+                            <select id="track-period" onchange="onTrackPeriodChange()" style="padding: 8px; border-radius: 6px; border: 1px solid #d1d5db;">
                                 <option value="1">Last 24 hours</option>
                                 <option value="7" selected>Last 7 days</option>
                                 <option value="30">Last 30 days</option>
@@ -2932,15 +2933,55 @@
 
         function switchTrackStatsView(view) {
             trackStatsView = view;
-            const sumBtn = document.getElementById('track-tab-summary');
-            const logBtn = document.getElementById('track-tab-log');
-            sumBtn.style.background = view === 'summary' ? '#667eea' : 'transparent';
-            sumBtn.style.color = view === 'summary' ? 'white' : '#6b7280';
-            logBtn.style.background = view === 'log' ? '#667eea' : 'transparent';
-            logBtn.style.color = view === 'log' ? 'white' : '#6b7280';
-            document.getElementById('track-summary-controls').style.display = view === 'summary' ? 'flex' : 'none';
+            const tabs = { summary: 'track-tab-summary', artists: 'track-tab-artists', log: 'track-tab-log' };
+            Object.entries(tabs).forEach(([v, id]) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                btn.style.background = view === v ? '#667eea' : 'transparent';
+                btn.style.color = view === v ? 'white' : '#6b7280';
+            });
+            // Period control for Top Tracks + Top Artists; date control for the log.
+            document.getElementById('track-summary-controls').style.display = (view === 'summary' || view === 'artists') ? 'flex' : 'none';
             document.getElementById('track-log-controls').style.display = view === 'log' ? 'flex' : 'none';
-            if (view === 'summary') loadTrackSummary(); else loadTrackLog();
+            if (view === 'summary') loadTrackSummary();
+            else if (view === 'artists') loadTrackArtists();
+            else loadTrackLog();
+        }
+
+        function onTrackPeriodChange() {
+            if (trackStatsView === 'artists') loadTrackArtists();
+            else loadTrackSummary();
+        }
+
+        async function loadTrackArtists() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const days = document.getElementById('track-period').value || '7';
+                const data = await trackStatsFetch(`mode=artists&days=${encodeURIComponent(days)}`);
+                const artists = data.artists || [];
+                if (artists.length === 0) {
+                    content.innerHTML = '<p style="color:#9ca3af;">No artist data for this period. (The stream may not expose separate artist names.)</p>';
+                    return;
+                }
+                let html = `<h3 style="margin:0 0 10px;">Most played artists</h3>`;
+                html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                    <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Artist</th>
+                    <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:80px;">Tracks</th>
+                    <th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
+                artists.forEach((a, i) => {
+                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(a.artist)}</td>
+                        <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
+                        <td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(a.last_played))}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
         }
 
         async function trackStatsFetch(qs) {
@@ -2984,7 +3025,8 @@
                         <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
                         <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                     top.forEach((t, i) => {
-                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(t.display)}</td>
+                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                            <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(t.track_id, 10)}); return false;" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
                     });
                     html += `</tbody></table>`;
@@ -3015,10 +3057,40 @@
                     <th style="${TRACK_TH} width:90px;">Listeners</th></tr></thead><tbody>`;
                 plays.forEach(p => {
                     html += `<tr><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(p.played_at))}</td>
-                        <td style="${TRACK_TD}">${escapeHtml(p.display)}</td>
+                        <td style="${TRACK_TD}"><a href="#" onclick="showTrackHistory(${parseInt(p.track_id, 10)}); return false;" style="color:#667eea; cursor:pointer;">${escapeHtml(p.display)}</a></td>
                         <td style="${TRACK_TD}">${p.listeners ?? '-'}</td></tr>`;
                 });
                 html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function showTrackHistory(trackId) {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const data = await trackStatsFetch(`mode=track&track_id=${encodeURIComponent(trackId)}`);
+                const t = data.track || {};
+                const plays = data.plays || [];
+                let html = `<button class="btn" onclick="switchTrackStatsView(trackStatsView)" style="margin-bottom:14px; background:#e5e7eb;">← Back</button>`;
+                html += `<h3 style="margin:0 0 6px;">${escapeHtml(t.display || '')}</h3>`;
+                html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${t.play_count || plays.length}</strong> · First: ${escapeHtml(formatTrackDateTime(t.first_played_at))} · Last: ${escapeHtml(formatTrackDateTime(t.last_played_at))}</p>`;
+                if (plays.length === 0) {
+                    html += '<p style="color:#9ca3af;">No plays recorded.</p>';
+                } else {
+                    html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                        <th style="${TRACK_TH} width:60px;">#</th><th style="${TRACK_TH}">Played at</th>
+                        <th style="${TRACK_TH} width:90px;">Listeners</th></tr></thead><tbody>`;
+                    plays.forEach((p, i) => {
+                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(p.played_at))}</td><td style="${TRACK_TD}">${p.listeners ?? '-'}</td></tr>`;
+                    });
+                    html += `</tbody></table>`;
+                }
                 content.innerHTML = html;
             } catch (e) {
                 content.innerHTML = '';
