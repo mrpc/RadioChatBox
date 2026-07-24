@@ -988,10 +988,15 @@ body {
 
 /* Whole message highlighted when it mentions the current user */
 .message.mentions-me {
-    background: rgba(102, 126, 234, 0.08);
-    border-left: 3px solid #667eea;
-    padding-left: 8px;
-    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.18);
+    border-left: 4px solid #f59e0b;
+    padding-left: 12px;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.45), 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Keep own messages readable when they also mention the user */
+.message.own-message.mentions-me {
+    background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
 }
 
 /* Sender name is clickable to open the DM popover */
@@ -1100,7 +1105,7 @@ body {
     .user-actions-popover .user-actions-name { color: #bbb; border-color: #333; }
     .user-actions-popover .user-action-dm,
     .user-actions-popover .user-action-block { color: #eee; }
-    .message.mentions-me { background: rgba(102, 126, 234, 0.15); }
+    .message.mentions-me { background: rgba(245, 158, 11, 0.22); }
 }
 
 /* Edit button */
