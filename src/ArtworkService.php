@@ -118,6 +118,87 @@ class ArtworkService
         return $result;
     }
 
+    /**
+     * Deep metadata for enrichment: album, genre, release date, external ids/url
+     * plus downloaded cover + artist images. Makes up to two Deezer calls
+     * (search + album) and falls back to iTunes for the cover only.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDeepMeta(string $artist, string $title): array
+    {
+        $artist = trim($artist);
+        $title = trim($title);
+        $query = trim($artist . ' ' . $title);
+
+        $out = [
+            'cover' => null, 'cover_thumb' => null,
+            'artist_image' => null, 'artist_image_thumb' => null,
+            'album_title' => null, 'genre' => null, 'release_date' => null,
+            'source' => null, 'track_external_id' => null, 'album_external_id' => null,
+            'artist_external_id' => null, 'track_url' => null, 'artist_name' => null,
+        ];
+        if ($query === '') {
+            return $out;
+        }
+
+        $json = $this->httpGet('https://api.deezer.com/search?limit=1&q=' . rawurlencode($query));
+        $item = null;
+        if ($json !== null) {
+            $d = json_decode($json, true);
+            $item = $d['data'][0] ?? null;
+        }
+
+        if (!is_array($item)) {
+            // No Deezer match: still try to get a cover (iTunes) via getArtwork.
+            $art = $this->getArtwork($artist, $title);
+            return array_merge($out, [
+                'cover' => $art['cover'], 'cover_thumb' => $art['cover_thumb'],
+                'artist_image' => $art['artist_image'], 'artist_image_thumb' => $art['artist_image_thumb'],
+                'source' => $art['source'],
+            ]);
+        }
+
+        $out['source'] = 'deezer';
+        $out['artist_name'] = $item['artist']['name'] ?? null;
+        $out['track_external_id'] = isset($item['id']) ? (string)$item['id'] : null;
+        $out['track_url'] = $item['link'] ?? null;
+        $out['album_title'] = $item['album']['title'] ?? null;
+        $out['album_external_id'] = isset($item['album']['id']) ? (string)$item['album']['id'] : null;
+        $out['artist_external_id'] = isset($item['artist']['id']) ? (string)$item['artist']['id'] : null;
+
+        $coverUrl = $item['album']['cover_xl'] ?? $item['album']['cover_big'] ?? null;
+        if ($coverUrl) {
+            $c = $this->downloadImage($coverUrl, md5(mb_strtolower($query)));
+            $out['cover'] = $c['full'];
+            $out['cover_thumb'] = $c['thumb'];
+        }
+        $picUrl = $item['artist']['picture_xl'] ?? $item['artist']['picture_big'] ?? null;
+        if ($picUrl && $artist !== '') {
+            $a = $this->downloadArtistImage($artist, $picUrl);
+            $out['artist_image'] = $a['full'];
+            $out['artist_image_thumb'] = $a['thumb'];
+        }
+
+        // Deep: album details for genre + release date.
+        $albumId = $item['album']['id'] ?? null;
+        if ($albumId) {
+            $aj = $this->httpGet('https://api.deezer.com/album/' . rawurlencode((string)$albumId));
+            if ($aj !== null) {
+                $ad = json_decode($aj, true);
+                if (is_array($ad)) {
+                    $rd = $ad['release_date'] ?? null;
+                    if (is_string($rd) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rd) && strpos($rd, '0000') !== 0) {
+                        $out['release_date'] = $rd;
+                    }
+                    $out['genre'] = $ad['genres']['data'][0]['name'] ?? null;
+                }
+            }
+        }
+
+        return $out;
+    }
+
     private function lookupAndStore(string $artist, string $title, string $query): array
     {
         $coverUrl = null;

@@ -20,14 +20,47 @@ if (!AdminAuth::verify()) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed']);
-    exit;
-}
-
 try {
     $service = new TrackStatsService();
+
+    // ---- POST: edit metadata / trigger enrichment ----
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true) ?: [];
+        $action = $input['action'] ?? '';
+
+        if ($action === 'update-track') {
+            $trackId = (int)($input['track_id'] ?? 0);
+            if ($trackId <= 0) {
+                throw new InvalidArgumentException('track_id is required');
+            }
+            $service->updateTrackMeta($trackId, $input);
+            echo json_encode(['success' => true]);
+        } elseif ($action === 'update-artist') {
+            $artistId = (int)($input['artist_id'] ?? 0);
+            if ($artistId <= 0) {
+                throw new InvalidArgumentException('artist_id is required');
+            }
+            $service->updateArtistMeta($artistId, $input);
+            echo json_encode(['success' => true]);
+        } elseif ($action === 'enrich') {
+            $trackId = (int)($input['track_id'] ?? 0);
+            if ($trackId <= 0) {
+                throw new InvalidArgumentException('track_id is required');
+            }
+            $service->enrichTrack($trackId);
+            echo json_encode(['success' => true]);
+        } else {
+            throw new InvalidArgumentException('Unknown action');
+        }
+        exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        exit;
+    }
+
     $mode = $_GET['mode'] ?? 'summary';
 
     if ($mode === 'log') {
@@ -69,8 +102,30 @@ try {
             'artists' => $service->getTopArtists($from, $to, $limit),
         ]);
 
+    } elseif ($mode === 'genres') {
+        $days = isset($_GET['days']) ? max(1, min((int)$_GET['days'], 365)) : 7;
+        $from = (new DateTimeImmutable("-{$days} days"))->format('Y-m-d 00:00:00');
+        $to = (new DateTimeImmutable('+1 day'))->format('Y-m-d 00:00:00');
+        echo json_encode([
+            'success' => true,
+            'mode' => 'genres',
+            'days' => $days,
+            'genres' => $service->getTopGenres($from, $to, isset($_GET['limit']) ? min((int)$_GET['limit'], 200) : 50),
+        ]);
+
+    } elseif ($mode === 'albums') {
+        $days = isset($_GET['days']) ? max(1, min((int)$_GET['days'], 365)) : 7;
+        $from = (new DateTimeImmutable("-{$days} days"))->format('Y-m-d 00:00:00');
+        $to = (new DateTimeImmutable('+1 day'))->format('Y-m-d 00:00:00');
+        echo json_encode([
+            'success' => true,
+            'mode' => 'albums',
+            'days' => $days,
+            'albums' => $service->getTopAlbums($from, $to, isset($_GET['limit']) ? min((int)$_GET['limit'], 200) : 50),
+        ]);
+
     } elseif ($mode === 'artist') {
-        // Drill-down for one artist: summary + their tracks.
+        // Drill-down for one artist: summary + their tracks + editable row.
         $artist = trim($_GET['artist'] ?? '');
         if ($artist === '') {
             throw new InvalidArgumentException('artist is required');
@@ -86,6 +141,7 @@ try {
             'mode' => 'artist',
             'artist' => $artist,
             'summary' => $summary,
+            'artist_row' => $service->getArtistRowByName($artist),
             'tracks' => $service->getArtistTracks($artist),
         ]);
 

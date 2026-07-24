@@ -1106,7 +1106,7 @@
                         <span class="icon">📈</span>
                         <span>Statistics</span>
                     </div>
-                    <div class="nav-item" onclick="switchTab('track-stats')" data-tab="track-stats">
+                    <div class="nav-item" onclick="switchTab('track-stats')" id="nav-track-stats" data-tab="track-stats" style="display:none;">
                         <span class="icon">🎵</span>
                         <span>Track Stats</span>
                     </div>
@@ -1354,6 +1354,8 @@
                         <div style="display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb;">
                             <button class="btn" onclick="switchTrackStatsView('summary')" id="track-tab-summary" style="background: #667eea; color: white; margin-bottom: -2px; border-bottom: 3px solid #667eea;">Top Tracks</button>
                             <button class="btn" onclick="switchTrackStatsView('artists')" id="track-tab-artists" style="background: transparent; color: #6b7280;">Top Artists</button>
+                            <button class="btn" onclick="switchTrackStatsView('albums')" id="track-tab-albums" style="background: transparent; color: #6b7280;">Top Albums</button>
+                            <button class="btn" onclick="switchTrackStatsView('genres')" id="track-tab-genres" style="background: transparent; color: #6b7280;">Top Genres</button>
                             <button class="btn" onclick="switchTrackStatsView('log')" id="track-tab-log" style="background: transparent; color: #6b7280;">Daily Log</button>
                         </div>
 
@@ -2933,24 +2935,146 @@
 
         function switchTrackStatsView(view) {
             trackStatsView = view;
-            const tabs = { summary: 'track-tab-summary', artists: 'track-tab-artists', log: 'track-tab-log' };
+            const tabs = {
+                summary: 'track-tab-summary', artists: 'track-tab-artists',
+                albums: 'track-tab-albums', genres: 'track-tab-genres', log: 'track-tab-log'
+            };
             Object.entries(tabs).forEach(([v, id]) => {
                 const btn = document.getElementById(id);
                 if (!btn) return;
                 btn.style.background = view === v ? '#667eea' : 'transparent';
                 btn.style.color = view === v ? 'white' : '#6b7280';
             });
-            // Period control for Top Tracks + Top Artists; date control for the log.
-            document.getElementById('track-summary-controls').style.display = (view === 'summary' || view === 'artists') ? 'flex' : 'none';
+            // Period control for all period views; date control for the log.
+            document.getElementById('track-summary-controls').style.display = (view === 'log') ? 'none' : 'flex';
             document.getElementById('track-log-controls').style.display = view === 'log' ? 'flex' : 'none';
             if (view === 'summary') loadTrackSummary();
             else if (view === 'artists') loadTrackArtists();
+            else if (view === 'albums') loadTrackAlbums();
+            else if (view === 'genres') loadTrackGenres();
             else loadTrackLog();
         }
 
         function onTrackPeriodChange() {
-            if (trackStatsView === 'artists') loadTrackArtists();
+            switchTrackStatsViewReload();
+        }
+
+        function switchTrackStatsViewReload() {
+            const v = trackStatsView;
+            if (v === 'artists') loadTrackArtists();
+            else if (v === 'albums') loadTrackAlbums();
+            else if (v === 'genres') loadTrackGenres();
             else loadTrackSummary();
+        }
+
+        async function loadTrackAlbums() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const days = document.getElementById('track-period').value || '7';
+                const data = await trackStatsFetch(`mode=albums&days=${encodeURIComponent(days)}`);
+                const albums = data.albums || [];
+                if (albums.length === 0) {
+                    content.innerHTML = '<p style="color:#9ca3af;">No album data yet (metadata is filled by enrichment over time).</p>';
+                    return;
+                }
+                let html = `<h3 style="margin:0 0 10px;">Most played albums</h3>`;
+                html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                    <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH} width:52px;"></th><th style="${TRACK_TH}">Album</th>
+                    <th style="${TRACK_TH}">Artist</th><th style="${TRACK_TH} width:70px;">Plays</th>
+                    <th style="${TRACK_TH} width:70px;">Tracks</th><th style="${TRACK_TH} width:110px;">Released</th></tr></thead><tbody>`;
+                albums.forEach((a, i) => {
+                    const cov = a.cover_file ? `<img src="${escapeHtml(a.cover_file)}" style="width:40px;height:40px;border-radius:4px;object-fit:cover;">` : '';
+                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${cov}</td>
+                        <td style="${TRACK_TD}">${escapeHtml(a.title || '')}</td>
+                        <td style="${TRACK_TD}">${escapeHtml(a.artist_name || '')}</td>
+                        <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
+                        <td style="${TRACK_TD}">${escapeHtml(a.release_date || '-')}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function loadTrackGenres() {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            err.innerHTML = '';
+            content.innerHTML = 'Loading…';
+            try {
+                const days = document.getElementById('track-period').value || '7';
+                const data = await trackStatsFetch(`mode=genres&days=${encodeURIComponent(days)}`);
+                const genres = data.genres || [];
+                if (genres.length === 0) {
+                    content.innerHTML = '<p style="color:#9ca3af;">No genre data yet (metadata is filled by enrichment over time).</p>';
+                    return;
+                }
+                let html = `<h3 style="margin:0 0 10px;">Most played genres</h3>`;
+                html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
+                    <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Genre</th>
+                    <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:80px;">Tracks</th></tr></thead><tbody>`;
+                genres.forEach((g, i) => {
+                    html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${escapeHtml(g.genre)}</td>
+                        <td style="${TRACK_TD}"><strong>${g.plays}</strong></td><td style="${TRACK_TD}">${g.tracks}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '';
+                err.innerHTML = `<div style="color:#ef4444;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        // POST a track-stats action (edit metadata / enrich).
+        async function trackStatsPost(payload) {
+            const resp = await fetch('/api/admin/track-stats.php', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Save failed');
+            return data;
+        }
+
+        async function saveTrackMeta(trackId) {
+            try {
+                await trackStatsPost({
+                    action: 'update-track',
+                    track_id: trackId,
+                    genre: document.getElementById('edit-track-genre').value,
+                    album_title: document.getElementById('edit-track-album').value,
+                    release_date: document.getElementById('edit-track-release').value,
+                    external_url: document.getElementById('edit-track-url').value,
+                    excluded_from_stats: document.getElementById('edit-track-excluded').checked
+                });
+                showTrackHistory(trackId);
+            } catch (e) { alert(e.message); }
+        }
+
+        async function enrichTrackNow(trackId) {
+            try {
+                await trackStatsPost({ action: 'enrich', track_id: trackId });
+                showTrackHistory(trackId);
+            } catch (e) { alert(e.message); }
+        }
+
+        async function saveArtistMeta(artistId, artistName) {
+            try {
+                await trackStatsPost({
+                    action: 'update-artist',
+                    artist_id: artistId,
+                    genre: document.getElementById('edit-artist-genre').value,
+                    external_url: document.getElementById('edit-artist-url').value,
+                    excluded_from_stats: document.getElementById('edit-artist-excluded').checked
+                });
+                showArtistHistory(artistName);
+            } catch (e) { alert(e.message); }
         }
 
         async function loadTrackArtists() {
@@ -3090,6 +3214,22 @@
                     <img id="artist-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:50%; object-fit:cover;">
                     <h3 style="margin:0;">🎤 ${escapeHtml(data.artist || artist)}</h3></div>`;
                 html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${s.plays || 0}</strong> · Tracks: <strong>${s.tracks || tracks.length}</strong> · First: ${escapeHtml(formatTrackDateTime(s.first_played))} · Last: ${escapeHtml(formatTrackDateTime(s.last_played))}</p>`;
+
+                // ---- edit artist metadata ----
+                const ar = data.artist_row;
+                if (ar && ar.id) {
+                    const inpS = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;';
+                    html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:16px;">
+                        <strong style="display:block;margin-bottom:10px;">Edit artist</strong>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+                            <label>Genre<br><input id="edit-artist-genre" value="${escapeHtml(ar.genre || '')}" style="${inpS}width:100%;"></label>
+                            <label>External link<br><input id="edit-artist-url" value="${escapeHtml(ar.external_url || '')}" style="${inpS}width:100%;"></label>
+                        </div>
+                        <label style="display:block;margin-top:10px;"><input type="checkbox" id="edit-artist-excluded" ${ar.excluded_from_stats ? 'checked' : ''}> Exclude this artist from stats — still shown in the log</label>
+                        <button class="btn" onclick="saveArtistMeta(${parseInt(ar.id,10)}, ${JSON.stringify(artist)})" style="background:#10b981;color:white;padding:8px 16px;margin-top:12px;">💾 Save</button>
+                    </div>`;
+                }
+
                 if (tracks.length === 0) {
                     html += '<p style="color:#9ca3af;">No tracks recorded.</p>';
                 } else {
@@ -3142,6 +3282,25 @@
                     <img id="track-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:6px; object-fit:cover;">
                     <h3 style="margin:0;">${escapeHtml(t.display || '')}</h3></div>`;
                 html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${t.play_count || plays.length}</strong> · First: ${escapeHtml(formatTrackDateTime(t.first_played_at))} · Last: ${escapeHtml(formatTrackDateTime(t.last_played_at))}</p>`;
+
+                // ---- edit metadata panel ----
+                const rel = (t.release_date || '').substring(0, 10);
+                const inpStyle = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;';
+                html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <strong>Edit metadata</strong>
+                        <button class="btn" onclick="enrichTrackNow(${parseInt(trackId,10)})" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">↻ Re-fetch from API</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;">
+                        <label>Genre<br><input id="edit-track-genre" value="${escapeHtml(t.genre || '')}" style="${inpStyle}width:100%;"></label>
+                        <label>Album<br><input id="edit-track-album" value="${escapeHtml(t.album_title || '')}" style="${inpStyle}width:100%;"></label>
+                        <label>Release date<br><input id="edit-track-release" type="date" value="${escapeHtml(rel)}" style="${inpStyle}width:100%;"></label>
+                        <label>External link (YouTube/Spotify…)<br><input id="edit-track-url" value="${escapeHtml(t.external_url || '')}" style="${inpStyle}width:100%;"></label>
+                    </div>
+                    <label style="display:block;margin-top:10px;"><input type="checkbox" id="edit-track-excluded" ${t.excluded_from_stats ? 'checked' : ''}> Exclude from stats (e.g. jingle) — still shown in the log</label>
+                    <button class="btn" onclick="saveTrackMeta(${parseInt(trackId,10)})" style="background:#10b981;color:white;padding:8px 16px;margin-top:12px;">💾 Save</button>
+                </div>`;
+
                 if (plays.length === 0) {
                     html += '<p style="color:#9ca3af;">No plays recorded.</p>';
                 } else {
@@ -4642,6 +4801,11 @@
                     pageTitle = settings.page_title || 'RadioChatBox';  // Store for use in page titles
                     document.getElementById('setting-page-title').value = pageTitle;
                     document.getElementById('setting-radio-status-url').value = settings.radio_status_url || '';
+                    // Track Stats only makes sense with a radio stream configured.
+                    const trackNav = document.getElementById('nav-track-stats');
+                    if (trackNav) {
+                        trackNav.style.display = (settings.radio_status_url && settings.radio_status_url.trim() !== '') ? '' : 'none';
+                    }
                     document.getElementById('setting-color-scheme').value = settings.color_scheme || 'dark';
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';

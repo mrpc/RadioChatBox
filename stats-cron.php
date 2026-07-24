@@ -68,11 +68,18 @@ function logMessage(string $message): void
 function recordCurrentTrack(): void
 {
     try {
+        $svc = new TrackStatsService();
         $nowPlaying = (new RadioStatusService())->getNowPlaying();
-        (new TrackStatsService())->recordPlay($nowPlaying);
+        $svc->recordPlay($nowPlaying);
         logMessage('✓ Track recording checked');
+        // Fill external metadata (album/genre/release date/art) for a few
+        // not-yet-enriched tracks each run.
+        $enriched = $svc->enrichPending(5);
+        if ($enriched > 0) {
+            logMessage("✓ Enriched {$enriched} track(s)");
+        }
     } catch (\Throwable $e) {
-        logMessage('✗ Track recording failed: ' . $e->getMessage());
+        logMessage('✗ Track recording/enrichment failed: ' . $e->getMessage());
     }
 }
 
