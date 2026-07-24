@@ -49,6 +49,27 @@ try {
             }
             $service->enrichTrack($trackId);
             echo json_encode(['success' => true]);
+        } elseif ($action === 'bulk-genre-tracks') {
+            $ids = $input['track_ids'] ?? [];
+            if (!is_array($ids) || empty($ids)) {
+                throw new InvalidArgumentException('track_ids are required');
+            }
+            $n = $service->bulkSetGenreForTracks($ids, (string)($input['genre'] ?? ''));
+            echo json_encode(['success' => true, 'updated' => $n]);
+        } elseif ($action === 'bulk-genre-artist') {
+            $artist = trim($input['artist'] ?? '');
+            if ($artist === '') {
+                throw new InvalidArgumentException('artist is required');
+            }
+            $n = $service->bulkSetGenreByArtist($artist, (string)($input['genre'] ?? ''));
+            echo json_encode(['success' => true, 'updated' => $n]);
+        } elseif ($action === 'bulk-genre-reassign') {
+            $from = trim($input['from'] ?? '');
+            if ($from === '') {
+                throw new InvalidArgumentException('from genre is required');
+            }
+            $n = $service->bulkReassignGenre($from, (string)($input['to'] ?? ''));
+            echo json_encode(['success' => true, 'updated' => $n]);
         } elseif ($action === 'enrich-artist') {
             $artist = trim($input['artist'] ?? '');
             if ($artist === '') {

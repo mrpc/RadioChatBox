@@ -864,6 +864,83 @@ class TrackStatsService
         }
     }
 
+    /**
+     * Bulk-set the genre for every track of an artist (and the artist row).
+     * Empty genre clears it. Returns the number of tracks updated.
+     */
+    public function bulkSetGenreByArtist(string $artist, string $genre): int
+    {
+        $artist = trim($artist);
+        if ($artist === '') {
+            return 0;
+        }
+        $g = trim($genre);
+        $g = $g === '' ? null : mb_substr($g, 0, 200);
+        try {
+            $stmt = $this->pdo->prepare(
+                'UPDATE tracks SET genre = :g WHERE LOWER(artist) = LOWER(:a)'
+            );
+            $stmt->execute(['g' => $g, 'a' => $artist]);
+            $count = $stmt->rowCount();
+
+            // Keep the artist row's genre in sync.
+            $this->pdo->prepare('UPDATE artists SET genre = :g, updated_at = NOW() WHERE LOWER(name) = LOWER(:a)')
+                ->execute(['g' => $g, 'a' => $artist]);
+
+            return $count;
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::bulkSetGenreByArtist failed: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Bulk-set the genre for a specific list of track ids. Empty genre clears
+     * it. Returns the number of tracks updated.
+     *
+     * @param int[] $trackIds
+     */
+    public function bulkSetGenreForTracks(array $trackIds, string $genre): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $trackIds), fn($v) => $v > 0));
+        if (empty($ids)) {
+            return 0;
+        }
+        $g = trim($genre);
+        $g = $g === '' ? null : mb_substr($g, 0, 200);
+        try {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $this->pdo->prepare("UPDATE tracks SET genre = ? WHERE id IN ($placeholders)");
+            $stmt->execute(array_merge([$g], $ids));
+            return $stmt->rowCount();
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::bulkSetGenreForTracks failed: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Bulk-reassign a genre: every track currently in $from becomes $to.
+     * Returns the number of tracks updated.
+     */
+    public function bulkReassignGenre(string $from, string $to): int
+    {
+        $from = trim($from);
+        if ($from === '') {
+            return 0;
+        }
+        $to = trim($to);
+        $toVal = $to === '' ? null : mb_substr($to, 0, 200);
+        try {
+            $stmt = $this->pdo->prepare('UPDATE tracks SET genre = :to WHERE genre = :from');
+            $stmt->execute(['to' => $toVal, 'from' => $from]);
+            return $stmt->rowCount();
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::bulkReassignGenre failed: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
     /** Search tracks by title/artist/display. */
     public function searchTracks(string $query, int $limit = 100): array
     {

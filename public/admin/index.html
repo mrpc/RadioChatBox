@@ -3440,11 +3440,13 @@
                     return;
                 }
                 let html = `<p style="color:#6b7280;">${tracks.length} result${tracks.length === 1 ? '' : 's'}</p>`;
+                html += bulkGenreBar();
                 html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
-                    <th style="${TRACK_TH}">Track</th><th style="${TRACK_TH}">Artist</th>
+                    <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH}">Track</th><th style="${TRACK_TH}">Artist</th>
                     <th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
                 tracks.forEach(t => {
                     html += `<tr>
+                        <td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td>
                         <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
                         <td style="${TRACK_TD}">${escapeHtml(t.artist || '')}</td>
                         <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
@@ -3506,6 +3508,54 @@
             }
         }
 
+        // Bulk-genre selection bar (used above track lists that allow curation).
+        function bulkGenreBar() {
+            return `<div style="display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;">
+                <label style="cursor:pointer;"><input type="checkbox" id="ts-select-all" onchange="tsToggleSelectAll(this)"> Select all</label>
+                <span style="color:#6b7280;">→ set genre:</span>
+                <div style="min-width:200px;">${buildGenreSelect('bulk-genre-value', '')}</div>
+                <button class="btn" onclick="applyBulkGenre()" style="background:#f59e0b;color:white;padding:6px 12px;">Apply to selected</button>
+                <span id="ts-select-count" style="color:#6b7280;">0 selected</span>
+            </div>`;
+        }
+
+        function tsToggleSelectAll(cb) {
+            document.querySelectorAll('#track-stats-content .ts-track-select').forEach(el => { el.checked = cb.checked; });
+            tsUpdateSelCount();
+        }
+
+        function tsUpdateSelCount() {
+            const n = document.querySelectorAll('#track-stats-content .ts-track-select:checked').length;
+            const el = document.getElementById('ts-select-count');
+            if (el) el.textContent = `${n} selected`;
+        }
+
+        function reRenderCurrentTrackStats() {
+            const d = tsCurrent;
+            if (!d) return;
+            tsBackInProgress = true; // don't push onto the nav stack
+            try {
+                if (d.kind === 'artist') showArtistHistory(d.arg);
+                else if (d.kind === 'track') showTrackHistory(d.arg);
+                else if (d.kind === 'album') showAlbumHistory(d.arg);
+                else if (d.kind === 'genre') showGenreDetail(d.arg);
+                else if (d.kind === 'view') switchTrackStatsView(d.arg);
+            } finally { tsBackInProgress = false; }
+        }
+
+        async function applyBulkGenre() {
+            const ids = Array.from(document.querySelectorAll('#track-stats-content .ts-track-select:checked'))
+                .map(el => parseInt(el.value, 10)).filter(Boolean);
+            if (ids.length === 0) { alert('Select at least one track first.'); return; }
+            const genre = (document.getElementById('bulk-genre-value') || {}).value || '';
+            if (!confirm(`Set genre "${genre || '(none)'}" for ${ids.length} selected track(s)?`)) return;
+            try {
+                const r = await trackStatsPost({ action: 'bulk-genre-tracks', track_ids: ids, genre: genre });
+                alert(`Updated ${r.updated} track(s).`);
+                reRenderCurrentTrackStats();
+            } catch (e) { alert(e.message); }
+        }
+
         async function showGenreDetail(genre) {
             const content = document.getElementById('track-stats-content');
             const err = document.getElementById('track-stats-error');
@@ -3521,11 +3571,12 @@
                 if (tracks.length === 0) {
                     html += '<p style="color:#9ca3af;">No tracks.</p>';
                 } else {
+                    html += bulkGenreBar();
                     html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
-                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
                         <th style="${TRACK_TH}">Artist</th><th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
-                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                        html += `<tr><td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td><td style="${TRACK_TD}">${i + 1}</td>
                             <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}">${escapeHtml(t.artist || '')}</td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
@@ -3554,7 +3605,7 @@
                 const cov = al.cover_file ? `<img src="${escapeHtml(al.cover_file)}" style="width:100px;height:100px;border-radius:8px;object-fit:cover;">` : '';
                 html += `<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;">${cov}<div>
                     <h3 style="margin:0;">💿 ${escapeHtml(al.title || '')}</h3>
-                    <div style="color:#6b7280;">${escapeHtml(al.artist_name || '')}${al.release_date ? ' · ' + escapeHtml(al.release_date) : ''}${al.genre ? ' · ' + escapeHtml(al.genre) : ''}</div>
+                    <div style="color:#6b7280;">${al.artist_name ? `<a href="${tsHref('artist', al.artist_name)}" style="color:#667eea;">${escapeHtml(al.artist_name)}</a>` : ''}${al.release_date ? ' · ' + escapeHtml(al.release_date) : ''}${al.genre ? ' · ' + escapeHtml(al.genre) : ''}</div>
                     ${al.external_url ? `<a href="${escapeHtml(al.external_url)}" target="_blank" rel="noopener" style="color:#667eea;">↗ Link</a>` : ''}
                 </div></div>`;
                 if (tracks.length === 0) {
@@ -3639,11 +3690,12 @@
                     html += '<p style="color:#9ca3af;">No tracks recorded.</p>';
                 } else {
                     html += `<h4 style="margin:0 0 10px;">Tracks</h4>`;
+                    html += bulkGenreBar();
                     html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
-                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
                         <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
-                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                        html += `<tr><td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td><td style="${TRACK_TD}">${i + 1}</td>
                             <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
                     });
