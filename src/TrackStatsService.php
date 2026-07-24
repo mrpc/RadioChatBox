@@ -110,7 +110,7 @@ class TrackStatsService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT tp.id, t.artist, t.title, t.display, tp.listeners, tp.played_at
+                'SELECT tp.id, t.id AS track_id, t.artist, t.title, t.display, tp.listeners, tp.played_at
                  FROM track_plays tp
                  JOIN tracks t ON tp.track_id = t.id
                  WHERE tp.played_at::date = :date
@@ -136,7 +136,8 @@ class TrackStatsService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT t.display,
+                'SELECT t.id AS track_id,
+                        t.display,
                         t.artist,
                         t.title,
                         COUNT(*)          AS plays,
@@ -156,6 +157,81 @@ class TrackStatsService
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
             error_log('TrackStatsService::getTopTracks failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Most-played artists between two timestamps.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getTopArtists(string $from, string $to, int $limit = 50): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT t.artist,
+                        COUNT(*)               AS plays,
+                        COUNT(DISTINCT t.id)   AS tracks,
+                        MAX(tp.played_at)      AS last_played
+                 FROM track_plays tp
+                 JOIN tracks t ON tp.track_id = t.id
+                 WHERE tp.played_at >= :from AND tp.played_at < :to
+                   AND t.artist IS NOT NULL AND t.artist <> \'\'
+                 GROUP BY t.artist
+                 ORDER BY plays DESC, last_played DESC
+                 LIMIT :limit'
+            );
+            $stmt->bindValue(':from', $from);
+            $stmt->bindValue(':to', $to);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getTopArtists failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /** A single track's metadata, or null if not found. */
+    public function getTrackById(int $trackId): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT id, artist, title, display, first_played_at, last_played_at, play_count
+                 FROM tracks WHERE id = :id'
+            );
+            $stmt->execute(['id' => $trackId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row ?: null;
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getTrackById failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * All the times a given track played (reverse log for one track),
+     * most recent first.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getTrackPlays(int $trackId, int $limit = 500): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT id, listeners, played_at
+                 FROM track_plays
+                 WHERE track_id = :id
+                 ORDER BY played_at DESC
+                 LIMIT :limit'
+            );
+            $stmt->bindValue(':id', $trackId, PDO::PARAM_INT);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getTrackPlays failed: ' . $e->getMessage());
             return [];
         }
     }

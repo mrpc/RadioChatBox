@@ -56,6 +56,38 @@ try {
             'tracks' => $service->getTopTracks($from, $to, $limit),
         ]);
 
+    } elseif ($mode === 'artists') {
+        // Most-played artists over the last N days (default 7).
+        $days = isset($_GET['days']) ? max(1, min((int)$_GET['days'], 365)) : 7;
+        $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 200) : 50;
+        $from = (new DateTimeImmutable("-{$days} days"))->format('Y-m-d 00:00:00');
+        $to = (new DateTimeImmutable('+1 day'))->format('Y-m-d 00:00:00');
+        echo json_encode([
+            'success' => true,
+            'mode' => 'artists',
+            'days' => $days,
+            'artists' => $service->getTopArtists($from, $to, $limit),
+        ]);
+
+    } elseif ($mode === 'track') {
+        // Reverse log: all play times for one track.
+        $trackId = (int)($_GET['track_id'] ?? 0);
+        if ($trackId <= 0) {
+            throw new InvalidArgumentException('track_id is required');
+        }
+        $track = $service->getTrackById($trackId);
+        if (!$track) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Track not found']);
+            exit;
+        }
+        echo json_encode([
+            'success' => true,
+            'mode' => 'track',
+            'track' => $track,
+            'plays' => $service->getTrackPlays($trackId),
+        ]);
+
     } else {
         // Summary over the last N days (default 7).
         $days = isset($_GET['days']) ? (int)$_GET['days'] : 7;
