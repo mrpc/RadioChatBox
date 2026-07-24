@@ -444,6 +444,18 @@ body {
     flex-wrap: wrap;
     gap: 10px;
 }
+
+/* Now-playing cover: fills the full height of the header, flush to the left. */
+#now-playing-cover {
+    display: none;
+    align-self: stretch;
+    aspect-ratio: 1 / 1;
+    height: auto;
+    margin: -20px 12px -20px -20px; /* cancel header padding: full height, flush left */
+    object-fit: cover;
+    cursor: pointer;
+    order: -1; /* keep it first even if markup order changes */
+}
 /* Header left group: title + now playing + logo */
 #header-left, .header-left {
     display: flex;

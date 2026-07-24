@@ -643,6 +643,8 @@ class RadioChatBox {
 
             // Only show the microphone logo when a radio stream is actually
             // configured. Otherwise users mistakenly assume they can voice chat.
+            // (Remembered so it can be restored when a cover is cleared.)
+            this._micConfigured = urlSet;
             const micLogo = document.getElementById('mic-logo');
             if (micLogo) {
                 micLogo.style.display = urlSet ? 'inline' : 'none';
@@ -713,9 +715,27 @@ class RadioChatBox {
             const params = new URLSearchParams({ artist, title });
             const resp = await fetch(`${this.apiUrl}/api/artwork.php?${params.toString()}`);
             const data = await resp.json();
-            if (data && data.success && data.cover && key === this._coverKey) {
-                img.src = data.cover;
-                img.style.display = 'inline-block';
+            // Prefer the album cover; fall back to the artist image when there
+            // is no cover.
+            const full = data && data.success ? (data.cover || data.artist_image) : null;
+            const thumb = data && data.success ? (data.cover_thumb || data.artist_image_thumb || full) : null;
+            if (full && key === this._coverKey) {
+                // Small display uses the thumbnail; the lightbox uses the full image.
+                img.src = thumb || full;
+                img.dataset.full = full;
+                img.style.display = 'block';
+                if (!img._lightboxBound) {
+                    img.addEventListener('click', () => {
+                        const full = img.dataset.full;
+                        if (!full) return;
+                        this._galleryPhotos = [{ url: full, from: this.currentTrack || '' }];
+                        this.openLightbox(0);
+                    });
+                    img._lightboxBound = true;
+                }
+                // A cover replaces the mic logo.
+                const mic = document.getElementById('mic-logo');
+                if (mic) mic.style.display = 'none';
             } else if (key === this._coverKey) {
                 this.hideNowPlayingCover();
             }
@@ -729,7 +749,11 @@ class RadioChatBox {
         if (img) {
             img.style.display = 'none';
             img.removeAttribute('src');
+            delete img.dataset.full;
         }
+        // Restore the mic logo if a radio stream is configured.
+        const mic = document.getElementById('mic-logo');
+        if (mic && this._micConfigured) mic.style.display = 'inline';
     }
 
     // ===================== Pin current track to a message =====================

@@ -43,43 +43,48 @@ class TrackStatsService
 
         $lastKey = $this->prefix . 'radio:last_track';
 
+        // Atomic de-dup: record only when the track differs from the last one.
+        // GETSET returns the previous value and sets the new one in a single
+        // operation, so concurrent pollers can't both record the same change
+        // (fixes duplicate log rows).
         try {
-            if ($this->redis->get($lastKey) === $display) {
-                return; // Same track still playing.
-            }
+            $prev = $this->redis->getSet($lastKey, $display);
+        } catch (\Throwable $e) {
+            $prev = null;
+        }
+        if ($prev === $display) {
+            return; // Same track still playing.
+        }
 
-            // De-dupe concurrent pollers on a track change with a short lock.
-            $lockKey = $this->prefix . 'radio:record_lock';
-            if (!$this->redis->set($lockKey, '1', ['nx', 'ex' => 10])) {
-                return; // Another request is handling this change.
-            }
+        $listeners = isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null
+            ? (int)$nowPlaying['listeners'] : null;
+        $artist = trim((string)($nowPlaying['artist'] ?? ''));
+        $title = trim((string)($nowPlaying['title'] ?? ''));
 
-            // Re-check inside the lock.
-            if ($this->redis->get($lastKey) === $display) {
-                $this->redis->del($lockKey);
-                return;
-            }
+        // Resolve/create the artist (by name) outside the transaction — fast,
+        // no external calls. Deep metadata is filled later by enrichment.
+        $artistId = $artist !== '' ? $this->upsertArtist($artist) : null;
 
-            $listeners = isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null
-                ? (int)$nowPlaying['listeners'] : null;
-
+        try {
             $this->pdo->beginTransaction();
 
             // Upsert the unique track and bump its counters.
             $stmt = $this->pdo->prepare(
-                'INSERT INTO tracks (artist, title, display, first_played_at, last_played_at, play_count)
-                 VALUES (:artist, :title, :display, NOW(), NOW(), 1)
+                'INSERT INTO tracks (artist, title, display, artist_id, first_played_at, last_played_at, play_count)
+                 VALUES (:artist, :title, :display, :artist_id, NOW(), NOW(), 1)
                  ON CONFLICT (display) DO UPDATE SET
                      last_played_at = NOW(),
                      play_count = tracks.play_count + 1,
                      artist = COALESCE(EXCLUDED.artist, tracks.artist),
-                     title = COALESCE(EXCLUDED.title, tracks.title)
+                     title = COALESCE(EXCLUDED.title, tracks.title),
+                     artist_id = COALESCE(tracks.artist_id, EXCLUDED.artist_id)
                  RETURNING id'
             );
             $stmt->execute([
-                'artist' => $nowPlaying['artist'] ?? null,
-                'title' => $nowPlaying['title'] ?? null,
+                'artist' => $artist !== '' ? $artist : null,
+                'title' => $title !== '' ? $title : null,
                 'display' => mb_substr($display, 0, 500),
+                'artist_id' => $artistId,
             ]);
             $trackId = (int)$stmt->fetchColumn();
 
@@ -90,14 +95,28 @@ class TrackStatsService
             $play->execute(['track_id' => $trackId, 'listeners' => $listeners]);
 
             $this->pdo->commit();
-
-            $this->redis->set($lastKey, $display);
-            $this->redis->del($lockKey);
         } catch (\Throwable $e) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             error_log('TrackStatsService::recordPlay failed: ' . $e->getMessage());
+        }
+    }
+
+    /** Resolve or create an artist by name, returning its id. */
+    private function upsertArtist(string $name): ?int
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO artists (name) VALUES (:name)
+                 ON CONFLICT (name) DO UPDATE SET updated_at = NOW()
+                 RETURNING id'
+            );
+            $stmt->execute(['name' => mb_substr($name, 0, 300)]);
+            return (int)$stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::upsertArtist failed: ' . $e->getMessage());
+            return null;
         }
     }
 
