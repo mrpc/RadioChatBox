@@ -42,6 +42,13 @@ try {
             }
             $service->updateArtistMeta($artistId, $input);
             echo json_encode(['success' => true]);
+        } elseif ($action === 'update-album') {
+            $albumId = (int)($input['album_id'] ?? 0);
+            if ($albumId <= 0) {
+                throw new InvalidArgumentException('album_id is required');
+            }
+            $service->updateAlbumMeta($albumId, $input);
+            echo json_encode(['success' => true]);
         } elseif ($action === 'enrich') {
             $trackId = (int)($input['track_id'] ?? 0);
             if ($trackId <= 0) {

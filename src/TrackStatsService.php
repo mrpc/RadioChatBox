@@ -559,6 +559,34 @@ class TrackStatsService
     }
 
     /**
+     * Update editable album metadata. Accepts: genre, release_date, external_url.
+     */
+    public function updateAlbumMeta(int $albumId, array $data): bool
+    {
+        try {
+            $sets = [];
+            $params = ['id' => $albumId];
+            foreach (['genre', 'release_date', 'external_url'] as $col) {
+                if (array_key_exists($col, $data)) {
+                    $val = trim((string)$data[$col]);
+                    $sets[] = "$col = :$col";
+                    $params[$col] = $val === '' ? null : $val;
+                }
+            }
+            if (!$sets) {
+                return true;
+            }
+            $sets[] = 'updated_at = NOW()';
+            $this->pdo->prepare('UPDATE albums SET ' . implode(', ', $sets) . ' WHERE id = :id')
+                ->execute($params);
+            return true;
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::updateAlbumMeta failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Make sure an artist has a stored image: if missing, look it up once and
      * persist it so it appears in the lists (not only the live detail view).
      * Returns the stored/looked-up image path or null.
@@ -1013,10 +1041,10 @@ class TrackStatsService
             }
 
             $t = $this->pdo->prepare(
-                'SELECT t.id AS track_id, t.display, COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
+                'SELECT t.id AS track_id, t.display, t.genre, COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
                  FROM tracks t LEFT JOIN track_plays tp ON tp.track_id = t.id
                  WHERE t.album_id = :id
-                 GROUP BY t.id, t.display
+                 GROUP BY t.id, t.display, t.genre
                  ORDER BY plays DESC, t.display ASC'
             );
             $t->execute(['id' => $albumId]);

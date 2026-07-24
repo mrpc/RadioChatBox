@@ -3290,6 +3290,19 @@
             } catch (e) { alert(e.message); }
         }
 
+        async function saveAlbumMeta(albumId) {
+            try {
+                await trackStatsPost({
+                    action: 'update-album',
+                    album_id: albumId,
+                    genre: document.getElementById('edit-album-genre').value,
+                    release_date: document.getElementById('edit-album-release').value,
+                    external_url: document.getElementById('edit-album-url').value
+                });
+                showAlbumHistory(albumId);
+            } catch (e) { alert(e.message); }
+        }
+
         async function loadTrackArtists() {
             const content = document.getElementById('track-stats-content');
             const err = document.getElementById('track-stats-error');
@@ -3610,15 +3623,32 @@
                     <div style="color:#6b7280;">${al.artist_name ? `<a href="${tsHref('artist', al.artist_name)}" style="color:#667eea;">${escapeHtml(al.artist_name)}</a>` : ''}${al.release_date ? ' · ' + escapeHtml(al.release_date) : ''}${al.genre ? ' · ' + escapeHtml(al.genre) : ''}</div>
                     ${al.external_url ? `<a href="${escapeHtml(al.external_url)}" target="_blank" rel="noopener" style="color:#667eea;">↗ Link</a>` : ''}
                 </div></div>`;
+
+                // ---- edit album metadata ----
+                if (al.id) {
+                    const inpS = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;';
+                    html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:16px;">
+                        <strong style="display:block;margin-bottom:10px;">Edit album</strong>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+                            <label>Genre<br>${buildGenreSelect('edit-album-genre', al.genre)}</label>
+                            <label>Release date<br><input id="edit-album-release" value="${escapeHtml(al.release_date || '')}" placeholder="YYYY-MM-DD" style="${inpS}width:100%;"></label>
+                            <label>External link<br><input id="edit-album-url" value="${escapeHtml(al.external_url || '')}" style="${inpS}width:100%;"></label>
+                        </div>
+                        <button class="btn" onclick="saveAlbumMeta(${parseInt(al.id, 10)})" style="margin-top:10px;background:#10b981;color:white;padding:6px 14px;">Save album</button>
+                    </div>`;
+                }
+
                 if (tracks.length === 0) {
                     html += '<p style="color:#9ca3af;">No tracks.</p>';
                 } else {
+                    html += bulkGenreBar();
                     html += `<table style="width:100%;border-collapse:collapse;"><thead><tr>
-                        <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
-                        <th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
+                        <th style="${TRACK_TH} width:28px;"></th><th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
+                        <th style="${TRACK_TH}">Genre</th><th style="${TRACK_TH} width:80px;">Plays</th></tr></thead><tbody>`;
                     tracks.forEach((t, i) => {
-                        html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
+                        html += `<tr><td style="${TRACK_TD}"><input type="checkbox" class="ts-track-select" value="${parseInt(t.track_id, 10)}" onchange="tsUpdateSelCount()"></td><td style="${TRACK_TD}">${i + 1}</td>
                             <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea;">${escapeHtml(t.display)}</a></td>
+                            <td style="${TRACK_TD}">${t.genre ? escapeHtml(t.genre) : '<span style="color:#9ca3af;">—</span>'}</td>
                             <td style="${TRACK_TD}"><strong>${t.plays}</strong></td></tr>`;
                     });
                     html += `</tbody></table>`;
