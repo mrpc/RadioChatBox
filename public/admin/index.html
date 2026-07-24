@@ -1600,9 +1600,14 @@
                                     <span style="color: #6b7280; margin-left: 10px;">as <strong id="impersonate-as-name"></strong></span>
                                     <div id="impersonate-as-info" style="margin-top: 8px; font-size: 13px; color: #6b7280;"></div>
                                 </div>
-                                <button class="btn" onclick="selectSender(currentImpersonateAs, currentSender)" style="background: #10b981; padding: 6px 12px; font-size: 13px;">
-                                    🔄 Refresh
-                                </button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="impersonate-block-btn" class="btn" onclick="toggleImpersonateBlock()" style="background: #ef4444; padding: 6px 12px; font-size: 13px; display: none;">
+                                        🚫 Block
+                                    </button>
+                                    <button class="btn" onclick="selectSender(currentImpersonateAs, currentSender)" style="background: #10b981; padding: 6px 12px; font-size: 13px;">
+                                        🔄 Refresh
+                                    </button>
+                                </div>
                             </div>
                             
                             <div id="impersonate-messages" style="display: flex; flex-direction: column; min-height: 400px; max-height: 500px; overflow-y: auto; background: #ffffff; padding: 20px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #e5e7eb;">
@@ -6204,6 +6209,47 @@
             return hex(md51(string));
         }
 
+        async function loadImpersonateBlockState(fakeUser, senderUsername) {
+            const btn = document.getElementById('impersonate-block-btn');
+            if (!btn) return;
+            btn.style.display = 'none';
+            try {
+                const resp = await fetch(`/api/admin/impersonate-block.php?impersonate_as=${encodeURIComponent(fakeUser)}&to_username=${encodeURIComponent(senderUsername)}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    btn.dataset.action = data.i_blocked ? 'unblock' : 'block';
+                    btn.textContent = data.i_blocked ? '✅ Unblock' : '🚫 Block';
+                    btn.style.background = data.i_blocked ? '#10b981' : '#ef4444';
+                    btn.style.display = 'inline-block';
+                }
+            } catch (e) {
+                // Non-fatal: leave the button hidden.
+            }
+        }
+
+        async function toggleImpersonateBlock() {
+            const btn = document.getElementById('impersonate-block-btn');
+            if (!btn || !currentImpersonateAs || !currentSender) return;
+            const action = btn.dataset.action === 'unblock' ? 'unblock' : 'block';
+            if (action === 'block' && !confirm(`Block ${currentSender}? As "${currentImpersonateAs}", this user will no longer be able to send DMs to this fake user.`)) {
+                return;
+            }
+            try {
+                const resp = await fetch('/api/admin/impersonate-block.php', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, impersonate_as: currentImpersonateAs, to_username: currentSender })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                loadImpersonateBlockState(currentImpersonateAs, currentSender);
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
         async function selectSender(fakeUser, senderUsername) {
             currentSender = senderUsername;
             document.getElementById('impersonate-current-sender').textContent = senderUsername;
@@ -6235,6 +6281,9 @@
             }
             
             document.getElementById('impersonate-selected-conversation').style.display = 'block';
+
+            // Load block state for this conversation (fake user ↔ real user).
+            loadImpersonateBlockState(fakeUser, senderUsername);
 
             // Generate fake session ID using MD5 to match the format in private-message.php
             const fakeSessionId = 'fake_' + md5(fakeUser);

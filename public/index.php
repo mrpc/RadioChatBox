@@ -221,6 +221,7 @@
             <div id="messages-container">
                 <div id="private-chat-header" style="display: none;">
                     <span id="private-chat-with"></span>
+                    <button id="block-user-btn" class="btn btn-block" style="display: none;">🚫 Block</button>
                     <button id="back-to-public" class="btn">← Back to Public Chat</button>
                 </div>
                 <div id="messages"></div>

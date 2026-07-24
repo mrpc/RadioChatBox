@@ -149,9 +149,31 @@ class CleanupService
             'stale_sessions' => $this->cleanupStaleSessions(),
             'deleted_messages' => $this->purgeOldDeletedMessages(30),
             'expired_photos' => $this->cleanupExpiredPhotos(),
+            'expired_dm_blocks' => $this->cleanupExpiredDmBlocks(),
         ];
-        
+
         return $results;
+    }
+
+    /**
+     * Remove expired DM blocks (guest-created blocks past their expires_at).
+     */
+    public function cleanupExpiredDmBlocks(): int
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'DELETE FROM dm_blocks WHERE expires_at IS NOT NULL AND expires_at < NOW()'
+            );
+            $stmt->execute();
+            $count = $stmt->rowCount();
+            if ($count > 0) {
+                error_log("Cleanup: Removed {$count} expired DM blocks");
+            }
+            return $count;
+        } catch (\PDOException $e) {
+            error_log("Failed to cleanup expired DM blocks: " . $e->getMessage());
+            return 0;
+        }
     }
 
     /**

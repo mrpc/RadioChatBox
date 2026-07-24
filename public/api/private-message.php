@@ -54,7 +54,17 @@ try {
         // Sanitize usernames
         $fromUsername = MessageFilter::sanitizeForOutput(trim($fromUsername));
         $toUsername = MessageFilter::sanitizeForOutput(trim($toUsername));
-        
+
+        // Enforce DM blocks (mutual): if either user has blocked the other,
+        // reject the message. The block is never stored/published, so the
+        // recipient never receives it.
+        $blockService = new \RadioChatBox\BlockService();
+        if ($blockService->isBlockedBetween($fromUsername, $toUsername)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'You cannot send messages to this user.']);
+            exit;
+        }
+
         // Check if recipient has a live session (most recent one if multiple devices)
         $stmt = $db->prepare("SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1");
         $stmt->execute([$toUsername]);
