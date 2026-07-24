@@ -56,6 +56,13 @@ try {
             }
             $service->enrichTrack($trackId);
             echo json_encode(['success' => true]);
+        } elseif ($action === 'enrich-album') {
+            $albumId = (int)($input['album_id'] ?? 0);
+            if ($albumId <= 0) {
+                throw new InvalidArgumentException('album_id is required');
+            }
+            $service->enrichAlbum($albumId);
+            echo json_encode(['success' => true]);
         } elseif ($action === 'bulk-genre-tracks') {
             $ids = $input['track_ids'] ?? [];
             if (!is_array($ids) || empty($ids)) {

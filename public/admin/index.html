@@ -3303,6 +3303,19 @@
             } catch (e) { alert(e.message); }
         }
 
+        async function enrichAlbumNow(albumId) {
+            const content = document.getElementById('track-stats-content');
+            const err = document.getElementById('track-stats-error');
+            if (err) err.innerHTML = '';
+            if (content) content.innerHTML = '⏳ Fetching album metadata from the music API…';
+            try {
+                await trackStatsPost({ action: 'enrich-album', album_id: albumId });
+            } catch (e) {
+                if (err) err.innerHTML = `<div style="color:#ef4444;">Re-fetch failed: ${escapeHtml(e.message)}</div>`;
+            }
+            showAlbumHistory(albumId);
+        }
+
         async function loadTrackArtists() {
             const content = document.getElementById('track-stats-content');
             const err = document.getElementById('track-stats-error');
@@ -3558,16 +3571,18 @@
         }
 
         async function applyBulkGenre() {
+            const countEl = document.getElementById('ts-select-count');
+            const setStatus = (msg, color) => { if (countEl) { countEl.textContent = msg; countEl.style.color = color || '#6b7280'; } };
             const ids = Array.from(document.querySelectorAll('#track-stats-content .ts-track-select:checked'))
                 .map(el => parseInt(el.value, 10)).filter(Boolean);
-            if (ids.length === 0) { alert('Select at least one track first.'); return; }
+            if (ids.length === 0) { setStatus('Select at least one track first.', '#ef4444'); return; }
             const genre = (document.getElementById('bulk-genre-value') || {}).value || '';
-            if (!confirm(`Set genre "${genre || '(none)'}" for ${ids.length} selected track(s)?`)) return;
+            setStatus('Applying…');
             try {
                 const r = await trackStatsPost({ action: 'bulk-genre-tracks', track_ids: ids, genre: genre });
-                alert(`Updated ${r.updated} track(s).`);
+                setStatus(`Updated ${r.updated} track(s).`, '#10b981');
                 reRenderCurrentTrackStats();
-            } catch (e) { alert(e.message); }
+            } catch (e) { setStatus(e.message, '#ef4444'); }
         }
 
         async function showGenreDetail(genre) {
@@ -3628,7 +3643,10 @@
                 if (al.id) {
                     const inpS = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;';
                     html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:16px;">
-                        <strong style="display:block;margin-bottom:10px;">Edit album</strong>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <strong>Edit album</strong>
+                            <button class="btn" onclick="enrichAlbumNow(${parseInt(al.id, 10)})" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">↻ Re-fetch from API</button>
+                        </div>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
                             <label>Genre<br>${buildGenreSelect('edit-album-genre', al.genre)}</label>
                             <label>Release date<br><input id="edit-album-release" value="${escapeHtml(al.release_date || '')}" placeholder="YYYY-MM-DD" style="${inpS}width:100%;"></label>

@@ -587,6 +587,70 @@ class TrackStatsService
     }
 
     /**
+     * Re-fetch album metadata (cover, genre, release date, link) from the
+     * external API and persist any values we didn't already have. Existing
+     * cover/genre/release/link are kept; only empty fields are filled.
+     */
+    public function enrichAlbum(int $albumId): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT al.id, al.title, al.cover_file, al.release_date, al.genre,
+                        al.external_url, al.external_id, ar.name AS artist_name
+                 FROM albums al LEFT JOIN artists ar ON al.artist_id = ar.id
+                 WHERE al.id = :id'
+            );
+            $stmt->execute(['id' => $albumId]);
+            $al = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$al) {
+                return false;
+            }
+
+            $meta = (new ArtworkService())->getAlbumMeta(
+                (string)($al['artist_name'] ?? ''),
+                (string)($al['title'] ?? ''),
+                $al['external_id'] ?? null
+            );
+
+            // Fill only what's missing; downloaded cover always refreshed if we got one.
+            $sets = [];
+            $params = ['id' => $albumId];
+            if (!empty($meta['cover'])) {
+                $sets[] = 'cover_file = :cover';
+                $params['cover'] = $meta['cover'];
+            }
+            if (empty($al['genre']) && !empty($meta['genre'])) {
+                $sets[] = 'genre = :genre';
+                $params['genre'] = $meta['genre'];
+            }
+            if (empty($al['release_date']) && !empty($meta['release_date'])) {
+                $sets[] = 'release_date = :rd';
+                $params['rd'] = $meta['release_date'];
+            }
+            if (empty($al['external_url']) && !empty($meta['external_url'])) {
+                $sets[] = 'external_url = :url';
+                $params['url'] = $meta['external_url'];
+            }
+            if (empty($al['external_id']) && !empty($meta['external_id'])) {
+                $sets[] = 'external_id = :eid';
+                $params['eid'] = $meta['external_id'];
+                $sets[] = 'source = :src';
+                $params['src'] = $meta['source'] ?? 'deezer';
+            }
+            if (!$sets) {
+                return true;
+            }
+            $sets[] = 'updated_at = NOW()';
+            $this->pdo->prepare('UPDATE albums SET ' . implode(', ', $sets) . ' WHERE id = :id')
+                ->execute($params);
+            return true;
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::enrichAlbum failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Make sure an artist has a stored image: if missing, look it up once and
      * persist it so it appears in the lists (not only the live detail view).
      * Returns the stored/looked-up image path or null.

@@ -221,6 +221,70 @@ class ArtworkService
         return $out;
     }
 
+    /**
+     * Look up album-level metadata (cover, genre, release date, link) from
+     * Deezer. Uses a known Deezer album id when available, otherwise searches
+     * by artist + album title.
+     *
+     * @return array{cover:?string, cover_thumb:?string, genre:?string,
+     *               release_date:?string, external_url:?string,
+     *               external_id:?string, source:?string}
+     */
+    public function getAlbumMeta(string $artist, string $albumTitle, ?string $albumId = null): array
+    {
+        $artist = trim($artist);
+        $albumTitle = trim($albumTitle);
+        $out = [
+            'cover' => null, 'cover_thumb' => null, 'genre' => null,
+            'release_date' => null, 'external_url' => null,
+            'external_id' => null, 'source' => null,
+        ];
+
+        // Resolve a Deezer album id: reuse the stored one, else search.
+        $id = ($albumId !== null && $albumId !== '') ? $albumId : null;
+        if ($id === null && $albumTitle !== '') {
+            $adv = 'album:"' . $albumTitle . '"';
+            if ($artist !== '') {
+                $adv = 'artist:"' . $artist . '" ' . $adv;
+            }
+            $json = $this->httpGet('https://api.deezer.com/search/album?limit=1&q=' . rawurlencode($adv));
+            if ($json !== null) {
+                $d = json_decode($json, true);
+                $id = isset($d['data'][0]['id']) ? (string)$d['data'][0]['id'] : null;
+            }
+        }
+        if ($id === null) {
+            return $out;
+        }
+
+        $aj = $this->httpGet('https://api.deezer.com/album/' . rawurlencode((string)$id));
+        if ($aj === null) {
+            return $out;
+        }
+        $ad = json_decode($aj, true);
+        if (!is_array($ad) || isset($ad['error'])) {
+            return $out;
+        }
+
+        $out['source'] = 'deezer';
+        $out['external_id'] = (string)$id;
+        $out['external_url'] = $ad['link'] ?? null;
+        $rd = $ad['release_date'] ?? null;
+        if (is_string($rd) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rd) && strpos($rd, '0000') !== 0) {
+            $out['release_date'] = $rd;
+        }
+        $out['genre'] = $ad['genres']['data'][0]['name'] ?? null;
+
+        $coverUrl = $ad['cover_xl'] ?? $ad['cover_big'] ?? null;
+        if ($coverUrl) {
+            $c = $this->downloadImage($coverUrl, md5('album:' . mb_strtolower($id . '|' . $albumTitle)));
+            $out['cover'] = $c['full'];
+            $out['cover_thumb'] = $c['thumb'];
+        }
+
+        return $out;
+    }
+
     private function lookupAndStore(string $artist, string $title, string $query): array
     {
         $coverUrl = null;
