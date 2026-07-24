@@ -44,11 +44,13 @@ try {
         // Get IP address for violation tracking
         $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         
-        // Filter message for private chat (blocks dangerous content and blacklisted URLs)
+        // Filter message for private chat (blocks dangerous content and blacklisted URLs).
+        // NOTE: store the RAW (unescaped) text — like public messages — because
+        // every renderer HTML-escapes at output time. Escaping here too caused
+        // double-escaping (e.g. " -> &quot;).
         if (!empty($message)) {
             $filterResult = MessageFilter::filterPrivateMessage($message, $ipAddress);
-            $message = $filterResult['filtered'];
-            $message = MessageFilter::sanitizeForOutput(trim($message));
+            $message = trim($filterResult['filtered']);
         }
         
         // Sanitize usernames

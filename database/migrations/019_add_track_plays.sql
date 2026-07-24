@@ -1,23 +1,38 @@
 -- Migration 019: Add tracks + track_plays tables
 -- Description: Normalized radio play history. `tracks` holds each unique track
 --              once (keyed by its display string); `track_plays` records every
---              time it played (one row per detected track change). This avoids
---              repeating the title/artist on every play and makes popularity
---              stats and per-track lookups clean.
+--              play (one row per detected track change).
 -- Date: 2026-07-24
+--
+-- Self-healing: this migration is safe to re-run and repairs a `tracks` table
+-- that was created by an earlier/partial run missing columns (ADD COLUMN IF
+-- NOT EXISTS fills in anything absent).
 
 CREATE TABLE IF NOT EXISTS tracks (
     id SERIAL PRIMARY KEY,
     artist VARCHAR(300),
     title VARCHAR(300),
-    -- Normalized "Artist - Title" string as shown by the stream. Unique key.
-    display VARCHAR(500) NOT NULL,
+    display VARCHAR(500),
     first_played_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_played_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    -- All-time convenience counter (period stats use track_plays instead).
-    play_count INTEGER NOT NULL DEFAULT 0,
-    CONSTRAINT uq_tracks_display UNIQUE (display)
+    play_count INTEGER NOT NULL DEFAULT 0
 );
+
+-- Backfill any missing columns on an already-created tracks table.
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS artist VARCHAR(300);
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS title VARCHAR(300);
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS display VARCHAR(500);
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS first_played_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS last_played_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS play_count INTEGER NOT NULL DEFAULT 0;
+
+-- Unique key on display (grouping key). Added idempotently.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_tracks_display') THEN
+        ALTER TABLE tracks ADD CONSTRAINT uq_tracks_display UNIQUE (display);
+    END IF;
+END$$;
 
 CREATE TABLE IF NOT EXISTS track_plays (
     id SERIAL PRIMARY KEY,

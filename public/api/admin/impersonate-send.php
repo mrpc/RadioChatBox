@@ -108,9 +108,9 @@ try {
     // Filter message
     $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'admin';
     if (!empty($message)) {
+        // Store raw text; renderers escape at output (avoids double-escaping).
         $filterResult = MessageFilter::filterPrivateMessage($message, $ipAddress);
-        $message = $filterResult['filtered'];
-        $message = MessageFilter::sanitizeForOutput(trim($message));
+        $message = trim($filterResult['filtered']);
     }
     
     // Create a fake session ID for the fake user (consistent per fake user)
