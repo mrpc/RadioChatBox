@@ -19,12 +19,8 @@
  *   all          - Record snapshot AND run all aggregations
  * 
  * Example crontab entries:
- *   # Record snapshot every 5 minutes
+ *   # Record snapshot every 5 minutes (also records the current radio track)
  *   *\/5 * * * * cd /path/to/radiochatbox && php stats-cron.php snapshot >> logs/stats-cron.log 2>&1
- *
- *   # Record the current radio track every 2 minutes (keeps play history
- *   # complete even with no chat traffic)
- *   *\/2 * * * * cd /path/to/radiochatbox && php stats-cron.php track >> logs/stats-cron.log 2>&1
  *   
  *   # Aggregate hourly at 5 minutes past each hour
  *   5 * * * * cd /path/to/radiochatbox && php stats-cron.php hourly >> logs/stats-cron.log 2>&1
@@ -94,12 +90,8 @@ try {
         case 'snapshot':
             $statsService->recordSnapshot(true); // Force recording even if auto-record disabled
             logMessage('✓ Snapshot recorded successfully');
-            recordCurrentTrack();
-            break;
-
-        case 'track':
-            // Record the current radio track (run frequently, e.g. every 1-2 min,
-            // so play history is captured even with no chat traffic).
+            // Also record the current radio track, so play history stays complete
+            // even with no chat traffic — no separate cron entry needed.
             recordCurrentTrack();
             break;
             
