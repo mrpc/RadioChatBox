@@ -722,15 +722,20 @@ class TrackStatsService
     public function getAllArtists(): array
     {
         try {
+            // Derived from tracks.artist so it includes every artist that has
+            // played (even legacy tracks not yet linked to an artists row),
+            // matching the Top Artists list. Image comes from the linked row.
             $stmt = $this->pdo->query(
-                'SELECT ar.name, ar.image_file,
+                'SELECT t.artist AS name,
+                        MAX(ar.image_file)   AS image_file,
                         COUNT(DISTINCT t.id) AS tracks,
                         COUNT(tp.id)         AS plays
-                 FROM artists ar
-                 LEFT JOIN tracks t ON t.artist_id = ar.id
+                 FROM tracks t
+                 LEFT JOIN artists ar ON t.artist_id = ar.id
                  LEFT JOIN track_plays tp ON tp.track_id = t.id
-                 GROUP BY ar.id, ar.name, ar.image_file
-                 ORDER BY LOWER(ar.name) ASC'
+                 WHERE t.artist IS NOT NULL AND t.artist <> \'\'
+                 GROUP BY t.artist
+                 ORDER BY LOWER(t.artist) ASC'
             );
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
