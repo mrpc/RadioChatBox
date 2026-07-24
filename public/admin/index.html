@@ -2929,6 +2929,49 @@
         // ===================== Track Stats tab =====================
         let trackStatsView = 'summary';
         let currentArtistName = ''; // current artist in the detail view (avoids embedding names in onclick)
+        let trackDbGenres = null;   // distinct genres already in the DB (cached)
+
+        // Standard ID3v1 + Winamp-extension genre list (the "mp3 protocol" genres).
+        const ID3V1_GENRES = [
+            'Blues','Classic Rock','Country','Dance','Disco','Funk','Grunge','Hip-Hop','Jazz','Metal',
+            'New Age','Oldies','Other','Pop','R&B','Rap','Reggae','Rock','Techno','Industrial',
+            'Alternative','Ska','Death Metal','Pranks','Soundtrack','Euro-Techno','Ambient','Trip-Hop','Vocal','Jazz+Funk',
+            'Fusion','Trance','Classical','Instrumental','Acid','House','Game','Sound Clip','Gospel','Noise',
+            'Alternative Rock','Bass','Soul','Punk','Space','Meditative','Instrumental Pop','Instrumental Rock','Ethnic','Gothic',
+            'Darkwave','Techno-Industrial','Electronic','Pop-Folk','Eurodance','Dream','Southern Rock','Comedy','Cult','Gangsta',
+            'Top 40','Christian Rap','Pop/Funk','Jungle','Native US','Cabaret','New Wave','Psychedelic','Rave','Showtunes',
+            'Trailer','Lo-Fi','Tribal','Acid Punk','Acid Jazz','Polka','Retro','Musical','Rock & Roll','Hard Rock',
+            'Folk','Folk-Rock','National Folk','Swing','Fast Fusion','Bebop','Latin','Revival','Celtic','Bluegrass',
+            'Avantgarde','Gothic Rock','Progressive Rock','Psychedelic Rock','Symphonic Rock','Slow Rock','Big Band','Chorus','Easy Listening','Acoustic',
+            'Humour','Speech','Chanson','Opera','Chamber Music','Sonata','Symphony','Booty Bass','Primus','Porn Groove',
+            'Satire','Slow Jam','Club','Tango','Samba','Folklore','Ballad','Power Ballad','Rhythmic Soul','Freestyle',
+            'Duet','Punk Rock','Drum Solo','A Cappella','Euro-House','Dance Hall','Goa','Drum & Bass','Club-House','Hardcore',
+            'Terror','Indie','BritPop','Negerpunk','Polsk Punk','Beat','Christian Gangsta Rap','Heavy Metal','Black Metal','Crossover',
+            'Contemporary Christian','Christian Rock','Merengue','Salsa','Thrash Metal','Anime','JPop','Synthpop'
+        ];
+
+        async function loadGenreOptions() {
+            try {
+                const data = await trackStatsFetch('mode=genre-list');
+                trackDbGenres = data.genres || [];
+            } catch (e) { trackDbGenres = trackDbGenres || []; }
+        }
+
+        // Searchable genre picker: a native <input> + <datalist> over the union
+        // of DB genres + the ID3v1 list. Type-to-search with zero dependencies,
+        // and still allows a custom genre.
+        function buildGenreSelect(id, current) {
+            const cur = (current || '').trim();
+            const set = new Set();
+            (trackDbGenres || []).forEach(g => { if (g) set.add(g); });
+            ID3V1_GENRES.forEach(g => set.add(g));
+            if (cur) set.add(cur);
+            const opts = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+            const listId = id + '-list';
+            let html = `<input id="${id}" list="${listId}" value="${escapeHtml(cur)}" placeholder="Search or type a genre…" autocomplete="off" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;width:100%;">`;
+            html += `<datalist id="${listId}">` + opts.map(g => `<option value="${escapeHtml(g)}"></option>`).join('') + `</datalist>`;
+            return html;
+        }
         let trackStatsInited = false;
 
         function initTrackStats() {
@@ -2936,6 +2979,7 @@
                 const d = document.getElementById('track-log-date');
                 if (d && !d.value) d.value = new Date().toISOString().slice(0, 10);
                 trackStatsInited = true;
+                loadGenreOptions(); // cache DB genres for the edit selects
             }
             switchTrackStatsView(trackStatsView);
         }
@@ -2999,7 +3043,7 @@
                 albums.forEach((a, i) => {
                     const cov = a.cover_file ? `<img src="${escapeHtml(a.cover_file)}" style="width:40px;height:40px;border-radius:4px;object-fit:cover;">` : '';
                     html += `<tr><td style="${TRACK_TD}">${i + 1}</td><td style="${TRACK_TD}">${cov}</td>
-                        <td style="${TRACK_TD}">${escapeHtml(a.title || '')}</td>
+                        <td style="${TRACK_TD}"><a href="#" onclick="showAlbumHistory(${parseInt(a.album_id,10)});return false;" style="color:#667eea;cursor:pointer;">${escapeHtml(a.title || '')}</a></td>
                         <td style="${TRACK_TD}">${escapeHtml(a.artist_name || '')}</td>
                         <td style="${TRACK_TD}"><strong>${a.plays}</strong></td><td style="${TRACK_TD}">${a.tracks}</td>
                         <td style="${TRACK_TD}">${escapeHtml(a.release_date || '-')}</td></tr>`;
@@ -3376,7 +3420,7 @@
                             <button class="btn" onclick="enrichArtistNow()" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">↻ Re-fetch from API</button>
                         </div>
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
-                            <label>Genre<br><input id="edit-artist-genre" value="${escapeHtml(ar.genre || '')}" style="${inpS}width:100%;"></label>
+                            <label>Genre<br>${buildGenreSelect('edit-artist-genre', ar.genre)}</label>
                             <label>External link<br><input id="edit-artist-url" value="${escapeHtml(ar.external_url || '')}" style="${inpS}width:100%;"></label>
                         </div>
                         <label style="display:block;margin-top:10px;"><input type="checkbox" id="edit-artist-excluded" ${ar.excluded_from_stats ? 'checked' : ''}> Exclude this artist from stats — still shown in the log</label>
@@ -3486,7 +3530,7 @@
                         <button class="btn" onclick="enrichTrackNow(${parseInt(trackId,10)})" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">↻ Re-fetch from API</button>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;">
-                        <label>Genre<br><input id="edit-track-genre" value="${escapeHtml(t.genre || '')}" style="${inpStyle}width:100%;"></label>
+                        <label>Genre<br>${buildGenreSelect('edit-track-genre', t.genre)}</label>
                         <label>Album<br><input id="edit-track-album" value="${escapeHtml(t.album_title || '')}" style="${inpStyle}width:100%;"></label>
                         <label>Release date<br><input id="edit-track-release" type="date" value="${escapeHtml(rel)}" style="${inpStyle}width:100%;"></label>
                         <label>External link (YouTube/Spotify…)<br><input id="edit-track-url" value="${escapeHtml(t.external_url || '')}" style="${inpStyle}width:100%;"></label>

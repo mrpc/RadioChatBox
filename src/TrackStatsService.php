@@ -718,6 +718,24 @@ class TrackStatsService
         ];
     }
 
+    /** Distinct genres already present in the database (tracks + albums). */
+    public function getGenreList(): array
+    {
+        try {
+            $stmt = $this->pdo->query(
+                "SELECT DISTINCT genre FROM (
+                     SELECT genre FROM tracks WHERE genre IS NOT NULL AND genre <> ''
+                     UNION
+                     SELECT genre FROM albums WHERE genre IS NOT NULL AND genre <> ''
+                 ) g ORDER BY genre ASC"
+            );
+            return $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::getGenreList failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
     /** Every artist, alphabetically, with all-time play/track counts. */
     public function getAllArtists(): array
     {

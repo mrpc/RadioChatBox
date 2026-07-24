@@ -155,6 +155,9 @@ try {
             'tracks' => $service->getArtistTracks($artist),
         ]);
 
+    } elseif ($mode === 'genre-list') {
+        echo json_encode(['success' => true, 'mode' => 'genre-list', 'genres' => $service->getGenreList()]);
+
     } elseif ($mode === 'all-artists') {
         echo json_encode([
             'success' => true,
