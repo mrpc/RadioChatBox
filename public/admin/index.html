@@ -5319,6 +5319,16 @@
                                    value="${escapeHtml(settings[keys.base_url] || '')}">
                             <small>Any OpenAI-compatible endpoint works — change it only for a proxy.</small>
                         </div>
+                        ${keys.admin_key ? `
+                        <div class="form-group">
+                            <label>Admin API Key (optional)</label>
+                            <input type="password" id="setting--${keys.admin_key}" placeholder="sk-admin-..." autocomplete="off"
+                                   value="${escapeHtml(settings[keys.admin_key] || '')}">
+                            <small>
+                                Only needed to read what was really spent: this provider reports no balance,
+                                and its costs endpoint refuses a project key. Not used for chat requests.
+                            </small>
+                        </div>` : ''}
                         <div class="form-group">
                             <label>Model</label>
                             <select id="setting--${keys.model}">
@@ -5359,8 +5369,8 @@
                             <small style="color: #6b7280;">This provider has no documented reasoning switch, so none is sent.</small>
                         </div>`}
                         <div class="form-group">
-                            <label>Remaining balance</label>
-                            <div id="bot-balance--${id}" style="font-size: 18px; font-weight: 700;">${provider.supports_balance ? '—' : '<span style="font-size: 13px; font-weight: 400; color: #6b7280;">Not reported by this provider — check its own dashboard</span>'}</div>
+                            <label>${provider.supports_balance ? 'Remaining balance' : 'Spent (last 7 days)'}</label>
+                            <div id="bot-balance--${id}" style="font-size: 18px; font-weight: 700;">—</div>
                         </div>
                     </div>`;
             }).join('');
@@ -5665,7 +5675,9 @@
                                 ${tokens.toLocaleString()} tokens · ${Number(w.calls || 0)} call(s)${reasoning > 0 ? ` · ${reasoning.toLocaleString()} reasoning` : ''}
                                 ${w.avg_duration_ms ? ` · avg ${Math.round(w.avg_duration_ms)}ms` : ''}
                             </div>
-                            ${real ? `<div style="font-size: 12px; margin-top: 4px; color: #2563eb;" title="Measured from ${real.readings} balance readings between ${new Date(real.from).toLocaleString()} and ${new Date(real.to).toLocaleString()}">
+                            ${real ? `<div style="font-size: 12px; margin-top: 4px; color: #2563eb;" title="${real.source === 'provider'
+                                ? 'Reported by the provider itself'
+                                : `Measured from ${real.readings} balance readings between ${new Date(real.from).toLocaleString()} and ${new Date(real.to).toLocaleString()}`}">
                                 actually spent: ${formatMoney(real.spent, real.currency)}${real.topped_up > 0 ? ` (+${formatMoney(real.topped_up, real.currency)} topped up)` : ''}
                             </div>` : ''}
                             ${uncosted > 0 ? `<div style="font-size: 12px; margin-top: 4px; color: #b45309;">
@@ -5696,6 +5708,8 @@
                 const data = await botActivityFetch({ view: 'threads' });
                 if (!data.success) return;
 
+                const threshold = Number(data.insult_threshold || 0);
+
                 if (!data.threads.length) {
                     box.innerHTML = '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
                     return;
@@ -5720,13 +5734,19 @@
                                 else if (t.farewell_sent_at) { state = '🚪 ended'; color = '#6b7280'; }
                                 if (t.last_error) { state += ' · error'; color = '#b91c1c'; }
 
+                                // Strikes are worth seeing before the block, not only after.
+                                const strikes = Number(t.insult_count || 0);
+                                const strikeNote = strikes > 0 && !t.blocked_at
+                                    ? `<br><span style="font-size:11px;color:#b45309;" title="The bot blocks this user at ${threshold}">⚠️ ${strikes}/${threshold} abusive</span>`
+                                    : '';
+
                                 return `
                                     <tr>
                                         <td><strong>${escapeHtml(t.nickname)}</strong></td>
                                         <td>${escapeHtml(t.peer_username)}</td>
                                         <td>${t.messages_sent}/${t.max_messages}</td>
                                         <td>${t.message_count}</td>
-                                        <td style="color: ${color};">${state}</td>
+                                        <td style="color: ${color};">${state}${strikeNote}</td>
                                         <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}</td>
                                         <td><button class="btn btn-secondary" onclick="openBotThread('${escapeHtml(t.nickname).replace(/'/g, "\\'")}', '${escapeHtml(t.peer_username).replace(/'/g, "\\'")}')">View</button></td>
                                     </tr>`;
@@ -5771,7 +5791,7 @@
                             ? `🚫 the bot blocked this user${state.insult_count ? ' after ' + state.insult_count + ' abusive message(s)' : ''}`
                             : (state.is_ignored ? '🙈 ignored from the start — the bot never replies here'
                             : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active')))}</span>
-                        ${state.insult_count && !state.blocked_at ? `<span style="color:#b45309;">${state.insult_count} abusive msg(s)</span>` : ''}
+                        ${state.insult_count && !state.blocked_at ? `<span style="color:#b45309;" title="The bot blocks at ${data.insult_threshold}">⚠️ ${state.insult_count}/${data.insult_threshold} abusive message(s)</span>` : ''}
                         ${state.last_error ? `<span style="color:#b91c1c;">error: ${escapeHtml(state.last_error)}</span>` : ''}
                     </div>
                     ${state.summary ? `<div style="padding: 10px 12px; background: #f9fafb; border-left: 3px solid #6366f1; border-radius: 6px; font-size: 13px; margin-bottom: 12px;"><strong>📝 Remembers:</strong> ${escapeHtml(state.summary)}</div>` : ''}
@@ -6732,9 +6752,9 @@
         async function loadBotBalanceField() {
             const small = 'font-size: 13px; font-weight: 400;';
 
-            await Promise.all(Object.entries(botProviders).map(async ([id, provider]) => {
+            await Promise.all(Object.keys(botProviders).map(async id => {
                 const box = document.getElementById('bot-balance--' + id);
-                if (!box || !provider.supports_balance) return;
+                if (!box) return;
 
                 try {
                     const data = await botActivityFetch({ view: 'balance', provider: id });
@@ -6743,15 +6763,31 @@
                         box.innerHTML = `<span style="${small} color: #6b7280;">No API key configured</span>`;
                         return;
                     }
-                    if (!data.balance) {
+
+                    // A balance where there is one; otherwise what the provider says
+                    // was actually spent, which needs its admin key.
+                    if (data.balance) {
+                        box.innerHTML = `${formatMoney(data.balance.total, data.balance.currency)}
+                            <span style="${small} color: ${data.balance.is_available ? '#10b981' : '#b91c1c'};">
+                                ${data.balance.is_available ? '✓ sufficient' : '⚠️ too low - calls will fail'}
+                            </span>`;
+                        return;
+                    }
+
+                    if (data.supports_balance) {
                         box.innerHTML = `<span style="${small} color: #b45309;">Could not read the balance from the provider</span>`;
                         return;
                     }
 
-                    box.innerHTML = `${formatMoney(data.balance.total, data.balance.currency)}
-                        <span style="${small} color: ${data.balance.is_available ? '#10b981' : '#b91c1c'};">
-                            ${data.balance.is_available ? '✓ sufficient' : '⚠️ too low - calls will fail'}
-                        </span>`;
+                    if (data.costs) {
+                        box.innerHTML = `${formatMoney(data.costs.spent, data.costs.currency)}
+                            <span style="${small} color: #6b7280;">real spend, from the provider</span>`;
+                        return;
+                    }
+
+                    box.innerHTML = data.supports_costs && !data.has_admin_key
+                        ? `<span style="${small} color: #6b7280;">Add an admin key above to read real spend — this provider reports no balance</span>`
+                        : `<span style="${small} color: #b45309;">Could not read the spend from the provider</span>`;
                 } catch (error) {
                     box.innerHTML = `<span style="${small} color: #6b7280;">—</span>`;
                 }

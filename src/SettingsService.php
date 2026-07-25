@@ -73,6 +73,7 @@ class SettingsService
         'bot_openai_model',
         'bot_openai_temperature',
         'bot_openai_max_tokens',
+        'bot_openai_admin_key',
         'bot_llm_model',
         'bot_llm_temperature',
         'bot_llm_max_tokens',

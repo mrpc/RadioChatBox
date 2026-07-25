@@ -169,6 +169,93 @@ class LlmAccountTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Real spend where there is no balance
+    // ------------------------------------------------------------------
+
+    /**
+     * OpenAI exposes no credit balance, but GET /organization/costs reports what was
+     * really spent - so "no balance" must not mean "no real figure at all".
+     */
+    public function testAProviderWithoutABalanceReportsItsCostsInstead(): void
+    {
+        $account = $this->account(
+            [
+                '/organization/costs?start_time=X&bucket_width=1d&limit=7' => [
+                    'data' => [
+                        ['results' => [['amount' => ['value' => 1.25, 'currency' => 'usd']]]],
+                        ['results' => [['amount' => ['value' => 0.75, 'currency' => 'usd']]]],
+                    ],
+                ],
+            ],
+            ['bot_llm_provider' => 'openai', 'bot_openai_admin_key' => 'sk-admin-x'],
+            'openai'
+        );
+
+        $this->assertFalse($account->supportsBalance());
+        $this->assertTrue($account->supportsCosts());
+        $this->assertNull($account->balance(true), 'there is no balance endpoint to call');
+
+        $costs = $account->providerCosts(7 * 24);
+
+        $this->assertNotNull($costs);
+        $this->assertSame(2.0, round($costs['spent'], 6), 'every daily bucket counts');
+        $this->assertSame('USD', $costs['currency']);
+        $this->assertSame('provider', $costs['source']);
+    }
+
+    public function testCostsNeedTheAdminKeyRatherThanTheChatKey(): void
+    {
+        $account = $this->account(
+            ['/organization/costs' => ['data' => []]],
+            ['bot_llm_provider' => 'openai', 'bot_openai_api_key' => 'sk-project', 'bot_openai_admin_key' => ''],
+            'openai'
+        );
+
+        // The endpoint refuses a project key, so without an admin key we do not ask.
+        $this->assertFalse($account->hasAdminKey());
+        $this->assertNull($account->providerCosts(24));
+    }
+
+    public function testRealSpendFallsBackToTheProvidersOwnFigure(): void
+    {
+        $account = $this->account(
+            [
+                '/organization/costs?start_time=X&bucket_width=1d&limit=1' => [
+                    'data' => [['results' => [['amount' => ['value' => 0.4, 'currency' => 'usd']]]]],
+                ],
+            ],
+            ['bot_llm_provider' => 'openai', 'bot_openai_admin_key' => 'sk-admin-x'],
+            'openai'
+        );
+
+        $spend = $account->realSpend(24);
+
+        $this->assertNotNull($spend);
+        $this->assertSame(0.4, round($spend['spent'], 6));
+        $this->assertSame('provider', $spend['source']);
+        $this->assertSame(0.0, $spend['topped_up'], 'a costs report says nothing about top-ups');
+    }
+
+    public function testADeepSeekAccountStillUsesItsBalanceSnapshots(): void
+    {
+        $this->seedBalances([['5.00', 3], ['4.90', 1]]);
+
+        $spend = $this->account([])->realSpend(24);
+
+        $this->assertSame('balance', $spend['source']);
+        $this->assertSame(0.1, round($spend['spent'], 6));
+    }
+
+    public function testDeepSeekHasNoCostsEndpointToAsk(): void
+    {
+        $account = $this->account([]);
+
+        // It reports a balance instead, which is the better figure anyway.
+        $this->assertFalse($account->supportsCosts());
+        $this->assertNull($account->providerCosts(24));
+    }
+
+    // ------------------------------------------------------------------
     // Caching
     // ------------------------------------------------------------------
 
@@ -277,7 +364,7 @@ class LlmAccountTest extends TestCase
      * @param array<string,mixed> $responses path => response array or Throwable
      * @param array<string,string> $settingsOverrides
      */
-    private function account(array $responses, array $settingsOverrides = []): LlmAccount
+    private function account(array $responses, array $settingsOverrides = [], ?string $provider = null): LlmAccount
     {
         $settings = new class ($settingsOverrides) extends SettingsService {
             /** @param array<string,string> $overrides */
@@ -292,7 +379,11 @@ class LlmAccountTest extends TestCase
             }
         };
 
-        return new LlmAccount($settings, new StubAccountLlm($responses));
+        // The same stub answers the organisation endpoints, which in production use a
+        // separate admin credential.
+        $stub = new StubAccountLlm($responses);
+
+        return new LlmAccount($settings, $stub, $provider, $stub);
     }
 
     /**
@@ -331,6 +422,16 @@ class StubAccountLlm extends LlmService
         $this->calls[$path] = ($this->calls[$path] ?? 0) + 1;
 
         $response = $this->responses[$path] ?? null;
+
+        // Costs carry a start_time that moves with the clock, so match on the shape.
+        if ($response === null) {
+            foreach ($this->responses as $pattern => $canned) {
+                if (preg_replace('/start_time=\d+/', 'start_time=X', $path) === $pattern) {
+                    $response = $canned;
+                    break;
+                }
+            }
+        }
 
         if ($response instanceof \Throwable) {
             throw $response;

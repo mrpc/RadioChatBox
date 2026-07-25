@@ -45,6 +45,8 @@ class LlmProviders
             'models_path' => '/models',
             // Reports the remaining balance, so real spend needs no estimating.
             'balance_path' => '/user/balance',
+            'costs_path' => null,
+            'admin_key_setting' => null,
             'token_param' => 'max_tokens',
             // thinking:{type:disabled} is how v4-* reasoning is switched off.
             'reasoning_param' => 'thinking',
@@ -70,10 +72,16 @@ class LlmProviders
                 'max_tokens' => 'bot_openai_max_tokens',
                 // No documented reasoning switch, so there is nothing to configure.
                 'reasoning' => null,
+                // Costs need an organisation-level admin key (sk-admin-...), which
+                // is deliberately not the key used for chat requests.
+                'admin_key' => 'bot_openai_admin_key',
             ],
             'models_path' => '/models',
-            // No public balance endpoint: cost can only be the computed estimate.
+            // No endpoint returns the remaining credit, but GET /organization/costs
+            // returns real money spent - which is the figure that matters.
             'balance_path' => null,
+            'costs_path' => '/organization/costs',
+            'admin_key_setting' => 'bot_openai_admin_key',
             'token_param' => 'max_completion_tokens',
             // No documented switch we can rely on, so reasoning is left to the
             // model's own default rather than sending a parameter that may 400.
@@ -192,6 +200,20 @@ class LlmProviders
     public static function settingKey(string $provider, string $parameter): ?string
     {
         return self::settingKeys($provider)[$parameter] ?? null;
+    }
+
+    /**
+     * Whether this provider can report what was actually spent, and with which
+     * credentials. OpenAI exposes costs (not a balance) and only to an admin key.
+     */
+    public static function costsPath(string $provider): ?string
+    {
+        return self::config($provider)['costs_path'];
+    }
+
+    public static function adminKeySetting(string $provider): ?string
+    {
+        return self::config($provider)['admin_key_setting'];
     }
 
     /**

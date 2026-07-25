@@ -534,8 +534,19 @@ shows and without ever admitting it cannot see images.
 
 Two different numbers, and the difference matters:
 
-**Real money** comes from the provider, where it offers one: `GET /user/balance`
-(DeepSeek does, OpenAI does not - the panel says so instead of showing a failure). It is shown as
+**Real money** comes from the provider, in whichever form it offers:
+
+| | DeepSeek | OpenAI |
+|---|---|---|
+| Remaining balance | `GET /user/balance` | not exposed by any endpoint |
+| Actually spent | derived from balance readings | `GET /organization/costs` |
+| Credential | the chat key | an **admin key** (`sk-admin-...`), the costs endpoint refuses a project key |
+
+For DeepSeek the worker records a balance reading every hour and the drop between two
+of them is real spend. OpenAI publishes no credit balance at all, so instead its own
+costs endpoint is asked what was spent - which needs the optional
+**Admin API Key** field in its settings block, and is never used for chat requests.
+Without that key the panel says so rather than showing a failure. It is shown as
 "Balance left" in Bot Activity and in Settings → Bots → Cost, and the worker
 records a reading every hour (`bot_llm_balance`), so the drop between two readings
 gives "actually spent" for a window. A top-up is reported separately instead of

@@ -252,6 +252,11 @@ WHERE provider IS NULL AND model LIKE 'deepseek%';
 --                       and a fake user can point itself at any of them
 --                       (fake_users.bot_llm_provider / bot_llm_model) without being
 --                       affected by another provider's settings.
+--   bot_openai_admin_key
+--                       optional organisation admin key (sk-admin-...). OpenAI has
+--                       no balance endpoint, but GET /organization/costs reports what
+--                       was really spent - and only to an admin key, which is why it
+--                       is separate from the key used for chat requests.
 --   bot_llm_prices      unit prices per 1M tokens as JSON, because the provider
 --                       has no pricing endpoint (/models returns ids only). Empty
 --                       means the built-in table in src/LlmPricing.php; editing
@@ -282,6 +287,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_openai_model', 'gpt-5.4-mini'),
     ('bot_openai_temperature', '1.0'),
     ('bot_openai_max_tokens', '1000'),
+    ('bot_openai_admin_key', ''),
     ('bot_llm_model', 'deepseek-v4-flash'),
     ('bot_llm_temperature', '1.0'),
     ('bot_llm_max_tokens', '1000'),

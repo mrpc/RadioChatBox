@@ -80,6 +80,8 @@ try {
                 'api_key_url' => $providerConfig['api_key_url'],
                 'default_base_url' => $providerConfig['base_url'],
                 'supports_balance' => $providerConfig['balance_path'] !== null,
+                // Real spend, where the provider reports it (OpenAI, via an admin key).
+                'supports_costs' => $providerConfig['costs_path'] !== null,
             ];
         }
         $settings['bot_providers'] = $providers;

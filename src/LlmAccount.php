@@ -26,6 +26,7 @@ class LlmAccount
 {
     public const BALANCE_TTL = 300;
     public const MODELS_TTL = 21600;
+    public const COSTS_TTL = 600;
 
     /** How often the worker records a balance snapshot. */
     public const SNAPSHOT_INTERVAL = 3600;
@@ -33,15 +34,31 @@ class LlmAccount
     private SettingsService $settings;
     private LlmService $llm;
     private string $provider;
+    private ?LlmService $adminLlm = null;
     /** @var array<string,mixed> */
     private array $providerConfig;
     private ?\Redis $redis = null;
 
-    public function __construct(?SettingsService $settings = null, ?LlmService $llm = null, ?string $provider = null)
-    {
+    /**
+     * @param LlmService|null $llm      Client for the public endpoints
+     * @param LlmService|null $adminLlm Client for the organisation endpoints, which
+     *                                  need a different credential (see adminClient())
+     */
+    public function __construct(
+        ?SettingsService $settings = null,
+        ?LlmService $llm = null,
+        ?string $provider = null,
+        ?LlmService $adminLlm = null
+    ) {
+        $this->adminLlm = $adminLlm;
+
         $this->settings = $settings ?? new SettingsService();
         $this->llm = $llm ?? LlmService::fromSettings($this->settings, $provider);
-        $this->provider = $this->llm->getProvider();
+        // An explicit choice wins: the caller asked about a specific provider, which
+        // may not be the one an injected client happens to be built for.
+        $this->provider = $provider !== null
+            ? LlmProviders::resolve($provider, $this->settings)
+            : $this->llm->getProvider();
         $this->providerConfig = LlmProviders::config($this->provider);
 
         try {
@@ -69,6 +86,107 @@ class LlmAccount
     public function supportsBalance(): bool
     {
         return $this->providerConfig['balance_path'] !== null;
+    }
+
+    /**
+     * Whether this provider can report what was actually spent. OpenAI can
+     * (GET /organization/costs) even though it reports no balance - but only to an
+     * organisation admin key, which is a different credential from the chat key.
+     */
+    public function supportsCosts(): bool
+    {
+        return LlmProviders::costsPath($this->provider) !== null;
+    }
+
+    public function hasAdminKey(): bool
+    {
+        $setting = LlmProviders::adminKeySetting($this->provider);
+
+        return $setting !== null && trim((string) $this->settings->get($setting, '')) !== '';
+    }
+
+    /**
+     * Real money spent over the last $hours, straight from the provider's own
+     * accounting rather than from our unit prices.
+     *
+     * Returns null when the provider has no such endpoint, no admin key is
+     * configured, or the window is shorter than the smallest bucket the API offers
+     * (a day) - a partial answer here would read as "cheaper than it is".
+     *
+     * @return array{spent:float,currency:string,days:int,source:string}|null
+     */
+    public function providerCosts(int $hours = 24): ?array
+    {
+        if (!$this->supportsCosts() || !$this->hasAdminKey()) {
+            return null;
+        }
+
+        $days = (int) ceil(max(1, $hours) / 24);
+        $key = 'llm:costs:' . $this->provider . ':' . $days;
+
+        $cached = $this->cacheGet($key);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        // Buckets are daily, so ask for whole days back from midnight-ish and let the
+        // API decide the boundaries.
+        $startTime = time() - ($days * 86400);
+        $path = LlmProviders::costsPath($this->provider)
+            . '?start_time=' . $startTime
+            . '&bucket_width=1d&limit=' . min(180, max(1, $days));
+
+        try {
+            $response = $this->adminClient()->get($path);
+        } catch (\Throwable $e) {
+            error_log('LlmAccount::providerCosts failed: ' . $e->getMessage());
+
+            return null;
+        }
+
+        $spent = 0.0;
+        $currency = LlmPricing::CURRENCY;
+
+        foreach ($response['data'] ?? [] as $bucket) {
+            foreach ($bucket['results'] ?? [] as $result) {
+                $amount = $result['amount'] ?? null;
+                if (!is_array($amount)) {
+                    continue;
+                }
+                $spent += (float) ($amount['value'] ?? 0);
+                $currency = strtoupper((string) ($amount['currency'] ?? $currency));
+            }
+        }
+
+        $costs = [
+            'spent' => $spent,
+            'currency' => $currency,
+            'days' => $days,
+            'source' => 'provider',
+        ];
+
+        $this->cacheSet($key, $costs, self::COSTS_TTL);
+
+        return $costs;
+    }
+
+    /**
+     * A client authenticated with the organisation admin key, for the endpoints that
+     * refuse a project key.
+     */
+    private function adminClient(): LlmService
+    {
+        if ($this->adminLlm !== null) {
+            return $this->adminLlm;
+        }
+
+        $setting = (string) LlmProviders::adminKeySetting($this->provider);
+
+        return new LlmService([
+            'provider' => $this->provider,
+            'api_key' => (string) $this->settings->get($setting, ''),
+            'base_url' => (string) $this->settings->get(LlmProviders::baseUrlSetting($this->provider), ''),
+        ]);
     }
 
     /**
@@ -254,6 +372,21 @@ class LlmAccount
      */
     public function realSpend(int $hours = 24): ?array
     {
+        // A provider that reports costs itself beats anything we can derive.
+        if (!$this->supportsBalance()) {
+            $costs = $this->providerCosts($hours);
+
+            return $costs === null ? null : [
+                'spent' => $costs['spent'],
+                'topped_up' => 0.0,
+                'currency' => $costs['currency'],
+                'from' => '',
+                'to' => '',
+                'readings' => 0,
+                'source' => 'provider',
+            ];
+        }
+
         try {
             $stmt = Database::getPDO()->prepare(
                 'SELECT created_at, currency, total_balance
@@ -296,6 +429,7 @@ class LlmAccount
             'from' => (string) $rows[0]['created_at'],
             'to' => (string) $rows[count($rows) - 1]['created_at'],
             'readings' => count($rows),
+            'source' => 'balance',
         ];
     }
 
