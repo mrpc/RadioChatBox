@@ -61,6 +61,7 @@ try {
         'bot_custom_prompt',
         'bot_farewell_messages',
         'bot_max_messages',
+        'bot_ignore_chance',
         'bot_typing_seconds_per_word',
         'bot_llm_provider',
         'bot_llm_model',

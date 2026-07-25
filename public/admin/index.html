@@ -1805,6 +1805,11 @@
                                     <input type="number" id="fake-bot-typing-speed" min="0" max="10" step="0.1" placeholder="global">
                                     <small style="color: #6b7280;">Empty = use the global setting.</small>
                                 </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label>Ignores new chats (%)</label>
+                                    <input type="number" id="fake-bot-ignore-chance" min="0" max="100" placeholder="global">
+                                    <small style="color: #6b7280;">Raise it for a bot that should look sought-after.</small>
+                                </div>
                             </div>
 
                             <div class="form-group">
@@ -2417,6 +2422,15 @@
                             <label>Message limit per conversation</label>
                             <input type="number" id="setting-bot-max-messages" min="0" max="100" placeholder="4">
                             <small>After this many bot messages, it writes a closing message and stops.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Ignore new conversations (%)</label>
+                            <input type="number" id="setting-bot-ignore-chance" min="0" max="100" placeholder="30">
+                            <small>
+                                Nobody answers every stranger, and a bot that always replies is a tell.
+                                Decided once, on the first message, and kept — a bot never goes quiet
+                                mid-conversation. 0 = always reply.
+                            </small>
                         </div>
                         <div class="form-group">
                             <label>History sent as context (messages)</label>
@@ -5691,6 +5705,7 @@
                                 let state = '🤖 replying';
                                 let color = '#4338ca';
                                 if (!t.bot_enabled) { state = 'bot off'; color = '#6b7280'; }
+                                else if (t.is_ignored) { state = '🙈 ignored from the start'; color = '#6b7280'; }
                                 else if (t.is_taken_over) { state = `👤 taken over${t.taken_over_by ? ' by ' + escapeHtml(t.taken_over_by) : ''}`; color = '#b45309'; }
                                 else if (t.farewell_sent_at) { state = '🚪 ended'; color = '#6b7280'; }
                                 if (t.last_error) { state += ' · error'; color = '#b91c1c'; }
@@ -5742,7 +5757,7 @@
                     <h2>${escapeHtml(fakeUser)} ↔ ${escapeHtml(peer)}</h2>
                     <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4b5563; margin-bottom: 12px;">
                         <span>Budget: <strong>${state.messages_sent ?? 0}/${state.max_messages ?? '-'}</strong></span>
-                        <span>${state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active')}</span>
+                        <span>${state.is_ignored ? '🙈 ignored from the start — the bot never replies here' : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active'))}</span>
                         ${state.last_error ? `<span style="color:#b91c1c;">error: ${escapeHtml(state.last_error)}</span>` : ''}
                     </div>
                     ${state.summary ? `<div style="padding: 10px 12px; background: #f9fafb; border-left: 3px solid #6366f1; border-radius: 6px; font-size: 13px; margin-bottom: 12px;"><strong>📝 Remembers:</strong> ${escapeHtml(state.summary)}</div>` : ''}
@@ -5987,6 +6002,7 @@
             );
             document.getElementById('fake-bot-max-messages').value = user.bot_max_messages ?? '';
             document.getElementById('fake-bot-typing-speed').value = user.bot_typing_seconds_per_word ?? '';
+            document.getElementById('fake-bot-ignore-chance').value = user.bot_ignore_chance ?? '';
             document.getElementById('fake-bot-farewell').value = user.bot_farewell_messages || '';
 
             document.getElementById('fake-bot-modal-overlay').style.display = 'flex';
@@ -6072,6 +6088,7 @@
                 bot_reply_language: document.getElementById('fake-bot-language').value,
                 bot_max_messages: document.getElementById('fake-bot-max-messages').value,
                 bot_typing_seconds_per_word: document.getElementById('fake-bot-typing-speed').value,
+                bot_ignore_chance: document.getElementById('fake-bot-ignore-chance').value,
                 bot_farewell_messages: document.getElementById('fake-bot-farewell').value.trim()
             };
 
@@ -6808,6 +6825,7 @@
 
                     botLiveModelsSource = settings.bot_available_models_source || 'built-in';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
+                    document.getElementById('setting-bot-ignore-chance').value = settings.bot_ignore_chance ?? '30';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
                     document.getElementById('setting-bot-summary-enabled').checked = settings.bot_summary_enabled !== 'false';
                     document.getElementById('setting-bot-summary-prompt').value = settings.bot_summary_prompt || '';
@@ -7164,6 +7182,9 @@
                 bot_llm_prices: document.getElementById('setting-bot-llm-prices').value.trim(),
                 bot_llm_currency: (document.getElementById('setting-bot-llm-currency').value || 'USD').toUpperCase(),
                 bot_max_messages_per_thread: document.getElementById('setting-bot-max-messages').value || '4',
+                bot_ignore_chance: document.getElementById('setting-bot-ignore-chance').value === ''
+                    ? '30'
+                    : document.getElementById('setting-bot-ignore-chance').value,
                 bot_history_limit: document.getElementById('setting-bot-history-limit').value || '20',
                 bot_summary_enabled: document.getElementById('setting-bot-summary-enabled').checked ? 'true' : 'false',
                 bot_summary_prompt: document.getElementById('setting-bot-summary-prompt').value,

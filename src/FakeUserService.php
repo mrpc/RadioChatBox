@@ -30,7 +30,7 @@ class FakeUserService
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                    bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language
+                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
             FROM fake_users
             ORDER BY created_at DESC
         ");
@@ -46,7 +46,7 @@ class FakeUserService
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                    bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language
+                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
             FROM fake_users
             WHERE nickname = ?
         ");
@@ -76,6 +76,7 @@ class FakeUserService
             'bot_custom_prompt' => PDO::PARAM_STR,
             'bot_farewell_messages' => PDO::PARAM_STR,
             'bot_max_messages' => PDO::PARAM_INT,
+            'bot_ignore_chance' => PDO::PARAM_INT,
             'bot_typing_seconds_per_word' => PDO::PARAM_STR,
             // Per-bot overrides, so bots can run on different LLMs side by side
             'bot_llm_provider' => PDO::PARAM_STR,
@@ -99,7 +100,7 @@ class FakeUserService
                 // Empty means "fall back to the global setting".
                 $value = null;
                 $type = PDO::PARAM_NULL;
-            } elseif ($column === 'bot_max_messages') {
+            } elseif ($column === 'bot_max_messages' || $column === 'bot_ignore_chance') {
                 $value = max(0, min(100, (int) $value));
             } elseif ($column === 'bot_typing_seconds_per_word') {
                 $value = (string) max(0, min(10, (float) $value));
@@ -132,7 +133,7 @@ class FakeUserService
             RETURNING id, nickname, age, sex, location, is_active, created_at,
                       bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                       bot_typing_seconds_per_word, bot_farewell_messages,
-                      bot_llm_provider, bot_llm_model, bot_reply_language
+                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
         ");
 
         foreach ($values as $column => [$value, $type]) {
@@ -155,7 +156,7 @@ class FakeUserService
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                    bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language
+                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
             FROM fake_users
             WHERE id = ?
         ");
@@ -251,7 +252,7 @@ class FakeUserService
                 RETURNING id, nickname, age, sex, location, is_active, created_at,
                           bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                           bot_typing_seconds_per_word, bot_farewell_messages,
-                      bot_llm_provider, bot_llm_model, bot_reply_language
+                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
             ");
             $stmt->execute([
                 'nickname' => $newNickname ?? $current['nickname'],

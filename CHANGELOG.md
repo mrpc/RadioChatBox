@@ -96,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-provider request shapes (token parameter name, reasoning switch, balance
   endpoint). A fake user can override the provider and model, so different bots run
   on different LLMs at the same time
+- Bots can ignore a conversation from the start (`bot_ignore_chance`, default 30%,
+  per-bot overridable): no reply, no LLM call. Decided once on the first message and
+  stored, so silence stays consistent — a bot never goes quiet mid-conversation —
+  and shown as such in Bot Activity
 - The bots never reveal they are software: a guardrail appended to every prompt
   (so a custom prompt or a replaced context cannot drop it), covering prompts,
   technical refusals and assistant manners, plus a check that discards a revealing

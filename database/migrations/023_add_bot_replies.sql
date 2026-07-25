@@ -21,12 +21,20 @@ ALTER TABLE fake_users
     ADD COLUMN IF NOT EXISTS bot_max_messages INTEGER,
     ADD COLUMN IF NOT EXISTS bot_typing_seconds_per_word NUMERIC(4,2),
     ADD COLUMN IF NOT EXISTS bot_farewell_messages TEXT,
+    -- Chance (%) that this bot ignores a new conversation outright
+    ADD COLUMN IF NOT EXISTS bot_ignore_chance INTEGER,
     -- Per-bot provider and model override, so different bots can run on
     -- different LLMs at the same time (NULL = use the global setting)
     ADD COLUMN IF NOT EXISTS bot_llm_provider VARCHAR(30),
     ADD COLUMN IF NOT EXISTS bot_llm_model VARCHAR(100),
     -- Script to write in: NULL/'auto' mirrors whatever the peer uses
     ADD COLUMN IF NOT EXISTS bot_reply_language VARCHAR(20);
+
+ALTER TABLE fake_users
+    DROP CONSTRAINT IF EXISTS valid_bot_ignore_chance;
+ALTER TABLE fake_users
+    ADD CONSTRAINT valid_bot_ignore_chance
+    CHECK (bot_ignore_chance IS NULL OR (bot_ignore_chance >= 0 AND bot_ignore_chance <= 100));
 
 ALTER TABLE fake_users
     DROP CONSTRAINT IF EXISTS valid_bot_reply_language;
@@ -54,6 +62,7 @@ COMMENT ON COLUMN fake_users.bot_custom_prompt IS 'Full persona override; when s
 COMMENT ON COLUMN fake_users.bot_max_messages IS 'Per-bot override of bot_max_messages_per_thread (NULL = use global setting)';
 COMMENT ON COLUMN fake_users.bot_typing_seconds_per_word IS 'Per-bot override of bot_typing_seconds_per_word (NULL = use global setting)';
 COMMENT ON COLUMN fake_users.bot_farewell_messages IS 'Per-bot goodbye variants, one per line, used only if the closing LLM call fails';
+COMMENT ON COLUMN fake_users.bot_ignore_chance IS 'Per-bot chance (%) of ignoring a new conversation for good (NULL = use bot_ignore_chance setting)';
 COMMENT ON COLUMN fake_users.bot_llm_provider IS 'Per-bot LLM provider override, e.g. deepseek or openai (NULL = use bot_llm_provider setting)';
 COMMENT ON COLUMN fake_users.bot_llm_model IS 'Per-bot model override (NULL = use bot_llm_model setting)';
 COMMENT ON COLUMN fake_users.bot_reply_language IS 'Script the bot writes in: auto (mirror the peer), greek, greeklish or english';
@@ -73,6 +82,10 @@ CREATE TABLE IF NOT EXISTS bot_threads (
     farewell_sent_at TIMESTAMPTZ,
     last_reply_at TIMESTAMPTZ,
     last_error TEXT,
+    -- Real people don't answer every stranger. Decided once, on the first inbound
+    -- message of a thread, and then kept: silence has to be consistent.
+    is_ignored BOOLEAN NOT NULL DEFAULT FALSE,
+    ignore_decided_at TIMESTAMPTZ,
     -- Rolling summary of the messages that fell out of the history window
     summary TEXT,
     summary_upto_id BIGINT,
@@ -87,7 +100,9 @@ CREATE TABLE IF NOT EXISTS bot_threads (
 ALTER TABLE bot_threads
     ADD COLUMN IF NOT EXISTS summary TEXT,
     ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT,
-    ADD COLUMN IF NOT EXISTS summary_updated_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS summary_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS is_ignored BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS ignore_decided_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_bot_threads_peer ON bot_threads(peer_username);
 
@@ -95,6 +110,8 @@ COMMENT ON TABLE bot_threads IS 'Per-conversation state for fake user auto-repli
 COMMENT ON COLUMN bot_threads.messages_sent IS 'Messages the BOT authored in this thread (admin impersonation replies are not counted)';
 COMMENT ON COLUMN bot_threads.is_taken_over IS 'TRUE once an admin impersonated this fake user in this thread - the bot stays silent';
 COMMENT ON COLUMN bot_threads.farewell_sent_at IS 'When the closing message was sent; the bot never replies again after this';
+COMMENT ON COLUMN bot_threads.is_ignored IS 'TRUE when the bot decided to ignore this conversation from the start - it never replies in it';
+COMMENT ON COLUMN bot_threads.ignore_decided_at IS 'When the ignore/reply decision was taken, so a burst of messages does not re-roll it';
 COMMENT ON COLUMN bot_threads.summary IS 'Rolling summary of the messages that fell out of the history window';
 COMMENT ON COLUMN bot_threads.summary_upto_id IS 'Highest private_messages.id covered by the summary';
 
@@ -231,6 +248,14 @@ WHERE provider IS NULL AND model LIKE 'deepseek%';
 --                       means the built-in table in src/LlmPricing.php; editing
 --                       this setting is how a price change is applied, without a
 --                       deploy. Real spend comes from GET /user/balance instead.
+--   bot_ignore_chance   how often (%) a bot ignores a NEW conversation outright,
+--                       because a real person does not answer every stranger.
+--                       Reported reply rates on dating sites are far lower (a first
+--                       message from a man is answered roughly a third of the time),
+--                       but ignoring two out of three would throw away most of what
+--                       the feature is for; 30 is the compromise. The decision is
+--                       taken once, on the first inbound message, and stored on the
+--                       thread - a bot never goes quiet mid-conversation.
 --   empty prompt/list   means "use the built-in one" (see src/BotService.php).
 
 INSERT INTO settings (setting_key, setting_value) VALUES
@@ -252,6 +277,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_llm_currency', 'USD'),
     ('bot_llm_log_retention_days', '7'),
     ('bot_max_messages_per_thread', '4'),
+    ('bot_ignore_chance', '30'),
     ('bot_history_limit', '20'),
     ('bot_summary_enabled', 'true'),
     ('bot_summary_prompt', ''),

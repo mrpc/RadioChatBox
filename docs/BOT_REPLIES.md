@@ -431,6 +431,36 @@ is the hardest position to ignore, and (c) **enforced** — a reply that comes b
 Greek script is transliterated (`BotService::toGreeklish()`), since this is a
 constraint we can satisfy ourselves rather than hope for.
 
+## Not every conversation gets picked up
+
+A bot that answers every stranger, always, within seconds is a tell. So a share of
+**new** conversations is ignored outright: no reply, no LLM call, no cost.
+
+The decision is taken **once**, on the first inbound message, and stored on the
+thread (`bot_threads.is_ignored`, `ignore_decided_at`):
+
+- **Only at the start.** A bot never goes quiet mid-conversation - "wasn't
+  interested" is human, but trailing off halfway reads as a broken bot. If the bot
+  has already sent a message in that thread, ignoring is off the table.
+- **Stored, not re-rolled.** Otherwise a peer sending three messages before the
+  first reply lands would get three rolls, multiplying the real rate.
+- **Visible.** Bot Activity marks the thread 🙈 *ignored from the start*, so silence
+  is never confused with a broken bot. 🧹 Clear conversations resets it.
+
+### How often?
+
+`bot_ignore_chance`, default **30%**, overridable per bot
+(`fake_users.bot_ignore_chance`).
+
+Reality is much harsher than 30: reported reply rates on dating sites put a first
+message from a man being answered roughly a third of the time, which would mean
+ignoring 60-70% of conversations. That is *more* realistic and also throws away most
+of what the feature exists for, so the default is the compromise rather than the
+truth. Push it up per bot for one that should look sought-after, and set 0 for a bot
+that must always answer.
+
+Measured over 400 fresh conversations at the default: 33% ignored.
+
 ## It must never look like software
 
 The single rule the feature cannot get wrong, so it is both instructed and checked.

@@ -153,6 +153,17 @@ class BotService
      * (photos, camera), which it has to refuse without sounding like software.
      */
     /**
+     * How often a bot ignores a new conversation outright, as a percentage.
+     *
+     * Reported reply rates on dating sites are far lower than this - a first message
+     * from a man gets an answer roughly a third of the time - but ignoring two out
+     * of three conversations would also throw away most of what the feature is for.
+     * 30 is the compromise: often enough to read as human, rarely enough to keep the
+     * bots useful. Adjustable globally and per bot.
+     */
+    public const DEFAULT_IGNORE_CHANCE = 30;
+
+    /**
      * The one rule that has to hold no matter how a bot is configured: it must
      * never come across as software.
      *
@@ -320,6 +331,11 @@ class BotService
             $thread = $this->getOrCreateThread((int) $fakeUser['id'], $fromUsername);
 
             if ($thread['is_taken_over'] || $thread['farewell_sent_at'] !== null) {
+                return false;
+            }
+
+            // Some conversations are never picked up at all, like in a real chat.
+            if ($this->decideIgnore($fakeUser, $thread, $fromUsername)) {
                 return false;
             }
 
@@ -740,6 +756,7 @@ class BotService
                    t.messages_sent,
                    t.is_taken_over,
                    t.taken_over_by,
+                   t.is_ignored,
                    t.farewell_sent_at,
                    t.last_reply_at,
                    t.last_error,
@@ -873,6 +890,7 @@ class BotService
                    t.farewell_sent_at,
                    t.last_reply_at,
                    t.last_error,
+                   t.is_ignored,
                    t.summary,
                    t.summary_updated_at
             FROM fake_users f
@@ -896,6 +914,8 @@ class BotService
             'messages_sent' => (int) ($row['messages_sent'] ?? 0),
             'max_messages' => $maxMessages,
             'is_taken_over' => (bool) ($row['is_taken_over'] ?? false),
+            // The bot decided not to pick this conversation up at all.
+            'is_ignored' => (bool) ($row['is_ignored'] ?? false),
             'taken_over_at' => $row['taken_over_at'] ?? null,
             'taken_over_by' => $row['taken_over_by'] ?? null,
             'farewell_sent_at' => $row['farewell_sent_at'] ?? null,
@@ -1007,6 +1027,66 @@ class BotService
         $prompt .= "\n\n" . self::languageInstruction(self::replyLanguage($fakeUser));
 
         return $context . "\n\n" . $prompt;
+    }
+
+    /**
+     * Decide, once per conversation, whether this bot answers this person at all.
+     *
+     * Real people don't reply to every stranger who messages them, and a bot that
+     * always answers within seconds is a tell. So a share of new conversations is
+     * ignored outright - and *outright* is the point: the decision is taken on the
+     * first inbound message and stored, because going quiet halfway through a chat
+     * reads as a broken bot, not as a person who wasn't interested.
+     *
+     * Returns true when the bot should stay silent in this thread.
+     *
+     * @param array<string,mixed> $fakeUser
+     * @param array<string,mixed> $thread
+     */
+    private function decideIgnore(array $fakeUser, array $thread, string $peer): bool
+    {
+        if ($thread['is_ignored']) {
+            return true;
+        }
+
+        // Already decided, or the conversation is under way: never start ignoring
+        // someone the bot has already been talking to.
+        if ($thread['ignore_decided_at'] !== null || (int) $thread['messages_sent'] > 0) {
+            return false;
+        }
+
+        $chance = $this->ignoreChanceFor($fakeUser);
+        $ignore = $chance > 0 && random_int(1, 100) <= $chance;
+
+        // Record the outcome either way, so a burst of messages before the first
+        // reply does not roll the dice again and again.
+        $stmt = $this->pdo->prepare(
+            'UPDATE bot_threads
+             SET is_ignored = :ignored, ignore_decided_at = NOW(), updated_at = NOW()
+             WHERE fake_user_id = :fake_user_id AND peer_username = :peer'
+        );
+        $stmt->bindValue(':ignored', $ignore, PDO::PARAM_BOOL);
+        $stmt->bindValue(':fake_user_id', (int) $fakeUser['id'], PDO::PARAM_INT);
+        $stmt->bindValue(':peer', $peer);
+        $stmt->execute();
+
+        return $ignore;
+    }
+
+    /**
+     * How often (%) this bot ignores a new conversation, per bot or global.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public function ignoreChanceFor(array $fakeUser): int
+    {
+        $chance = $fakeUser['bot_ignore_chance'] ?? null;
+
+        if ($chance === null || trim((string) $chance) === '') {
+            $chance = $this->settings->get('bot_ignore_chance', self::DEFAULT_IGNORE_CHANCE);
+        }
+
+        return max(0, min(100, (int) $chance));
     }
 
     /**
@@ -1689,7 +1769,7 @@ class BotService
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
-                   bot_reply_language
+                   bot_reply_language, bot_ignore_chance
             FROM fake_users
             WHERE nickname = ? AND is_active = TRUE AND bot_enabled = TRUE
         ');
@@ -1708,7 +1788,7 @@ class BotService
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
-                   bot_reply_language
+                   bot_reply_language, bot_ignore_chance
             FROM fake_users
             WHERE id = ? AND is_active = TRUE AND bot_enabled = TRUE
         ');
@@ -1746,7 +1826,8 @@ class BotService
 
         $stmt = $this->pdo->prepare('
             SELECT id, messages_sent, is_taken_over, taken_over_at, taken_over_by,
-                   farewell_sent_at, last_reply_at, last_error, summary, summary_upto_id
+                   farewell_sent_at, last_reply_at, last_error, summary, summary_upto_id,
+                   is_ignored, ignore_decided_at
             FROM bot_threads
             WHERE fake_user_id = ? AND peer_username = ?
         ');
@@ -1758,6 +1839,8 @@ class BotService
             return [
                 'id' => null,
                 'messages_sent' => 0,
+                'is_ignored' => false,
+                'ignore_decided_at' => null,
                 'is_taken_over' => false,
                 'taken_over_at' => null,
                 'taken_over_by' => null,

@@ -58,6 +58,9 @@ class BotServicePipelineTest extends TestCase
             'bot_typing_max_delay' => '45',
             'bot_read_delay_min' => '0',
             'bot_read_delay_max' => '0',
+            // Ignoring is a dice roll, so every test that is not about it pins the
+            // chance to 0 - otherwise the suite fails at random.
+            'bot_ignore_chance' => '0',
         ];
         $this->llm = new StubLlm();
 
@@ -1080,6 +1083,116 @@ class BotServicePipelineTest extends TestCase
     {
         $this->assertSame('auto', BotService::replyLanguage(['bot_reply_language' => 'klingon']));
         $this->assertSame('auto', BotService::replyLanguage([]));
+    }
+
+    // ------------------------------------------------------------------
+    // Some conversations are never picked up
+    // ------------------------------------------------------------------
+
+    /**
+     * A bot that answers every stranger within seconds is a tell, so a share of new
+     * conversations is ignored outright.
+     */
+    public function testAnIgnoredConversationSchedulesNothingAtAll(): void
+    {
+        $this->setBotColumn('bot_ignore_chance', 100);
+        $this->incoming('geia');
+
+        $this->assertFalse($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
+        $this->assertSame([], $this->claimAll(), 'no job means no LLM call and no cost');
+        $this->assertTrue((bool) $this->threadRow()['is_ignored']);
+    }
+
+    public function testAnIgnoredConversationStaysIgnoredForEveryFurtherMessage(): void
+    {
+        $this->setBotColumn('bot_ignore_chance', 100);
+
+        foreach (['geia', 'eisai ekei;', 'hello?'] as $text) {
+            $this->incoming($text);
+            $this->assertFalse($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
+        }
+
+        // Silence has to be consistent: answering the third message would be worse
+        // than never answering at all.
+        $this->assertSame([], $this->claimAll());
+    }
+
+    public function testZeroChanceAlwaysReplies(): void
+    {
+        $this->setBotColumn('bot_ignore_chance', 0);
+        $this->incoming('geia');
+
+        $this->assertTrue($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
+        $this->assertFalse((bool) $this->threadRow()['is_ignored']);
+        $this->assertNotNull($this->threadRow()['ignore_decided_at'], 'the decision is recorded either way');
+    }
+
+    /**
+     * The dice are rolled once. Without that, a peer sending three messages before
+     * the first reply lands gets three rolls, which multiplies the real ignore rate.
+     */
+    public function testTheDecisionIsTakenOnlyOnce(): void
+    {
+        $this->setBotColumn('bot_ignore_chance', 0);
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession);
+
+        $decidedAt = $this->threadRow()['ignore_decided_at'];
+
+        // Now make ignoring certain: the answer must not change.
+        $this->setBotColumn('bot_ignore_chance', 100);
+        $this->incoming('eisai ekei;');
+
+        $this->assertTrue($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
+        $this->assertFalse((bool) $this->threadRow()['is_ignored']);
+        $this->assertSame($decidedAt, $this->threadRow()['ignore_decided_at']);
+    }
+
+    /**
+     * "Not interested from the start" is human; going quiet halfway through reads as
+     * a broken bot.
+     */
+    public function testABotNeverStartsIgnoringMidConversation(): void
+    {
+        $this->incoming('geia');
+        $this->botSaid('ti leei;');
+        // A conversation already under way: the bot has spoken once.
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads (fake_user_id, peer_username, messages_sent) VALUES (?, ?, 1)'
+        )->execute([$this->fakeUserId, $this->peer]);
+
+        $this->setBotColumn('bot_ignore_chance', 100);
+        $this->incoming('apo pou eisai;');
+
+        $this->assertTrue($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
+        $this->assertFalse((bool) $this->threadRow()['is_ignored']);
+    }
+
+    public function testThePerBotChanceOverridesTheGlobalOne(): void
+    {
+        $this->settings->values['bot_ignore_chance'] = '100';
+
+        $this->assertSame(100, $this->bot->ignoreChanceFor([]), 'the global setting applies by default');
+        $this->assertSame(0, $this->bot->ignoreChanceFor(['bot_ignore_chance' => 0]), 'a per-bot 0 must win');
+        // Out-of-range values are clamped rather than trusted.
+        $this->assertSame(100, $this->bot->ignoreChanceFor(['bot_ignore_chance' => 250]));
+        $this->assertSame(0, $this->bot->ignoreChanceFor(['bot_ignore_chance' => -5]));
+    }
+
+    public function testAnIgnoredConversationIsVisibleToTheAdmin(): void
+    {
+        $this->setBotColumn('bot_ignore_chance', 100);
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession);
+
+        // Otherwise silence is indistinguishable from a broken bot.
+        $this->assertTrue($this->bot->getThreadState($this->nick, $this->peer)['is_ignored']);
+
+        $threads = array_values(array_filter(
+            $this->bot->listThreads(200),
+            fn (array $t): bool => $t['nickname'] === $this->nick && $t['peer_username'] === $this->peer
+        ));
+        $this->assertTrue((bool) $threads[0]['is_ignored']);
     }
 
     // ------------------------------------------------------------------
