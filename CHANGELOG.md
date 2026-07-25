@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Test tooling: `dockertest`, `dockerbash`, `radiochatbox` and `dockertest.bat`
+  run the suite and project commands inside the container, where `pdo_pgsql`,
+  `redis` and `gd` exist (on the host most of the suite errors out)
+- Upgraded PHPUnit 10.5 → 12.5 (also clears CVE-2026-24765) and migrated
+  `phpunit.xml` to the `<source>` element; `composer.json` now requires PHP
+  ^8.3, matching the Docker image and the documented deployment requirement
+- `CorsHandler`: the origin decision and preflight check moved into
+  `resolveHeaders()` / `isPreflight()`, so they can be tested without observing
+  `header()` or hitting `exit`. Same behaviour, plus `REQUEST_METHOD` is no
+  longer read without a null coalesce (it warned under CLI)
+- Removed two unconditional debug `error_log()` calls from `StatsService`'s
+  today-stats path, which logged on every stats request
+
+### Fixed
+- The four `CorsHandlerTest` tests were unimplemented placeholders; they now
+  cover wildcard, explicit allow list, exact-match rejection and preflight
+- Tests no longer report as risky under PHPUnit 12 (which attributes
+  `error_log()` output to the test): `UserServiceTest`'s Redis mocks now cover
+  the full cache-invalidation set the code busts, and tests that deliberately
+  trigger a logged rejection assert the log instead of leaking it
+
 ### Added
 - Automatic LLM replies for fake users in private messages (DeepSeek)
   - Per-fake-user bot with a prompt built from its own profile (name, age, sex,
