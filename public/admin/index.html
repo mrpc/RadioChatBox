@@ -1053,6 +1053,83 @@
         body.administrator-role #admin-panel {
             visibility: visible;
         }
+
+        /* ------------------------------------------------------------------
+           Settings tab layout
+
+           Fields used to be one long single column. Related settings now sit in
+           labelled .settings-group boxes, and only those boxes lay fields out
+           horizontally. The section body itself is a plain vertical stack, so
+           unrelated fields can never end up side by side and a tall neighbour
+           cannot punch holes in the grid.
+           ------------------------------------------------------------------ */
+        #settings-tab .section-body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #settings-tab .settings-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+            gap: 4px 20px;
+            align-items: start;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px 18px 10px;
+            margin: 6px 0 10px;
+            background: #fcfcfd;
+        }
+
+        #settings-tab .settings-group > h3 {
+            grid-column: 1 / -1;
+            margin: 0 0 10px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #6b7280;
+        }
+
+        #settings-tab .settings-group > .settings-group-note,
+        #settings-tab .settings-group > .form-group:has(textarea) {
+            grid-column: 1 / -1;
+        }
+
+        #settings-tab .settings-group > .settings-group-note {
+            margin: -4px 0 8px;
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        #settings-tab .settings-group .form-group {
+            margin-bottom: 10px;
+        }
+
+        #settings-tab .settings-group small,
+        #settings-tab .section-body > .form-group > small {
+            display: block;
+            margin-top: 4px;
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        #settings-tab .section h2 {
+            display: flex;
+            align-items: center;
+        }
+
+        /* A checkbox row inside a group reads as a statement, not a field: give it
+           the whole row so the label is not cut in half. */
+        #settings-tab .settings-group > .form-group:has(input[type="checkbox"]) {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 640px) {
+            #settings-tab .settings-group {
+                grid-template-columns: 1fr;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -2074,93 +2151,104 @@
             <div id="settings-tab" class="tab-content">
                 <div class="section">
                     <h2>General Settings</h2>
-                    <div class="form-group">
-                        <label>Page Title</label>
-                        <input type="text" id="setting-page-title" placeholder="RadioChatBox">
+                    <div class="settings-group">
+                        <h3>Appearance</h3>
+                        <div class="form-group">
+                            <label>Page Title</label>
+                            <input type="text" id="setting-page-title" placeholder="RadioChatBox">
+                        </div>
+                        <div class="form-group">
+                            <label>Color Scheme</label>
+                            <select id="setting-color-scheme">
+                                <option value="dark">Dark</option>
+                                <option value="light">Light</option>
+                                <option value="metal">Metal</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Chat Mode</label>
+                            <select id="setting-chat-mode">
+                                <option value="public">Public Room Only</option>
+                                <option value="private">Private Messaging Only</option>
+                                <option value="both">Public &amp; Private</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Stream Status JSON URL (Icecast/Shoutcast)</label>
-                        <input type="url" id="setting-radio-status-url" placeholder="https://example.com/status-json.xsl">
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">If set, the chat header shows the current song/artist.</small>
-                        <div style="margin-top: 8px;">
-                            <button type="button" class="btn" onclick="checkFeedCapabilities()" style="background:#6366f1;color:white;padding:6px 12px;font-size:13px;">🔍 Check feed</button>
+
+                    <div class="settings-group">
+                        <h3>Radio stream</h3>
+                        <div class="form-group">
+                            <label>Stream Status JSON URL (Icecast/Shoutcast)</label>
+                            <input type="url" id="setting-radio-status-url" placeholder="https://example.com/status-json.xsl">
+                            <small>If set, the chat header shows the current song/artist.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn" onclick="checkFeedCapabilities()" style="background:#6366f1;color:white;">🔍 Check feed</button>
                             <div id="feed-capabilities" style="margin-top: 8px; font-size: 13px;"></div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Color Scheme</label>
-                        <select id="setting-color-scheme" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px;">
-                            <option value="dark">Dark</option>
-                            <option value="light">Light</option>
-                            <option value="metal">Metal</option>
-                        </select>
+
+                    <div class="settings-group">
+                        <h3>Registration</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-require-profile" style="width: auto;">
+                                Require Age &amp; Location on Registration
+                            </label>
+                        </div>
+                        <div class="form-group" id="setting-minimum-users-group">
+                            <label>Minimum Users (Fake Users Feature)</label>
+                            <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
+                            <small>
+                                When real users are below this number, random fake users are activated to fill the gap.
+                                0 disables it.
+                            </small>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Chat Mode</label>
-                        <select id="setting-chat-mode" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px;">
-                            <option value="public">Public Room Only</option>
-                            <option value="private">Private Messaging Only</option>
-                            <option value="both">Public & Private</option>
-                        </select>
+
+                    <div class="settings-group">
+                        <h3>Photos</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-allow-photo-uploads" style="width: auto;">
+                                Allow Photo Uploads in Private Messages
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Photo Size (MB)</label>
+                            <input type="number" id="setting-max-photo-size-mb" placeholder="5" min="1" max="50">
+                            <small id="php-max-upload-hint">Server maximum: 50 MB</small>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 10px;">
-                            <input type="checkbox" id="setting-require-profile" style="width: auto;">
-                            Require Age & Location on Registration
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 10px;">
-                            <input type="checkbox" id="setting-allow-photo-uploads" style="width: auto;">
-                            Allow Photo Uploads in Private Messages
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>Max Photo Size (MB)</label>
-                        <input type="number" id="setting-max-photo-size-mb" placeholder="5" min="1" max="50">
-                        <small id="php-max-upload-hint" style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Server maximum: 50 MB
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 10px;">
-                            <input type="checkbox" id="setting-gif-enabled" style="width: auto;">
-                            Enable GIF Selector
-                        </label>
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Allow users to search and share GIFs. Choose a provider below and add its API key.
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label>GIF Provider</label>
-                        <select id="setting-gif-provider">
-                            <option value="giphy">Giphy (free tier: 1,000 req/hour)</option>
-                            <option value="klipy">Klipy (free, unlimited)</option>
-                        </select>
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Only the selected provider's API key is used. Tenor's API was shut down by Google on June 30, 2026.
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label>Giphy API Key</label>
-                        <input type="text" id="setting-giphy-api-key" placeholder="Enter your Giphy API key">
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Get a free API key at <a href="https://developers.giphy.com/" target="_blank" style="color: #667eea;">developers.giphy.com</a>
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label>Klipy API Key</label>
-                        <input type="text" id="setting-klipy-api-key" placeholder="Enter your Klipy API key">
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Get a free API key at <a href="https://klipy.com/api" target="_blank" style="color: #667eea;">klipy.com/api</a>
-                        </small>
-                    </div>
-                    <div class="form-group" id="setting-minimum-users-group">
-                        <label>Minimum Users (Fake Users Feature)</label>
-                        <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            When real users are below this number, random fake users will be activated to fill the gap. Set to 0 to disable.
-                        </small>
+
+                    <div class="settings-group">
+                        <h3>GIFs</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-gif-enabled" style="width: auto;">
+                                Enable GIF Selector
+                            </label>
+                            <small>Let users search and share GIFs. Pick a provider and add its API key.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>GIF Provider</label>
+                            <select id="setting-gif-provider">
+                                <option value="giphy">Giphy (free tier: 1,000 req/hour)</option>
+                                <option value="klipy">Klipy (free, unlimited)</option>
+                            </select>
+                            <small>Only the selected provider's key is used.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Giphy API Key</label>
+                            <input type="text" id="setting-giphy-api-key" placeholder="Enter your Giphy API key">
+                            <small>Free key at <a href="https://developers.giphy.com/" target="_blank">developers.giphy.com</a>.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Klipy API Key</label>
+                            <input type="text" id="setting-klipy-api-key" placeholder="Enter your Klipy API key">
+                            <small>Free key at <a href="https://klipy.com/api" target="_blank">klipy.com/api</a>.</small>
+                        </div>
                     </div>
                 </div>
 
@@ -2177,120 +2265,124 @@
                             <input type="checkbox" id="setting-bot-replies-enabled" style="width: auto;">
                             <span>Enable auto-replies globally</span>
                         </label>
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Master switch. When off, no LLM requests are made at all.
-                        </small>
+                        <small>Master switch. When off, no LLM requests are made at all.</small>
                     </div>
 
-                    <div class="form-group">
-                        <label>DeepSeek API Key</label>
-                        <input type="password" id="setting-bot-llm-api-key" placeholder="sk-..." autocomplete="off">
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Get a key at <a href="https://platform.deepseek.com/" target="_blank" style="color: #667eea;">platform.deepseek.com</a>.
-                            Never sent to the public frontend.
-                        </small>
-                    </div>
-
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
+                    <div class="settings-group">
+                        <h3>Connection</h3>
+                        <div class="form-group">
+                            <label>DeepSeek API Key</label>
+                            <input type="password" id="setting-bot-llm-api-key" placeholder="sk-..." autocomplete="off">
+                            <small>
+                                Get a key at <a href="https://platform.deepseek.com/" target="_blank">platform.deepseek.com</a>.
+                                Never sent to the public frontend.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>API Base URL</label>
                             <input type="text" id="setting-bot-llm-base-url" placeholder="https://api.deepseek.com">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                Any OpenAI-compatible endpoint works.
-                            </small>
+                            <small>Any OpenAI-compatible endpoint works.</small>
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group">
                             <label>Model</label>
-                            <input type="text" id="setting-bot-llm-model" placeholder="deepseek-chat">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                e.g. <code>deepseek-chat</code> or <code>deepseek-reasoner</code>.
-                            </small>
+                            <select id="setting-bot-llm-model"></select>
+                            <small>Only names the API accepts are offered.</small>
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Generation</h3>
+                        <div class="form-group">
                             <label>Temperature</label>
                             <input type="number" id="setting-bot-llm-temperature" min="0" max="2" step="0.1" placeholder="1.3">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                DeepSeek suggests 1.3 for casual conversation.
-                            </small>
+                            <small>DeepSeek suggests 1.3 for casual conversation.</small>
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group">
                             <label>Max tokens per reply</label>
-                            <input type="number" id="setting-bot-llm-max-tokens" min="16" max="2000" placeholder="300">
+                            <input type="number" id="setting-bot-llm-max-tokens" min="16" max="4000" placeholder="300">
+                            <small>Replies are one or two lines, so this rarely needs raising.</small>
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
+                    <div class="settings-group">
+                        <h3>Conversation</h3>
+                        <div class="form-group">
                             <label>Message limit per conversation</label>
                             <input type="number" id="setting-bot-max-messages" min="0" max="100" placeholder="4">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                After this many bot messages in a thread, the bot writes a closing message and stops replying.
-                            </small>
+                            <small>After this many bot messages, it writes a closing message and stops.</small>
                         </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label>Conversation history (messages)</label>
+                        <div class="form-group">
+                            <label>History sent as context (messages)</label>
                             <input type="number" id="setting-bot-history-limit" min="2" max="100" placeholder="20">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                How much of the thread is sent as context.
-                            </small>
+                            <small>More history means better answers and a bigger request.</small>
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Closing instruction (last message)</label>
-                        <textarea id="setting-bot-farewell-prompt" rows="3" maxlength="2000" placeholder="Leave empty to use the built-in Greek instruction" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Appended to the system prompt for the bot's <strong>last</strong> message, so the LLM writes a goodbye
-                            that fits what was being discussed instead of a canned line.
-                        </small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Fallback goodbye variants (one per line)</label>
-                        <textarea id="setting-bot-farewell-messages" rows="6" maxlength="4000" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
-                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                            Used only if the closing LLM request fails — a random line is picked, so conversations don't all end
-                            identically. They are also passed to the model as tone examples.
-                            Leave empty to use the built-in list shown above (<span id="bot-default-farewell-count">50+</span> variants) —
-                            <a href="#" onclick="fillDefaultFarewells(); return false;" style="color: #667eea;">copy it into the field</a> to edit.
-                        </small>
-                    </div>
-
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
+                    <div class="settings-group">
+                        <h3>Timing</h3>
+                        <p class="settings-group-note">
+                            The reply is stored and pushed to the client only after the typing delay, so it looks typed
+                            rather than instant.
+                        </p>
+                        <div class="form-group">
                             <label>Typing speed (sec / word)</label>
                             <input type="number" id="setting-bot-typing-seconds-per-word" min="0" max="10" step="0.1" placeholder="1.5">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                The reply is stored and pushed to the client only after this delay, so it looks typed.
-                            </small>
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group">
                             <label>Min typing delay (sec)</label>
                             <input type="number" id="setting-bot-typing-min-delay" min="0" max="300" placeholder="2">
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group">
                             <label>Max typing delay (sec)</label>
                             <input type="number" id="setting-bot-typing-max-delay" min="1" max="600" placeholder="45">
                         </div>
-                    </div>
-
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group">
                             <label>Min reading delay (sec)</label>
                             <input type="number" id="setting-bot-read-delay-min" min="0" max="300" placeholder="2">
-                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
-                                Pause before the bot starts "reading" the message.
-                            </small>
+                            <small>Pause before the bot starts "reading".</small>
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group">
                             <label>Max reading delay (sec)</label>
                             <input type="number" id="setting-bot-read-delay-max" min="0" max="600" placeholder="8">
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Prompts</h3>
+                        <div class="form-group">
+                            <label>Conversation context</label>
+                            <textarea id="setting-bot-context-prompt" rows="10" maxlength="4000"></textarea>
+                            <small>
+                                What kind of chat this is and how to read common phrases — e.g. that
+                                “είσαι ελεύθερη;” asks about relationship status, not about having time to talk.
+                                Prefilled with the built-in text so you can see and adjust exactly what the bots get.
+                                <a href="#" onclick="resetBotContextPrompt(); return false;">Reset to built-in</a>.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Closing instruction (last message)</label>
+                            <textarea id="setting-bot-farewell-prompt" rows="3" maxlength="2000" placeholder="Leave empty to use the built-in Greek instruction"></textarea>
+                            <small>
+                                Appended for the bot's <strong>last</strong> message, so the goodbye fits what was
+                                being discussed instead of being a canned line.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Fallback goodbye variants (one per line)</label>
+                            <textarea id="setting-bot-farewell-messages" rows="4" maxlength="4000" placeholder="Leave empty to use the 50+ built-in Greek/greeklish variants"></textarea>
+                            <small>
+                                Used only if the closing request fails — a random line is picked. They also serve as
+                                tone examples. Empty = the built-in list (<span id="bot-default-farewell-count">50+</span> variants) —
+                                <a href="#" onclick="fillDefaultFarewells(); return false;">copy it into the field</a> to edit.
+                            </small>
                         </div>
                     </div>
                 </div>
 
                 <div class="section">
                     <h2>SEO & Branding</h2>
+                    <div class="settings-group">
+                        <h3>Site metadata</h3>
                     <div class="form-group">
                         <label>Site Title (SEO)</label>
                         <input type="text" id="setting-site-title" placeholder="RadioChatBox - Real-time Chat">
@@ -2339,10 +2431,13 @@
                             <span id="favicon-upload-status" style="margin-left: 10px; color: #666;"></span>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <div class="section">
                     <h2>Analytics Integration</h2>
+                    <div class="settings-group">
+                        <h3>Tracking</h3>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-analytics-enabled" style="width: auto;">
@@ -2377,10 +2472,13 @@
                             <li>Ad views & clicks</li>
                         </ul>
                     </details>
+                    </div>
                 </div>
 
                 <div class="section">
                     <h2>Advertisement System</h2>
+                    <div class="settings-group">
+                        <h3>Ad slots</h3>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-ads-enabled" style="width: auto;">
@@ -2421,6 +2519,7 @@
                             How often to reload ad content (10-300 seconds)
                         </small>
                     </div>
+                    </div>
                 </div>
 
                 <div class="section">
@@ -2449,6 +2548,8 @@
 
                 <div class="section">
                     <h2>Rate Limiting</h2>
+                    <div class="settings-group">
+                        <h3>Limits</h3>
                     <div class="form-group">
                         <label>Max Messages per Window</label>
                         <input type="number" id="setting-rate-limit-messages" placeholder="10" min="1">
@@ -2456,6 +2557,7 @@
                     <div class="form-group">
                         <label>Time Window (seconds)</label>
                         <input type="number" id="setting-rate-limit-window" placeholder="60" min="1">
+                    </div>
                     </div>
                 </div>
 
@@ -4885,6 +4987,43 @@
         // Built-in goodbye variants (from the backend), shown as placeholders
         let defaultFarewellMessages = '';
 
+        // Built-in conversation context, prefilled into the settings field
+        let botDefaultContextPrompt = '';
+
+        function resetBotContextPrompt() {
+            document.getElementById('setting-bot-context-prompt').value = botDefaultContextPrompt;
+        }
+
+        // Model options come from BotService::availableModels() via the settings
+        // endpoint, so the valid names are never duplicated in the frontend.
+        function populateBotModelOptions(models, current, fallback) {
+            const select = document.getElementById('setting-bot-llm-model');
+            if (!select) return;
+
+            const options = models && typeof models === 'object' ? models : {};
+            const selected = current || fallback || Object.keys(options)[0] || '';
+
+            select.innerHTML = '';
+
+            // A value configured for a custom endpoint may not be in the list;
+            // keep it rather than silently switching the model on save.
+            if (selected && !(selected in options)) {
+                const custom = document.createElement('option');
+                custom.value = selected;
+                custom.textContent = selected + ' (custom)';
+                select.appendChild(custom);
+            }
+
+            Object.entries(options).forEach(([id, label]) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = label || id;
+                select.appendChild(option);
+            });
+
+            select.value = selected;
+        }
+
         function fillDefaultFarewells() {
             if (!defaultFarewellMessages) return;
             document.getElementById('setting-bot-farewell-messages').value = defaultFarewellMessages;
@@ -5906,11 +6045,16 @@
                     document.getElementById('setting-bot-replies-enabled').checked = settings.bot_replies_enabled === 'true';
                     document.getElementById('setting-bot-llm-api-key').value = settings.bot_llm_api_key || '';
                     document.getElementById('setting-bot-llm-base-url').value = settings.bot_llm_base_url || 'https://api.deepseek.com';
-                    document.getElementById('setting-bot-llm-model').value = settings.bot_llm_model || 'deepseek-chat';
+                    populateBotModelOptions(settings.bot_available_models, settings.bot_llm_model, settings.bot_default_model);
                     document.getElementById('setting-bot-llm-temperature').value = settings.bot_llm_temperature || '1.3';
                     document.getElementById('setting-bot-llm-max-tokens').value = settings.bot_llm_max_tokens || '300';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
+                    // Empty setting means "use the built-in context"; show that text
+                    // so it is visible and editable instead of a mystery default.
+                    botDefaultContextPrompt = settings.bot_default_context_prompt || '';
+                    document.getElementById('setting-bot-context-prompt').value =
+                        settings.bot_context_prompt || botDefaultContextPrompt;
                     document.getElementById('setting-bot-farewell-prompt').value = settings.bot_farewell_prompt || '';
                     document.getElementById('setting-bot-farewell-messages').value = settings.bot_farewell_messages || '';
 
@@ -5959,10 +6103,174 @@
                     
                     // Generate embed code
                     updateEmbedCode();
+
+                    // Per-section save buttons + collapse of disabled features
+                    initSettingsSections();
                 }
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
+        }
+
+        // ====================================================================
+        // SETTINGS SECTION UX
+        // ====================================================================
+
+        // Sections whose options only matter while the feature is on. Without an
+        // explicit field list, everything below the toggle in that section is
+        // treated as its options.
+        const COLLAPSIBLE_SETTINGS = [
+            { toggle: 'setting-bot-replies-enabled' },
+            { toggle: 'setting-analytics-enabled' },
+            { toggle: 'setting-ads-enabled' },
+            {
+                // The GIF toggle sits in General Settings next to unrelated
+                // fields, so its options are listed explicitly.
+                toggle: 'setting-gif-enabled',
+                fields: ['setting-gif-provider', 'setting-giphy-api-key', 'setting-klipy-api-key']
+            }
+        ];
+
+        function collapsibleTargets(config) {
+            const toggle = document.getElementById(config.toggle);
+            if (!toggle) return [];
+
+            if (config.fields) {
+                return config.fields
+                    .map(id => document.getElementById(id))
+                    .filter(Boolean)
+                    .map(el => el.closest('.form-group') || el);
+            }
+
+            // Everything after the toggle's own group, minus the save button.
+            // Sibling of the toggle, so it works before and after the section
+            // body is wrapped for folding.
+            const own = toggle.closest('.form-group');
+            if (!own || !own.parentElement) return [];
+
+            const siblings = Array.from(own.parentElement.children);
+
+            return siblings
+                .slice(siblings.indexOf(own) + 1)
+                .filter(el => !el.classList.contains('section-save'));
+        }
+
+        function applySettingsCollapse(config) {
+            const toggle = document.getElementById(config.toggle);
+            if (!toggle) return;
+
+            const enabled = toggle.checked;
+            collapsibleTargets(config).forEach(el => {
+                el.style.display = enabled ? '' : 'none';
+            });
+
+            // Only whole-section toggles get the hint: a partial one (GIF inside
+            // General Settings) would wrongly label the rest of the section.
+            if (!config.fields) {
+                const hint = toggle.closest('.section')?.querySelector('.section-collapsed-hint');
+                if (hint) {
+                    hint.style.display = enabled ? 'none' : 'inline';
+                }
+            }
+        }
+
+        // Which sections start open. The rest are folded away so the tab is a
+        // short list of headers instead of one endless page; the choice is
+        // remembered per section.
+        const SETTINGS_OPEN_BY_DEFAULT = ['general settings'];
+
+        function settingsSectionKey(section) {
+            const title = section.querySelector('h2');
+            return (title ? title.textContent : '').trim().toLowerCase();
+        }
+
+        function toggleSettingsSection(section, open) {
+            const body = section.querySelector('.section-body');
+            const chevron = section.querySelector('.section-chevron');
+            if (!body) return;
+
+            body.style.display = open ? '' : 'none';
+            if (chevron) chevron.textContent = open ? '▾' : '▸';
+
+            try {
+                localStorage.setItem('settings-section:' + settingsSectionKey(section), open ? 'open' : 'closed');
+            } catch (e) {
+                // Private mode: the fold state just won't be remembered.
+            }
+        }
+
+        function initSettingsSections() {
+            const tab = document.getElementById('settings-tab');
+            if (!tab) return;
+
+            tab.querySelectorAll('.section').forEach(section => {
+                if (section.dataset.settingsReady === 'true') return;
+                // Skip sections without editable settings (the global save block,
+                // the embed code helper).
+                if (!section.querySelector('[id^="setting-"]')) return;
+
+                const heading = section.querySelector('h2');
+
+                // Everything below the heading becomes the foldable body.
+                if (heading) {
+                    const body = document.createElement('div');
+                    body.className = 'section-body';
+                    while (heading.nextSibling) {
+                        body.appendChild(heading.nextSibling);
+                    }
+                    section.appendChild(body);
+
+                    const chevron = document.createElement('span');
+                    chevron.className = 'section-chevron';
+                    chevron.style.cssText = 'color: #9ca3af; margin-right: 8px; font-size: 14px;';
+                    chevron.textContent = '▾';
+                    heading.prepend(chevron);
+
+                    heading.style.cursor = 'pointer';
+                    heading.style.userSelect = 'none';
+                    heading.title = 'Click to fold or unfold';
+                    heading.addEventListener('click', () => {
+                        toggleSettingsSection(section, section.querySelector('.section-body').style.display === 'none');
+                    });
+                }
+
+                // A save button per section, so there is no scrolling to the bottom.
+                const wrapper = document.createElement('div');
+                wrapper.className = 'section-save';
+                wrapper.style.cssText = 'margin-top: 18px; padding-top: 14px; border-top: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px;';
+                wrapper.innerHTML = `
+                    <button class="btn btn-success" onclick="saveSettings()">💾 Save</button>
+                    <span style="color: #9ca3af; font-size: 12px;">Saves every setting on this tab</span>
+                    <span class="section-collapsed-hint" style="display: none; color: #b45409; font-size: 12px;">disabled — options hidden</span>
+                `;
+                (section.querySelector('.section-body') || section).appendChild(wrapper);
+
+                let remembered = null;
+                try {
+                    remembered = localStorage.getItem('settings-section:' + settingsSectionKey(section));
+                } catch (e) {
+                    // ignore
+                }
+
+                toggleSettingsSection(
+                    section,
+                    remembered ? remembered === 'open' : SETTINGS_OPEN_BY_DEFAULT.includes(settingsSectionKey(section))
+                );
+
+                section.dataset.settingsReady = 'true';
+            });
+
+            COLLAPSIBLE_SETTINGS.forEach(config => {
+                const toggle = document.getElementById(config.toggle);
+                if (!toggle) return;
+
+                if (toggle.dataset.collapseBound !== 'true') {
+                    toggle.addEventListener('change', () => applySettingsCollapse(config));
+                    toggle.dataset.collapseBound = 'true';
+                }
+
+                applySettingsCollapse(config);
+            });
         }
 
         async function uploadLogo(type) {
@@ -6089,11 +6397,12 @@
                 bot_replies_enabled: document.getElementById('setting-bot-replies-enabled').checked ? 'true' : 'false',
                 bot_llm_api_key: document.getElementById('setting-bot-llm-api-key').value.trim(),
                 bot_llm_base_url: document.getElementById('setting-bot-llm-base-url').value.trim() || 'https://api.deepseek.com',
-                bot_llm_model: document.getElementById('setting-bot-llm-model').value.trim() || 'deepseek-chat',
+                bot_llm_model: document.getElementById('setting-bot-llm-model').value,
                 bot_llm_temperature: document.getElementById('setting-bot-llm-temperature').value || '1.3',
                 bot_llm_max_tokens: document.getElementById('setting-bot-llm-max-tokens').value || '300',
                 bot_max_messages_per_thread: document.getElementById('setting-bot-max-messages').value || '4',
                 bot_history_limit: document.getElementById('setting-bot-history-limit').value || '20',
+                bot_context_prompt: document.getElementById('setting-bot-context-prompt').value,
                 bot_farewell_prompt: document.getElementById('setting-bot-farewell-prompt').value,
                 bot_farewell_messages: document.getElementById('setting-bot-farewell-messages').value,
                 bot_typing_seconds_per_word: document.getElementById('setting-bot-typing-seconds-per-word').value || '1.5',

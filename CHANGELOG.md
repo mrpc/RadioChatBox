@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Bot prompts now start with a conversation-context block: the chat's setting
+  plus a glossary of the openers that were being read literally (notably that
+  "είσαι ελεύθερη;" asks about relationship status, not about having time to
+  chat) and how to turn down photo/camera/phone requests without admitting it
+  cannot. The settings field is prefilled with that text so it is visible and
+  editable, with a reset link
+- Bot model is picked from a dropdown fed by `BotService::availableModels()`
+  instead of being typed by hand
+- Settings tab folds into collapsible sections (remembered per section), each
+  with its own save button, and a feature's options collapse when its master
+  switch is off. Related fields are grouped (Connection, Generation,
+  Conversation, Timing, Prompts) and laid out in a grid instead of one long
+  column
 - Test tooling: `dockertest`, `dockerbash`, `radiochatbox` and `dockertest.bat`
   run the suite and project commands inside the container, where `pdo_pgsql`,
   `redis` and `gd` exist (on the host most of the suite errors out)
@@ -22,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   today-stats path, which logged on every stats request
 
 ### Fixed
+- Bot replies all failed with `HTTP 400 ... you passed deepseek-chat`: the
+  shipped default was a model name the API no longer accepts. Corrected to
+  `deepseek-v4-flash` for new installs and existing ones (migration `024`), and
+  the valid names now live in `BotService::MODELS`
+- Bot settings could not be saved from the admin panel: the endpoint's whitelist
+  never got the `bot_*` keys, so they were dropped while it still answered
+  "Settings updated successfully". Unknown keys are now reported back
+- The bot no longer replies when it already spoke last in a thread, which could
+  double-message the recipient
 - The four `CorsHandlerTest` tests were unimplemented placeholders; they now
   cover wildcard, explicit allow list, exact-match rejection and preflight
 - Tests no longer report as risky under PHPUnit 12 (which attributes

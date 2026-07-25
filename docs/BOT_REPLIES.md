@@ -82,11 +82,12 @@ psql "$DATABASE_URL" -f database/migrations/023_add_bot_replies.sql
 | Enable auto-replies globally | off | Master switch. When off, no LLM request is ever made. |
 | DeepSeek API Key | – | From [platform.deepseek.com](https://platform.deepseek.com/). Stripped from the public settings payload. |
 | API Base URL | `https://api.deepseek.com` | Any OpenAI-compatible endpoint works. |
-| Model | `deepseek-chat` | Or `deepseek-reasoner` (sampling params are ignored there). |
+| Model | `deepseek-v4-flash` | Dropdown built from `BotService::availableModels()` — the API rejects unknown names, so the valid ones live in one place. A value already stored for a custom endpoint is kept as an extra option. |
 | Temperature | `1.3` | DeepSeek's own recommendation for casual conversation. |
 | Max tokens per reply | `300` | |
 | Message limit per conversation | `4` | Then the closing message is sent. |
 | Conversation history | `20` | Messages sent as context. |
+| Conversation context | built-in | Prefilled with the built-in text so it is visible and editable; empty falls back to the built-in one. |
 | Closing instruction | built-in | Appended to the prompt for the last message. |
 | Fallback goodbye variants | built-in (50+) | One per line; used only if the closing request fails. |
 | Typing speed | `1.5` s/word | Clamped by min/max typing delay (`2`–`45`s). |
@@ -237,6 +238,22 @@ The article (`ο`/`η`) follows the fake user's sex; the location is added when
 set. `bot_persona` is appended, `bot_custom_prompt` replaces the whole thing. A
 formatting guardrail ("write only the message text, no quotes, no name prefix")
 is always appended last, custom prompt or not.
+
+### Conversation context
+
+The persona alone is not enough: the model reads openers literally and answers
+the wrong question. `BotService::DEFAULT_CONTEXT_PROMPT` is prepended to every
+prompt and explains the setting plus the phrases that are actually used —
+notably that **"είσαι ελεύθερη;" asks about relationship status, not about
+having time to chat** — along with "τι κάνεις;", "από πού είσαι;", "ασλ" and
+"τι ψάχνεις;". It also tells the bot to turn down photo, camera and phone-number
+requests with a human excuse rather than admitting it technically cannot.
+
+The `bot_context_prompt` setting replaces that block. The admin panel prefills
+the field with the built-in text (with a "Reset to built-in" link), so what the
+bots actually receive is visible and can be adjusted instead of guessed; leaving
+it empty falls back to the built-in one. Order in the final prompt: context →
+persona → formatting guardrail.
 
 Model output is then cleaned up: wrapping quotes removed, a leading `Name:`
 prefix removed, `<thinking>`-style blocks dropped **with their contents**,

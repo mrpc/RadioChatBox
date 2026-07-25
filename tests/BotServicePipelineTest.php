@@ -712,16 +712,14 @@ class BotServicePipelineTest extends TestCase
         $this->assertStringContainsString('You are a pirate.', $this->llm->calls[0]['system']);
     }
 
-    public function testTheConfiguredContextIsAddedToTheBuiltInOne(): void
+    public function testTheConfiguredContextReachesTheModel(): void
     {
         $this->incoming('eisai eleutheri;');
-        $this->settings->values['bot_context_prompt'] = 'Το site είναι για μεταλλάδες.';
+        $this->settings->values['bot_context_prompt'] = 'ΠΛΑΙΣΙΟ: δικό μου πλαίσιο.';
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
-        $system = $this->llm->calls[0]['system'];
-        $this->assertStringContainsString('μεταλλάδες', $system);
-        $this->assertStringContainsString('αν είσαι σε σχέση', $system, 'the glossary must survive');
+        $this->assertStringContainsString('δικό μου πλαίσιο', $this->llm->calls[0]['system']);
     }
 
     public function testTheBuiltInContextIsUsedWhenNoneIsConfigured(): void

@@ -136,37 +136,28 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('You are a pirate.', $prompt);
     }
 
-    public function testExtraContextIsAddedToTheBuiltInOne(): void
+    public function testAConfiguredContextReplacesTheBuiltInOne(): void
     {
-        // Adding site-specific notes must not drop the phrase glossary.
+        // The panel prefills the field with the built-in text, so an edited
+        // value is a full replacement rather than an addition.
         $prompt = BotService::buildSystemPrompt(
             ['nickname' => 'Maria'],
-            'Το site είναι για μεταλλάδες, ανέφερε συναυλίες.'
+            'ΠΛΑΙΣΙΟ: chat ραδιοφωνικής εκπομπής.'
         );
 
-        $this->assertStringContainsString('chat γνωριμιών', $prompt);
-        $this->assertStringContainsString('αν είσαι σε σχέση', $prompt);
-        $this->assertStringContainsString('μεταλλάδες', $prompt);
-    }
-
-    public function testExtraContextComesAfterTheBuiltInContextAndBeforeThePersona(): void
-    {
-        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria'], 'ΕΞΤΡΑ ΟΔΗΓΙΑ');
-
-        $builtIn = strpos($prompt, 'ΠΛΑΙΣΙΟ:');
-        $extra = strpos($prompt, 'ΕΞΤΡΑ ΟΔΗΓΙΑ');
-        $persona = strpos($prompt, 'Είσαι ο/η Maria.');
-
-        $this->assertLessThan($extra, $builtIn);
-        $this->assertLessThan($persona, $extra);
-    }
-
-    public function testNoExtraContextLeavesTheBuiltInOneIntact(): void
-    {
-        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria'], '');
-
-        $this->assertStringContainsString('ΠΛΑΙΣΙΟ:', $prompt);
+        $this->assertStringContainsString('ΠΛΑΙΣΙΟ: chat ραδιοφωνικής εκπομπής.', $prompt);
+        $this->assertStringNotContainsString('chat γνωριμιών', $prompt);
         $this->assertStringContainsString('Είσαι ο/η Maria.', $prompt);
+    }
+
+    public function testAnEmptyContextFallsBackToTheBuiltInOne(): void
+    {
+        foreach (['', '   '] as $empty) {
+            $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria'], $empty);
+
+            $this->assertStringContainsString('ΠΛΑΙΣΙΟ:', $prompt);
+            $this->assertStringContainsString('αν είσαι σε σχέση', $prompt);
+        }
     }
 
     // ------------------------------------------------------------------

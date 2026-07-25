@@ -648,15 +648,16 @@ class BotService
      * Build the bot's system prompt from its profile.
      *
      * A non-empty bot_custom_prompt replaces the generated persona entirely;
-     * bot_persona is appended to it. The built-in environment context is always
-     * prepended - it describes where the conversation happens, not who the bot
-     * is - and $extraContext is added to it rather than replacing it, so adding
-     * site-specific notes never drops the phrase glossary.
+     * bot_persona is appended to it. The environment context is prepended - it
+     * describes where the conversation happens, not who the bot is.
      *
      * @param array<string,mixed> $fakeUser
-     * @param string              $extraContext Added after the built-in context
+     * @param string              $context Replaces DEFAULT_CONTEXT_PROMPT;
+     *                                     empty means use the built-in one. The
+     *                                     admin panel shows the built-in text so
+     *                                     it can be edited rather than guessed.
      */
-    public static function buildSystemPrompt(array $fakeUser, string $extraContext = ''): string
+    public static function buildSystemPrompt(array $fakeUser, string $context = ''): string
     {
         $name = trim((string) ($fakeUser['nickname'] ?? ''));
         $age = $fakeUser['age'] ?? null;
@@ -698,11 +699,10 @@ class BotService
         // Guardrail that must survive a custom prompt.
         $prompt .= "\n\nΓράψε ΜΟΝΟ το κείμενο του μηνύματος, χωρίς εισαγωγικά, χωρίς το όνομά σου μπροστά και χωρίς επεξηγήσεις.";
 
-        $context = self::DEFAULT_CONTEXT_PROMPT;
-        $extraContext = trim($extraContext);
+        $context = trim($context);
 
-        if ($extraContext !== '') {
-            $context .= "\n\n" . $extraContext;
+        if ($context === '') {
+            $context = self::DEFAULT_CONTEXT_PROMPT;
         }
 
         return $context . "\n\n" . $prompt;
