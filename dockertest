@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# Run the PHPUnit suite inside the app container, where the pdo_pgsql, redis and
+# gd extensions actually exist (on the host most tests error out without them).
+#
+#   ./dockertest                                  whole suite
+#   ./dockertest --testdox                        readable test names
+#   ./dockertest --coverage                       HTML coverage in ./coverage (PCOV)
+#   ./dockertest --coverage --nobrowser           ...without opening the report
+#   ./dockertest --filter BotServiceTest          any other flag is passed to PHPUnit
+#   ./dockertest tests/BotServiceTest.php
+#
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+nobrowser=false
+coverage=false
+testdox=false
+passthrough=()
+for arg in "$@"; do
+    if [[ "$arg" == "--nobrowser" ]]; then
+        nobrowser=true
+    elif [[ "$arg" == "--coverage" ]]; then
+        coverage=true
+    elif [[ "$arg" == "--testdox" ]]; then
+        testdox=true
+    else
+        passthrough+=("$arg")
+    fi
+done
+
+# Docker Compose v2 (docker compose) with a fallback to the v1 binary.
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+else
+    echo "Neither 'docker compose' nor 'docker-compose' is available." >&2
+    exit 1
+fi
+
+# No TTY available (CI, pipes, editors): tell exec not to ask for one.
+tty_flag=()
+[[ -t 0 ]] || tty_flag=(-T)
+
+# Check if containers are running
+if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -q '^apache$'; then
+    echo "Containers not running. Starting them..."
+    "${COMPOSE[@]}" up -d
+    echo "Waiting for services to be ready..."
+    sleep 5
+fi
+
+# Wait for PostgreSQL and Redis: tests that touch them fail confusingly when the
+# containers are up but the services are still starting.
+echo "Waiting for PostgreSQL and Redis..."
+for _ in $(seq 1 30); do
+    pg_ready=$("${COMPOSE[@]}" exec -T postgres pg_isready -U "${DB_USER:-radiochatbox}" -q >/dev/null 2>&1 && echo yes || echo no)
+    redis_ready=$("${COMPOSE[@]}" exec -T redis redis-cli ping 2>/dev/null | grep -q PONG && echo yes || echo no)
+    [[ "$pg_ready" == "yes" && "$redis_ready" == "yes" ]] && break
+    sleep 1
+done
+
+if [[ "${pg_ready:-no}" != "yes" ]]; then
+    echo "WARNING: PostgreSQL is not answering - database tests will fail." >&2
+fi
+if [[ "${redis_ready:-no}" != "yes" ]]; then
+    echo "WARNING: Redis is not answering - cache/queue tests will fail." >&2
+fi
+
+# Install dev dependencies (PHPUnit) if the bind-mounted vendor/ lacks them.
+if ! "${COMPOSE[@]}" exec -T apache test -f vendor/bin/phpunit; then
+    echo "PHPUnit not found in vendor/. Installing dev dependencies..."
+    "${COMPOSE[@]}" exec -T apache composer install
+fi
+
+# Run tests
+extra_flags=(--display-deprecations --display-warnings --display-notices --display-phpunit-notices)
+[[ "$testdox" == true ]] && extra_flags+=(--testdox)
+
+if [[ "$coverage" == true ]]; then
+    "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache vendor/bin/phpunit --coverage-html coverage "${extra_flags[@]}" ${passthrough[@]+"${passthrough[@]}"}
+else
+    "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache vendor/bin/phpunit "${extra_flags[@]}" ${passthrough[@]+"${passthrough[@]}"}
+fi
+status=$?
+
+# Open coverage report if generated and not suppressed
+if [[ "$coverage" == true && "$nobrowser" == false && -f ./coverage/index.html ]]; then
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "linux-gnu"* && "$(uname -r)" == *"Microsoft"* || -n "${WSL_DISTRO_NAME:-}" ]]; then
+        win_path=$(wslpath -w "$(pwd)")
+        explorer.exe "$win_path\coverage\index.html"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        xdg-open ./coverage/index.html
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        open ./coverage/index.html
+    fi
+fi
+
+exit $status

@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#
+# Run project commands inside the containers.
+#
+#   ./radiochatbox bot status                  php bot-worker.php status
+#   ./radiochatbox bot run --max-runtime=55    php bot-worker.php run ...
+#   ./radiochatbox stats snapshot              php stats-cron.php snapshot
+#   ./radiochatbox psql                        psql on the app database
+#   ./radiochatbox psql -c 'SELECT 1'          ...with arguments
+#   ./radiochatbox redis                       redis-cli
+#   ./radiochatbox migrate                     apply every pending migration
+#   ./radiochatbox composer install            composer inside the container
+#   ./radiochatbox php -r 'echo PHP_VERSION;'  anything else runs in the app container
+#
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Docker Compose v2 (docker compose) with a fallback to the v1 binary.
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+else
+    echo "Neither 'docker compose' nor 'docker-compose' is available." >&2
+    exit 1
+fi
+
+if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -q '^apache$'; then
+    echo "Containers not running. Starting them..." >&2
+    "${COMPOSE[@]}" up -d
+    sleep 5
+fi
+
+# No TTY available (CI, pipes, editors): tell exec not to ask for one.
+tty_flag=()
+[[ -t 0 ]] || tty_flag=(-T)
+
+DB_NAME="${DB_NAME:-radiochatbox}"
+DB_USER="${DB_USER:-radiochatbox}"
+
+command="${1:-help}"
+[[ $# -gt 0 ]] && shift
+
+case "$command" in
+    bot)
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bot-worker.php "$@"
+        ;;
+
+    stats)
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php stats-cron.php "$@"
+        ;;
+
+    psql)
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} postgres psql -U "$DB_USER" -d "$DB_NAME" "$@"
+        ;;
+
+    redis)
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} redis redis-cli "$@"
+        ;;
+
+    migrate)
+        # Applies every file in database/migrations in order. They are written to
+        # be idempotent, so already-applied ones are no-ops; each runs in its own
+        # transaction, so a failure never leaves half a migration behind.
+        status=0
+        for file in database/migrations/*.sql; do
+            printf '%-46s ' "$(basename "$file")"
+            output=$("${COMPOSE[@]}" exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" \
+                -v ON_ERROR_STOP=1 --single-transaction -q < "$file" 2>&1)
+            if [[ $? -eq 0 ]]; then
+                echo "OK"
+            else
+                echo "FAILED"
+                echo "$output" | grep -i "^ERROR" | head -3 | sed 's/^/    /'
+                status=1
+            fi
+        done
+        exit $status
+        ;;
+
+    logs)
+        exec "${COMPOSE[@]}" logs "$@"
+        ;;
+
+    test)
+        exec ./dockertest "$@"
+        ;;
+
+    shell|bash)
+        exec ./dockerbash "$@"
+        ;;
+
+    help|--help|-h)
+        # Print the header comment block and stop at the first line of code, so
+        # the usage text cannot drift out of sync with a hardcoded line range.
+        awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"
+        exit 0
+        ;;
+
+    *)
+        # Anything else is run as-is in the app container.
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache "$command" "$@"
+        ;;
+esac

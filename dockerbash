@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# Shell inside the app container.
+#
+#   ./dockerbash                     interactive shell
+#   ./dockerbash -c "php -v"         run a single command
+#
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Docker Compose v2 (docker compose) with a fallback to the v1 binary.
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+else
+    echo "Neither 'docker compose' nor 'docker-compose' is available." >&2
+    exit 1
+fi
+
+if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -q '^apache$'; then
+    echo "Containers not running. Starting them..."
+    "${COMPOSE[@]}" up -d
+fi
+
+# No TTY available (CI, pipes, editors): tell exec not to ask for one.
+tty_flag=()
+[[ -t 0 ]] || tty_flag=(-T)
+
+exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache bash "$@"

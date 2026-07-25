@@ -345,18 +345,35 @@ GET /api/admin/user-details.php?username=john_doe&page=1&limit=10&search=music
 
 ## 🧪 Testing
 
-Run the test suite:
+Tests run **inside the container**, where the `pdo_pgsql`, `redis` and `gd`
+extensions exist — on the host most of the suite errors out without them.
 
 ```bash
-./test.sh
+./dockertest                          # whole suite (starts the containers if needed)
+./dockertest --testdox                # readable test names
+./dockertest --coverage               # HTML coverage in ./coverage (PCOV)
+./dockertest --coverage --nobrowser   # ...without opening the report
+./dockertest --filter BotServiceTest  # any other flag is passed straight to PHPUnit
 ```
 
-Or manually:
+On Windows: `dockertest.bat` (same, with `--coverage`).
+
+### Running commands in the container
 
 ```bash
-docker exec radiochatbox_apache composer install --dev
-docker exec radiochatbox_apache ./vendor/bin/phpunit
+./dockerbash                            # interactive shell
+./dockerbash -c "php -v"                # single command
+
+./radiochatbox bot status               # php bot-worker.php status
+./radiochatbox stats snapshot           # php stats-cron.php snapshot
+./radiochatbox psql -c 'SELECT 1'       # psql on the app database
+./radiochatbox redis ping               # redis-cli
+./radiochatbox migrate                  # apply every migration in database/migrations
+./radiochatbox composer install         # composer inside the container
+./radiochatbox php -r 'echo PHP_EOL;'   # anything else runs in the app container
 ```
+
+`./radiochatbox` with no arguments prints the full list.
 
 ---
 
