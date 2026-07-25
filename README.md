@@ -230,6 +230,7 @@ The system supports four hierarchical roles with different permission levels:
 ### Key Documentation Files
 
 - **[STATISTICS.md](docs/STATISTICS.md)** - Comprehensive statistics system guide
+- **[BOT_REPLIES.md](docs/BOT_REPLIES.md)** - Fake user auto-replies (LLM bots) setup and behaviour
 - **[STATISTICS_QUICKSTART.md](STATISTICS_QUICKSTART.md)** - Quick setup for statistics
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices

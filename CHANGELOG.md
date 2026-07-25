@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Automatic LLM replies for fake users in private messages (DeepSeek)
+  - Per-fake-user bot with a prompt built from its own profile (name, age, sex,
+    location) plus optional personality text or a full custom system prompt
+  - Conversation budget per `(fake user, real user)` thread (default 4 messages);
+    the bot's last message is an LLM-written closing line that fits the
+    conversation, with 50+ built-in Greek/greeklish fallback variants used only
+    if that request fails
+  - Realistic pacing: random reading delay before replying, then a typing delay
+    of ~1.5s per word — the message is inserted and published only after it
+  - Impersonating a fake user stops its bot in that conversation, including
+    replies already queued or generated; "Back to bot" hands it back
+  - Redis-backed delayed job queue (`src/JobQueue.php`) plus a `bot-worker.php`
+    CLI worker (`run` / `once` / `status` / `flush`, systemd or cron)
+  - Single-instance lock with heartbeat for the worker (`src/WorkerLock.php`),
+    implemented in plain PHP via atomic file creation — no `flock` (which is
+    silently ineffective on Docker bind mounts) and no `flock(1)` wrapper in the
+    crontab. `status` reports pid, uptime, heartbeat age and jobs handled, tells
+    a healthy worker from one that is alive but wedged (exit code 2), and a lock
+    left by a crashed or wedged worker is taken over automatically; optional
+    systemd `sd_notify`/watchdog integration
+- Edit button for fake users in the admin panel (nickname, age, sex, country).
+  Renaming rewrites the nickname across existing private messages and DM blocks
+  in one transaction, so ongoing conversations are not orphaned, and rejects
+  nicknames already used by another fake user or a real account
+  - Admin panel: global settings section (API key, endpoint, model, limits,
+    delays) and a per-fake-user bot dialog; all `bot_*` settings are stripped
+    from the public settings payload
+  - New tables/columns via migration `023_add_bot_replies.sql` (`bot_threads`,
+    `fake_users.bot_*`); documented in `docs/BOT_REPLIES.md`
 - Link preview cards for URLs in chat messages
   - Fetches Open Graph / Twitter Card metadata (title, description, image, domain)
   - Preview card rendered below the message bubble, styled like Facebook/WhatsApp
