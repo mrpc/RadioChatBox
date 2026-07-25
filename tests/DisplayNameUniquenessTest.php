@@ -142,6 +142,10 @@ class DisplayNameUniquenessTest extends TestCase
 
     public function testGuestCannotUseDisplayNameAsNickname()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         // Set a display name for our test user
         $displayName = 'MyDisplayName_' . uniqid();
         $stmt = $this->pdo->prepare(

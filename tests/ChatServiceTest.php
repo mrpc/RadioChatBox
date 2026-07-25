@@ -106,6 +106,10 @@ class ChatServiceTest extends TestCase
 
     public function testRegisterUserRejectsAdminUsername()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         // Try to register with an admin username
         $result = $this->chatService->registerUser(
             'admin',
@@ -118,6 +122,10 @@ class ChatServiceTest extends TestCase
 
     public function testRegisterUserRejectsDuplicateActiveUsername()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         $username = 'phpunit_test_' . uniqid() . '_' . time();
         $sessionId1 = 'session1_' . uniqid();
         $sessionId2 = 'session2_' . uniqid();
@@ -147,6 +155,10 @@ class ChatServiceTest extends TestCase
 
     public function testPrivateMessageSessionIsolation()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         $pdo = Database::getPDO();
         
         // Create two different sessions with same username
@@ -227,6 +239,10 @@ class ChatServiceTest extends TestCase
 
     public function testPrivateMessageOldMessagesNotVisibleToNewSessions()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         $pdo = Database::getPDO();
         
         $username = 'legacy_user_' . uniqid();
@@ -372,6 +388,10 @@ class ChatServiceTest extends TestCase
 
     public function testGuestCannotUseRegisteredUsername()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         // Ensure 'admin' user exists (from init.sql)
         $pdo = Database::getPDO();
         $stmt = $pdo->prepare("SELECT id FROM users WHERE username = 'admin'");
@@ -504,6 +524,10 @@ class ChatServiceTest extends TestCase
 
     public function testGuestCannotUseFakeUserNickname()
     {
+        // Rejected registrations are audit-logged by ChatService; assert that
+        // rather than letting the log surface as unexpected test output.
+        $this->expectOutputRegex('/Registration blocked/');
+
         $pdo = Database::getPDO();
         
         // Create a test fake user

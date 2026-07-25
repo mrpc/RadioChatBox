@@ -83,6 +83,15 @@ class UserServiceTest extends TestCase
         $this->mockRedis->shouldReceive('del')
             ->with(Mockery::pattern('/users:list:all$/'))
             ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:all_users$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:messages$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:messages:hash$/'))
+            ->andReturn(1);
 
         $result = $this->userService->createUser(
             'testuser',
@@ -133,6 +142,9 @@ class UserServiceTest extends TestCase
             ->once()
             ->andReturn($mockStmt);
 
+        // The failure is logged before it is turned into a generic error.
+        $this->expectOutputRegex('/UserService::createUser error: Connection error/');
+
         $result = $this->userService->createUser('testuser', 'password123', 'moderator');
 
         $this->assertFalse($result['success']);
@@ -174,7 +186,22 @@ class UserServiceTest extends TestCase
             ->with(Mockery::pattern('/users:list:all$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:all_users$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:messages$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:messages:hash$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
             ->with(Mockery::pattern('/admin_session:testuser$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/display_name:testuser$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/user_data:testuser$/'))
             ->andReturn(1);
 
         $result = $this->userService->updateUser(2, [
@@ -226,6 +253,15 @@ class UserServiceTest extends TestCase
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
             ->with(Mockery::pattern('/users:list:all$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:all_users$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:messages$/'))
+            ->andReturn(1);
+        $this->mockRedis->shouldReceive('del')
+            ->with(Mockery::pattern('/chat:messages:hash$/'))
             ->andReturn(1);
         $this->mockRedis->shouldReceive('del')
             ->with(Mockery::pattern('/admin_session:testuser$/'))

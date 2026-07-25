@@ -683,13 +683,11 @@ class StatsService
             $realTimeMessages = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($realTimeMessages && isset($realTimeMessages['count'])) {
-                error_log("StatsService: Real-time message count: {$realTimeMessages['count']}, Aggregated: {$todayStats['total_messages']}");
                 // Use real-time count if higher than aggregated stats (handles new messages before cron)
                 $todayStats['total_messages'] = max(
                     $todayStats['total_messages'] ?? 0,
                     (int)($realTimeMessages['count'] ?? 0)
                 );
-                error_log("StatsService: Final total_messages: {$todayStats['total_messages']}");
             }
         } catch (\Exception $e) {
             error_log("StatsService: Error querying real-time messages: " . $e->getMessage());
