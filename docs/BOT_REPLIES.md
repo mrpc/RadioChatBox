@@ -349,15 +349,27 @@ Every LLM call is logged to `bot_llm_log` (request, reply, `finish_reason`, toke
 usage including reasoning tokens, duration, error), which is what turned "replies
 are cut off" from guesswork into a one-line answer.
 
+The **Bot Activity** tab (root / owner / administrator) is the place to look:
+
+- **Token usage** per hour / day / week, with error and truncation counts.
+- **Conversations**: every bot thread with its message budget, whether an admin
+  took it over, whether it ended, and the last error. Opening one shows the
+  messages plus the calls behind them.
+- **LLM calls**: newest first, filterable to failures only. A call's detail shows
+  the exact system prompt, the messages sent, the reply, token usage (including
+  reasoning and cache hits) and the error.
+
+From the shell:
+
 ```bash
 php bot-worker.php log              # recent calls + a 24h summary
 php bot-worker.php log --problems   # only failures and truncations
 php bot-worker.php prune-log        # drop entries past the retention window
 ```
 
-The dashboard shows a **Bot LLM Tokens (24h)** card while auto-replies are on,
-including a truncation and error count. Retention defaults to 7 days and logging
-can be switched off in Settings → Diagnostics.
+The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies are
+on. Retention defaults to 7 days and logging can be switched off in
+Settings → Diagnostics.
 
 To retest a bot from scratch, use **🧹 Clear conversations** in its bot dialog
 (or the 🧹 button in the Fake Users row): it deletes that bot's private messages,

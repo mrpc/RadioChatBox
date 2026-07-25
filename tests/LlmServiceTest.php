@@ -186,6 +186,53 @@ class LlmServiceTest extends TestCase
         $this->assertStringContainsString('truncated', (string) $problems[0]['error']);
     }
 
+    public function testTheLogPagesAndFilters(): void
+    {
+        $log = new LlmLog();
+
+        $log->record(['fake_nickname' => 'llmtest_bot', 'peer_username' => 'llmtest_peer', 'model' => 'm', 'finish_reason' => 'stop', 'reply' => 'fine']);
+        $log->record(['fake_nickname' => 'llmtest_bot', 'peer_username' => 'llmtest_peer', 'model' => 'm', 'finish_reason' => 'length', 'error' => 'truncated']);
+        $log->record(['fake_nickname' => 'llmtest_bot', 'peer_username' => 'llmtest_peer', 'model' => 'm', 'purpose' => 'summary', 'finish_reason' => 'stop']);
+
+        $all = $log->page(10, 0, ['fake_nickname' => 'llmtest_bot']);
+        $this->assertSame(3, $all['total']);
+
+        // Newest first.
+        $this->assertSame('summary', $all['entries'][0]['purpose']);
+
+        $problems = $log->page(10, 0, ['fake_nickname' => 'llmtest_bot', 'problems_only' => true]);
+        $this->assertSame(1, $problems['total']);
+        $this->assertSame('length', $problems['entries'][0]['finish_reason']);
+
+        $summaries = $log->page(10, 0, ['fake_nickname' => 'llmtest_bot', 'purpose' => 'summary']);
+        $this->assertSame(1, $summaries['total']);
+
+        // Paging.
+        $firstPage = $log->page(2, 0, ['fake_nickname' => 'llmtest_bot']);
+        $secondPage = $log->page(2, 2, ['fake_nickname' => 'llmtest_bot']);
+        $this->assertCount(2, $firstPage['entries']);
+        $this->assertCount(1, $secondPage['entries']);
+    }
+
+    public function testASingleCallCanBeFetchedWithItsPrompt(): void
+    {
+        $log = new LlmLog();
+        $log->record([
+            'fake_nickname' => 'llmtest_bot',
+            'model' => 'm',
+            'system_prompt' => 'the full prompt',
+            'messages' => [['role' => 'user', 'content' => 'geia']],
+        ]);
+
+        $id = (int) $log->page(1, 0, ['fake_nickname' => 'llmtest_bot'])['entries'][0]['id'];
+        $entry = $log->find($id);
+
+        $this->assertNotNull($entry);
+        $this->assertSame('the full prompt', $entry['system_prompt']);
+        $this->assertStringContainsString('geia', (string) $entry['messages']);
+        $this->assertNull($log->find(0));
+    }
+
     public function testTheLogCanBePrunedAndSummarised(): void
     {
         $log = new LlmLog();

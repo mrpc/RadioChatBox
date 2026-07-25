@@ -783,6 +783,98 @@ class BotServicePipelineTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Admin overview (Bot Activity tab)
+    // ------------------------------------------------------------------
+
+    public function testThreadsAreListedWithTheirBudgetAndCounts(): void
+    {
+        $this->incoming('geia');
+        $this->botSaid('geia sou');
+        $this->exhaustBudget(2);
+
+        $mine = null;
+        foreach ($this->bot->listThreads() as $thread) {
+            if ($thread['nickname'] === $this->nick) {
+                $mine = $thread;
+            }
+        }
+
+        $this->assertNotNull($mine, 'the thread should appear in the admin list');
+        $this->assertSame($this->peer, $mine['peer_username']);
+        $this->assertSame(2, $mine['messages_sent']);
+        $this->assertSame(4, $mine['max_messages']);
+        $this->assertSame(2, $mine['message_count']);
+        $this->assertTrue($mine['bot_enabled']);
+        $this->assertFalse($mine['is_taken_over']);
+    }
+
+    public function testAPerBotLimitIsReflectedInTheList(): void
+    {
+        $this->setBotColumn('bot_max_messages', 9);
+        $this->exhaustBudget(1);
+
+        foreach ($this->bot->listThreads() as $thread) {
+            if ($thread['nickname'] === $this->nick) {
+                $this->assertSame(9, $thread['max_messages']);
+
+                return;
+            }
+        }
+
+        $this->fail('thread not listed');
+    }
+
+    public function testTakeoverShowsUpInTheList(): void
+    {
+        $this->bot->takeOverThread($this->nick, $this->peer, 'root');
+
+        foreach ($this->bot->listThreads() as $thread) {
+            if ($thread['nickname'] === $this->nick) {
+                $this->assertTrue($thread['is_taken_over']);
+                $this->assertSame('root', $thread['taken_over_by']);
+
+                return;
+            }
+        }
+
+        $this->fail('thread not listed');
+    }
+
+    public function testThreadMessagesComeBackOldestFirstAndTagged(): void
+    {
+        $this->incoming('first from user');
+        $this->botSaid('then the bot');
+        $this->incoming('and the user again');
+
+        $messages = $this->bot->threadMessages($this->nick, $this->peer);
+
+        $this->assertCount(3, $messages);
+        $this->assertSame('first from user', $messages[0]['message']);
+        $this->assertFalse($messages[0]['is_bot']);
+        $this->assertTrue($messages[1]['is_bot'], "the bot's own turn must be marked");
+        $this->assertSame('and the user again', $messages[2]['message']);
+    }
+
+    public function testThreadMessagesOnlyCoverThatConversation(): void
+    {
+        $this->incoming('for me');
+        $other = 'peer_other_' . substr(bin2hex(random_bytes(4)), 0, 6);
+        $this->pdo->prepare(
+            'INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, ?, ?, ?, ?, NOW())'
+        )->execute([$other, 's2', $this->nick, 'fake_' . md5($this->nick), 'for someone else']);
+
+        try {
+            $messages = $this->bot->threadMessages($this->nick, $this->peer);
+
+            $this->assertCount(1, $messages);
+            $this->assertSame('for me', $messages[0]['message']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$other]);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Clearing a bot's history (for re-testing)
     // ------------------------------------------------------------------
 

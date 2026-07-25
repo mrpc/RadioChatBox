@@ -126,6 +126,70 @@ class LlmLog
     }
 
     /**
+     * One log entry with its full request and response, for the admin panel.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function find(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM bot_llm_log WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    /**
+     * Log entries for the admin list: newest first, without the bulky prompt and
+     * message payloads (fetched per entry via find()).
+     *
+     * @return array{entries:list<array<string,mixed>>,total:int}
+     */
+    public function page(int $limit = 25, int $offset = 0, array $filters = []): array
+    {
+        $where = [];
+        $params = [];
+
+        if (!empty($filters['problems_only'])) {
+            $where[] = "(error IS NOT NULL OR finish_reason <> 'stop')";
+        }
+        if (!empty($filters['fake_nickname'])) {
+            $where[] = 'fake_nickname = :fake_nickname';
+            $params['fake_nickname'] = $filters['fake_nickname'];
+        }
+        if (!empty($filters['peer_username'])) {
+            $where[] = 'peer_username = :peer_username';
+            $params['peer_username'] = $filters['peer_username'];
+        }
+        if (!empty($filters['purpose'])) {
+            $where[] = 'purpose = :purpose';
+            $params['purpose'] = $filters['purpose'];
+        }
+
+        $clause = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM bot_llm_log' . $clause);
+        $stmt->execute($params);
+        $total = (int) $stmt->fetchColumn();
+
+        $stmt = $this->pdo->prepare(
+            'SELECT id, created_at, fake_nickname, peer_username, purpose, model, reasoning,
+                    max_tokens, http_status, finish_reason, reply, usage, duration_ms, error
+             FROM bot_llm_log' . $clause . '
+             ORDER BY created_at DESC, id DESC
+             LIMIT :limit OFFSET :offset'
+        );
+        foreach ($params as $k => $v) {
+            $stmt->bindValue(':' . $k, $v);
+        }
+        $stmt->bindValue(':limit', max(1, min(200, $limit)), PDO::PARAM_INT);
+        $stmt->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return ['entries' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'total' => $total];
+    }
+
+    /**
      * Drop entries past the retention window. Returns the number deleted.
      */
     public function prune(?int $days = null): int

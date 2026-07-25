@@ -90,6 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a healthy worker from one that is alive but wedged (exit code 2), and a lock
     left by a crashed or wedged worker is taken over automatically; optional
     systemd `sd_notify`/watchdog integration
+- Bot Activity tab in the admin panel: token usage per hour/day/week, every bot
+  conversation with its budget and state (with its messages and the calls behind
+  them), and the LLM call log with per-call prompt, reply, token usage and error
 - Rolling per-conversation summary: what falls out of the history window is
   summarised once and carried in the prompt, so a bot with a raised message limit
   no longer forgets names and plans from earlier. Batched (half a window,

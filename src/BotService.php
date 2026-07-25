@@ -621,6 +621,86 @@ class BotService
     }
 
     /**
+     * Every conversation a bot is (or was) in, for the admin overview.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function listThreads(int $limit = 100): array
+    {
+        $stmt = $this->pdo->prepare('
+            SELECT f.nickname,
+                   f.bot_enabled,
+                   f.bot_max_messages,
+                   t.peer_username,
+                   t.messages_sent,
+                   t.is_taken_over,
+                   t.taken_over_by,
+                   t.farewell_sent_at,
+                   t.last_reply_at,
+                   t.last_error,
+                   t.summary,
+                   t.summary_updated_at,
+                   (SELECT COUNT(*) FROM private_messages pm
+                     WHERE (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
+                        OR (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
+                   ) AS message_count,
+                   (SELECT MAX(created_at) FROM private_messages pm
+                     WHERE (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
+                        OR (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
+                   ) AS last_message_at
+            FROM bot_threads t
+            JOIN fake_users f ON f.id = t.fake_user_id
+            ORDER BY COALESCE(t.last_reply_at, t.created_at) DESC
+            LIMIT :limit
+        ');
+        $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $globalMax = (int) $this->settings->get('bot_max_messages_per_thread', 4);
+
+        foreach ($threads as &$thread) {
+            $thread['max_messages'] = $thread['bot_max_messages'] !== null
+                ? (int) $thread['bot_max_messages']
+                : $globalMax;
+            $thread['messages_sent'] = (int) $thread['messages_sent'];
+            $thread['message_count'] = (int) $thread['message_count'];
+            $thread['is_taken_over'] = (bool) $thread['is_taken_over'];
+            $thread['bot_enabled'] = (bool) $thread['bot_enabled'];
+        }
+
+        return $threads;
+    }
+
+    /**
+     * The messages of one bot conversation, oldest first.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function threadMessages(string $fakeNickname, string $peer, int $limit = 200): array
+    {
+        $stmt = $this->pdo->prepare('
+            SELECT id, from_username, message, attachment_id, created_at
+            FROM private_messages
+            WHERE (from_username = :fake AND to_username = :peer)
+               OR (from_username = :peer2 AND to_username = :fake2)
+            ORDER BY created_at ASC, id ASC
+            LIMIT :limit
+        ');
+        $stmt->bindValue(':fake', $fakeNickname);
+        $stmt->bindValue(':fake2', $fakeNickname);
+        $stmt->bindValue(':peer', $peer);
+        $stmt->bindValue(':peer2', $peer);
+        $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map(
+            static fn (array $row): array => $row + ['is_bot' => $row['from_username'] === $fakeNickname],
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
+        );
+    }
+
+    /**
      * Wipe a bot's conversations so it can be tested from scratch.
      *
      * Deletes the private messages in both directions, the per-thread state
