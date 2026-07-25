@@ -173,6 +173,18 @@ class LlmAccount
     }
 
     /**
+     * What has been spent since the 1st of the month - the figure that maps to the
+     * bill, for a provider that publishes no balance.
+     *
+     * @return array{spent:float,currency:string,days:int,source:string}|null
+     */
+    public function monthToDateCosts(): ?array
+    {
+        // Day of month, so the aligned window starts on the 1st.
+        return $this->providerCosts(((int) gmdate('j')) * 24);
+    }
+
+    /**
      * A client authenticated with the organisation admin key, for the endpoints that
      * refuse a project key.
      */

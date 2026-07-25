@@ -11,6 +11,12 @@ class SettingsService
     private Redis $redis;
     private string $prefix;
     private const SETTINGS_CACHE_KEY = 'settings:all';
+
+    /**
+     * Bumped on every save. A long-running worker watches this to know its snapshot
+     * of the settings (API keys, model, budget) is stale - see WorkerReloader.
+     */
+    public const VERSION_KEY = 'settings:version';
     private const RATE_LIMIT_CACHE_KEY = 'settings:rate_limit';
     private const CACHE_TTL = 300; // 5 minutes
 
@@ -348,6 +354,10 @@ class SettingsService
     {
         $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
         $this->redis->del($this->prefixKey(self::RATE_LIMIT_CACHE_KEY));
+
+        // Tell the long-running workers to rebuild what they derived from settings;
+        // clearing the cache alone would not reach a client built at startup.
+        $this->redis->set($this->prefixKey(self::VERSION_KEY), (string) microtime(true));
     }
 
     /**

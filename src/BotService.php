@@ -309,6 +309,19 @@ class BotService
     /** @var array<string,LlmService> Clients by provider|model */
     private array $llmClients = [];
 
+    /**
+     * Drop everything derived from the settings, so the next job builds it again.
+     *
+     * A client holds the API key, model, temperature and token budget it was
+     * constructed with, so a settings change would otherwise not reach a
+     * long-running worker until it was restarted. An injected client is left alone -
+     * the caller supplied it deliberately.
+     */
+    public function refreshSettings(): void
+    {
+        $this->llmClients = [];
+    }
+
     private function llm(array $fakeUser = []): LlmService
     {
         if ($this->llm !== null) {

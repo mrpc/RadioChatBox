@@ -112,6 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   react to it instead of answering the caption as if nothing were attached
 - Per-bot reply language (auto / greek / greeklish / english); greeklish is
   instructed last in the prompt and enforced by transliterating the reply
+- The bot worker keeps itself current: a settings change is adopted in place, and a
+  code change makes it exit between batches so the supervisor restarts it on the new
+  code (`--no-reload` to disable)
+- Bot Activity shows one account card per provider (balance where published,
+  month-to-date spend where not) and splits the per-window cost by provider
 - Real spend for providers that publish no balance: OpenAI's `GET /organization/costs`
   (optional admin key in its settings block), shown where the balance would be
 - Cost in money, not just tokens: remaining balance and hourly readings from the

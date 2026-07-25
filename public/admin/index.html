@@ -5643,34 +5643,71 @@
                 const currency = data.currency || 'USD';
                 const windows = [['1h', 'Last hour'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']];
 
-                // The balance is real money from the provider; the per-window costs
-                // below are computed from the configured unit prices.
-                const balance = data.balance;
-                const balanceCard = balance ? `
-                        <div style="border: 1px solid ${balance.is_available ? '#bbf7d0' : '#fecaca'}; background: ${balance.is_available ? '#f0fdf4' : '#fef2f2'}; border-radius: 8px; padding: 14px;">
-                            <div style="font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280;">Balance left</div>
-                            <div style="font-size: 24px; font-weight: 700; margin: 6px 0;">${formatMoney(balance.total, balance.currency)}</div>
-                            <div style="font-size: 12px; color: #6b7280;">
-                                straight from the provider${balance.granted > 0 ? ` · ${formatMoney(balance.granted, balance.currency)} granted` : ''}
-                            </div>
-                            <div style="font-size: 12px; margin-top: 4px; color: ${balance.is_available ? '#10b981' : '#b91c1c'};">
-                                ${balance.is_available ? '✓ sufficient for calls' : '⚠️ too low - calls will fail'}
-                            </div>
-                        </div>` : '';
+                // One card per provider account: real money, straight from the
+                // provider - a balance where it publishes one, otherwise what it says
+                // was spent. Both providers stay configured, so both are shown.
+                const accountCards = Object.entries(data.accounts || {}).map(([id, acc]) => {
+                    let figure = '—';
+                    let note = '';
+                    let colour = '#6b7280';
+                    let border = '#e5e7eb';
+                    let background = '#f9fafb';
 
-                box.innerHTML = balanceCard + windows.map(([key, label]) => {
+                    if (!acc.configured) {
+                        note = 'no API key configured';
+                    } else if (acc.balance) {
+                        figure = formatMoney(acc.balance.total, acc.balance.currency);
+                        note = 'balance left, from the provider';
+                        colour = acc.balance.is_available ? '#10b981' : '#b91c1c';
+                        border = acc.balance.is_available ? '#bbf7d0' : '#fecaca';
+                        background = acc.balance.is_available ? '#f0fdf4' : '#fef2f2';
+                        if (!acc.balance.is_available) note = '⚠️ too low — calls will fail';
+                    } else if (acc.costs_month || acc.costs) {
+                        // This provider publishes no balance at all, so show what it
+                        // says was spent - month to date is what maps to the bill.
+                        const month = acc.costs_month || acc.costs;
+                        figure = formatMoney(month.spent, month.currency);
+                        note = acc.costs_month
+                            ? `spent this month${acc.costs ? ' · ' + formatMoney(acc.costs.spent, acc.costs.currency) + ' in 7 days' : ''} — no balance is published by this provider`
+                            : 'spent in 7 days, from the provider';
+                    } else if (acc.supports_costs && !acc.has_admin_key) {
+                        note = 'add an admin key in Settings to read real spend';
+                    } else {
+                        note = 'the provider reported nothing';
+                    }
+
+                    return `
+                        <div style="border: 1px solid ${border}; background: ${background}; border-radius: 8px; padding: 14px;">
+                            <div style="font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280;">
+                                ${escapeHtml(acc.label)}${acc.is_default ? ' · default' : ''}
+                            </div>
+                            <div style="font-size: 24px; font-weight: 700; margin: 6px 0;">${figure}</div>
+                            <div style="font-size: 12px; color: ${colour};">${note}</div>
+                        </div>`;
+                }).join('');
+
+                box.innerHTML = accountCards + windows.map(([key, label]) => {
                     const w = data.summary[key] || {};
                     const tokens = Number(w.total_tokens || 0);
                     const reasoning = Number(w.reasoning_tokens || 0);
                     const problems = Number(w.errors || 0) + Number(w.truncated || 0);
                     const uncosted = Number(w.uncosted_calls || 0);
                     const real = w.real_spend;
+
+                    // With two providers running at once, one total answers nothing.
+                    const split = Object.entries(w.by_provider || {})
+                        .filter(([, p]) => Number(p.calls || 0) > 0)
+                        .map(([provider, p]) => `${escapeHtml(provider)} ${formatMoney(p.cost, p.currency || currency)}`
+                            + ` <span style="color:#9ca3af;">(${p.calls})</span>`)
+                        .join(' · ');
+
                     return `
                         <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px;">
                             <div style="font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280;">${label}</div>
                             <div style="font-size: 24px; font-weight: 700; margin: 6px 0;" title="Estimated from the unit prices in Settings → Bots">
                                 ~${formatMoney(w.cost, w.currency || currency)}
                             </div>
+                            ${split ? `<div style="font-size: 12px; color: #4338ca; margin-bottom: 4px;">${split}</div>` : ''}
                             <div style="font-size: 12px; color: #6b7280;">
                                 ${tokens.toLocaleString()} tokens · ${Number(w.calls || 0)} call(s)${reasoning > 0 ? ` · ${reasoning.toLocaleString()} reasoning` : ''}
                                 ${w.avg_duration_ms ? ` · avg ${Math.round(w.avg_duration_ms)}ms` : ''}

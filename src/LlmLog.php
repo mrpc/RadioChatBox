@@ -149,6 +149,39 @@ class LlmLog
     }
 
     /**
+     * The same figures as summary(), split by provider - so a panel running two
+     * providers at once can say which one the money went to.
+     *
+     * @return array<string,array<string,mixed>> provider => totals
+     */
+    public function summaryByProvider(int $hours = 24): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COALESCE(provider, 'unknown') AS provider,
+                    COUNT(*) AS calls,
+                    COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+                    COUNT(*) FILTER (WHERE finish_reason = 'length') AS truncated,
+                    COALESCE(SUM((usage->>'total_tokens')::int), 0) AS total_tokens,
+                    COALESCE(SUM(cost), 0) AS cost,
+                    COUNT(*) FILTER (WHERE cost IS NULL) AS uncosted_calls,
+                    MAX(currency) AS currency
+             FROM bot_llm_log
+             WHERE created_at > NOW() - make_interval(hours => :hours)
+             GROUP BY COALESCE(provider, 'unknown')
+             ORDER BY SUM(cost) DESC NULLS LAST"
+        );
+        $stmt->bindValue(':hours', max(1, $hours), PDO::PARAM_INT);
+        $stmt->execute();
+
+        $byProvider = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $byProvider[(string) $row['provider']] = $row;
+        }
+
+        return $byProvider;
+    }
+
+    /**
      * One log entry with its full request and response, for the admin panel.
      *
      * @return array<string,mixed>|null

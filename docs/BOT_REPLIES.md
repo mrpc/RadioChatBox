@@ -353,8 +353,11 @@ are cut off" from guesswork into a one-line answer.
 
 The **Bot Activity** tab (root / owner / administrator) is the place to look:
 
-- **Cost** per hour / day / week, next to the tokens, and the **remaining balance**
-  read from the provider.
+- **One card per provider account**: the remaining balance where the provider
+  publishes one (DeepSeek), and month-to-date spend where it does not (OpenAI), both
+  read from the provider itself. The default provider is marked.
+- **Cost** per hour / day / week, next to the tokens, **split by provider** - with two
+  configured at once, one total answers nothing.
 - **Token usage** per hour / day / week, with error and truncation counts.
 - **Conversations**: every bot thread with its message budget, whether an admin
   took it over, whether it ended, and the last error. Opening one shows the
@@ -374,6 +377,27 @@ php bot-worker.php prune-log        # drop entries past the retention window
 The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies are
 on, showing the day's cost and the balance left. Retention defaults to 7 days and
 logging can be switched off in Settings → Diagnostics.
+
+## The worker keeps itself current
+
+A PHP daemon runs the code and the configuration it started with, so `run` watches
+for both:
+
+- **Settings are adopted in place.** Every admin save bumps a version stamp
+  (`SettingsService::invalidateCache()`), the loop notices it between batches and
+  rebuilds what was derived from settings - the LLM client holds the key, model,
+  temperature and budget it was constructed with, so clearing the settings cache alone
+  would never reach it. The lock and the queue are untouched.
+- **Code changes make it exit.** PHP cannot reload code into a running process, so the
+  honest move is to notice (file sizes and mtimes across `src/`, `bot-worker.php` and
+  `composer.lock`) and exit cleanly between batches. `Restart=always` then starts a
+  fresh process on the new code; jobs live in Redis and the lock is released on the way
+  out, so nothing is lost. `--no-reload` turns it off.
+
+```
+[13:49:47] Code changed on disk - exiting so the supervisor restarts on the new code
+[13:51:06] Settings changed - rebuilding the LLM client from them
+```
 
 ## Providers
 

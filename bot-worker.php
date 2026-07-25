@@ -7,7 +7,7 @@
  * in private messages (see src/BotService.php).
  *
  * Usage:
- *   php bot-worker.php run [--max-runtime=SECONDS] [--sleep=SECONDS] [--batch=N]
+ *   php bot-worker.php run [--max-runtime=SECONDS] [--sleep=SECONDS] [--batch=N] [--no-reload]
  *   php bot-worker.php once
  *   php bot-worker.php status [--stale-after=SECONDS]
  *   php bot-worker.php log [--limit=N] [--problems]
@@ -18,6 +18,10 @@
  * Actions:
  *   run     - Loop, polling every --sleep seconds (default 1s) until --max-runtime
  *             is reached (0 = forever). Meant for systemd/supervisor or cron.
+ *             Keeps itself current: a settings change is adopted in place, and a
+ *             code change makes it exit between batches so the supervisor starts a
+ *             fresh process on the new code (--no-reload turns that off). PHP cannot
+ *             reload code into a running process, so exiting IS the reload.
  *   once    - Process everything that is currently due, then exit. Delivery is
  *             then only as accurate as the cron interval.
  *   status  - Print worker health (pid, uptime, heartbeat age), queue size and
@@ -69,6 +73,7 @@ use RadioChatBox\LlmPricing;
 use RadioChatBox\LlmService;
 use RadioChatBox\SettingsService;
 use RadioChatBox\WorkerLock;
+use RadioChatBox\WorkerReloader;
 
 /**
  * Log message with timestamp
@@ -468,6 +473,12 @@ try {
 
             $bot = new BotService($settings, $queue);
             $account = new LlmAccount($settings);
+
+            // A daemon otherwise runs the code and the configuration it started with.
+            $reloader = new WorkerReloader();
+            $reloader->baseline();
+            $autoReload = !isset($options['no-reload']) && !in_array('--no-reload', $argv, true);
+
             $startedAt = time();
             $running = true;
             $totalProcessed = 0;
@@ -512,6 +523,28 @@ try {
                     }
                     sdNotify("WATCHDOG=1\n");
 
+                    // Settings can be adopted in place: only the objects built from
+                    // them are stale, and rebuilding those keeps the lock and the
+                    // queue intact.
+                    if ($reloader->settingsChanged()) {
+                        logMessage('Settings changed - rebuilding the LLM client from them');
+                        // NOT invalidateCache(): that bumps the version stamp, so the
+                        // next tick would see its own write as a fresh change and log
+                        // this line forever. The admin save already cleared the cache,
+                        // and settings are read through Redis on every get().
+                        $bot->refreshSettings();
+                        $account = new LlmAccount($settings);
+                    }
+
+                    // Code cannot be reloaded into a running PHP process, so the
+                    // honest move is to finish the batch and let the supervisor start
+                    // a fresh one. Jobs are in Redis and the lock is released below,
+                    // so nothing is lost.
+                    if ($autoReload && $reloader->codeChanged()) {
+                        logMessage('Code changed on disk - exiting so the supervisor restarts on the new code');
+                        break;
+                    }
+
                     // Record the provider balance now and then, so real spend over
                     // a period can be measured rather than estimated. Rate-limits
                     // itself to LlmAccount::SNAPSHOT_INTERVAL and never throws.
@@ -537,7 +570,8 @@ try {
             logMessage("Unknown action: {$action}");
             logMessage(
                 'Usage: php bot-worker.php [run|once|status|log|prune-log|flush]'
-                . ' [--max-runtime=N] [--sleep=N] [--batch=N] [--stale-after=N] [--lock=PATH] [--verbose]'
+                . ' [--max-runtime=N] [--sleep=N] [--batch=N] [--stale-after=N] [--lock=PATH]'
+                . ' [--no-reload] [--verbose]'
             );
             exit(1);
     }

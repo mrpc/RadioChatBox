@@ -18,6 +18,7 @@ use RadioChatBox\CorsHandler;
 use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
 use RadioChatBox\LlmPricing;
+use RadioChatBox\LlmProviders;
 use RadioChatBox\SettingsService;
 
 header('Content-Type: application/json');
@@ -146,15 +147,38 @@ try {
                 // Real money for the same window, where enough balance readings
                 // exist - the estimate above is only as good as the unit prices.
                 $summary[$label]['real_spend'] = $account->realSpend($hours);
+                // Split by provider: with two configured at once, "what did it cost"
+                // is not one number.
+                $summary[$label]['by_provider'] = $log->summaryByProvider($hours);
+            }
+
+            // Every configured provider with its own account figure: a balance where
+            // there is one, otherwise what the provider says was spent.
+            $accounts = [];
+            foreach (array_keys(LlmProviders::PROVIDERS) as $providerId) {
+                $providerAccount = new LlmAccount($settings, null, $providerId);
+
+                $accounts[$providerId] = [
+                    'label' => LlmProviders::config($providerId)['label'],
+                    'is_default' => $providerId === $account->getProvider(),
+                    'configured' => $providerAccount->isConfigured(),
+                    'supports_balance' => $providerAccount->supportsBalance(),
+                    'supports_costs' => $providerAccount->supportsCosts(),
+                    'has_admin_key' => $providerAccount->hasAdminKey(),
+                    'balance' => $providerAccount->balance(),
+                    'costs' => $providerAccount->providerCosts(7 * 24),
+                    // No provider publishes a remaining balance except DeepSeek, so for
+                    // the others this is the figure that maps to the bill.
+                    'costs_month' => $providerAccount->monthToDateCosts(),
+                ];
             }
 
             echo json_encode([
                 'success' => true,
                 'logging' => $log->isEnabled(),
                 'summary' => $summary,
-                'balance' => $account->balance(),
+                'accounts' => $accounts,
                 'provider' => $account->getProvider(),
-                'supports_balance' => $account->supportsBalance(),
                 'currency' => LlmPricing::fromSettings($settings)->getCurrency(),
                 'priced_models' => array_keys(LlmPricing::fromSettings($settings)->all()),
             ]);

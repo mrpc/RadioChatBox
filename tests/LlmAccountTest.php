@@ -277,6 +277,30 @@ class LlmAccountTest extends TestCase
         $this->assertSame(0.0, $costs['spent']);
     }
 
+    /**
+     * A provider with no balance endpoint still needs a figure that maps to the bill.
+     */
+    public function testMonthToDateAsksFromTheFirstOfTheMonth(): void
+    {
+        $stub = new StubAccountLlm([]);
+        $account = new LlmAccount(
+            $this->settingsFor(['bot_llm_provider' => 'openai', 'bot_openai_admin_key' => 'sk-admin-x']),
+            $stub,
+            'openai',
+            $stub
+        );
+
+        $account->monthToDateCosts();
+
+        $day = (int) gmdate('j');
+        $expected = strtotime('today midnight UTC') - (($day - 1) * 86400);
+
+        $this->assertContains(
+            '/organization/costs?start_time=' . $expected . '&bucket_width=1d&limit=' . $day,
+            array_keys($stub->calls)
+        );
+    }
+
     public function testCostsNeedTheAdminKeyRatherThanTheChatKey(): void
     {
         $account = $this->account(

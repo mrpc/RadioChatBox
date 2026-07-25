@@ -288,6 +288,54 @@ class LlmServiceTest extends TestCase
         $this->assertGreaterThanOrEqual(1, (int) $log->summary(24)['uncosted_calls']);
     }
 
+    /**
+     * With two providers configured at once, "what did it cost" is not one number.
+     */
+    public function testTheSummaryCanBeSplitByProvider(): void
+    {
+        $log = new LlmLog(null, new \RadioChatBox\LlmPricing([
+            'cheap' => ['cache_hit' => 0.0, 'cache_miss' => 1.0, 'output' => 1.0],
+            'dear' => ['cache_hit' => 0.0, 'cache_miss' => 100.0, 'output' => 100.0],
+        ]));
+
+        // The window holds whatever the installation has really been doing, so this
+        // measures the contribution rather than the total.
+        $before = $log->summaryByProvider(24);
+        $costOf = static fn (array $rows, string $provider): float => (float) ($rows[$provider]['cost'] ?? 0);
+
+        $log->record([
+            'fake_nickname' => 'llmtest_bot',
+            'provider' => 'deepseek',
+            'model' => 'cheap',
+            'usage' => ['prompt_tokens' => 1000, 'completion_tokens' => 0, 'total_tokens' => 1000],
+        ]);
+        $log->record([
+            'fake_nickname' => 'llmtest_bot',
+            'provider' => 'openai',
+            'model' => 'dear',
+            'usage' => ['prompt_tokens' => 1000, 'completion_tokens' => 0, 'total_tokens' => 1000],
+        ]);
+
+        $after = $log->summaryByProvider(24);
+
+        $this->assertSame(0.001, round($costOf($after, 'deepseek') - $costOf($before, 'deepseek'), 8));
+        $this->assertSame(0.1, round($costOf($after, 'openai') - $costOf($before, 'openai'), 8));
+
+        // Dearest first, so the one to worry about is at the front.
+        $this->assertSame(
+            array_keys($after),
+            array_values(array_map(
+                static fn (array $row): string => (string) $row['provider'],
+                $after
+            )),
+            'the keys must match the provider column'
+        );
+        $costs = array_map(static fn (array $row): float => (float) $row['cost'], $after);
+        $sorted = $costs;
+        rsort($sorted);
+        $this->assertSame($sorted, array_values($costs), 'ordered by spend, dearest first');
+    }
+
     public function testTheLogCanBePrunedAndSummarised(): void
     {
         $log = new LlmLog();
