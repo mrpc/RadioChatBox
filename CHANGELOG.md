@@ -90,6 +90,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a healthy worker from one that is alive but wedged (exit code 2), and a lock
     left by a crashed or wedged worker is taken over automatically; optional
     systemd `sd_notify`/watchdog integration
+- Rolling per-conversation summary: what falls out of the history window is
+  summarised once and carried in the prompt, so a bot with a raised message limit
+  no longer forgets names and plans from earlier. Batched (half a window,
+  minimum 3 messages) with the pending ones kept verbatim, so it costs one extra
+  call every few messages rather than one per reply
 - "Clear conversations" for a bot (dialog and Fake Users row): removes its
   private messages, per-thread budget, takeover state and queued replies, so it
   can be retested from scratch

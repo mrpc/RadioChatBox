@@ -255,8 +255,19 @@ note is a *trailing* message rather than part of the system prompt — it change
 every minute and would invalidate the cache on every reply. Measured on two
 rounds of one thread: `cache_hit` 384/749 then 640/771.
 
-Not implemented, and not needed at the default budget of four bot messages:
-conversation summarisation. Raise the limits a lot and it would start to matter.
+**Older messages are not lost.** What drops out of the window is summarised once
+per conversation and stored in `bot_threads.summary`, then prepended to the
+prompt ("Τι έχει προηγηθεί"). Summarising is **batched**: every new message pushes
+one out of the window, so refreshing per message would mean an extra API call per
+reply. Instead the dropped-but-unsummarised messages accumulate up to a threshold
+(half a window, minimum 3) and stay in the history verbatim until then, so
+nothing is dropped while a summary is pending. A failed summary never costs the
+user their reply.
+
+Because the summary only changes when the window slides, it sits in the *cached*
+part of the prompt. It can be switched off, and its instruction customised, in
+Settings → Conversation, and the current summary is shown in the Impersonate
+header ("📝 Remembers: ...").
 
 ### Conversation context
 

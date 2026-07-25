@@ -642,6 +642,147 @@ class BotServicePipelineTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Rolling summary of what fell out of the history window
+    // ------------------------------------------------------------------
+
+    /** Fill the thread with more messages than the window holds. */
+    private function longThread(int $pairs): void
+    {
+        for ($i = 1; $i <= $pairs; $i++) {
+            $this->incoming("user message {$i}");
+            $this->botSaid("bot message {$i}");
+        }
+        $this->incoming('kai twra ti;');
+    }
+
+    public function testNothingIsSummarisedWhileEverythingFitsInTheWindow(): void
+    {
+        $this->settings->values['bot_history_limit'] = '20';
+        $this->incoming('geia');
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        // One call only: the reply. No summary needed.
+        $this->assertCount(1, $this->llm->calls);
+        $this->assertNull($this->threadRow()['summary']);
+    }
+
+    public function testOlderMessagesAreSummarisedOnceTheWindowSlides(): void
+    {
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+        $this->llm->reply = 'Ο συνομιλητής λέγεται Νίκος και δουλεύει σε μπαρ.';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        // Two calls: the summary, then the reply.
+        $this->assertCount(2, $this->llm->calls);
+        $this->assertStringContainsString('Συνόψισε', $this->llm->calls[0]['system']);
+        $this->assertStringContainsString('user message 1', $this->llm->calls[0]['messages'][0]['content']);
+
+        $stored = (string) $this->threadRow()['summary'];
+        $this->assertNotSame('', $stored);
+        $this->assertNotNull($this->threadRow()['summary_upto_id']);
+
+        // ...and the reply carries it.
+        $this->assertStringContainsString('Τι έχει προηγηθεί', $this->llm->calls[1]['system']);
+        $this->assertStringContainsString($stored, $this->llm->calls[1]['system']);
+    }
+
+    public function testASummaryIsNotRedoneForEveryNewMessage(): void
+    {
+        // Every message pushes one out of the window, so summarising per message
+        // would double the API calls. It is batched instead.
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $this->assertCount(2, $this->llm->calls, 'first reply summarises');
+
+        $this->llm->calls = [];
+        $this->incoming('kai kati allo');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertCount(1, $this->llm->calls, 'one dropped message must not trigger a new summary');
+        $this->assertStringContainsString('Τι έχει προηγηθεί', $this->llm->calls[0]['system']);
+    }
+
+    public function testMessagesWaitingForTheNextSummaryStayInTheHistory(): void
+    {
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        // This one drops out of the window but is not summarised yet, so it must
+        // still be sent verbatim rather than vanish.
+        $this->llm->calls = [];
+        $this->incoming('THE PENDING ONE');
+        $this->incoming('kai meta;');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $sent = json_encode($this->llm->calls[0]['messages'], JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('THE PENDING ONE', (string) $sent);
+    }
+
+    public function testTheSummaryIsRefreshedOnceEnoughMessagesHaveDroppedOut(): void
+    {
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $firstUpto = (int) $this->threadRow()['summary_upto_id'];
+
+        // Push a whole batch out of the window.
+        $this->llm->calls = [];
+        $this->longThread(4);
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertCount(2, $this->llm->calls, 'new dropped messages need a fresh summary');
+        // The previous summary is fed back in rather than re-reading everything.
+        $this->assertStringContainsString('Περίληψη μέχρι τώρα', $this->llm->calls[0]['messages'][0]['content']);
+        $this->assertGreaterThan($firstUpto, (int) $this->threadRow()['summary_upto_id']);
+    }
+
+    public function testSummarisingCanBeTurnedOff(): void
+    {
+        $this->settings->values['bot_summary_enabled'] = 'false';
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertCount(1, $this->llm->calls);
+        $this->assertNull($this->threadRow()['summary']);
+    }
+
+    public function testAFailedSummaryStillLetsTheReplyThrough(): void
+    {
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+
+        // The failure is logged on purpose; assert it instead of leaking it.
+        $this->expectOutputRegex('/summary failed, continuing without it/');
+
+        // Fail the first call (the summary) and succeed on the reply.
+        $bot = new BotService($this->settings, $this->queue, new FailFirstLlm());
+
+        $result = $bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertStringContainsString('queued reply', $result);
+        $this->assertNull($this->threadRow()['summary']);
+    }
+
+    public function testResettingAThreadDropsItsSummary(): void
+    {
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $this->assertNotNull($this->threadRow()['summary']);
+
+        $this->bot->releaseThread($this->nick, $this->peer, true);
+
+        $this->assertNull($this->threadRow()['summary']);
+    }
+
+    // ------------------------------------------------------------------
     // Clearing a bot's history (for re-testing)
     // ------------------------------------------------------------------
 
@@ -879,5 +1020,22 @@ class StubLlm extends LlmService
         }
 
         return ['text' => $this->reply, 'usage' => [], 'finish_reason' => 'stop'];
+    }
+}
+
+/**
+ * Fails the first call and succeeds afterwards, for "the summary broke but the
+ * reply must still go out".
+ */
+class FailFirstLlm extends StubLlm
+{
+    public function chat(string $systemPrompt, array $messages): array
+    {
+        if (count($this->calls) === 0) {
+            $this->calls[] = ['system' => $systemPrompt, 'messages' => $messages];
+            throw new \RuntimeException('summary call failed');
+        }
+
+        return parent::chat($systemPrompt, $messages);
     }
 }

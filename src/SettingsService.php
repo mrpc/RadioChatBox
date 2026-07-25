@@ -75,6 +75,8 @@ class SettingsService
         'bot_llm_log_retention_days',
         'bot_max_messages_per_thread',
         'bot_history_limit',
+        'bot_summary_enabled',
+        'bot_summary_prompt',
         'bot_context_prompt',
         'bot_farewell_prompt',
         'bot_farewell_messages',

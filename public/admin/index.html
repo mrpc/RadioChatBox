@@ -2364,6 +2364,21 @@
                             <input type="number" id="setting-bot-history-limit" min="2" max="100" placeholder="20">
                             <small>More history means better answers and a bigger request.</small>
                         </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-bot-summary-enabled" style="width: auto;">
+                                Summarise what falls out of the history window
+                            </label>
+                            <small>
+                                Keeps a rolling summary per conversation, so a bot with a raised message limit does
+                                not forget names and plans from earlier. Batched, so it costs one extra call every
+                                few messages rather than one per reply.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Summary instruction</label>
+                            <textarea id="setting-bot-summary-prompt" rows="3" maxlength="2000" placeholder="Leave empty to use the built-in Greek instruction"></textarea>
+                        </div>
                     </div>
 
                     <div class="settings-group">
@@ -6187,6 +6202,8 @@
                     document.getElementById('setting-bot-llm-log-retention-days').value = settings.bot_llm_log_retention_days || '7';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
+                    document.getElementById('setting-bot-summary-enabled').checked = settings.bot_summary_enabled !== 'false';
+                    document.getElementById('setting-bot-summary-prompt').value = settings.bot_summary_prompt || '';
                     // Empty setting means "use the built-in context"; show that text
                     // so it is visible and editable instead of a mystery default.
                     botDefaultContextPrompt = settings.bot_default_context_prompt || '';
@@ -6542,6 +6559,8 @@
                 bot_llm_log_retention_days: document.getElementById('setting-bot-llm-log-retention-days').value || '7',
                 bot_max_messages_per_thread: document.getElementById('setting-bot-max-messages').value || '4',
                 bot_history_limit: document.getElementById('setting-bot-history-limit').value || '20',
+                bot_summary_enabled: document.getElementById('setting-bot-summary-enabled').checked ? 'true' : 'false',
+                bot_summary_prompt: document.getElementById('setting-bot-summary-prompt').value,
                 bot_context_prompt: document.getElementById('setting-bot-context-prompt').value,
                 bot_farewell_prompt: document.getElementById('setting-bot-farewell-prompt').value,
                 bot_farewell_messages: document.getElementById('setting-bot-farewell-messages').value,
@@ -8317,7 +8336,12 @@
                 color = '#b91c1c';
             }
 
+            if (state.summary) {
+                text += `\n📝 Remembers: ${state.summary}`;
+            }
+
             box.textContent = text;
+            box.style.whiteSpace = 'pre-line';
             box.style.color = color;
             box.style.display = 'block';
 

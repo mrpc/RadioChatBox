@@ -169,6 +169,9 @@ CREATE TABLE IF NOT EXISTS bot_threads (
     farewell_sent_at TIMESTAMPTZ,
     last_reply_at TIMESTAMPTZ,
     last_error TEXT,
+    summary TEXT,
+    summary_upto_id BIGINT,
+    summary_updated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uniq_bot_thread UNIQUE (fake_user_id, peer_username)
@@ -479,6 +482,8 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_read_delay_min', '2'),
     ('bot_read_delay_max', '8'),
     ('bot_history_limit', '20'),
+    ('bot_summary_enabled', 'true'),
+    ('bot_summary_prompt', ''),
     ('bot_context_prompt', ''),
     ('bot_farewell_prompt', ''),
     -- Fallback goodbye variants, one per line (used only when the closing LLM
