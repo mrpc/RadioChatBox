@@ -15,9 +15,10 @@ namespace RadioChatBox;
  * the shared system temp directory, where `worker-radiochatbox.lock` from one
  * installation would silently keep the other's worker from ever starting.
  *
- * So the identity is the installation directory: a readable label plus a short hash of
- * the absolute path, which is stable across restarts and different for every copy.
- * `APP_INSTANCE` overrides it when a name you chose reads better in logs and unit files.
+ * So the identity is the installation directory itself: a readable label plus a short
+ * hash of the absolute path. Nothing to configure, and nothing that can be got wrong -
+ * a setting would travel with the deployment when a directory is copied, recreating the
+ * very collision it was meant to prevent, while a path cannot collide with itself.
  *
  * Note this is deliberately NOT the Redis key prefix: that scopes *data* (sessions,
  * caches, chat history) and is keyed by database, where it belongs.
@@ -35,20 +36,13 @@ class Installation
     }
 
     /**
-     * A short, filename-safe identity for this installation.
-     *
-     * `mysite-3f9a1b2c` for /var/www/mysite, or whatever APP_INSTANCE says.
+     * A short, filename-safe identity for this installation: `mysite-3f9a1b2c` for
+     * /var/www/mysite.
      */
     public static function id(): string
     {
         if (self::$id !== null) {
             return self::$id;
-        }
-
-        $configured = trim((string) (getenv('APP_INSTANCE') ?: ''));
-
-        if ($configured !== '') {
-            return self::$id = self::sanitize($configured);
         }
 
         $root = self::root();
@@ -69,7 +63,7 @@ class Installation
     }
 
     /**
-     * Forget the cached identity. Only for tests that change APP_INSTANCE.
+     * Forget the cached identity. Only needed by tests.
      */
     public static function reset(): void
     {

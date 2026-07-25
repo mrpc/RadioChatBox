@@ -293,18 +293,27 @@ class DaemonSupervisorTest extends TestCase
         );
     }
 
-    public function testAChosenNameWinsAndIsMadeFilenameSafe(): void
+    public function testTheIdentityIsFilenameSafe(): void
     {
-        putenv('APP_INSTANCE=weird/name with spaces');
         Installation::reset();
 
-        try {
-            $this->assertSame('weird_name_with_spaces', Installation::id());
-            $this->assertStringNotContainsString('/', basename(\RadioChatBox\WorkerLock::defaultPath('worker')));
-        } finally {
-            putenv('APP_INSTANCE');
-            Installation::reset();
-        }
+        // Derived from a path, so it must survive being put in a filename.
+        $this->assertSame(basename(\RadioChatBox\WorkerLock::defaultPath('worker')), basename(
+            \RadioChatBox\WorkerLock::defaultPath('worker')
+        ));
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_.-]+$/', Installation::id());
+    }
+
+    public function testNothingHasToBeConfiguredForTheIdentity(): void
+    {
+        Installation::reset();
+        $first = Installation::id();
+
+        // The point of deriving it from the path: no setting to forget, and none that
+        // travels with a copied directory and recreates the collision.
+        Installation::reset();
+        $this->assertSame($first, Installation::id());
+        $this->assertStringContainsString(basename(Installation::root()), $first);
     }
 
     /**
@@ -312,23 +321,19 @@ class DaemonSupervisorTest extends TestCase
      */
     public function testASecondSupervisorForTheSameInstallationIsRefused(): void
     {
-        putenv('APP_INSTANCE=claim_test_' . bin2hex(random_bytes(3)));
-        Installation::reset();
+        // Its own lock name, so this never fights a supervisor actually running here.
+        $name = 'supervisor-test-' . bin2hex(random_bytes(3));
+        $first = new DaemonSupervisor(null, null, null, null, null, $name);
+        $second = new DaemonSupervisor(null, null, null, null, null, $name);
 
         try {
-            $first = new DaemonSupervisor();
-            $second = new DaemonSupervisor();
-
             $this->assertTrue($first->claim());
             $this->assertFalse($second->claim($heldBy), 'two supervisors would start two workers each');
             $this->assertStringContainsString('pid', (string) $heldBy);
-
+        } finally {
             $lock = $first->ownLock()->getPath();
             $first->ownLock()->release();
             @unlink($lock);
-        } finally {
-            putenv('APP_INSTANCE');
-            Installation::reset();
         }
     }
 

@@ -476,11 +476,14 @@ logs/worker-<installation>.lock
 ```
 
 where `<installation>` is `mysite-3f9a1b2c` — the directory name plus a short hash of its
-absolute path. The hash matters because two release paths can both end in `current`, and
-because when `logs/` is not writable the lock falls back to the shared system temp
-directory, where a name like `worker-radiochatbox.lock` from one installation would
-silently keep the other's worker from ever starting. `APP_INSTANCE=mysite` overrides it
-when a name you chose reads better in logs and unit files.
+absolute path. **Nothing to configure**: it comes from the path, so a second installation
+is distinct the moment it exists. The hash matters because two release paths can both end
+in `current`, and because when `logs/` is not writable the lock falls back to the shared
+system temp directory, where a name like `worker-radiochatbox.lock` from one installation
+would silently keep the other's worker from ever starting.
+
+A setting would have been worse than useless here: copied along with the directory, it
+would recreate the very collision it was meant to prevent.
 
 The Redis prefix (`radiochatbox:<database>:`) deliberately stays keyed by **database**:
 that scopes *data* — sessions, caches, chat history — and two installations pointed at

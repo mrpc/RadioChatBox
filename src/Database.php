@@ -105,13 +105,10 @@ class Database
      */
     public static function getInstanceName(): string
     {
-        $configured = trim((string) (getenv('APP_INSTANCE') ?: ''));
+        // Straight from this installation's configuration - nothing to pass in.
+        $database = (string) (Config::get('database')['name'] ?? 'radiochatbox');
 
-        if ($configured === '') {
-            $configured = (string) (Config::get('database')['name'] ?? 'radiochatbox');
-        }
-
-        return preg_replace('/[^A-Za-z0-9_.-]/', '_', $configured) ?: 'radiochatbox';
+        return preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
     }
     
     // ========================================================================

@@ -75,6 +75,7 @@ class DaemonSupervisor
     private string $lastDeployHash = '';
     private int $lastDeployCheck = 0;
     private ?WorkerLock $ownLock = null;
+    private string $lockName;
 
     /**
      * @param array<string,array<string,mixed>>|null $daemons Overrides DAEMONS, for tests
@@ -86,8 +87,10 @@ class DaemonSupervisor
         ?array $daemons = null,
         ?callable $spawner = null,
         ?callable $isAlive = null,
-        ?callable $clock = null
+        ?callable $clock = null,
+        string $lockName = 'daemon-supervisor'
     ) {
+        $this->lockName = $lockName;
         $this->root = rtrim($root ?? dirname(__DIR__), '/');
         $this->daemons = $daemons ?? self::DAEMONS;
         $this->clock = $clock ?? static fn (): int => time();
@@ -145,7 +148,7 @@ class DaemonSupervisor
      */
     public function ownLock(): WorkerLock
     {
-        return $this->ownLock ??= new WorkerLock('daemon-supervisor');
+        return $this->ownLock ??= new WorkerLock($this->lockName);
     }
 
     /**
