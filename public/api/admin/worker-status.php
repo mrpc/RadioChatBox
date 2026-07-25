@@ -6,7 +6,7 @@
  * GET -> { running, wedged, pid, uptime_seconds, heartbeat_age_seconds, jobs_processed,
  *          queue: { size, next_in_seconds }, schedule: [ per-task last run ] }
  *
- * Until now this only existed as `php bot-worker.php status` on the server, which
+ * Until now this only existed as `php worker.php status` on the server, which
  * means nobody notices a stopped worker until replies stop arriving - and with the
  * periodic tasks moved into the worker, a stopped worker also means no stats, no
  * cleanup and no track history.
@@ -16,6 +16,8 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use RadioChatBox\AdminAuth;
 use RadioChatBox\CorsHandler;
+use RadioChatBox\DaemonSupervisor;
+use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Scheduler;
 use RadioChatBox\SettingsService;
@@ -77,8 +79,22 @@ try {
         ];
     }
 
+    // The supervisor is what restarts a dead worker, so "worker stopped" and "nothing
+    // is watching it" are different problems and the panel has to tell them apart.
+    $supervisor = new DaemonSupervisor();
+    $supervisorState = $supervisor->ownLock()->readState();
+    $supervisorAge = $supervisor->ownLock()->heartbeatAge($supervisorState);
+
     echo json_encode([
         'success' => true,
+        // Several installations can share a server; say which one this is.
+        'instance' => Database::getInstanceName(),
+        'supervisor' => [
+            'running' => $supervisorState !== null && $supervisor->ownLock()->isHeldByAnother(),
+            'pid' => $supervisorState['pid'] ?? null,
+            'heartbeat_age_seconds' => $supervisorAge,
+        ],
+        'daemons' => $supervisor->status(),
         'running' => $running,
         'wedged' => $wedged,
         'pid' => $state['pid'] ?? null,

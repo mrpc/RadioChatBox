@@ -90,9 +90,27 @@ class Database
      */
     public static function getRedisPrefix(): string
     {
-        $config = Config::get('database');
-        $dbName = $config['name'];
-        return "radiochatbox:{$dbName}:";
+        return 'radiochatbox:' . self::getInstanceName() . ':';
+    }
+
+    /**
+     * Which installation this is.
+     *
+     * Several instances can share a server, so everything with a name that could
+     * collide - Redis keys, lock files, daemon ids, log lines - is scoped by this. The
+     * database name is the discriminator because it is already what separates two
+     * installations; APP_INSTANCE overrides it when two of them share a database name
+     * on different hosts.
+     */
+    public static function getInstanceName(): string
+    {
+        $configured = trim((string) (getenv('APP_INSTANCE') ?: ''));
+
+        if ($configured === '') {
+            $configured = (string) (Config::get('database')['name'] ?? 'radiochatbox');
+        }
+
+        return preg_replace('/[^A-Za-z0-9_.-]/', '_', $configured) ?: 'radiochatbox';
     }
     
     // ========================================================================

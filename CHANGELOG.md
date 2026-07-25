@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completion is rejected instead of sent
 - Every LLM call is logged (`bot_llm_log`): request, reply, finish reason, token
   usage including reasoning tokens, duration and errors — inspectable with
-  `bot-worker.php log` and summarised on the dashboard
+  `worker.php log` and summarised on the dashboard
 - Bot replies used the wrong grammatical gender for the persona; the prompt now
   pins it, and the default temperature drops from 1.3 to 1.0, which stops the
   garbled Greek
@@ -81,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     of ~1.5s per word — the message is inserted and published only after it
   - Impersonating a fake user stops its bot in that conversation, including
     replies already queued or generated; "Back to bot" hands it back
-  - Redis-backed delayed job queue (`src/JobQueue.php`) plus a `bot-worker.php`
+  - Redis-backed delayed job queue (`src/JobQueue.php`) plus a `worker.php`
     CLI worker (`run` / `once` / `status` / `flush`, systemd or cron)
   - Single-instance lock with heartbeat for the worker (`src/WorkerLock.php`),
     implemented in plain PHP via atomic file creation — no `flock` (which is
@@ -112,6 +112,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   react to it instead of answering the caption as if nothing were attached
 - Per-bot reply language (auto / greek / greeklish / english); greeklish is
   instructed last in the prompt and enforced by transliterating the reply
+- `daemon.php`: a supervisor that keeps the workers running, so only one process needs
+  supervising from outside. It starts a missing worker, replaces a crashed one, asks a
+  wedged one (alive but no heartbeat) to restart, and on a new deployed commit asks
+  every worker to come back on the new code — always by request, never by kill
+- Renamed `bot-worker.php` to `worker.php`: it no longer only answers bots
+- Everything is scoped per installation (`APP_INSTANCE`, else the database name), so
+  several instances on one server run independent supervisors and workers
 - The worker can run the periodic jobs itself instead of crontab (`run --schedule`):
   stats snapshots and aggregations, cleanup, LLM log pruning, balance snapshots — and
   the stream is polled every 30s (was every 5 min, so short tracks were missed), with a
@@ -132,7 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus per-call cost priced at write time from editable unit prices
   (Settings → Bots → Cost) since the provider has no pricing endpoint. Shown in
   Bot Activity, on the dashboard card, in the call detail and in
-  `bot-worker.php log`
+  `worker.php log`
 - Model dropdown fetched live from the provider's `/models`, so a retired model
   disappears without a code change (the built-in list stays as the fallback)
 - Bot Activity tab in the admin panel: token usage per hour/day/week, every bot

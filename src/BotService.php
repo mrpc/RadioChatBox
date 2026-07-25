@@ -14,14 +14,14 @@ use Redis;
  *                              └─ queues a `bot_reply` job after a short
  *                                 "reading" delay
  *
- *   bot-worker.php       ──▶ processReplyJob()
+ *   worker.php       ──▶ processReplyJob()
  *                              ├─ budget exhausted → queue the hardcoded
  *                              │  farewell, no LLM call at all
  *                              └─ otherwise call the LLM, then queue a
  *                                 `bot_deliver` job after a typing delay
  *                                 (~1.5s per word)
  *
- *   bot-worker.php       ──▶ processDeliverJob()
+ *   worker.php       ──▶ processDeliverJob()
  *                              └─ INSERT into private_messages + publish to
  *                                 Redis so the client sees it in real time
  *
@@ -433,7 +433,7 @@ class BotService
     }
 
     // ========================================================================
-    // JOB HANDLERS (called by bot-worker.php)
+    // JOB HANDLERS (called by worker.php)
     // ========================================================================
 
     /**

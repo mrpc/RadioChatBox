@@ -2364,7 +2364,7 @@
                     <p style="color: #6b7280; margin-bottom: 15px;">
                         Let fake users answer private messages automatically through an LLM (DeepSeek).
                         Enable it per fake user in the <strong>Fake Users</strong> tab.
-                        Requires the <code>bot-worker.php</code> background worker to be running.
+                        Requires the <code>worker.php</code> background worker to be running.
                     </p>
 
                     <div class="form-group">
@@ -2427,13 +2427,13 @@
                             </label>
                             <small>
                                 Needed to tell a truncated reply from a bad one. Inspect with
-                                <code>php bot-worker.php log</code>.
+                                <code>php worker.php log</code>.
                             </small>
                         </div>
                         <div class="form-group">
                             <label>Log retention (days)</label>
                             <input type="number" id="setting-bot-llm-log-retention-days" min="1" max="365" placeholder="7">
-                            <small>Older entries are dropped by <code>bot-worker.php prune-log</code>.</small>
+                            <small>Older entries are dropped by <code>worker.php prune-log</code>.</small>
                         </div>
                     </div>
 
@@ -5677,6 +5677,12 @@
                 value.textContent = state;
 
                 const parts = [];
+                // A stopped worker with no supervisor stays stopped, which is the worse
+                // of the two problems.
+                if (data.supervisor && !data.supervisor.running) {
+                    parts.push('⚠️ no supervisor');
+                    cls = 'negative';
+                }
                 if (data.running && data.uptime_seconds !== null) parts.push('up ' + formatSeconds(data.uptime_seconds));
                 if (data.heartbeat_age_seconds !== null) parts.push('beat ' + formatSeconds(data.heartbeat_age_seconds) + ' ago');
                 if (data.jobs_processed !== null) parts.push(data.jobs_processed + ' job(s)');
@@ -5723,6 +5729,10 @@
             document.getElementById('worker-status-body').innerHTML = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 13px; margin-bottom: 14px;">
                     <div><strong>State</strong><br>${data.wedged ? '⚠️ alive but stuck' : (data.running ? '✓ running' : '⚠️ stopped')}</div>
+                    <div><strong>Supervisor</strong><br>${data.supervisor?.running
+                        ? `✓ pid ${data.supervisor.pid}` + (data.supervisor.heartbeat_age_seconds !== null ? ` · ${formatSeconds(data.supervisor.heartbeat_age_seconds)} ago` : '')
+                        : '<span style="color:#b91c1c;">not running</span>'}</div>
+                    <div><strong>Instance</strong><br>${escapeHtml(data.instance || '-')}</div>
                     <div><strong>Pid</strong><br>${data.pid ?? '-'}${data.host ? ' @ ' + escapeHtml(data.host) : ''}</div>
                     <div><strong>Uptime</strong><br>${data.uptime_seconds !== null ? formatSeconds(data.uptime_seconds) : '-'}</div>
                     <div><strong>Last heartbeat</strong><br>${data.heartbeat_age_seconds !== null ? formatSeconds(data.heartbeat_age_seconds) + ' ago' : '-'}</div>
@@ -5731,7 +5741,9 @@
                 </div>
                 ${!data.running ? `<div style="padding: 10px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-size: 13px; margin-bottom: 14px;">
                     The worker is not running: no bot replies are delivered and no periodic task runs.
-                    Start it with <code>php bot-worker.php run --schedule</code> (or via systemd).
+                    ${data.supervisor?.running
+                        ? 'The supervisor is up, so it should start one within a cycle.'
+                        : 'Nothing is supervising it either — start <code>php daemon.php run</code> (systemd unit in docs/BOT_REPLIES.md).'}
                 </div>` : ''}
                 <h3 style="font-size: 14px; color: #374151;">Periodic tasks</h3>
                 <table>

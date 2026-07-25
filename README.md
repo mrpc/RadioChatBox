@@ -364,7 +364,7 @@ On Windows: `dockertest.bat` (same, with `--coverage`).
 ./dockerbash                            # interactive shell
 ./dockerbash -c "php -v"                # single command
 
-./radiochatbox bot status               # php bot-worker.php status
+./radiochatbox bot status               # php worker.php status
 ./radiochatbox stats snapshot           # php stats-cron.php snapshot
 ./radiochatbox psql -c 'SELECT 1'       # psql on the app database
 ./radiochatbox redis ping               # redis-cli

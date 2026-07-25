@@ -24,7 +24,7 @@ class WorkerReloaderTest extends TestCase
         $this->root = sys_get_temp_dir() . '/reloader_' . bin2hex(random_bytes(4));
         mkdir($this->root . '/src', 0777, true);
         file_put_contents($this->root . '/src/Thing.php', "<?php // one\n");
-        file_put_contents($this->root . '/bot-worker.php', "<?php // worker\n");
+        file_put_contents($this->root . '/worker.php', "<?php // worker\n");
     }
 
     protected function tearDown(): void
@@ -80,8 +80,8 @@ class WorkerReloaderTest extends TestCase
         $reloader = new WorkerReloader($this->root);
         $reloader->baseline();
 
-        file_put_contents($this->root . '/bot-worker.php', "<?php // worker, edited\n");
-        touch($this->root . '/bot-worker.php', time() + 5);
+        file_put_contents($this->root . '/worker.php', "<?php // worker, edited\n");
+        touch($this->root . '/worker.php', time() + 5);
 
         $this->assertTrue($reloader->codeChanged());
     }

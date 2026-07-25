@@ -9,7 +9,7 @@ use Redis;
  *
  * The project has no framework queue, so this provides the "run this later"
  * primitive the bot needs: a sorted set holds job ids scored by their run-at
- * timestamp, and a hash holds the payloads. bot-worker.php claims due jobs.
+ * timestamp, and a hash holds the payloads. worker.php claims due jobs.
  *
  *   <prefix>jobs:delayed  ZSET  jobId => runAt (unix seconds)
  *   <prefix>jobs:data     HASH  jobId => json payload

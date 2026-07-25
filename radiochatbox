@@ -4,6 +4,8 @@
 #
 #   ./radiochatbox bot status                  php bot-worker.php status
 #   ./radiochatbox bot run --max-runtime=55    php bot-worker.php run ...
+#   ./radiochatbox daemon status               php daemon.php status (the supervisor)
+#   ./radiochatbox daemon once --dry-run       show what it would start
 #   ./radiochatbox stats snapshot              php stats-cron.php snapshot
 #   ./radiochatbox psql                        psql on the app database
 #   ./radiochatbox psql -c 'SELECT 1'          ...with arguments
@@ -44,6 +46,10 @@ command="${1:-help}"
 case "$command" in
     bot)
         exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bot-worker.php "$@"
+        ;;
+
+    daemon)
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php daemon.php "$@"
         ;;
 
     stats)

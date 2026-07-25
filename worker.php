@@ -7,23 +7,23 @@
  * in private messages (see src/BotService.php).
  *
  * Usage:
- *   php bot-worker.php run [--max-runtime=SECONDS] [--sleep=SECONDS] [--batch=N] [--no-reload]
- *   php bot-worker.php once
- *   php bot-worker.php status [--stale-after=SECONDS]
- *   php bot-worker.php log [--limit=N] [--problems]
- *   php bot-worker.php schedule
- *   php bot-worker.php run-task <name>
- *   php bot-worker.php flush
+ *   php worker.php run [--max-runtime=SECONDS] [--sleep=SECONDS] [--batch=N] [--watch-files]
+ *   php worker.php once
+ *   php worker.php status [--stale-after=SECONDS]
+ *   php worker.php log [--limit=N] [--problems]
+ *   php worker.php schedule
+ *   php worker.php run-task <name>
+ *   php worker.php flush
  *
  * Common options: --lock=PATH, --stale-after=SECONDS, --verbose.
  *
  * Actions:
  *   run     - Loop, polling every --sleep seconds (default 1s) until --max-runtime
  *             is reached (0 = forever). Meant for systemd/supervisor or cron.
- *             Keeps itself current: a settings change is adopted in place, and a
- *             code change makes it exit between batches so the supervisor starts a
- *             fresh process on the new code (--no-reload turns that off). PHP cannot
- *             reload code into a running process, so exiting IS the reload.
+ *             A settings change is adopted in place. Code cannot be reloaded into a
+ *             running PHP process, so replacing the process IS the reload: in
+ *             production daemon.php does that when a new commit is deployed, and
+ *             --watch-files makes a directly-run worker do it on any file change.
  *   once    - Process everything that is currently due, then exit. Delivery is
  *             then only as accurate as the cron interval.
  *   status  - Print worker health (pid, uptime, heartbeat age), queue size and
@@ -43,10 +43,10 @@
  *
  * Recommended: run it as a service so replies land on time.
  *
- *   # systemd (/etc/systemd/system/radiochatbox-bot.service)
+ *   # systemd (/etc/systemd/system/radiochatbox-worker.service)
  *   [Service]
  *   WorkingDirectory=/path/to/radiochatbox
- *   ExecStart=/usr/bin/php /path/to/radiochatbox/bot-worker.php run
+ *   ExecStart=/usr/bin/php /path/to/radiochatbox/worker.php run
  *   Restart=always
  *   RestartSec=5
  *   # Optional: let systemd restart a wedged worker by itself. The worker sends
@@ -56,7 +56,7 @@
  *
  * Cron alternative - `run --max-runtime=55` polls for 55 of every 60 seconds, so
  * replies stay ~1s accurate with only a ~5s gap between runs:
- *   * * * * * cd /path/to/radiochatbox && php bot-worker.php run --max-runtime=55 >> logs/bot-worker.log 2>&1
+ *   * * * * * cd /path/to/radiochatbox && php worker.php run --max-runtime=55 >> logs/bot-worker.log 2>&1
  */
 
 declare(strict_types=1);
@@ -269,7 +269,7 @@ try {
     $settings = new SettingsService();
     $queue = new JobQueue();
     $staleAfter = max(10, (int) ($options['stale-after'] ?? WorkerLock::DEFAULT_STALE_AFTER));
-    $lock = new WorkerLock('bot-worker', (string) ($options['lock'] ?? ''), $staleAfter);
+    $lock = new WorkerLock('worker', (string) ($options['lock'] ?? ''), $staleAfter);
 
     switch ($action) {
         case 'status':
@@ -464,7 +464,7 @@ try {
             $state = $scheduler->state();
             $due = $scheduler->dueTasks();
 
-            logMessage('Scheduled tasks (run them with: bot-worker.php run --schedule)');
+            logMessage('Scheduled tasks (run them with: worker.php run --schedule)');
             foreach ($scheduler->tasks() as $task => $meta) {
                 $row = $state[$task] ?? null;
                 logMessage(sprintf(
@@ -482,7 +482,7 @@ try {
             $taskName = $argv[2] ?? '';
 
             if ($taskName === '' || !isset(Scheduler::TASKS[$taskName])) {
-                logMessage('Usage: php bot-worker.php run-task <name>. Known tasks: '
+                logMessage('Usage: php worker.php run-task <name>. Known tasks: '
                     . implode(', ', array_keys(Scheduler::TASKS)));
                 exit(1);
             }
@@ -547,7 +547,10 @@ try {
             // A daemon otherwise runs the code and the configuration it started with.
             $reloader = new WorkerReloader();
             $reloader->baseline();
-            $autoReload = !isset($options['no-reload']) && !in_array('--no-reload', $argv, true);
+            // Off by default: in production the supervisor owns restarts (it watches
+            // the deployed commit), and mtimes change on every editor save. This is the
+            // development convenience - a worker run directly that reloads on save.
+            $autoReload = isset($options['watch-files']) || in_array('--watch-files', $argv, true);
 
             $startedAt = time();
             $running = true;
@@ -593,6 +596,13 @@ try {
                         break;
                     }
                     sdNotify("WATCHDOG=1\n");
+
+                    // The supervisor asks rather than kills, so this is where the
+                    // request is honoured: after a batch, with nothing half-done.
+                    if ($lock->stopRequested()) {
+                        logMessage('Stop requested by the supervisor - finishing up and exiting');
+                        break;
+                    }
 
                     // Settings can be adopted in place: only the objects built from
                     // them are stale, and rebuilding those keeps the lock and the
@@ -704,9 +714,9 @@ try {
         default:
             logMessage("Unknown action: {$action}");
             logMessage(
-                'Usage: php bot-worker.php [run|once|status|log|prune-log|schedule|run-task|flush]'
+                'Usage: php worker.php [run|once|status|log|prune-log|schedule|run-task|flush]'
                 . ' [--max-runtime=N] [--sleep=N] [--batch=N] [--stale-after=N] [--lock=PATH]'
-                . ' [--schedule] [--no-reload] [--verbose]'
+                . ' [--schedule] [--watch-files] [--verbose]'
             );
             exit(1);
     }

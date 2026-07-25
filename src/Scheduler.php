@@ -17,7 +17,7 @@ use PDO;
  * application is broken - and if the worker is the broken part, backups must not stop
  * with it.
  *
- * Opt-in (`bot-worker.php run --schedule`), so an existing crontab keeps working
+ * Opt-in (`worker.php run --schedule`), so an existing crontab keeps working
  * untouched until it is removed by hand. Running both is safe but pointless: each
  * task records its own last run and will not run twice within its interval.
  *

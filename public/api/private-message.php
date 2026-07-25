@@ -191,7 +191,7 @@ try {
             }
 
             // Schedule an automatic bot reply. This only queues a job (the LLM
-            // call happens in bot-worker.php), and it is a no-op unless the
+            // call happens in worker.php), and it is a no-op unless the
             // feature is enabled for this fake user. BotService swallows its
             // own errors so the user's message is never affected.
             (new \RadioChatBox\BotService())->onIncomingMessage(

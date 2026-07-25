@@ -25,7 +25,7 @@ class WorkerReloader
      * Files whose modification means the running process is out of date. Paths are
      * relative to the project root.
      */
-    public const WATCHED = ['src', 'bot-worker.php', 'composer.lock'];
+    public const WATCHED = ['src', 'worker.php', 'composer.lock'];
 
     private string $root;
     private ?\Redis $redis = null;

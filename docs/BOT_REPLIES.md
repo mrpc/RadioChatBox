@@ -21,7 +21,7 @@ public/api/private-message.php
   (reading delay: 2-8s by default)  ── nothing blocks the HTTP response
         │
         ▼
-bot-worker.php  →  BotService::processReplyJob()
+worker.php  →  BotService::processReplyJob()
   ├─ message budget spent?  → ask the LLM for a CLOSING message
   │                           (falls back to a random canned goodbye on failure)
   └─ otherwise             → ask the LLM for a normal reply
@@ -29,7 +29,7 @@ bot-worker.php  →  BotService::processReplyJob()
         │  reply text is sanitised, then a `bot_deliver` job is queued
         │  with a typing delay of ~1.5s per word
         ▼
-bot-worker.php  →  BotService::processDeliverJob()
+worker.php  →  BotService::processDeliverJob()
   INSERT INTO private_messages + PUBLISH to Redis
   → the recipient's SSE stream shows the message
 ```
@@ -119,29 +119,49 @@ The worker is what actually calls the LLM and delivers the messages. Without it
 nothing is ever sent.
 
 ```bash
-php bot-worker.php status     # worker health + queue depth + configuration
-php bot-worker.php run        # loop, polling every second (recommended)
-php bot-worker.php once       # process what is due, then exit
-php bot-worker.php flush      # drop every queued job
+php worker.php status     # worker health + queue depth + configuration
+php worker.php run        # loop, polling every second (recommended)
+php worker.php once       # process what is due, then exit
+php worker.php flush      # drop every queued job
 ```
 
-**systemd** (`/etc/systemd/system/radiochatbox-bot.service`):
+**systemd** — supervise the *supervisor*, not the worker. It is the only process that
+needs watching from outside; it starts the workers, replaces a wedged one, and restarts
+everything when a new commit is deployed.
+
+One unit per installation, because several can share a server
+(`/etc/systemd/system/radiochatbox-daemon@.service`):
 
 ```ini
 [Unit]
-Description=RadioChatBox bot worker
-After=network.target
+Description=RadioChatBox daemon supervisor (%i)
+After=network.target postgresql.service redis.service
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/radiochatbox
-ExecStart=/usr/bin/php /path/to/radiochatbox/bot-worker.php run
+User=www-data
+WorkingDirectory=/var/www/%i
+ExecStart=/usr/bin/php /var/www/%i/daemon.php run
+ExecStop=/usr/bin/php /var/www/%i/daemon.php stop
+
 Restart=always
 RestartSec=5
-User=www-data
+
+# Give the workers time to finish the job in hand.
+TimeoutStopSec=60
+KillMode=mixed
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=radiochatbox-daemon-%i
 
 [Install]
 WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now radiochatbox-daemon@mysite
+systemctl status radiochatbox-daemon@othersite
 ```
 
 **Cron-only alternative.** `run --max-runtime=N` is a real loop, not a single
@@ -151,7 +171,7 @@ minutely cron job that runs for 55s covers almost the whole minute at
 starts:
 
 ```cron
-* * * * * cd /path/to/radiochatbox && php bot-worker.php run --max-runtime=55 >> logs/bot-worker.log 2>&1
+* * * * * cd /path/to/radiochatbox && php worker.php run --max-runtime=55 >> logs/bot-worker.log 2>&1
 ```
 
 No `flock` wrapper is needed — the worker takes its own lock (below). Note that
@@ -187,7 +207,7 @@ The lock file (`logs/bot-worker-<database>.lock` by default) looks like this:
 The heartbeat is rewritten **after every job**, not once per batch, because a
 single job can block for as long as the LLM timeout.
 
-`php bot-worker.php status` reads it and distinguishes three states:
+`php worker.php status` reads it and distinguishes three states:
 
 | State | Meaning | Exit code |
 |---|---|---|
@@ -369,9 +389,9 @@ The **Bot Activity** tab (root / owner / administrator) is the place to look:
 From the shell:
 
 ```bash
-php bot-worker.php log              # recent calls + a 24h summary
-php bot-worker.php log --problems   # only failures and truncations
-php bot-worker.php prune-log        # drop entries past the retention window
+php worker.php log              # recent calls + a 24h summary
+php worker.php log --problems   # only failures and truncations
+php worker.php prune-log        # drop entries past the retention window
 ```
 
 The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies are
@@ -391,7 +411,7 @@ will not run twice inside its own interval.
 | `stats_snapshot` | 5m | `*/5 * * * * stats-cron.php snapshot` |
 | `stats_hourly` … `stats_yearly` | hourly / daily, at fixed UTC times | the aggregation entries |
 | `cleanup` | 1h | the `cleanup.php?token=` cron URL |
-| `prune_llm_log` | daily 03:00 | `bot-worker.php prune-log` |
+| `prune_llm_log` | daily 03:00 | `worker.php prune-log` |
 | `llm_balance_snapshot` | 1h | (was inline in the worker) |
 
 The stream is polled every 30 seconds because the current track has to be caught while
@@ -407,15 +427,59 @@ keep working when the application is broken, and if the worker is the broken par
 backups must not stop with it.
 
 ```bash
-php bot-worker.php schedule          # cadence, last run, what is due
-php bot-worker.php run-task cleanup  # run one now
-php bot-worker.php status            # worker health + every task's last run
+php worker.php schedule          # cadence, last run, what is due
+php worker.php run-task cleanup  # run one now
+php worker.php status            # worker health + every task's last run
 ```
 
 The dashboard's **Background Worker** card shows the same thing: running / stuck /
 stopped, uptime, heartbeat age, queue depth, and a click opens every task with its last
 run, duration and error. A stopped worker now means no bot replies *and* no maintenance,
 which is exactly why it belongs there.
+
+## The supervisor
+
+`daemon.php` is the process that keeps the workers running, so exactly one thing needs
+supervising from outside:
+
+```bash
+php daemon.php run [--interval=10] [--dry-run]   # the supervised process
+php daemon.php once --dry-run                    # show what it would do
+php daemon.php status                            # supervisor + every daemon (exit 2 = unhealthy)
+php daemon.php restart                           # ask every worker to come back
+```
+
+Every cycle it compares what should be running with what is:
+
+- **missing worker** → start it;
+- **crashed** (lock left behind, pid gone) → replace it;
+- **alive but not progressing** (no heartbeat for 5 minutes) → ask it to restart, which a
+  plain pid check would call healthy;
+- **new commit deployed** → ask every worker to restart on the new code.
+
+Stopping is always a **request**, never a kill: a `.stop` file next to the worker's
+lock, which the worker notices between jobs and exits cleanly. A job cut in half is
+worse than a job finished late, and the next cycle fills the empty slot.
+
+A deployment is detected by reading `.git/HEAD` (and `packed-refs`) directly - a commit
+hash changes once per deploy, whereas file timestamps change on every editor save. When
+the release is not a checkout, detection is simply skipped rather than guessed at.
+
+### Several installations on one server
+
+Everything that could collide is scoped by installation - Redis keys, both lock files,
+the daemon ids and the status output. The scope is the database name, or `APP_INSTANCE`
+when two installations share one:
+
+```
+logs/daemon-supervisor-<instance>.lock
+logs/worker-<instance>.lock
+radiochatbox:<instance>:*          (Redis)
+```
+
+So each instance runs its own supervisor and its own worker, and a second supervisor for
+the *same* instance refuses to start - otherwise the doubling the supervisor exists to
+prevent would come from the supervisor itself.
 
 ## The worker keeps itself current
 
@@ -428,11 +492,11 @@ for both:
   temperature and budget it was constructed with, so clearing the settings cache alone
   would never reach it. The lock and the queue are untouched.
 - **Code changes need a new process**, because PHP cannot reload code into a running
-  one. The worker notices (file sizes and mtimes across `src/`, `bot-worker.php` and
-  `composer.lock`) and then either exits cleanly for its supervisor to replace it, or -
-  when nothing is supervising it - **starts its own replacement** and exits. Jobs live
-  in Redis and the lock is released either way, so nothing is lost. `--no-reload` turns
-  it off.
+  one. In production that is the supervisor's job (it watches the deployed commit). For
+  a worker run directly during development, `--watch-files` makes it notice changes to
+  `src/`, `worker.php` and `composer.lock` and replace itself - it exits for a
+  supervisor if there is one, and otherwise starts its own replacement, capped at five
+  attempts that failed to stay up so a crash cannot loop.
 
   Supervision is detected from the environment: `INVOCATION_ID`/`NOTIFY_SOCKET` from
   systemd, `SUPERVISOR_ENABLED` from supervisord, or `WORKER_SUPERVISED` exported by
@@ -661,7 +725,7 @@ The model dropdown is likewise fetched live from `GET /models`, falling back to 
 built-in list, so a retired model (as `deepseek-chat` was) disappears on its own.
 
 ```bash
-php bot-worker.php log   # 24h cost + balance + per-call cost
+php worker.php log   # 24h cost + balance + per-call cost
 ```
 
 To retest a bot from scratch, use **🧹 Clear conversations** in its bot dialog
@@ -672,8 +736,8 @@ its per-thread budget and takeover state, and any queued reply.
 
 | Symptom | Check |
 |---|---|
-| Replies cut off mid-word / incoherent | `php bot-worker.php log --problems`. A `finish_reason` of `length` means the token budget ran out — raise **Max tokens** or leave **Reasoning** off. |
-| No replies at all | `php bot-worker.php status` — enabled? key set? worker running? |
+| Replies cut off mid-word / incoherent | `php worker.php log --problems`. A `finish_reason` of `length` means the token budget ran out — raise **Max tokens** or leave **Reasoning** off. |
+| No replies at all | `php worker.php status` — enabled? key set? worker running? |
 | `ALIVE but WEDGED` in `status` | The worker is stuck (usually a hung HTTP connection). Kill it; the next run takes the lock over on its own. |
 | "Another worker is already running" | Expected — the lock is doing its job. `status` shows which pid holds it. |
 | Replies but never delivered | Worker died between the two job stages; check the worker log. |

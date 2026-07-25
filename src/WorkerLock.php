@@ -40,7 +40,7 @@ class WorkerLock
     private array $state = [];
 
     public function __construct(
-        string $name = 'bot-worker',
+        string $name = 'worker',
         ?string $path = null,
         int $staleAfter = self::DEFAULT_STALE_AFTER
     ) {
@@ -50,7 +50,7 @@ class WorkerLock
     }
 
     /**
-     * `logs/<name>-<database>.lock`, falling back to the system temp directory
+     * `logs/<name>-<instance>.lock`, falling back to the system temp directory
      * when logs/ is not writable.
      *
      * Note for systemd units: with `PrivateTmp=true` the temp fallback is not
@@ -69,10 +69,9 @@ class WorkerLock
             $dir = sys_get_temp_dir();
         }
 
-        $database = (string) (Config::get('database')['name'] ?? 'radiochatbox');
-        $suffix = preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?? 'db';
-
-        return $dir . '/' . $name . '-' . $suffix . '.lock';
+        // Scoped by installation: two instances on one server must not share a lock,
+        // or one of them silently never runs.
+        return $dir . '/' . $name . '-' . Database::getInstanceName() . '.lock';
     }
 
     public function getPath(): string
@@ -247,6 +246,19 @@ class WorkerLock
         // Present but unreadable: report an unknown holder rather than nothing,
         // so acquire() can decide based on the file's age.
         return ['status' => 'unknown', 'heartbeat_at' => @filemtime($this->path) ?: 0];
+    }
+
+    /**
+     * Whether the supervisor has asked this worker to stop.
+     *
+     * A request, not a signal: the worker finishes the job in hand and exits, and the
+     * supervisor fills the slot again on its next cycle. Cutting a job in half would be
+     * worse than finishing it late, and signals are not available everywhere (pcntl is
+     * not always compiled in).
+     */
+    public function stopRequested(): bool
+    {
+        return file_exists($this->path . '.stop');
     }
 
     /**
