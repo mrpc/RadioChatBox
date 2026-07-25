@@ -72,6 +72,7 @@ class SettingsService
         'bot_llm_max_tokens',
         'bot_max_messages_per_thread',
         'bot_history_limit',
+        'bot_context_prompt',
         'bot_farewell_prompt',
         'bot_farewell_messages',
         'bot_typing_seconds_per_word',

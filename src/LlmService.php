@@ -38,7 +38,11 @@ class LlmService
             $this->pick($overrides, 'base_url', (string) ($config['base_url'] ?? 'https://api.deepseek.com')),
             '/'
         );
-        $this->model = $this->pick($overrides, 'model', (string) ($config['model'] ?? 'deepseek-chat'));
+        $this->model = $this->pick(
+            $overrides,
+            'model',
+            (string) ($config['model'] ?? '') ?: BotService::defaultModel()
+        );
 
         $this->timeout = isset($overrides['timeout']) && (int) $overrides['timeout'] > 0
             ? (int) $overrides['timeout']
@@ -133,9 +137,8 @@ class LlmService
             'stream' => false,
         ];
 
-        // The reasoning model ignores sampling parameters, so only send them
-        // for the standard chat models.
-        if (!str_contains($this->model, 'reasoner')) {
+        // Reasoning models ignore sampling parameters; only send them otherwise.
+        if (!str_contains($this->model, 'reasoner') && !str_contains($this->model, 'thinking')) {
             $payload['temperature'] = $this->temperature;
         }
 

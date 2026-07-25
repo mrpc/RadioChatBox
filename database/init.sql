@@ -466,7 +466,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_replies_enabled', 'false'),
     ('bot_llm_api_key', ''),
     ('bot_llm_base_url', 'https://api.deepseek.com'),
-    ('bot_llm_model', 'deepseek-chat'),
+    ('bot_llm_model', 'deepseek-v4-flash'),
     ('bot_llm_temperature', '1.3'),
     ('bot_llm_max_tokens', '300'),
     ('bot_max_messages_per_thread', '4'),
@@ -476,6 +476,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_read_delay_min', '2'),
     ('bot_read_delay_max', '8'),
     ('bot_history_limit', '20'),
+    ('bot_context_prompt', ''),
     ('bot_farewell_prompt', ''),
     -- Fallback goodbye variants, one per line (used only when the closing LLM
     -- call fails). Empty = the 50+ built-in variants in BotService.

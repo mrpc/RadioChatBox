@@ -62,6 +62,12 @@ try {
         // instead of duplicating the list in the frontend.
         $settings['bot_default_farewell_messages'] = BotService::DEFAULT_FAREWELLS;
 
+        // Model list for the settings dropdown, so the valid names live in one
+        // place (BotService) instead of being typed by hand.
+        $settings['bot_available_models'] = BotService::availableModels();
+        $settings['bot_default_context_prompt'] = BotService::DEFAULT_CONTEXT_PROMPT;
+        $settings['bot_default_model'] = BotService::defaultModel();
+
         echo json_encode(['success' => true, 'settings' => $settings]);
         
     } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {

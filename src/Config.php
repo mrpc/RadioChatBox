@@ -69,7 +69,8 @@ class Config
             'llm' => [
                 'api_key' => getenv('DEEPSEEK_API_KEY') ?: '',
                 'base_url' => getenv('DEEPSEEK_BASE_URL') ?: 'https://api.deepseek.com',
-                'model' => getenv('DEEPSEEK_MODEL') ?: 'deepseek-chat',
+                // Empty means "use BotService::defaultModel()".
+                'model' => getenv('DEEPSEEK_MODEL') ?: '',
                 'timeout' => (int)(getenv('DEEPSEEK_TIMEOUT') ?: 20),
             ],
             'allowed_origins' => explode(',', getenv('ALLOWED_ORIGINS') ?: '*'),
