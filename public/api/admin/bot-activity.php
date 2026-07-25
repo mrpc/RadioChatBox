@@ -15,7 +15,9 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BotService;
 use RadioChatBox\CorsHandler;
+use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
+use RadioChatBox\LlmPricing;
 use RadioChatBox\SettingsService;
 
 header('Content-Type: application/json');
@@ -133,15 +135,34 @@ try {
             break;
 
         case 'summary':
+            $account = new LlmAccount($settings);
+
             $summary = [];
             foreach (['1h' => 1, '24h' => 24, '7d' => 24 * 7] as $label => $hours) {
                 $summary[$label] = $log->summary($hours);
+                // Real money for the same window, where enough balance readings
+                // exist - the estimate above is only as good as the unit prices.
+                $summary[$label]['real_spend'] = $account->realSpend($hours);
             }
 
             echo json_encode([
                 'success' => true,
                 'logging' => $log->isEnabled(),
                 'summary' => $summary,
+                'balance' => $account->balance(),
+                'currency' => LlmPricing::fromSettings($settings)->getCurrency(),
+                'priced_models' => array_keys(LlmPricing::fromSettings($settings)->all()),
+            ]);
+            break;
+
+        case 'balance':
+            // Straight from the provider: the one figure that is not an estimate.
+            $account = new LlmAccount($settings);
+
+            echo json_encode([
+                'success' => true,
+                'configured' => $account->isConfigured(),
+                'balance' => $account->balance(!empty($_GET['fresh'])),
             ]);
             break;
 

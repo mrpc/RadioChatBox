@@ -233,6 +233,59 @@ class LlmServiceTest extends TestCase
         $this->assertNull($log->find(0));
     }
 
+    /**
+     * Cost is stored per call so the money figures survive a price change: the
+     * unit prices are an editable setting, and history must keep what a call
+     * actually cost when it was made.
+     */
+    public function testACallIsCostedWhenItIsLogged(): void
+    {
+        $log = new LlmLog(null, new \RadioChatBox\LlmPricing(
+            ['test-model' => ['cache_hit' => 0.0, 'cache_miss' => 1.0, 'output' => 10.0]]
+        ));
+
+        $log->record([
+            'fake_nickname' => 'llmtest_bot',
+            'model' => 'test-model',
+            'usage' => [
+                'prompt_tokens' => 1000,
+                'prompt_cache_hit_tokens' => 0,
+                'prompt_cache_miss_tokens' => 1000,
+                'completion_tokens' => 100,
+                'total_tokens' => 1100,
+            ],
+            'finish_reason' => 'stop',
+        ]);
+
+        $entry = $log->page(1, 0, ['fake_nickname' => 'llmtest_bot'])['entries'][0];
+
+        // 1000 * 1.0 / 1M + 100 * 10.0 / 1M
+        $this->assertSame(0.002, round((float) $entry['cost'], 8));
+        $this->assertSame('USD', $entry['currency']);
+
+        $summary = $log->summary(24);
+        $this->assertGreaterThanOrEqual(0.002, (float) $summary['cost']);
+    }
+
+    public function testACallWithNoConfiguredPriceIsLeftUncostedRatherThanFree(): void
+    {
+        $log = new LlmLog(null, new \RadioChatBox\LlmPricing(
+            ['other-model' => ['cache_hit' => 1.0, 'cache_miss' => 1.0, 'output' => 1.0]]
+        ));
+
+        $log->record([
+            'fake_nickname' => 'llmtest_bot',
+            'model' => 'test-model',
+            'usage' => ['prompt_tokens' => 1000, 'completion_tokens' => 50],
+        ]);
+
+        $entry = $log->page(1, 0, ['fake_nickname' => 'llmtest_bot'])['entries'][0];
+
+        // NULL, not 0: the admin panel must be able to say "unpriced".
+        $this->assertNull($entry['cost']);
+        $this->assertSame(1, (int) $log->summary(24)['uncosted_calls']);
+    }
+
     public function testTheLogCanBePrunedAndSummarised(): void
     {
         $log = new LlmLog();

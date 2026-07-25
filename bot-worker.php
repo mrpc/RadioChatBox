@@ -63,7 +63,9 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use RadioChatBox\BotService;
 use RadioChatBox\JobQueue;
+use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
+use RadioChatBox\LlmPricing;
 use RadioChatBox\LlmService;
 use RadioChatBox\SettingsService;
 use RadioChatBox\WorkerLock;
@@ -332,15 +334,47 @@ try {
             $summary = $llmLog->summary(24);
 
             logMessage('LLM calls, last 24h');
+            $currency = $summary['currency'] ?: LlmPricing::CURRENCY;
             logMessage(sprintf(
-                '  %s call(s), %s error(s), %s truncated | %s tokens (%s on reasoning) | avg %sms',
+                '  %s call(s), %s error(s), %s truncated | %s tokens (%s on reasoning) | ~%s | avg %sms',
                 $summary['calls'] ?? 0,
                 $summary['errors'] ?? 0,
                 $summary['truncated'] ?? 0,
                 $summary['total_tokens'] ?? 0,
                 $summary['reasoning_tokens'] ?? 0,
+                LlmPricing::format((float) ($summary['cost'] ?? 0), $currency),
                 $summary['avg_duration_ms'] ?? '-'
             ));
+
+            if ((int) ($summary['uncosted_calls'] ?? 0) > 0) {
+                logMessage(sprintf(
+                    '  (%s call(s) have no cost: no price configured for the model - see bot_llm_prices)',
+                    $summary['uncosted_calls']
+                ));
+            }
+
+            // The estimate above is priced from a setting; this is real money.
+            $account = new LlmAccount($settings);
+            $balance = $account->balance();
+            if ($balance !== null) {
+                logMessage(sprintf(
+                    '  balance: %s%s',
+                    LlmPricing::format($balance['total'], $balance['currency']),
+                    $balance['is_available'] ? '' : ' (INSUFFICIENT - calls will fail)'
+                ));
+            }
+
+            $real = $account->realSpend(24);
+            if ($real !== null) {
+                logMessage(sprintf(
+                    '  actually spent (from %d balance readings): %s%s',
+                    $real['readings'],
+                    LlmPricing::format($real['spent'], $real['currency']),
+                    $real['topped_up'] > 0
+                        ? ' (+' . LlmPricing::format($real['topped_up'], $real['currency']) . ' topped up)'
+                        : ''
+                ));
+            }
 
             if (!$llmLog->isEnabled()) {
                 logMessage('  (logging is OFF - enable it in Admin > Settings)');
@@ -366,6 +400,13 @@ try {
                     $entry['finish_reason'] ?? '-',
                     $entry['duration_ms'] ?? '-'
                 ));
+
+                if ($entry['cost'] !== null) {
+                    logMessage('    cost: ~' . LlmPricing::format(
+                        (float) $entry['cost'],
+                        (string) ($entry['currency'] ?: $currency)
+                    ));
+                }
 
                 $usage = json_decode((string) $entry['usage'], true) ?: [];
                 logMessage(sprintf(
@@ -426,6 +467,7 @@ try {
             }
 
             $bot = new BotService($settings, $queue);
+            $account = new LlmAccount($settings);
             $startedAt = time();
             $running = true;
             $totalProcessed = 0;
@@ -469,6 +511,17 @@ try {
                         break;
                     }
                     sdNotify("WATCHDOG=1\n");
+
+                    // Record the provider balance now and then, so real spend over
+                    // a period can be measured rather than estimated. Rate-limits
+                    // itself to LlmAccount::SNAPSHOT_INTERVAL and never throws.
+                    $recorded = $account->snapshot();
+                    if ($recorded !== null && $verbose) {
+                        logMessage(sprintf(
+                            'Balance snapshot: %s',
+                            LlmPricing::format($recorded['total'], $recorded['currency'])
+                        ));
+                    }
 
                     sleep($sleep);
                 }

@@ -4,6 +4,7 @@
  * Token usage and health of the fake user auto-reply bots.
  *
  * GET -> { enabled, logging, summary: { '1h': {...}, '24h': {...}, '7d': {...} },
+ *          balance: the provider's real remaining money,
  *          problems: [ last few failed or truncated calls ] }
  *
  * Powers the dashboard card: without it a wrong token budget is invisible until
@@ -14,7 +15,9 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use RadioChatBox\AdminAuth;
 use RadioChatBox\CorsHandler;
+use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
+use RadioChatBox\LlmPricing;
 use RadioChatBox\SettingsService;
 
 header('Content-Type: application/json');
@@ -54,6 +57,9 @@ try {
             'total_tokens' => (int) ($row['total_tokens'] ?? 0),
             'reasoning_tokens' => (int) ($row['reasoning_tokens'] ?? 0),
             'avg_duration_ms' => $row['avg_duration_ms'] === null ? null : (int) $row['avg_duration_ms'],
+            // Estimated from the configured unit prices; see LlmPricing.
+            'cost' => (float) ($row['cost'] ?? 0),
+            'uncosted_calls' => (int) ($row['uncosted_calls'] ?? 0),
         ];
     }
 
@@ -76,6 +82,9 @@ try {
         'reasoning' => $settings->get('bot_llm_reasoning', 'false') === 'true',
         'max_tokens' => (int) $settings->get('bot_llm_max_tokens', 0),
         'summary' => $summary,
+        'currency' => LlmPricing::fromSettings($settings)->getCurrency(),
+        // Real money, from the provider - the cost figures above are an estimate.
+        'balance' => (new LlmAccount($settings))->balance(),
         'problems' => $problems,
     ]);
 } catch (Exception $e) {

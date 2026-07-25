@@ -22,11 +22,21 @@ class LlmLog
 
     private PDO $pdo;
     private SettingsService $settings;
+    private ?LlmPricing $pricing = null;
 
-    public function __construct(?SettingsService $settings = null)
+    public function __construct(?SettingsService $settings = null, ?LlmPricing $pricing = null)
     {
         $this->pdo = Database::getPDO();
         $this->settings = $settings ?? new SettingsService();
+        $this->pricing = $pricing;
+    }
+
+    /**
+     * The configured unit prices, loaded once per instance.
+     */
+    private function pricing(): LlmPricing
+    {
+        return $this->pricing ??= LlmPricing::fromSettings($this->settings);
     }
 
     public function isEnabled(): bool
@@ -50,11 +60,11 @@ class LlmLog
                 'INSERT INTO bot_llm_log
                     (fake_nickname, peer_username, purpose, model, endpoint, system_prompt,
                      messages, max_tokens, temperature, reasoning, http_status, finish_reason,
-                     reply, usage, duration_ms, error)
+                     reply, usage, duration_ms, error, cost, currency)
                  VALUES
                     (:fake_nickname, :peer_username, :purpose, :model, :endpoint, :system_prompt,
                      :messages, :max_tokens, :temperature, :reasoning, :http_status, :finish_reason,
-                     :reply, :usage, :duration_ms, :error)'
+                     :reply, :usage, :duration_ms, :error, :cost, :currency)'
             );
 
             $stmt->bindValue(':fake_nickname', $entry['fake_nickname'] ?? null);
@@ -73,6 +83,14 @@ class LlmLog
             $stmt->bindValue(':usage', self::encode($entry['usage'] ?? null));
             $stmt->bindValue(':duration_ms', $entry['duration_ms'] ?? null, PDO::PARAM_INT);
             $stmt->bindValue(':error', $entry['error'] ?? null);
+
+            // Costed at write time: the unit prices can be edited, and history must
+            // keep what the call actually cost when it was made.
+            $usage = is_array($entry['usage'] ?? null) ? $entry['usage'] : [];
+            $pricing = $this->pricing();
+            $stmt->bindValue(':cost', $pricing->cost((string) ($entry['model'] ?? ''), $usage));
+            $stmt->bindValue(':currency', $pricing->getCurrency());
+
             $stmt->execute();
         } catch (\Throwable $e) {
             error_log('LlmLog::record failed: ' . $e->getMessage());
@@ -113,6 +131,10 @@ class LlmLog
                     COUNT(*) FILTER (WHERE finish_reason = 'length') AS truncated,
                     COALESCE(SUM((usage->>'total_tokens')::int), 0) AS total_tokens,
                     COALESCE(SUM(((usage->'completion_tokens_details')->>'reasoning_tokens')::int), 0) AS reasoning_tokens,
+                    COALESCE(SUM((usage->>'prompt_cache_hit_tokens')::int), 0) AS cache_hit_tokens,
+                    COALESCE(SUM(cost), 0) AS cost,
+                    COUNT(*) FILTER (WHERE cost IS NULL) AS uncosted_calls,
+                    MAX(currency) AS currency,
                     ROUND(AVG(duration_ms)) AS avg_duration_ms
              FROM bot_llm_log
              WHERE created_at > NOW() - make_interval(hours => :hours)"
@@ -174,7 +196,8 @@ class LlmLog
 
         $stmt = $this->pdo->prepare(
             'SELECT id, created_at, fake_nickname, peer_username, purpose, model, reasoning,
-                    max_tokens, http_status, finish_reason, reply, usage, duration_ms, error
+                    max_tokens, http_status, finish_reason, reply, usage, duration_ms, error,
+                    cost, currency
              FROM bot_llm_log' . $clause . '
              ORDER BY created_at DESC, id DESC
              LIMIT :limit OFFSET :offset'

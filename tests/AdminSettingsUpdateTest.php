@@ -35,6 +35,8 @@ class AdminSettingsUpdateTest extends TestCase
         'bot_typing_max_delay',
         'bot_read_delay_min',
         'bot_read_delay_max',
+        'bot_llm_prices',
+        'bot_llm_currency',
     ];
 
     private SettingsService $settings;
@@ -162,7 +164,7 @@ class AdminSettingsUpdateTest extends TestCase
     {
         $result = $this->settings->updateFromAdmin([]);
 
-        $this->assertSame(['saved' => [], 'ignored' => []], $result);
+        $this->assertSame(['saved' => [], 'ignored' => [], 'rejected' => []], $result);
     }
 
     // ------------------------------------------------------------------
@@ -284,5 +286,46 @@ class AdminSettingsUpdateTest extends TestCase
 
         $this->assertSame($before, $this->storedValue('page_title'));
         $this->assertFalse($this->pdo->inTransaction(), 'the transaction must not be left open');
+    }
+
+    // ------------------------------------------------------------------
+    // Unit prices
+    // ------------------------------------------------------------------
+
+    /**
+     * The prices are a setting because the provider has no pricing endpoint, so a
+     * bad edit is a real possibility - and storing it would price every call at
+     * zero while the panel kept showing money figures.
+     */
+    public function testAnUnusablePriceTableIsRejectedAndTheOldOneKept(): void
+    {
+        $good = '{"deepseek-v4-flash": {"cache_hit": 0.0028, "cache_miss": 0.14, "output": 0.28}}';
+
+        $this->settings->updateFromAdmin(['bot_llm_prices' => $good]);
+        $result = $this->settings->updateFromAdmin(['bot_llm_prices' => '{"deepseek-v4-flash": {"output": 0.28}}']);
+
+        $this->assertArrayHasKey('bot_llm_prices', $result['rejected']);
+        $this->assertNotContains('bot_llm_prices', $result['saved']);
+        $this->assertSame($good, $this->storedValue('bot_llm_prices'), 'the previous prices must survive a bad edit');
+    }
+
+    public function testAValidPriceTableIsSaved(): void
+    {
+        $table = '{"m": {"cache_hit": 1, "cache_miss": 2, "output": 3}}';
+
+        $result = $this->settings->updateFromAdmin(['bot_llm_prices' => $table]);
+
+        $this->assertContains('bot_llm_prices', $result['saved']);
+        $this->assertSame([], $result['rejected']);
+        $this->assertSame($table, $this->storedValue('bot_llm_prices'));
+    }
+
+    public function testThePricesCanBeClearedBackToTheBuiltInTable(): void
+    {
+        $this->settings->updateFromAdmin(['bot_llm_prices' => '{"m": {"cache_hit": 1, "cache_miss": 2, "output": 3}}']);
+        $result = $this->settings->updateFromAdmin(['bot_llm_prices' => '']);
+
+        $this->assertContains('bot_llm_prices', $result['saved']);
+        $this->assertSame('', $this->storedValue('bot_llm_prices'));
     }
 }

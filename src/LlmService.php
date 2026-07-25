@@ -276,15 +276,41 @@ class LlmService
      */
     protected function post(string $path, array $payload): array
     {
-        $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($body === false) {
-            throw new \RuntimeException('Failed to encode LLM request payload');
+        return $this->request('POST', $path, $payload);
+    }
+
+    /**
+     * A read-only API call, for the account endpoints (/user/balance, /models)
+     * that carry no request body.
+     *
+     * @return array<string,mixed>
+     */
+    public function get(string $path): array
+    {
+        return $this->request('GET', $path);
+    }
+
+    /**
+     * @param array<string,mixed>|null $payload
+     *
+     * @return array<string,mixed>
+     */
+    protected function request(string $method, string $path, ?array $payload = null): array
+    {
+        $body = null;
+        if ($payload !== null) {
+            $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($body === false) {
+                throw new \RuntimeException('Failed to encode LLM request payload');
+            }
         }
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->baseUrl . $path);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        if ($body !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        }
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);

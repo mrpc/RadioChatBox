@@ -90,6 +90,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a healthy worker from one that is alive but wedged (exit code 2), and a lock
     left by a crashed or wedged worker is taken over automatically; optional
     systemd `sd_notify`/watchdog integration
+- Cost in money, not just tokens: remaining balance and hourly readings from the
+  provider's `/user/balance` (real spend per window is the drop between readings),
+  plus per-call cost priced at write time from editable unit prices
+  (Settings → Bots → Cost) since the provider has no pricing endpoint. Shown in
+  Bot Activity, on the dashboard card, in the call detail and in
+  `bot-worker.php log`
+- Model dropdown fetched live from the provider's `/models`, so a retired model
+  disappears without a code change (the built-in list stays as the fallback)
 - Bot Activity tab in the admin panel: token usage per hour/day/week, every bot
   conversation with its budget and state (with its messages and the calls behind
   them), and the LLM call log with per-call prompt, reply, token usage and error

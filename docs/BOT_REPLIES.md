@@ -341,7 +341,9 @@ the current state instead of replying twice.
 - **The API key never reaches the frontend.** `getPublicSettings()` strips every
   `bot_*` key; only the authenticated admin API returns it.
 - Each reply costs one LLM request. With the default budget, a conversation
-  costs at most 5 requests (4 replies + 1 closing message).
+  costs at most 5 requests (4 replies + 1 closing message) - measured at roughly
+  $0.00002-0.00003 per reply on `deepseek-v4-flash`, so about a tenth of a cent
+  per conversation. See [What it costs](#what-it-costs).
 
 ## Diagnostics
 
@@ -351,6 +353,8 @@ are cut off" from guesswork into a one-line answer.
 
 The **Bot Activity** tab (root / owner / administrator) is the place to look:
 
+- **Cost** per hour / day / week, next to the tokens, and the **remaining balance**
+  read from the provider.
 - **Token usage** per hour / day / week, with error and truncation counts.
 - **Conversations**: every bot thread with its message budget, whether an admin
   took it over, whether it ended, and the last error. Opening one shows the
@@ -368,8 +372,51 @@ php bot-worker.php prune-log        # drop entries past the retention window
 ```
 
 The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies are
-on. Retention defaults to 7 days and logging can be switched off in
-Settings → Diagnostics.
+on, showing the day's cost and the balance left. Retention defaults to 7 days and
+logging can be switched off in Settings → Diagnostics.
+
+## What it costs
+
+Two different numbers, and the difference matters:
+
+**Real money** comes from the provider: `GET /user/balance`. It is shown as
+"Balance left" in Bot Activity and in Settings → Bots → Cost, and the worker
+records a reading every hour (`bot_llm_balance`), so the drop between two readings
+gives "actually spent" for a window. A top-up is reported separately instead of
+cancelling out spend.
+
+**Per-call cost** is computed, because the provider publishes no pricing endpoint
+(`/models` returns ids and owners only). Each call is priced when it is logged, so
+history keeps what it cost at the time, and unpriced calls stay NULL - shown as
+`-`, never as a free call.
+
+The unit prices are therefore a setting, **Settings → Bots → Cost**, as JSON per
+1M tokens:
+
+```json
+{
+  "deepseek-v4-flash": { "cache_hit": 0.0028, "cache_miss": 0.14, "output": 0.28 },
+  "deepseek-v4-pro":   { "cache_hit": 0.003625, "cache_miss": 0.435, "output": 0.87 }
+}
+```
+
+Leave it empty to use the built-in table (`src/LlmPricing.php`), which the admin
+panel prefills so the rates in force are visible. When the provider changes prices,
+edit this setting - no deploy. An unparseable table is refused rather than stored,
+because storing it would price every call at zero while the panel kept showing
+money.
+
+The three buckets are priced separately because they are billed separately: a
+cached input token costs **50x less** than an uncached one on `deepseek-v4-flash`
+($0.0028 vs $0.14 per 1M), which is why prompt order matters (see
+[The prompt](#the-prompt) - the volatile parts are kept out of the cached prefix).
+
+The model dropdown is likewise fetched live from `GET /models`, falling back to the
+built-in list, so a retired model (as `deepseek-chat` was) disappears on its own.
+
+```bash
+php bot-worker.php log   # 24h cost + balance + per-call cost
+```
 
 To retest a bot from scratch, use **🧹 Clear conversations** in its bot dialog
 (or the 🧹 button in the Fake Users row): it deletes that bot's private messages,

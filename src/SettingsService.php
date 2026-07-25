@@ -72,6 +72,8 @@ class SettingsService
         'bot_llm_max_tokens',
         'bot_llm_reasoning',
         'bot_llm_log_enabled',
+        'bot_llm_prices',
+        'bot_llm_currency',
         'bot_llm_log_retention_days',
         'bot_max_messages_per_thread',
         'bot_history_limit',
@@ -233,6 +235,7 @@ class SettingsService
     {
         $saved = [];
         $ignored = [];
+        $rejected = [];
 
         $this->pdo->beginTransaction();
 
@@ -252,6 +255,15 @@ class SettingsService
 
                 if ($key === 'max_photo_size_mb') {
                     $value = $this->validatePhotoSize($value, $maxPhotoSizeMb);
+                } elseif ($key === 'bot_llm_prices') {
+                    // Storing an unparseable price table would silently cost every
+                    // call at zero, so keep the old one and say why.
+                    if (!LlmPricing::isValid((string) $value)) {
+                        $rejected[$key] = 'Not a valid price table: expected JSON of '
+                            . '{"model": {"cache_hit": 0.14, "cache_miss": 0.14, "output": 0.28}} '
+                            . 'with non-negative numbers per 1M tokens.';
+                        continue;
+                    }
                 } elseif (isset(self::NUMERIC_BOUNDS[$key])) {
                     $value = $this->clampNumeric($key, $value);
                 }
@@ -268,7 +280,7 @@ class SettingsService
 
         $this->invalidateCache();
 
-        return ['saved' => $saved, 'ignored' => $ignored];
+        return ['saved' => $saved, 'ignored' => $ignored, 'rejected' => $rejected];
     }
 
     /**

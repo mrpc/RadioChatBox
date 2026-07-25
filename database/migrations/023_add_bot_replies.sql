@@ -111,8 +111,15 @@ CREATE TABLE IF NOT EXISTS bot_llm_log (
     reply TEXT,
     usage JSONB,
     duration_ms INTEGER,
-    error TEXT
+    error TEXT,
+    -- What the call cost, priced at write time so history survives a price change
+    cost NUMERIC(14,8),
+    currency VARCHAR(3)
 );
+
+ALTER TABLE bot_llm_log
+    ADD COLUMN IF NOT EXISTS cost NUMERIC(14,8),
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(3);
 
 CREATE INDEX IF NOT EXISTS idx_bot_llm_log_created_at ON bot_llm_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bot_llm_log_thread ON bot_llm_log(fake_nickname, peer_username, created_at DESC);
@@ -122,6 +129,51 @@ CREATE INDEX IF NOT EXISTS idx_bot_llm_log_problems ON bot_llm_log(created_at DE
 COMMENT ON TABLE bot_llm_log IS 'Request/response log of every LLM call made for fake user auto-replies';
 COMMENT ON COLUMN bot_llm_log.finish_reason IS 'stop = complete; length = the token budget ran out and the reply is truncated';
 COMMENT ON COLUMN bot_llm_log.usage IS 'Token usage as reported by the provider, including reasoning_tokens';
+COMMENT ON COLUMN bot_llm_log.cost IS 'Cost of this call from the bot_llm_prices unit prices, priced when it was made (NULL = no price configured for the model)';
+
+-- ============================================================================
+-- PROVIDER BALANCE SNAPSHOTS
+-- ============================================================================
+-- bot_llm_log.cost is an estimate: the provider exposes no pricing endpoint, so
+-- the unit prices are configured (bot_llm_prices). GET /user/balance does return
+-- real money, so periodic readings are kept here - the drop between two of them
+-- is actual spend, and comparing that with the estimate shows when the configured
+-- prices have gone stale.
+
+CREATE TABLE IF NOT EXISTS bot_llm_balance (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    currency VARCHAR(3) NOT NULL,
+    total_balance NUMERIC(14,4) NOT NULL,
+    granted_balance NUMERIC(14,4),
+    topped_up_balance NUMERIC(14,4)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_llm_balance_created_at ON bot_llm_balance(created_at DESC);
+
+COMMENT ON TABLE bot_llm_balance IS 'Periodic readings of the LLM provider balance (GET /user/balance); consecutive drops are real spend';
+
+-- Price the calls that were logged before the cost column existed, so the admin
+-- panel is not full of unpriced rows. Only NULL costs are touched, at the same
+-- rates as src/LlmPricing.php, and a bucket split the provider did not report is
+-- billed as uncached - which is how it was charged.
+UPDATE bot_llm_log AS l
+SET cost = (
+        COALESCE((l.usage->>'prompt_cache_hit_tokens')::numeric, 0) * p.cache_hit
+        + CASE
+            WHEN COALESCE((l.usage->>'prompt_cache_hit_tokens')::numeric, 0) = 0
+             AND COALESCE((l.usage->>'prompt_cache_miss_tokens')::numeric, 0) = 0
+            THEN COALESCE((l.usage->>'prompt_tokens')::numeric, 0)
+            ELSE COALESCE((l.usage->>'prompt_cache_miss_tokens')::numeric, 0)
+          END * p.cache_miss
+        + COALESCE((l.usage->>'completion_tokens')::numeric, 0) * p.output
+    ) / 1000000,
+    currency = 'USD'
+FROM (VALUES
+    ('deepseek-v4-flash', 0.0028::numeric, 0.14::numeric, 0.28::numeric),
+    ('deepseek-v4-pro', 0.003625::numeric, 0.435::numeric, 0.87::numeric)
+) AS p(model, cache_hit, cache_miss, output)
+WHERE l.cost IS NULL AND l.usage IS NOT NULL AND l.model = p.model;
 
 -- ============================================================================
 -- DEFAULT SETTINGS
@@ -140,6 +192,11 @@ COMMENT ON COLUMN bot_llm_log.usage IS 'Token usage as reported by the provider,
 --                       no visible benefit (16 tokens per reply with it off).
 --   bot_llm_temperature 1.3 is DeepSeek's suggestion for casual chat, but with
 --                       reasoning off it garbles Greek grammar.
+--   bot_llm_prices      unit prices per 1M tokens as JSON, because the provider
+--                       has no pricing endpoint (/models returns ids only). Empty
+--                       means the built-in table in src/LlmPricing.php; editing
+--                       this setting is how a price change is applied, without a
+--                       deploy. Real spend comes from GET /user/balance instead.
 --   empty prompt/list   means "use the built-in one" (see src/BotService.php).
 
 INSERT INTO settings (setting_key, setting_value) VALUES
@@ -151,6 +208,8 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_llm_max_tokens', '1000'),
     ('bot_llm_reasoning', 'false'),
     ('bot_llm_log_enabled', 'true'),
+    ('bot_llm_prices', ''),
+    ('bot_llm_currency', 'USD'),
     ('bot_llm_log_retention_days', '7'),
     ('bot_max_messages_per_thread', '4'),
     ('bot_history_limit', '20'),

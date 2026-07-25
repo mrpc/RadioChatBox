@@ -5,6 +5,8 @@ use RadioChatBox\CorsHandler;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BotService;
 use RadioChatBox\Database;
+use RadioChatBox\LlmAccount;
+use RadioChatBox\LlmPricing;
 use RadioChatBox\SettingsService;
 
 header('Content-Type: application/json');
@@ -62,11 +64,19 @@ try {
         // instead of duplicating the list in the frontend.
         $settings['bot_default_farewell_messages'] = BotService::DEFAULT_FAREWELLS;
 
-        // Model list for the settings dropdown, so the valid names live in one
-        // place (BotService) instead of being typed by hand.
-        $settings['bot_available_models'] = BotService::availableModels();
+        // Model list for the settings dropdown, from the provider's /models
+        // endpoint where possible so a retired model (as deepseek-chat was) shows
+        // up without a code change; the built-in list is the fallback.
+        $account = new LlmAccount(new SettingsService());
+        $models = $account->models();
+        $settings['bot_available_models'] = $models['models'];
+        $settings['bot_available_models_source'] = $models['source'];
         $settings['bot_default_context_prompt'] = BotService::DEFAULT_CONTEXT_PROMPT;
         $settings['bot_default_model'] = BotService::defaultModel();
+
+        // The provider has no pricing endpoint, so the unit prices are a setting.
+        // Show the built-in table when it is empty, so what is in force is visible.
+        $settings['bot_default_llm_prices'] = LlmPricing::seedJson();
 
         echo json_encode(['success' => true, 'settings' => $settings]);
         
@@ -97,6 +107,12 @@ try {
         if (!empty($result['ignored'])) {
             $response['ignored'] = $result['ignored'];
             $response['message'] .= ' (ignored unknown keys: ' . implode(', ', $result['ignored']) . ')';
+        }
+
+        // A rejected value was NOT saved: say so rather than reporting success.
+        if (!empty($result['rejected'])) {
+            $response['rejected'] = $result['rejected'];
+            $response['message'] = 'Saved, except: ' . implode(' ', $result['rejected']);
         }
 
         echo json_encode($response);
