@@ -86,6 +86,10 @@ CREATE TABLE IF NOT EXISTS bot_threads (
     -- message of a thread, and then kept: silence has to be consistent.
     is_ignored BOOLEAN NOT NULL DEFAULT FALSE,
     ignore_decided_at TIMESTAMPTZ,
+    -- Abuse: strikes counted per conversation, and when the bot blocked the peer
+    insult_count INTEGER NOT NULL DEFAULT 0,
+    last_insult_at TIMESTAMPTZ,
+    blocked_at TIMESTAMPTZ,
     -- Rolling summary of the messages that fell out of the history window
     summary TEXT,
     summary_upto_id BIGINT,
@@ -102,7 +106,10 @@ ALTER TABLE bot_threads
     ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT,
     ADD COLUMN IF NOT EXISTS summary_updated_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS is_ignored BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS ignore_decided_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS ignore_decided_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS insult_count INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_insult_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_bot_threads_peer ON bot_threads(peer_username);
 
@@ -110,6 +117,8 @@ COMMENT ON TABLE bot_threads IS 'Per-conversation state for fake user auto-repli
 COMMENT ON COLUMN bot_threads.messages_sent IS 'Messages the BOT authored in this thread (admin impersonation replies are not counted)';
 COMMENT ON COLUMN bot_threads.is_taken_over IS 'TRUE once an admin impersonated this fake user in this thread - the bot stays silent';
 COMMENT ON COLUMN bot_threads.farewell_sent_at IS 'When the closing message was sent; the bot never replies again after this';
+COMMENT ON COLUMN bot_threads.insult_count IS 'Abusive messages received from this peer in this conversation';
+COMMENT ON COLUMN bot_threads.blocked_at IS 'When the bot blocked this peer over repeated abuse (a real dm_blocks row, same as the DM block button)';
 COMMENT ON COLUMN bot_threads.is_ignored IS 'TRUE when the bot decided to ignore this conversation from the start - it never replies in it';
 COMMENT ON COLUMN bot_threads.ignore_decided_at IS 'When the ignore/reply decision was taken, so a burst of messages does not re-roll it';
 COMMENT ON COLUMN bot_threads.summary IS 'Rolling summary of the messages that fell out of the history window';
@@ -256,6 +265,11 @@ WHERE provider IS NULL AND model LIKE 'deepseek%';
 --                       the feature is for; 30 is the compromise. The decision is
 --                       taken once, on the first inbound message, and stored on the
 --                       thread - a bot never goes quiet mid-conversation.
+--   bot_insult_block_threshold
+--                       how many abusive messages a bot takes before it blocks the
+--                       peer, using the same dm_blocks mechanism as the DM block
+--                       button. 0 disables it. Repetition is required on purpose:
+--                       in Greek chat a single "ρε μαλάκα" is often banter.
 --   empty prompt/list   means "use the built-in one" (see src/BotService.php).
 
 INSERT INTO settings (setting_key, setting_value) VALUES
@@ -278,6 +292,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_llm_log_retention_days', '7'),
     ('bot_max_messages_per_thread', '4'),
     ('bot_ignore_chance', '30'),
+    ('bot_insult_block_threshold', '3'),
     ('bot_history_limit', '20'),
     ('bot_summary_enabled', 'true'),
     ('bot_summary_prompt', ''),

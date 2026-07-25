@@ -4,6 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
+use RadioChatBox\BlockService;
 use RadioChatBox\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
@@ -62,6 +63,7 @@ class BotServicePipelineTest extends TestCase
             // dice roll, and a dice roll must not decide whether the suite passes.
             // The tests that are about ignoring set their own chance per bot.
             'bot_ignore_chance' => '0', // 0% ignore == always reply
+            'bot_insult_block_threshold' => '3',
         ];
         $this->llm = new StubLlm();
 
@@ -77,6 +79,9 @@ class BotServicePipelineTest extends TestCase
         // bot_threads rows go with the fake user (ON DELETE CASCADE).
         $this->pdo->prepare('DELETE FROM fake_users WHERE id = ?')->execute([$this->fakeUserId]);
         $this->pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$this->peer]);
+        // Blocks outlive the fake user row, so clear them explicitly.
+        $this->pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ? OR blocked_username = ?')
+            ->execute([$this->nick, $this->peer]);
     }
 
     // ------------------------------------------------------------------
@@ -1194,6 +1199,131 @@ class BotServicePipelineTest extends TestCase
             fn (array $t): bool => $t['nickname'] === $this->nick && $t['peer_username'] === $this->peer
         ));
         $this->assertTrue((bool) $threads[0]['is_ignored']);
+    }
+
+    // ------------------------------------------------------------------
+    // Repeated abuse ends in a block
+    // ------------------------------------------------------------------
+
+    public function testASingleInsultDoesNotBlockAnyone(): void
+    {
+        // In Greek chat one insult is often banter; blocking on it would end
+        // conversations between people getting along.
+        $this->incoming('ηλιθια');
+
+        $this->assertTrue($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'ηλιθια'));
+        $this->assertSame(1, (int) $this->threadRow()['insult_count']);
+        $this->assertNull($this->threadRow()['blocked_at']);
+        $this->assertFalse((new BlockService())->hasBlocked($this->nick, $this->peer));
+    }
+
+    public function testRepeatedAbuseMakesTheBotBlockThePeer(): void
+    {
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        foreach (['εισαι ηλιθια', 'poutana', 'αντε γαμησου'] as $i => $insult) {
+            $this->incoming($insult);
+            $replied = $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, $insult);
+
+            // The third one is where it ends: no reply job, a block instead.
+            $this->assertSame($i < 2, $replied, $insult);
+        }
+
+        $thread = $this->threadRow();
+        $this->assertSame(3, (int) $thread['insult_count']);
+        $this->assertNotNull($thread['blocked_at']);
+        $this->assertStringContainsString('Blocked', (string) $thread['last_error']);
+
+        // The same mechanism as the DM block button, so it behaves like a real one.
+        $this->assertTrue((new BlockService())->hasBlocked($this->nick, $this->peer));
+        $this->assertTrue((new BlockService())->isBlockedBetween($this->nick, $this->peer));
+    }
+
+    public function testTheBotSaysOneLastThingBeforeBlocking(): void
+    {
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        foreach (['ηλιθια', 'poutana', 'γαμησου'] as $insult) {
+            $this->incoming($insult);
+            $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, $insult);
+        }
+
+        $delivered = array_values(array_filter(
+            $this->claimAll(),
+            fn (array $job): bool => $job['type'] === 'bot_deliver'
+        ));
+
+        // Sent with the usual typing delay, so it reads like a person typing it
+        // before hitting block - and it costs no API call.
+        $this->assertNotEmpty($delivered);
+        $last = end($delivered);
+        $this->assertContains($last['payload']['message'], BotService::ABUSE_BRUSH_OFFS);
+    }
+
+    public function testABlockedThreadNeverReplaysAgain(): void
+    {
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        foreach (['ηλιθια', 'poutana', 'γαμησου'] as $insult) {
+            $this->incoming($insult);
+            $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, $insult);
+        }
+
+        // Even a polite message afterwards gets nothing: the block stands.
+        $this->incoming('συγγνωμη, ας τα πουμε');
+
+        $this->assertFalse(
+            $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'συγγνωμη, ας τα πουμε')
+        );
+    }
+
+    public function testTheThresholdIsConfigurableAndCanBeSwitchedOff(): void
+    {
+        $this->settings->values['bot_insult_block_threshold'] = '0';
+        $this->assertSame(0, $this->bot->insultBlockThreshold());
+
+        $this->incoming('poutana');
+        $this->assertTrue($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'poutana'));
+
+        // Disabled means nothing is even counted.
+        $this->assertSame(0, (int) $this->threadRow()['insult_count']);
+        $this->assertFalse((new BlockService())->hasBlocked($this->nick, $this->peer));
+    }
+
+    public function testTheAbuseIsJudgedOnTheStoredMessageWhenNoneIsPassed(): void
+    {
+        $this->settings->values['bot_insult_block_threshold'] = '1';
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        // The worker and older callers do not pass the text.
+        $this->incoming('αντε γαμησου ρε');
+
+        $this->assertFalse($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
+        $this->assertNotNull($this->threadRow()['blocked_at']);
+    }
+
+    public function testTheBlockIsVisibleToTheAdmin(): void
+    {
+        $this->settings->values['bot_insult_block_threshold'] = '1';
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        $this->incoming('poutana');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'poutana');
+
+        $state = $this->bot->getThreadState($this->nick, $this->peer);
+        $this->assertNotNull($state['blocked_at']);
+        $this->assertSame(1, $state['insult_count']);
+
+        $threads = array_values(array_filter(
+            $this->bot->listThreads(200),
+            fn (array $t): bool => $t['nickname'] === $this->nick && $t['peer_username'] === $this->peer
+        ));
+        $this->assertNotNull($threads[0]['blocked_at']);
     }
 
     // ------------------------------------------------------------------

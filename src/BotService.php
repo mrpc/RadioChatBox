@@ -153,6 +153,32 @@ class BotService
      * (photos, camera), which it has to refuse without sounding like software.
      */
     /**
+     * How many abusive messages a bot takes before it blocks the peer.
+     *
+     * Repetition is required on purpose: in Greek chat a single "ρε μαλάκα" is
+     * often banter between people getting along, so one hit must not end the
+     * conversation. Sustained abuse is a different thing, and a real person reaches
+     * for the block button.
+     */
+    public const DEFAULT_INSULT_BLOCK_THRESHOLD = 3;
+
+    /**
+     * What the bot says on its way out, before blocking.
+     *
+     * Canned rather than generated: being insulted should not cost an API call, and
+     * a model asked to answer abuse tends to slide into apologetic assistant-speak -
+     * which is exactly the tell the guardrail exists to prevent.
+     */
+    public const ABUSE_BRUSH_OFFS = [
+        'ασε με ρε φιλε, σε μπλοκαρω',
+        'δεν εχω ορεξη για τετοια, γεια σου',
+        'οκ τελειωσαμε, καλη συνεχεια',
+        'μιλα ετσι σε καποια αλλη, γεια',
+        'ασε καλυτερα, σε μπλοκαρω',
+        'δεν συνεχιζω αλλο ετσι, γεια σου',
+    ];
+
+    /**
      * How often a bot ignores a new conversation outright, as a percentage.
      *
      * Reported reply rates on dating sites are far lower than this - a first message
@@ -311,7 +337,8 @@ class BotService
     public function onIncomingMessage(
         string $fakeNickname,
         string $fromUsername,
-        string $fromSessionId
+        string $fromSessionId,
+        ?string $message = null
     ): bool {
         try {
             if (!$this->isEnabled()) {
@@ -334,8 +361,35 @@ class BotService
                 return false;
             }
 
+            // Already blocked over abuse: nothing more to say to this person.
+            if ($thread['blocked_at'] !== null) {
+                return false;
+            }
+
             // Some conversations are never picked up at all, like in a real chat.
             if ($this->decideIgnore($fakeUser, $thread, $fromUsername)) {
+                return false;
+            }
+
+            // Repeated abuse ends the conversation with a block, not a reply.
+            $message ??= $this->latestInboundMessage($fakeNickname, $fromUsername);
+
+            if ($this->handleAbuse($fakeUser, $thread, $fromUsername, (string) $message)) {
+                $epoch = $this->bumpEpoch((int) $fakeUser['id'], $fromUsername);
+
+                // One last line, delivered with the usual typing delay so it reads
+                // like a person typing it before hitting block.
+                $this->queueDelivery([
+                    'fake_user_id' => (int) $fakeUser['id'],
+                    'fake_nickname' => $fakeUser['nickname'],
+                    'peer_username' => $fromUsername,
+                    'peer_session_id' => $fromSessionId,
+                    'epoch' => $epoch,
+                ], self::sanitizeReply(
+                    self::enforceLanguage($this->pickBrushOff(), self::replyLanguage($fakeUser)),
+                    (int) (Config::get('chat')['max_message_length'] ?? 500)
+                ), true);
+
                 return false;
             }
 
@@ -757,6 +811,8 @@ class BotService
                    t.is_taken_over,
                    t.taken_over_by,
                    t.is_ignored,
+                   t.insult_count,
+                   t.blocked_at,
                    t.farewell_sent_at,
                    t.last_reply_at,
                    t.last_error,
@@ -891,6 +947,8 @@ class BotService
                    t.last_reply_at,
                    t.last_error,
                    t.is_ignored,
+                   t.insult_count,
+                   t.blocked_at,
                    t.summary,
                    t.summary_updated_at
             FROM fake_users f
@@ -916,6 +974,9 @@ class BotService
             'is_taken_over' => (bool) ($row['is_taken_over'] ?? false),
             // The bot decided not to pick this conversation up at all.
             'is_ignored' => (bool) ($row['is_ignored'] ?? false),
+            // Abuse: strikes so far, and whether the bot has blocked this peer.
+            'insult_count' => (int) ($row['insult_count'] ?? 0),
+            'blocked_at' => $row['blocked_at'] ?? null,
             'taken_over_at' => $row['taken_over_at'] ?? null,
             'taken_over_by' => $row['taken_over_by'] ?? null,
             'farewell_sent_at' => $row['farewell_sent_at'] ?? null,
@@ -1027,6 +1088,123 @@ class BotService
         $prompt .= "\n\n" . self::languageInstruction(self::replyLanguage($fakeUser));
 
         return $context . "\n\n" . $prompt;
+    }
+
+    /**
+     * Whether an incoming message is abusive towards the bot.
+     *
+     * Deliberately narrow. Greek chat uses "μαλάκα" and "ρε" affectionately, and a
+     * detector that treats banter as abuse would have bots blocking people who are
+     * getting along - so the mild-banter words are NOT here, and the ones that are
+     * still need repeating before anything happens.
+     */
+    public static function looksAbusive(string $text): bool
+    {
+        $patterns = [
+            // Sexual and gendered abuse - the common case against a female persona.
+            '/πουτ[άα]ν|poutan|τσο[ύυ]λ|tsoul|καρι[όο]λ|kariol|σκ[ύυ]λα\b|skyla\b|αρχ[ίι]δ|arxid|πο[ύυ]στ|poust/iu',
+            // Telling it to get lost, in the usual forms.
+            '/γαμ[ώώη]σου|gamisou|γ[άα]μα\s*τα|αντε\s*γαμ|ante\s*gam|α[ίι]διαμ|χ[έε]σε\s*με/iu',
+            // Direct name-calling.
+            '/ηλ[ίι]θι|hlithi|ilithi|βλ[άα]κα|vlaka|κρετ[ίι]ν|kretin|χαζ[ήη]\b|xazi\b|αν[ώω]μαλ|anwmal/iu',
+            // Body shaming.
+            '/χοντρ[ήη]\b|xontri\b|[άα]σχημ|asxim|φ[άα]τσα\s*σου/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * How many abusive messages this bot takes before blocking. 0 disables it.
+     */
+    public function insultBlockThreshold(): int
+    {
+        return max(0, min(50, (int) $this->settings->get(
+            'bot_insult_block_threshold',
+            self::DEFAULT_INSULT_BLOCK_THRESHOLD
+        )));
+    }
+
+    /**
+     * Count an abusive message and, once the bot has had enough, block the peer -
+     * through the same dm_blocks mechanism as the DM block button, so the block
+     * behaves exactly like one a real user made (and stops further messages
+     * reaching the bot at all).
+     *
+     * Returns true when the bot has blocked and should not reply.
+     *
+     * @param array<string,mixed> $fakeUser
+     * @param array<string,mixed> $thread
+     */
+    private function handleAbuse(array $fakeUser, array $thread, string $peer, string $message): bool
+    {
+        $threshold = $this->insultBlockThreshold();
+
+        if ($threshold === 0 || !self::looksAbusive($message)) {
+            return false;
+        }
+
+        $strikes = (int) $thread['insult_count'] + 1;
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE bot_threads
+             SET insult_count = :strikes, last_insult_at = NOW(), updated_at = NOW()
+             WHERE fake_user_id = :fake_user_id AND peer_username = :peer'
+        );
+        $stmt->execute([
+            'strikes' => $strikes,
+            'fake_user_id' => (int) $fakeUser['id'],
+            'peer' => $peer,
+        ]);
+
+        if ($strikes < $threshold) {
+            // Not yet: the bot answers this one normally, like a person who lets a
+            // first insult slide.
+            return false;
+        }
+
+        $nickname = (string) $fakeUser['nickname'];
+
+        // forcePermanent: a fake user is not a registered user, and its block should
+        // stick rather than expire like a guest's - same as an impersonated block.
+        $blocked = (new BlockService())->blockUser($nickname, $peer, true);
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE bot_threads
+             SET blocked_at = NOW(),
+                 last_error = :reason,
+                 updated_at = NOW()
+             WHERE fake_user_id = :fake_user_id AND peer_username = :peer'
+        );
+        $stmt->execute([
+            'reason' => sprintf('Blocked %s after %d abusive message(s)', $peer, $strikes),
+            'fake_user_id' => (int) $fakeUser['id'],
+            'peer' => $peer,
+        ]);
+
+        error_log(sprintf(
+            'BotService: %s blocked %s after %d abusive message(s)%s',
+            $nickname,
+            $peer,
+            $strikes,
+            $blocked ? '' : ' (the block itself failed)'
+        ));
+
+        return true;
+    }
+
+    /**
+     * A short dismissive line to leave on, before the block lands.
+     */
+    public function pickBrushOff(): string
+    {
+        return self::ABUSE_BRUSH_OFFS[array_rand(self::ABUSE_BRUSH_OFFS)];
     }
 
     /**
@@ -1468,6 +1646,25 @@ class BotService
     }
 
     /**
+     * The newest message this peer sent to the bot, for callers that do not pass the
+     * text (the hook does; the tests and the worker may not).
+     */
+    private function latestInboundMessage(string $fakeNickname, string $peer): string
+    {
+        $stmt = $this->pdo->prepare('
+            SELECT message
+            FROM private_messages
+            WHERE from_username = :peer AND to_username = :fake
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        ');
+        $stmt->execute(['peer' => $peer, 'fake' => $fakeNickname]);
+        $message = $stmt->fetchColumn();
+
+        return $message === false ? '' : (string) $message;
+    }
+
+    /**
      * Conversation history as alternating chat roles, oldest first.
      *
      * @return list<array{role:string,content:string}>
@@ -1827,7 +2024,7 @@ class BotService
         $stmt = $this->pdo->prepare('
             SELECT id, messages_sent, is_taken_over, taken_over_at, taken_over_by,
                    farewell_sent_at, last_reply_at, last_error, summary, summary_upto_id,
-                   is_ignored, ignore_decided_at
+                   is_ignored, ignore_decided_at, insult_count, blocked_at
             FROM bot_threads
             WHERE fake_user_id = ? AND peer_username = ?
         ');
@@ -1841,6 +2038,8 @@ class BotService
                 'messages_sent' => 0,
                 'is_ignored' => false,
                 'ignore_decided_at' => null,
+                'insult_count' => 0,
+                'blocked_at' => null,
                 'is_taken_over' => false,
                 'taken_over_at' => null,
                 'taken_over_by' => null,

@@ -2424,6 +2424,15 @@
                             <small>After this many bot messages, it writes a closing message and stops.</small>
                         </div>
                         <div class="form-group">
+                            <label>Block after N abusive messages</label>
+                            <input type="number" id="setting-bot-insult-threshold" min="0" max="50" placeholder="3">
+                            <small>
+                                The bot blocks the user through the same DM block as a real member would.
+                                Repetition is required on purpose — a single “ρε μαλάκα” is usually banter.
+                                0 = never block.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>Ignore new conversations (%)</label>
                             <input type="number" id="setting-bot-ignore-chance" min="0" max="100" placeholder="30">
                             <small>
@@ -5705,6 +5714,7 @@
                                 let state = '🤖 replying';
                                 let color = '#4338ca';
                                 if (!t.bot_enabled) { state = 'bot off'; color = '#6b7280'; }
+                                else if (t.blocked_at) { state = `🚫 blocked the user${t.insult_count ? ' after ' + t.insult_count + ' abusive msg(s)' : ''}`; color = '#b91c1c'; }
                                 else if (t.is_ignored) { state = '🙈 ignored from the start'; color = '#6b7280'; }
                                 else if (t.is_taken_over) { state = `👤 taken over${t.taken_over_by ? ' by ' + escapeHtml(t.taken_over_by) : ''}`; color = '#b45309'; }
                                 else if (t.farewell_sent_at) { state = '🚪 ended'; color = '#6b7280'; }
@@ -5757,7 +5767,11 @@
                     <h2>${escapeHtml(fakeUser)} ↔ ${escapeHtml(peer)}</h2>
                     <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4b5563; margin-bottom: 12px;">
                         <span>Budget: <strong>${state.messages_sent ?? 0}/${state.max_messages ?? '-'}</strong></span>
-                        <span>${state.is_ignored ? '🙈 ignored from the start — the bot never replies here' : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active'))}</span>
+                        <span>${state.blocked_at
+                            ? `🚫 the bot blocked this user${state.insult_count ? ' after ' + state.insult_count + ' abusive message(s)' : ''}`
+                            : (state.is_ignored ? '🙈 ignored from the start — the bot never replies here'
+                            : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active')))}</span>
+                        ${state.insult_count && !state.blocked_at ? `<span style="color:#b45309;">${state.insult_count} abusive msg(s)</span>` : ''}
                         ${state.last_error ? `<span style="color:#b91c1c;">error: ${escapeHtml(state.last_error)}</span>` : ''}
                     </div>
                     ${state.summary ? `<div style="padding: 10px 12px; background: #f9fafb; border-left: 3px solid #6366f1; border-radius: 6px; font-size: 13px; margin-bottom: 12px;"><strong>📝 Remembers:</strong> ${escapeHtml(state.summary)}</div>` : ''}
@@ -6826,6 +6840,7 @@
                     botLiveModelsSource = settings.bot_available_models_source || 'built-in';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
                     document.getElementById('setting-bot-ignore-chance').value = settings.bot_ignore_chance ?? '30';
+                    document.getElementById('setting-bot-insult-threshold').value = settings.bot_insult_block_threshold ?? '3';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
                     document.getElementById('setting-bot-summary-enabled').checked = settings.bot_summary_enabled !== 'false';
                     document.getElementById('setting-bot-summary-prompt').value = settings.bot_summary_prompt || '';
@@ -7185,6 +7200,9 @@
                 bot_ignore_chance: document.getElementById('setting-bot-ignore-chance').value === ''
                     ? '30'
                     : document.getElementById('setting-bot-ignore-chance').value,
+                bot_insult_block_threshold: document.getElementById('setting-bot-insult-threshold').value === ''
+                    ? '3'
+                    : document.getElementById('setting-bot-insult-threshold').value,
                 bot_history_limit: document.getElementById('setting-bot-history-limit').value || '20',
                 bot_summary_enabled: document.getElementById('setting-bot-summary-enabled').checked ? 'true' : 'false',
                 bot_summary_prompt: document.getElementById('setting-bot-summary-prompt').value,

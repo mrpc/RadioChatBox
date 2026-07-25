@@ -197,7 +197,9 @@ try {
             (new \RadioChatBox\BotService())->onIncomingMessage(
                 $toUsername,
                 $fromUsername,
-                $fromSessionId
+                $fromSessionId,
+                // Passed so abuse is judged on what was actually sent.
+                $message
             );
         }
 

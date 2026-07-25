@@ -461,6 +461,33 @@ that must always answer.
 
 Measured over 400 fresh conversations at the default: 33% ignored.
 
+## Repeated abuse ends in a block
+
+A bot that keeps politely answering someone abusing it is not what a person does.
+After enough abusive messages it leaves one short line and **blocks the user** -
+through `BlockService`, the same `dm_blocks` mechanism as the DM block button, so the
+block behaves exactly like one a member made (permanent rather than a guest's
+expiring block, as with an impersonated block) and further messages never reach the
+bot at all.
+
+- **Repetition is required.** `bot_insult_block_threshold`, default **3**, 0 disables
+  it. In Greek chat a single "ρε μαλάκα" is usually banter between people getting
+  along, so one hit must never end a conversation. The detector deliberately leaves
+  the banter words out and only counts sustained, clearly abusive language (sexual
+  and gendered abuse, "άντε γαμήσου", name-calling, body shaming), in Greek and
+  greeklish.
+- **One last line, no API call.** The brush-off comes from `ABUSE_BRUSH_OFFS`, not
+  from the LLM: being insulted should not cost money, and a model asked to answer
+  abuse slides into apologetic assistant-speak - the exact tell the guardrail
+  exists to prevent. It is delivered with the usual typing delay, so it reads like
+  someone typing before hitting block.
+- **Visible.** Bot Activity shows 🚫 *blocked the user after N abusive msg(s)*, and
+  the strike count is shown before the threshold is reached.
+
+Verified end to end: "γεια σου" and "ρε μαλάκα" counted nothing, three abusive
+messages took the strikes to 3, the reply stopped and a permanent `dm_blocks` row
+appeared - after which even "συγγνώμη" got no reply.
+
 ## It must never look like software
 
 The single rule the feature cannot get wrong, so it is both instructed and checked.
