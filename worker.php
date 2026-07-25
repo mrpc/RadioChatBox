@@ -8,7 +8,7 @@
  *
  * Usage:
  *   php worker.php run [--max-runtime=SECONDS] [--sleep=SECONDS] [--batch=N] [--watch-files]
- *   php worker.php once
+ *   php worker.php once [--schedule]
  *   php worker.php status [--stale-after=SECONDS]
  *   php worker.php log [--limit=N] [--problems]
  *   php worker.php schedule
@@ -24,8 +24,9 @@
  *             running PHP process, so replacing the process IS the reload: in
  *             production daemon.php does that when a new commit is deployed, and
  *             --watch-files makes a directly-run worker do it on any file change.
- *   once    - Process everything that is currently due, then exit. Delivery is
- *             then only as accurate as the cron interval.
+ *   once    - Process everything that is currently due, then exit. Delivery is then
+ *             only as accurate as the cron interval. With --schedule it also runs any
+ *             periodic task that is due, so one crontab line covers everything.
  *   status  - Print worker health (pid, uptime, heartbeat age), queue size and
  *             configuration. Exit code: 0 healthy/idle, 2 worker looks wedged.
  *   log     - Recent LLM calls with token usage, so a bad or truncated reply can
@@ -520,6 +521,20 @@ try {
                 $processed = 0;
                 processBatch($bot, $queue, (int) ($options['batch'] ?? 50), $verbose, $lock, $processed);
                 logMessage("Processed {$processed} job(s)");
+
+                // With --schedule this one cron line covers the periodic tasks too, so a
+                // machine with no supervisor needs a single entry rather than six.
+                if (isset($options['schedule']) || in_array('--schedule', $argv, true)) {
+                    foreach ((new Scheduler($settings))->runDue(fn () => $lock->heartbeat()) as $result) {
+                        logMessage(sprintf(
+                            'Task %s: %s in %dms%s',
+                            $result['task'],
+                            $result['status'],
+                            $result['duration_ms'],
+                            $result['error'] === null ? '' : ' - ' . $result['error']
+                        ));
+                    }
+                }
             } finally {
                 $lock->release();
             }

@@ -78,9 +78,12 @@ class CleanupService
     {
         try {
             $stmt = $this->pdo->prepare(
-                'DELETE FROM messages 
-                 WHERE is_deleted = TRUE 
-                 AND created_at < NOW() - INTERVAL :days DAY'
+                // INTERVAL :days DAY is not parameterisable in PostgreSQL - it parses
+                // as a literal, so every run failed with a syntax error and the purge
+                // silently never happened. make_interval() takes a real parameter.
+                'DELETE FROM messages
+                 WHERE is_deleted = TRUE
+                 AND created_at < NOW() - make_interval(days => :days)'
             );
             $stmt->bindValue(':days', $daysOld, PDO::PARAM_INT);
             $stmt->execute();
@@ -109,9 +112,9 @@ class CleanupService
             
             // Move old messages to archive
             $stmt = $this->pdo->prepare(
-                'INSERT INTO messages_archive 
-                 SELECT * FROM messages 
-                 WHERE created_at < NOW() - INTERVAL :days DAY 
+                'INSERT INTO messages_archive
+                 SELECT * FROM messages
+                 WHERE created_at < NOW() - make_interval(days => :days)
                  AND is_deleted = FALSE
                  ON CONFLICT (message_id) DO NOTHING'
             );
@@ -122,8 +125,8 @@ class CleanupService
             // Delete from main table
             if ($archived > 0) {
                 $stmt = $this->pdo->prepare(
-                    'DELETE FROM messages 
-                     WHERE created_at < NOW() - INTERVAL :days DAY 
+                    'DELETE FROM messages
+                     WHERE created_at < NOW() - make_interval(days => :days)
                      AND is_deleted = FALSE'
                 );
                 $stmt->bindValue(':days', $daysOld, PDO::PARAM_INT);

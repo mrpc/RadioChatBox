@@ -49,7 +49,7 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 - **Real-time monitoring** of concurrent users, radio listeners, and activity levels
 - **Interactive dashboard** with charts and visualizations (Chart.js)
 - **Metrics tracked**: active users, guest vs registered users, messages, private messages, photo uploads, new registrations, radio listeners, peak concurrent users
-- **Automated data collection** via cron jobs with PostgreSQL aggregation functions
+- **Automated data collection** run by the background worker, or by cron — see [docs/DAEMONS.md](docs/DAEMONS.md)
 - **Redis-cached queries** for fast statistics retrieval
 - See [docs/STATISTICS.md](docs/STATISTICS.md) for details
 
@@ -229,6 +229,7 @@ The system supports four hierarchical roles with different permission levels:
 
 ### Key Documentation Files
 
+- **[DAEMONS.md](docs/DAEMONS.md)** - Background processing: the worker, the supervisor, the periodic tasks, and how to run it all from cron instead
 - **[STATISTICS.md](docs/STATISTICS.md)** - Comprehensive statistics system guide
 - **[BOT_REPLIES.md](docs/BOT_REPLIES.md)** - Fake user auto-replies (LLM bots) setup and behaviour
 - **[STATISTICS_QUICKSTART.md](STATISTICS_QUICKSTART.md)** - Quick setup for statistics
@@ -364,7 +365,9 @@ On Windows: `dockertest.bat` (same, with `--coverage`).
 ./dockerbash                            # interactive shell
 ./dockerbash -c "php -v"                # single command
 
+./radiochatbox daemon status            # php daemon.php status (supervisor + workers)
 ./radiochatbox bot status               # php worker.php status
+./radiochatbox bot schedule             # the periodic tasks and when they last ran
 ./radiochatbox stats snapshot           # php stats-cron.php snapshot
 ./radiochatbox psql -c 'SELECT 1'       # psql on the app database
 ./radiochatbox redis ping               # redis-cli

@@ -115,74 +115,24 @@ A fake user must be **active** *and* have the bot enabled to auto-reply.
 
 ### 4. Run the worker
 
-The worker is what actually calls the LLM and delivers the messages. Without it
-nothing is ever sent.
+The worker is what calls the LLM and delivers the messages. Without it nothing is ever
+sent, and in production a supervisor keeps it running:
 
 ```bash
+php daemon.php run        # the process to supervise; starts and restarts the worker
 php worker.php status     # worker health + queue depth + configuration
-php worker.php run        # loop, polling every second (recommended)
-php worker.php once       # process what is due, then exit
 php worker.php flush      # drop every queued job
 ```
 
-**systemd** — supervise the *supervisor*, not the worker. It is the only process that
-needs watching from outside; it starts the workers, replaces a wedged one, and restarts
-everything when a new commit is deployed.
+How to run that for real — the systemd unit, the cron fallback for machines without it,
+and what each periodic task does — is in **[DAEMONS.md](DAEMONS.md)**. It is the same
+worker for the bots and for statistics, cleanup and track history, so it is documented in
+one place.
 
-One unit per installation, because several can share a server
-(`/etc/systemd/system/radiochatbox-daemon@.service`):
-
-```ini
-[Unit]
-Description=RadioChatBox daemon supervisor (%i)
-After=network.target postgresql.service redis.service
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/var/www/%i
-ExecStart=/usr/bin/php /var/www/%i/daemon.php run
-ExecStop=/usr/bin/php /var/www/%i/daemon.php stop
-
-Restart=always
-RestartSec=5
-
-# Give the workers time to finish the job in hand.
-TimeoutStopSec=60
-KillMode=mixed
-
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=radiochatbox-daemon-%i
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl enable --now radiochatbox-daemon@mysite
-systemctl status radiochatbox-daemon@othersite
-```
-
-**Cron-only alternative.** `run --max-runtime=N` is a real loop, not a single
-pass: it polls every `--sleep` seconds (default 1s) until the runtime is up. So a
-minutely cron job that runs for 55s covers almost the whole minute at
-~1-second accuracy — the only dead time is the ~5s gap before the next run
-starts:
-
-```cron
-* * * * * cd /path/to/radiochatbox && php worker.php run --max-runtime=55 >> logs/bot-worker.log 2>&1
-```
-
-No `flock` wrapper is needed — the worker takes its own lock (below). Note that
-**`once` is the minute-accurate option**, not this one: it processes whatever is
-due and exits, so a job that becomes due 5 seconds later waits for the next cron
-tick. Use it when you want the shortest-lived process and don't mind the delay.
-
-Flags for `run`: `--max-runtime=N` (0 = forever), `--sleep=N` (poll interval,
-default 1s), `--batch=N`, `--stale-after=N`, `--lock=PATH`, `--verbose` (also log
-skipped jobs). `SIGTERM`/`SIGINT` finish the current batch before exiting, so
-restarts don't cut a job in half.
+Flags for `run`: `--max-runtime=N` (0 = forever), `--sleep=N` (poll interval, default 1s),
+`--batch=N`, `--stale-after=N`, `--lock=PATH`, `--schedule` (also run the periodic tasks),
+`--watch-files` (replace the process when the code changes, for development), `--verbose`.
+`SIGTERM`/`SIGINT` finish the current batch first, so a restart never cuts a job in half.
 
 ### Single instance, heartbeat, and stuck workers
 
@@ -397,135 +347,6 @@ php worker.php prune-log        # drop entries past the retention window
 The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies are
 on, showing the day's cost and the balance left. Retention defaults to 7 days and
 logging can be switched off in Settings → Diagnostics.
-
-## Periodic tasks (instead of crontab)
-
-`run --schedule` makes the worker run the recurring jobs itself. It is **opt-in**, so
-an existing crontab keeps working untouched; running both is harmless, since a task
-will not run twice inside its own interval.
-
-| Task | Every | What it replaces |
-|---|---|---|
-| `track_poll` | **30s** (`track_poll_seconds`) | the track half of `stats-cron.php snapshot` |
-| `track_enrich` | 5m | the enrichment sweep |
-| `stats_snapshot` | 5m | `*/5 * * * * stats-cron.php snapshot` |
-| `stats_hourly` … `stats_yearly` | hourly / daily, at fixed UTC times | the aggregation entries |
-| `cleanup` | 1h | the `cleanup.php?token=` cron URL |
-| `prune_llm_log` | daily 03:00 | `worker.php prune-log` |
-| `llm_balance_snapshot` | 1h | (was inline in the worker) |
-
-The stream is polled every 30 seconds because the current track has to be caught while
-it is playing - bundled with the five-minute snapshot, a three-minute song was missed
-entirely. It is cheap: recording de-duplicates atomically, so nothing is written until
-the track actually changes, and a track nobody has seen before is enriched right then
-rather than waiting for the sweep.
-
-Why the worker and not cron: it already guarantees a single instance with a heartbeat
-(so a slow run cannot overlap itself), shuts down gracefully, logs, and now reports
-every task's last run on the dashboard. **The database dump stays in cron** - it has to
-keep working when the application is broken, and if the worker is the broken part,
-backups must not stop with it.
-
-```bash
-php worker.php schedule          # cadence, last run, what is due
-php worker.php run-task cleanup  # run one now
-php worker.php status            # worker health + every task's last run
-```
-
-The dashboard's **Background Worker** card shows the same thing: running / stuck /
-stopped, uptime, heartbeat age, queue depth, and a click opens every task with its last
-run, duration and error. A stopped worker now means no bot replies *and* no maintenance,
-which is exactly why it belongs there.
-
-## The supervisor
-
-`daemon.php` is the process that keeps the workers running, so exactly one thing needs
-supervising from outside:
-
-```bash
-php daemon.php run [--interval=10] [--dry-run]   # the supervised process
-php daemon.php once --dry-run                    # show what it would do
-php daemon.php status                            # supervisor + every daemon (exit 2 = unhealthy)
-php daemon.php restart                           # ask every worker to come back
-```
-
-Every cycle it compares what should be running with what is:
-
-- **missing worker** → start it;
-- **crashed** (lock left behind, pid gone) → replace it;
-- **alive but not progressing** (no heartbeat for 5 minutes) → ask it to restart, which a
-  plain pid check would call healthy;
-- **new commit deployed** → ask every worker to restart on the new code.
-
-Stopping is always a **request**, never a kill: a `.stop` file next to the worker's
-lock, which the worker notices between jobs and exits cleanly. A job cut in half is
-worse than a job finished late, and the next cycle fills the empty slot.
-
-A deployment is detected by reading `.git/HEAD` (and `packed-refs`) directly - a commit
-hash changes once per deploy, whereas file timestamps change on every editor save. When
-the release is not a checkout, detection is simply skipped rather than guessed at.
-
-### Several installations on one server
-
-Different directories, often the same code and sometimes the same database name. So
-everything a *process* owns is named per **installation directory**, not per database:
-
-```
-logs/daemon-supervisor-<installation>.lock
-logs/worker-<installation>.lock
-```
-
-where `<installation>` is `mysite-3f9a1b2c` — the directory name plus a short hash of its
-absolute path. **Nothing to configure**: it comes from the path, so a second installation
-is distinct the moment it exists. The hash matters because two release paths can both end
-in `current`, and because when `logs/` is not writable the lock falls back to the shared
-system temp directory, where a name like `worker-radiochatbox.lock` from one installation
-would silently keep the other's worker from ever starting.
-
-A setting would have been worse than useless here: copied along with the directory, it
-would recreate the very collision it was meant to prevent.
-
-The Redis prefix (`radiochatbox:<database>:`) deliberately stays keyed by **database**:
-that scopes *data* — sessions, caches, chat history — and two installations pointed at
-one database are meant to share it.
-
-So each installation runs its own supervisor and its own worker, and a second supervisor
-for the *same* installation refuses to start — otherwise the doubling the supervisor
-exists to prevent would come from the supervisor itself.
-
-```bash
-$ php daemon.php status
-installation mysite-3f9a1b2c (/var/www/mysite) | supervisor pid 4123, heartbeat 2s ago
-worker       running   pid 4130   heartbeat 0s ago   jobs 87
-```
-
-## The worker keeps itself current
-
-A PHP daemon runs the code and the configuration it started with, so `run` watches
-for both:
-
-- **Settings are adopted in place.** Every admin save bumps a version stamp
-  (`SettingsService::invalidateCache()`), the loop notices it between batches and
-  rebuilds what was derived from settings - the LLM client holds the key, model,
-  temperature and budget it was constructed with, so clearing the settings cache alone
-  would never reach it. The lock and the queue are untouched.
-- **Code changes need a new process**, because PHP cannot reload code into a running
-  one. In production that is the supervisor's job (it watches the deployed commit). For
-  a worker run directly during development, `--watch-files` makes it notice changes to
-  `src/`, `worker.php` and `composer.lock` and replace itself - it exits for a
-  supervisor if there is one, and otherwise starts its own replacement, capped at five
-  attempts that failed to stay up so a crash cannot loop.
-
-  Supervision is detected from the environment: `INVOCATION_ID`/`NOTIFY_SOCKET` from
-  systemd, `SUPERVISOR_ENABLED` from supervisord, or `WORKER_SUPERVISED` exported by
-  hand for anything else that restarts it. Under the systemd unit above nothing needs
-  configuring. Self-respawn gives up after five attempts that failed to stay up for a
-  minute, so a crash cannot become a loop.
-
-```
-[13:49:47] Code changed on disk - exiting so the supervisor restarts on the new code
-[13:51:06] Settings changed - rebuilding the LLM client from them
-```
 
 ## Providers
 

@@ -112,6 +112,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   react to it instead of answering the caption as if nothing were attached
 - Per-bot reply language (auto / greek / greeklish / english); greeklish is
   instructed last in the prompt and enforced by transliterating the reply
+- **docs/DAEMONS.md**: how background processing runs — the supervisor, the worker, every
+  periodic task, checking on it, several installations on one server, and the cron
+  fallback at three levels for machines without systemd
+- Fixed: `CleanupService` wrote `INTERVAL :days DAY`, which PostgreSQL cannot
+  parameterise, so purging deleted messages and archiving old ones had been failing
+  silently on every run
+- `worker.php once --schedule` also runs due periodic tasks, so one crontab line covers
+  everything on a machine with no supervisor
 - `daemon.php`: a supervisor that keeps the workers running, so only one process needs
   supervising from outside. It starts a missing worker, replaces a crashed one, asks a
   wedged one (alive but no heartbeat) to restart, and on a new deployed commit asks
