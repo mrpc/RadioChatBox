@@ -302,7 +302,11 @@ class BotService
         // the hardcoded variants are only the fallback when the API fails.
         $isFarewell = (int) $thread['messages_sent'] >= $maxMessages;
 
-        $llm = $this->llm();
+        $llm = $this->llm()->withLogContext([
+            'fake_nickname' => (string) $fakeUser['nickname'],
+            'peer_username' => $peer,
+            'purpose' => $isFarewell ? 'farewell' : 'reply',
+        ]);
 
         $history = $this->buildHistory(
             (string) $fakeUser['nickname'],
@@ -328,13 +332,21 @@ class BotService
                 return 'skipped: no conversation history';
             }
         } else {
+            $peerFacts = $this->describePeerFor($peer, (string) $fakeUser['nickname']);
             $systemPrompt = self::buildSystemPrompt(
                 $fakeUser,
-                (string) $this->settings->get('bot_context_prompt', '')
+                (string) $this->settings->get('bot_context_prompt', ''),
+                $peerFacts
             );
 
             if ($isFarewell) {
                 $systemPrompt .= "\n\n" . $this->getFarewellDirective($fakeUser);
+            }
+
+            // Volatile note goes last, so the cached prefix above stays intact.
+            $staleNote = self::staleThreadNote($peerFacts);
+            if ($staleNote !== '') {
+                $history[] = ['role' => 'system', 'content' => $staleNote];
             }
 
             try {
@@ -594,6 +606,56 @@ class BotService
     }
 
     /**
+     * Wipe a bot's conversations so it can be tested from scratch.
+     *
+     * Deletes the private messages in both directions, the per-thread state
+     * (budget, takeover, farewell flag) and the Redis reply epochs - the last of
+     * which also invalidates anything still queued for those threads.
+     *
+     * @return array{messages:int,threads:int,epochs:int}
+     */
+    public function clearHistoryFor(string $fakeNickname): array
+    {
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+
+        if ($fakeUserId === null) {
+            return ['messages' => 0, 'threads' => 0, 'epochs' => 0];
+        }
+
+        // Which peers to clear the epoch for, before the rows disappear.
+        $stmt = $this->pdo->prepare('SELECT peer_username FROM bot_threads WHERE fake_user_id = ?');
+        $stmt->execute([$fakeUserId]);
+        $peers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $stmt = $this->pdo->prepare('
+            SELECT DISTINCT CASE WHEN from_username = :nick THEN to_username ELSE from_username END
+            FROM private_messages
+            WHERE from_username = :nick2 OR to_username = :nick3
+        ');
+        $stmt->execute(['nick' => $fakeNickname, 'nick2' => $fakeNickname, 'nick3' => $fakeNickname]);
+        $peers = array_unique(array_merge($peers, $stmt->fetchAll(PDO::FETCH_COLUMN)));
+
+        $stmt = $this->pdo->prepare(
+            'DELETE FROM private_messages WHERE from_username = ? OR to_username = ?'
+        );
+        $stmt->execute([$fakeNickname, $fakeNickname]);
+        $messages = $stmt->rowCount();
+
+        $stmt = $this->pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id = ?');
+        $stmt->execute([$fakeUserId]);
+        $threads = $stmt->rowCount();
+
+        $epochs = 0;
+        foreach ($peers as $peer) {
+            if ((int) $this->redis->del($this->epochKey($fakeUserId, (string) $peer)) > 0) {
+                $epochs++;
+            }
+        }
+
+        return ['messages' => $messages, 'threads' => $threads, 'epochs' => $epochs];
+    }
+
+    /**
      * Bot state for one conversation, for display in the admin panel.
      *
      * @return array<string,mixed>|null
@@ -656,9 +718,18 @@ class BotService
      *                                     empty means use the built-in one. The
      *                                     admin panel shows the built-in text so
      *                                     it can be edited rather than guessed.
+     * @param array<string,mixed> $peer    Who the bot is talking to (name, age,
+     *                                     sex, location) and how long since the
+     *                                     last message - the model has neither
+     *                                     otherwise, so it asked things already
+     *                                     on the profile and treated a
+     *                                     days-old thread as continuous.
      */
-    public static function buildSystemPrompt(array $fakeUser, string $context = ''): string
-    {
+    public static function buildSystemPrompt(
+        array $fakeUser,
+        string $context = '',
+        array $peer = []
+    ): string {
         $name = trim((string) ($fakeUser['nickname'] ?? ''));
         $age = $fakeUser['age'] ?? null;
         $sex = strtolower((string) ($fakeUser['sex'] ?? ''));
@@ -681,9 +752,16 @@ class BotService
             }
             $identity .= '.';
 
+            $gender = match ($sex) {
+                'male' => ' Μιλάς για τον εαυτό σου σε αρσενικό γένος.',
+                'female' => ' Μιλάς για τον εαυτό σου σε θηλυκό γένος.',
+                default => '',
+            };
+
             $prompt = $identity . ' Μιλάς ανώνυμα σε ένα 1-on-1 chat.'
                 . ' Απάντα πολύ σύντομα, χαλαρά, χρησιμοποιώντας greeklish ή καθημερινά ελληνικά με συντομογραφίες.'
-                . ' Κάνε πού και πού κανένα μικρό ορθογραφικό.'
+                . ' Κάνε πού και πού κανένα μικρό ορθογραφικό - αλλά η πρόταση να βγάζει πάντα νόημα.'
+                . $gender
                 . ' ΜΗΝ αποκαλύψεις ποτέ ότι είσαι AI, μην είσαι υπερβολικά ευγενικός/η και μην κανονίζεις συναντήσεις από κοντά.'
                 . ' Απάντα στο τελευταίο μήνυμα του χρήστη.';
 
@@ -705,7 +783,93 @@ class BotService
             $context = self::DEFAULT_CONTEXT_PROMPT;
         }
 
+        $peerBlock = self::describePeer($peer);
+
+        if ($peerBlock !== '') {
+            $prompt .= "\n\n" . $peerBlock;
+        }
+
         return $context . "\n\n" . $prompt;
+    }
+
+    /**
+     * What the bot knows about the person it is talking to, and how stale the
+     * thread is.
+     *
+     * @param array<string,mixed> $peer
+     */
+    public static function describePeer(array $peer): string
+    {
+        $lines = [];
+
+        $name = trim((string) ($peer['username'] ?? ''));
+        $age = $peer['age'] ?? null;
+        $sex = strtolower(trim((string) ($peer['sex'] ?? '')));
+        $location = trim((string) ($peer['location'] ?? ''));
+
+        $facts = [];
+        if ($age !== null && trim((string) $age) !== '') {
+            $facts[] = trim((string) $age) . ' ετών';
+        }
+        if ($sex !== '') {
+            $facts[] = match ($sex) {
+                'male' => 'άντρας',
+                'female' => 'γυναίκα',
+                default => $sex,
+            };
+        }
+        if ($location !== '') {
+            $facts[] = 'από ' . $location;
+        }
+
+        if ($name !== '' || $facts !== []) {
+            $who = $name !== '' ? "Μιλάς με τον/την \"{$name}\"" : 'Μιλάς με κάποιον/α';
+            $lines[] = $facts === []
+                ? $who . '. Δεν ξέρεις άλλα στοιχεία του/της - μη τα υποθέσεις.'
+                : $who . ' (' . implode(', ', $facts) . '). Αυτά τα ξέρεις ήδη, μην τα ξαναρωτήσεις.';
+        }
+
+        return implode(' ', $lines);
+    }
+
+    /**
+     * The "you last spoke N days ago" note.
+     *
+     * Deliberately NOT part of the system prompt: the provider caches identical
+     * prompt prefixes (a repeat call showed cache_hit 256 of 367 tokens), and a
+     * value that changes every minute would invalidate that cache on every
+     * reply. It is sent as a trailing system message instead.
+     *
+     * @param array<string,mixed> $peer
+     */
+    public static function staleThreadNote(array $peer): string
+    {
+        $gap = isset($peer['seconds_since_last_message']) ? (int) $peer['seconds_since_last_message'] : null;
+
+        if ($gap === null || $gap < 3600) {
+            return '';
+        }
+
+        return 'Σημείωση: η προηγούμενη κουβέντα σας ήταν πριν από ' . self::describeGap($gap)
+            . '. Μη συνεχίσεις σαν να μιλούσατε μόλις τώρα.';
+    }
+
+    /**
+     * A human-sounding duration for the prompt.
+     */
+    public static function describeGap(int $seconds): string
+    {
+        if ($seconds < 3600) {
+            return max(1, intdiv($seconds, 60)) . ' λεπτά';
+        }
+        if ($seconds < 86400) {
+            $hours = intdiv($seconds, 3600);
+            return $hours . ($hours === 1 ? ' ώρα' : ' ώρες');
+        }
+
+        $days = intdiv($seconds, 86400);
+
+        return $days . ($days === 1 ? ' μέρα' : ' μέρες');
     }
 
     /**
@@ -947,6 +1111,72 @@ class BotService
         }
 
         return $history;
+    }
+
+    /**
+     * Profile facts about the peer plus how stale the thread is.
+     *
+     * Registered users keep age/sex/location in user_profiles (guests fill it in
+     * per session), and display_name in users. Anything missing is simply left
+     * out rather than guessed.
+     *
+     * @return array<string,mixed>
+     */
+    private function describePeerFor(string $peer, string $fakeNickname): array
+    {
+        $facts = ['username' => $peer];
+
+        try {
+            $stmt = $this->pdo->prepare('
+                SELECT age, sex, location
+                FROM user_profiles
+                WHERE username = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            ');
+            $stmt->execute([$peer]);
+            $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($profile !== false) {
+                $facts += array_filter($profile, static fn ($v) => $v !== null && trim((string) $v) !== '');
+            }
+
+            $stmt = $this->pdo->prepare('SELECT display_name FROM users WHERE username = ?');
+            $stmt->execute([$peer]);
+            $displayName = $stmt->fetchColumn();
+            if (is_string($displayName) && trim($displayName) !== '') {
+                $facts['username'] = $displayName;
+            }
+
+            // Gap between the peer's newest message and the one before the bot
+            // last spoke, i.e. how long the conversation was idle.
+            $stmt = $this->pdo->prepare('
+                SELECT EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at)))::int AS gap
+                FROM (
+                    SELECT created_at
+                    FROM private_messages
+                    WHERE (from_username = :peer AND to_username = :fake)
+                       OR (from_username = :fake2 AND to_username = :peer2)
+                    ORDER BY created_at DESC
+                    LIMIT 2
+                ) recent
+            ');
+            $stmt->execute([
+                'peer' => $peer,
+                'fake' => $fakeNickname,
+                'fake2' => $fakeNickname,
+                'peer2' => $peer,
+            ]);
+            $gap = $stmt->fetchColumn();
+
+            if ($gap !== false && $gap !== null) {
+                $facts['seconds_since_last_message'] = (int) $gap;
+            }
+        } catch (\Throwable $e) {
+            error_log('BotService: could not load peer facts: ' . $e->getMessage());
+        }
+
+        return $facts;
     }
 
     /**

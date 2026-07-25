@@ -178,7 +178,7 @@ class AdminSettingsUpdateTest extends TestCase
             'temperature above max' => ['bot_llm_temperature', '9', '2'],
             'temperature below min' => ['bot_llm_temperature', '-3', '0'],
             'tokens below min' => ['bot_llm_max_tokens', '1', '16'],
-            'tokens above max' => ['bot_llm_max_tokens', '99999', '4000'],
+            'tokens above max' => ['bot_llm_max_tokens', '99999', '8000'],
             'message limit above max' => ['bot_max_messages_per_thread', '5000', '100'],
             'history below min' => ['bot_history_limit', '0', '2'],
             'typing speed above max' => ['bot_typing_seconds_per_word', '60', '10'],

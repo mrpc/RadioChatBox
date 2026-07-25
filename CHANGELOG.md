@@ -35,6 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   today-stats path, which logged on every stats request
 
 ### Fixed
+- Bot replies arrived cut off mid-word and incoherent. The `deepseek-v4-*` models
+  reason internally, so the 300-token budget was spent entirely on reasoning
+  (`finish_reason: length`, empty or half-written content) and the fragment was
+  delivered as if it were a complete reply. Reasoning is now off by default
+  (~175 tokens saved per reply), the budget defaults to 1000, and a truncated
+  completion is rejected instead of sent
+- Every LLM call is logged (`bot_llm_log`): request, reply, finish reason, token
+  usage including reasoning tokens, duration and errors — inspectable with
+  `bot-worker.php log` and summarised on the dashboard
+- Bot replies used the wrong grammatical gender for the persona; the prompt now
+  pins it, and the default temperature drops from 1.3 to 1.0, which stops the
+  garbled Greek
+- The prompt now says who the bot is talking to (display name, age, sex,
+  location) and how long the thread has been idle, so it stops asking what the
+  profile already says and stops treating a days-old thread as continuous
+- Context caching was being invalidated on every reply: the staleness note sat
+  in the system prompt, whose prefix must stay byte-identical. Moved to a
+  trailing message — measured cache hits went from 0 to 640 of 771 tokens
 - Bot replies all failed with `HTTP 400 ... you passed deepseek-chat`: the
   shipped default was a model name the API no longer accepts. Corrected to
   `deepseek-v4-flash` for new installs and existing ones (migration `024`), and
@@ -72,6 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a healthy worker from one that is alive but wedged (exit code 2), and a lock
     left by a crashed or wedged worker is taken over automatically; optional
     systemd `sd_notify`/watchdog integration
+- "Clear conversations" for a bot (dialog and Fake Users row): removes its
+  private messages, per-thread budget, takeover state and queued replies, so it
+  can be retested from scratch
 - Edit button for fake users in the admin panel (nickname, age, sex, country).
   Renaming rewrites the nickname across existing private messages and DM blocks
   in one transaction, so ongoing conversations are not orphaned, and rejects

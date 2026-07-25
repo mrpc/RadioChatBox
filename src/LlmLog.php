@@ -1,0 +1,158 @@
+<?php
+
+namespace RadioChatBox;
+
+use PDO;
+
+/**
+ * Request/response log for LLM calls.
+ *
+ * Exists because a bad reply is otherwise undiagnosable: replies were arriving
+ * cut off mid-word and the reason (the whole token budget being spent on
+ * reasoning, `finish_reason: length`, empty content) was only visible in the
+ * provider's response, which nothing kept.
+ *
+ * The prompt contains the conversation, which is already stored in
+ * private_messages, so this adds no new class of data - but it does duplicate
+ * it, hence the retention window and the off switch.
+ */
+class LlmLog
+{
+    public const DEFAULT_RETENTION_DAYS = 7;
+
+    private PDO $pdo;
+    private SettingsService $settings;
+
+    public function __construct(?SettingsService $settings = null)
+    {
+        $this->pdo = Database::getPDO();
+        $this->settings = $settings ?? new SettingsService();
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->settings->get('bot_llm_log_enabled', 'true') !== 'false';
+    }
+
+    /**
+     * Record one call. Never throws: logging must not break a reply.
+     *
+     * @param array<string,mixed> $entry
+     */
+    public function record(array $entry): void
+    {
+        if (!$this->isEnabled()) {
+            return;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO bot_llm_log
+                    (fake_nickname, peer_username, purpose, model, endpoint, system_prompt,
+                     messages, max_tokens, temperature, reasoning, http_status, finish_reason,
+                     reply, usage, duration_ms, error)
+                 VALUES
+                    (:fake_nickname, :peer_username, :purpose, :model, :endpoint, :system_prompt,
+                     :messages, :max_tokens, :temperature, :reasoning, :http_status, :finish_reason,
+                     :reply, :usage, :duration_ms, :error)'
+            );
+
+            $stmt->bindValue(':fake_nickname', $entry['fake_nickname'] ?? null);
+            $stmt->bindValue(':peer_username', $entry['peer_username'] ?? null);
+            $stmt->bindValue(':purpose', (string) ($entry['purpose'] ?? 'reply'));
+            $stmt->bindValue(':model', (string) ($entry['model'] ?? ''));
+            $stmt->bindValue(':endpoint', $entry['endpoint'] ?? null);
+            $stmt->bindValue(':system_prompt', $entry['system_prompt'] ?? null);
+            $stmt->bindValue(':messages', self::encode($entry['messages'] ?? null));
+            $stmt->bindValue(':max_tokens', $entry['max_tokens'] ?? null, PDO::PARAM_INT);
+            $stmt->bindValue(':temperature', $entry['temperature'] ?? null);
+            $stmt->bindValue(':reasoning', (bool) ($entry['reasoning'] ?? false), PDO::PARAM_BOOL);
+            $stmt->bindValue(':http_status', $entry['http_status'] ?? null, PDO::PARAM_INT);
+            $stmt->bindValue(':finish_reason', $entry['finish_reason'] ?? null);
+            $stmt->bindValue(':reply', $entry['reply'] ?? null);
+            $stmt->bindValue(':usage', self::encode($entry['usage'] ?? null));
+            $stmt->bindValue(':duration_ms', $entry['duration_ms'] ?? null, PDO::PARAM_INT);
+            $stmt->bindValue(':error', $entry['error'] ?? null);
+            $stmt->execute();
+        } catch (\Throwable $e) {
+            error_log('LlmLog::record failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Most recent calls, newest first.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function recent(int $limit = 20, bool $problemsOnly = false): array
+    {
+        $sql = 'SELECT * FROM bot_llm_log';
+        if ($problemsOnly) {
+            $sql .= " WHERE error IS NOT NULL OR finish_reason <> 'stop'";
+        }
+        $sql .= ' ORDER BY created_at DESC, id DESC LIMIT :limit';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Aggregate token spend and failures over the last $hours, for the admin
+     * panel and for spotting a budget problem early.
+     *
+     * @return array<string,mixed>
+     */
+    public function summary(int $hours = 24): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS calls,
+                    COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+                    COUNT(*) FILTER (WHERE finish_reason = 'length') AS truncated,
+                    COALESCE(SUM((usage->>'total_tokens')::int), 0) AS total_tokens,
+                    COALESCE(SUM(((usage->'completion_tokens_details')->>'reasoning_tokens')::int), 0) AS reasoning_tokens,
+                    ROUND(AVG(duration_ms)) AS avg_duration_ms
+             FROM bot_llm_log
+             WHERE created_at > NOW() - make_interval(hours => :hours)"
+        );
+        $stmt->bindValue(':hours', max(1, $hours), PDO::PARAM_INT);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? [] : $row;
+    }
+
+    /**
+     * Drop entries past the retention window. Returns the number deleted.
+     */
+    public function prune(?int $days = null): int
+    {
+        $days = $days ?? (int) $this->settings->get('bot_llm_log_retention_days', self::DEFAULT_RETENTION_DAYS);
+        $days = max(1, min(365, $days));
+
+        $stmt = $this->pdo->prepare(
+            'DELETE FROM bot_llm_log WHERE created_at < NOW() - make_interval(days => :days)'
+        );
+        $stmt->bindValue(':days', $days, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->rowCount();
+    }
+
+    /**
+     * @param array<mixed>|null $value
+     */
+    private static function encode(?array $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $json === false ? null : $json;
+    }
+}

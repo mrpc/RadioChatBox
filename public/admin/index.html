@@ -1329,6 +1329,17 @@
                             <div class="kpi-change neutral">Currently online</div>
                         </div>
                         
+                        <div class="kpi-card" style="cursor: pointer; display: none;" id="kpi-bot-tokens-card" onclick="switchTab('settings')" title="LLM usage of the fake user auto-replies">
+                            <div class="kpi-header">
+                                <div>
+                                    <div class="kpi-title">Bot LLM Tokens (24h)</div>
+                                </div>
+                                <div class="kpi-icon info">🤖</div>
+                            </div>
+                            <div class="kpi-value" id="kpi-bot-tokens">-</div>
+                            <div class="kpi-change neutral" id="kpi-bot-tokens-detail">-</div>
+                        </div>
+
                         <div class="kpi-card" style="cursor: pointer; display: none;" id="kpi-listeners-card" onclick="switchTab('statistics')" title="Click to view statistics">
                             <div class="kpi-header">
                                 <div>
@@ -1780,9 +1791,14 @@
                                 <small style="color: #6b7280;">The closing message is normally written by the LLM so it fits the conversation. These lines are the fallback if that request fails (a random one is used) and act as tone examples.</small>
                             </div>
                         </div>
-                        <div class="modal-footer">
-                            <button class="btn btn-outline" onclick="closeFakeBotModal()">Cancel</button>
-                            <button class="btn btn-success" onclick="saveFakeBotSettings()">Save</button>
+                        <div class="modal-footer" style="justify-content: space-between;">
+                            <button class="btn btn-danger" onclick="clearFakeBotHistory()" title="Delete this bot's conversations so you can test it from scratch">
+                                🧹 Clear conversations
+                            </button>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn btn-outline" onclick="closeFakeBotModal()">Cancel</button>
+                                <button class="btn btn-success" onclick="saveFakeBotSettings()">Save</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2294,13 +2310,45 @@
                         <h3>Generation</h3>
                         <div class="form-group">
                             <label>Temperature</label>
-                            <input type="number" id="setting-bot-llm-temperature" min="0" max="2" step="0.1" placeholder="1.3">
-                            <small>DeepSeek suggests 1.3 for casual conversation.</small>
+                            <input type="number" id="setting-bot-llm-temperature" min="0" max="2" step="0.1" placeholder="1.0">
+                            <small>1.3 is DeepSeek's suggestion, but garbles Greek with reasoning off; 1.0 reads better.</small>
                         </div>
                         <div class="form-group">
                             <label>Max tokens per reply</label>
-                            <input type="number" id="setting-bot-llm-max-tokens" min="16" max="4000" placeholder="300">
-                            <small>Replies are one or two lines, so this rarely needs raising.</small>
+                            <input type="number" id="setting-bot-llm-max-tokens" min="16" max="8000" placeholder="1000">
+                            <small>
+                                Covers the model's internal reasoning too. Too low and the reply is cut off
+                                mid-sentence — that budget is what made replies look truncated.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-bot-llm-reasoning" style="width: auto;">
+                                Let the model reason before answering
+                            </label>
+                            <small>
+                                Off is right for one-line chat replies: reasoning spent ~175 tokens per answer
+                                (and the whole budget when it was 300) for no visible benefit.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Diagnostics</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-bot-llm-log-enabled" style="width: auto;">
+                                Log every LLM request and response
+                            </label>
+                            <small>
+                                Needed to tell a truncated reply from a bad one. Inspect with
+                                <code>php bot-worker.php log</code>.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Log retention (days)</label>
+                            <input type="number" id="setting-bot-llm-log-retention-days" min="1" max="365" placeholder="7">
+                            <small>Older entries are dropped by <code>bot-worker.php prune-log</code>.</small>
                         </div>
                     </div>
 
@@ -4451,6 +4499,50 @@
             overlay.classList.remove('active');
         }
         
+        // Token usage of the auto-reply bots. Hidden entirely when the feature is
+        // off; a truncated-reply count is surfaced because that is the failure
+        // that silently degrades replies.
+        async function loadBotLlmUsage() {
+            const card = document.getElementById('kpi-bot-tokens-card');
+            if (!card) return;
+
+            try {
+                const response = await fetch('/api/admin/bot-llm-stats.php', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+
+                if (!data.success || !data.enabled) {
+                    card.style.display = 'none';
+                    return;
+                }
+
+                const day = data.summary['24h'];
+                const value = document.getElementById('kpi-bot-tokens');
+                const detail = document.getElementById('kpi-bot-tokens-detail');
+
+                value.textContent = day.total_tokens >= 1000
+                    ? (day.total_tokens / 1000).toFixed(1) + 'k'
+                    : day.total_tokens;
+
+                const parts = [`${day.calls} call(s)`];
+                if (day.reasoning_tokens > 0) parts.push(`${day.reasoning_tokens} reasoning`);
+                if (day.avg_duration_ms !== null) parts.push(`avg ${day.avg_duration_ms}ms`);
+                if (day.truncated > 0) parts.push(`⚠️ ${day.truncated} truncated`);
+                if (day.errors > 0) parts.push(`⚠️ ${day.errors} error(s)`);
+                if (!data.logging) parts.push('logging off');
+
+                detail.textContent = parts.join(' · ');
+                detail.className = 'kpi-change ' + (day.truncated > 0 || day.errors > 0 ? 'negative' : 'neutral');
+                detail.title = `${data.model}, budget ${data.max_tokens} tokens, reasoning ${data.reasoning ? 'on' : 'off'}`;
+
+                card.style.display = '';
+            } catch (error) {
+                console.error('Failed to load bot LLM usage:', error);
+                card.style.display = 'none';
+            }
+        }
+
         async function loadDashboardKPIs() {
             try {
                 // Verify authToken is set
@@ -4458,6 +4550,8 @@
                     console.error('loadDashboardKPIs: authToken not set');
                     return;
                 }
+
+                loadBotLlmUsage();
                 
                 console.log('Loading dashboard KPIs with authToken:', authToken.substring(0, 20) + '...');
                 
@@ -5085,6 +5179,7 @@
                                             </button>
                                             <button class="btn btn-secondary" onclick="openFakeEditModal(${user.id})" style="margin-right: 5px;">✏️ Edit</button>
                                             <button class="btn btn-secondary" onclick="openFakeBotModal(${user.id})" style="margin-right: 5px;">🤖 Bot</button>
+                                            <button class="btn btn-secondary" onclick="clearFakeBotHistory(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')" style="margin-right: 5px;" title="Delete this bot's conversations">🧹</button>
                                             <button class="btn btn-danger" onclick="deleteFakeUser(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')">Delete</button>
                                         </td>
                                     </tr>
@@ -5360,6 +5455,45 @@
         function closeFakeBotModal() {
             document.getElementById('fake-bot-modal-overlay').style.display = 'none';
             editingFakeBotId = null;
+        }
+
+        // Wipes a bot's private messages, per-thread budget and queued replies, so
+        // the next message starts a fresh conversation.
+        async function clearFakeBotHistory(id = null, nickname = null) {
+            const targetId = id ?? editingFakeBotId;
+            if (!targetId) return;
+
+            const user = fakeUsersCache.find(u => u.id === targetId);
+            const name = nickname ?? user?.nickname ?? 'this bot';
+
+            if (!confirm(`Delete all conversations of "${name}"?\n\nIts private messages, message budget and any queued reply are removed. This cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/clear-fake-user-history.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ id: targetId })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const c = data.cleared;
+                    alert(`Cleared "${data.nickname}": ${c.messages} message(s), ${c.threads} conversation(s).`);
+                    if (id === null) closeFakeBotModal();
+                    loadFakeUsers();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to clear bot history:', error);
+                alert('Failed to clear the history');
+            }
         }
 
         async function saveFakeBotSettings() {
@@ -6046,8 +6180,11 @@
                     document.getElementById('setting-bot-llm-api-key').value = settings.bot_llm_api_key || '';
                     document.getElementById('setting-bot-llm-base-url').value = settings.bot_llm_base_url || 'https://api.deepseek.com';
                     populateBotModelOptions(settings.bot_available_models, settings.bot_llm_model, settings.bot_default_model);
-                    document.getElementById('setting-bot-llm-temperature').value = settings.bot_llm_temperature || '1.3';
-                    document.getElementById('setting-bot-llm-max-tokens').value = settings.bot_llm_max_tokens || '300';
+                    document.getElementById('setting-bot-llm-temperature').value = settings.bot_llm_temperature || '1.0';
+                    document.getElementById('setting-bot-llm-max-tokens').value = settings.bot_llm_max_tokens || '1000';
+                    document.getElementById('setting-bot-llm-reasoning').checked = settings.bot_llm_reasoning === 'true';
+                    document.getElementById('setting-bot-llm-log-enabled').checked = settings.bot_llm_log_enabled !== 'false';
+                    document.getElementById('setting-bot-llm-log-retention-days').value = settings.bot_llm_log_retention_days || '7';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
                     // Empty setting means "use the built-in context"; show that text
@@ -6398,8 +6535,11 @@
                 bot_llm_api_key: document.getElementById('setting-bot-llm-api-key').value.trim(),
                 bot_llm_base_url: document.getElementById('setting-bot-llm-base-url').value.trim() || 'https://api.deepseek.com',
                 bot_llm_model: document.getElementById('setting-bot-llm-model').value,
-                bot_llm_temperature: document.getElementById('setting-bot-llm-temperature').value || '1.3',
-                bot_llm_max_tokens: document.getElementById('setting-bot-llm-max-tokens').value || '300',
+                bot_llm_temperature: document.getElementById('setting-bot-llm-temperature').value || '1.0',
+                bot_llm_max_tokens: document.getElementById('setting-bot-llm-max-tokens').value || '1000',
+                bot_llm_reasoning: document.getElementById('setting-bot-llm-reasoning').checked ? 'true' : 'false',
+                bot_llm_log_enabled: document.getElementById('setting-bot-llm-log-enabled').checked ? 'true' : 'false',
+                bot_llm_log_retention_days: document.getElementById('setting-bot-llm-log-retention-days').value || '7',
                 bot_max_messages_per_thread: document.getElementById('setting-bot-max-messages').value || '4',
                 bot_history_limit: document.getElementById('setting-bot-history-limit').value || '20',
                 bot_context_prompt: document.getElementById('setting-bot-context-prompt').value,

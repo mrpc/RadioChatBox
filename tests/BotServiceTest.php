@@ -161,6 +161,110 @@ class BotServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Who the bot is talking to
+    // ------------------------------------------------------------------
+
+    public function testPeerFactsAreStatedSoTheyAreNotAskedAgain(): void
+    {
+        $block = BotService::describePeer([
+            'username' => 'nikos',
+            'age' => '31',
+            'sex' => 'male',
+            'location' => 'Θεσσαλονίκη',
+        ]);
+
+        $this->assertStringContainsString('nikos', $block);
+        $this->assertStringContainsString('31 ετών', $block);
+        $this->assertStringContainsString('άντρας', $block);
+        $this->assertStringContainsString('Θεσσαλονίκη', $block);
+        $this->assertStringContainsString('μην τα ξαναρωτήσεις', $block);
+    }
+
+    public function testAPeerWithoutAProfileIsNotInvented(): void
+    {
+        $block = BotService::describePeer(['username' => 'guest42']);
+
+        $this->assertStringContainsString('guest42', $block);
+        $this->assertStringContainsString('μη τα υποθέσεις', $block);
+        $this->assertStringNotContainsString('ετών', $block);
+    }
+
+    public function testAnEmptyPeerAddsNothing(): void
+    {
+        $this->assertSame('', BotService::describePeer([]));
+    }
+
+    public function testAStaleThreadIsFlagged(): void
+    {
+        $note = BotService::staleThreadNote(['seconds_since_last_message' => 3 * 86400]);
+
+        $this->assertStringContainsString('3 μέρες', $note);
+        $this->assertStringContainsString('Μη συνεχίσεις σαν να μιλούσατε μόλις τώρα', $note);
+    }
+
+    public function testAFreshThreadIsNotFlagged(): void
+    {
+        // A reply a few minutes later needs no explanation.
+        $this->assertSame('', BotService::staleThreadNote(['seconds_since_last_message' => 120]));
+        $this->assertSame('', BotService::staleThreadNote([]));
+    }
+
+    public function testTheStaleNoteStaysOutOfTheCachedPrompt(): void
+    {
+        // The provider caches identical prompt prefixes; a value that changes
+        // every minute would invalidate that on every single reply.
+        $prompt = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria'],
+            '',
+            ['username' => 'nikos', 'seconds_since_last_message' => 5 * 86400]
+        );
+
+        $this->assertStringNotContainsString('5 μέρες', $prompt);
+        $this->assertStringContainsString('nikos', $prompt);
+    }
+
+    public function testGapWording(): void
+    {
+        $this->assertSame('5 λεπτά', BotService::describeGap(300));
+        $this->assertSame('1 ώρα', BotService::describeGap(3600));
+        $this->assertSame('5 ώρες', BotService::describeGap(5 * 3600));
+        $this->assertSame('1 μέρα', BotService::describeGap(86400));
+        $this->assertSame('4 μέρες', BotService::describeGap(4 * 86400));
+    }
+
+    public function testPeerFactsAreAppendedToThePrompt(): void
+    {
+        $prompt = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria', 'sex' => 'female', 'age' => 27],
+            '',
+            ['username' => 'nikos', 'age' => '31', 'sex' => 'male']
+        );
+
+        $this->assertStringContainsString('Είσαι η Maria', $prompt);
+        $this->assertStringContainsString('Μιλάς με τον/την "nikos"', $prompt);
+    }
+
+    public function testThePromptPinsTheGrammaticalGender(): void
+    {
+        // The model answered "elentheros" (masculine) for a female persona.
+        $this->assertStringContainsString(
+            'θηλυκό γένος',
+            BotService::buildSystemPrompt(['nickname' => 'Maria', 'sex' => 'female'])
+        );
+        $this->assertStringContainsString(
+            'αρσενικό γένος',
+            BotService::buildSystemPrompt(['nickname' => 'Nikos', 'sex' => 'male'])
+        );
+    }
+
+    public function testTyposMustStillReadAsGreek(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+
+        $this->assertStringContainsString('να βγάζει πάντα νόημα', $prompt);
+    }
+
+    // ------------------------------------------------------------------
     // Typing delay
     // ------------------------------------------------------------------
 

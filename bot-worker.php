@@ -10,6 +10,7 @@
  *   php bot-worker.php run [--max-runtime=SECONDS] [--sleep=SECONDS] [--batch=N]
  *   php bot-worker.php once
  *   php bot-worker.php status [--stale-after=SECONDS]
+ *   php bot-worker.php log [--limit=N] [--problems]
  *   php bot-worker.php flush
  *
  * Common options: --lock=PATH, --stale-after=SECONDS, --verbose.
@@ -21,6 +22,8 @@
  *             then only as accurate as the cron interval.
  *   status  - Print worker health (pid, uptime, heartbeat age), queue size and
  *             configuration. Exit code: 0 healthy/idle, 2 worker looks wedged.
+ *   log     - Recent LLM calls with token usage, so a bad or truncated reply can
+ *             be traced. --problems shows only failures and truncations.
  *   flush   - Drop every scheduled job (cancels pending bot replies).
  *
  * `run` and `once` hold a single-instance lock with a heartbeat (src/WorkerLock.php,
@@ -60,6 +63,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use RadioChatBox\BotService;
 use RadioChatBox\JobQueue;
+use RadioChatBox\LlmLog;
 use RadioChatBox\LlmService;
 use RadioChatBox\SettingsService;
 use RadioChatBox\WorkerLock;
@@ -323,6 +327,70 @@ try {
             // Non-zero so monitoring can alert on a wedged worker.
             exit($isWedged ? 2 : 0);
 
+        case 'log':
+            $llmLog = new LlmLog($settings);
+            $summary = $llmLog->summary(24);
+
+            logMessage('LLM calls, last 24h');
+            logMessage(sprintf(
+                '  %s call(s), %s error(s), %s truncated | %s tokens (%s on reasoning) | avg %sms',
+                $summary['calls'] ?? 0,
+                $summary['errors'] ?? 0,
+                $summary['truncated'] ?? 0,
+                $summary['total_tokens'] ?? 0,
+                $summary['reasoning_tokens'] ?? 0,
+                $summary['avg_duration_ms'] ?? '-'
+            ));
+
+            if (!$llmLog->isEnabled()) {
+                logMessage('  (logging is OFF - enable it in Admin > Settings)');
+            }
+
+            $entries = $llmLog->recent(
+                (int) ($options['limit'] ?? 10),
+                isset($options['problems']) || in_array('--problems', $argv, true)
+            );
+
+            if (empty($entries)) {
+                logMessage('No entries.');
+                exit(0);
+            }
+
+            foreach (array_reverse($entries) as $entry) {
+                logMessage(sprintf(
+                    '%s  %s -> %s  %s  finish=%s  %sms',
+                    $entry['created_at'],
+                    $entry['fake_nickname'] ?? '?',
+                    $entry['peer_username'] ?? '?',
+                    $entry['model'],
+                    $entry['finish_reason'] ?? '-',
+                    $entry['duration_ms'] ?? '-'
+                ));
+
+                $usage = json_decode((string) $entry['usage'], true) ?: [];
+                logMessage(sprintf(
+                    '    tokens: prompt=%s completion=%s reasoning=%s | reasoning setting: %s, budget: %s',
+                    $usage['prompt_tokens'] ?? '-',
+                    $usage['completion_tokens'] ?? '-',
+                    $usage['completion_tokens_details']['reasoning_tokens'] ?? 0,
+                    $entry['reasoning'] ? 'on' : 'off',
+                    $entry['max_tokens']
+                ));
+
+                if (!empty($entry['reply'])) {
+                    logMessage('    reply: ' . mb_substr((string) $entry['reply'], 0, 160));
+                }
+                if (!empty($entry['error'])) {
+                    logMessage('    ERROR: ' . $entry['error']);
+                }
+            }
+            exit(0);
+
+        case 'prune-log':
+            $deleted = (new LlmLog($settings))->prune();
+            logMessage("Deleted {$deleted} LLM log entr(ies) past the retention window");
+            exit(0);
+
         case 'flush':
             $dropped = $queue->flush();
             logMessage("Dropped {$dropped} scheduled job(s)");
@@ -415,7 +483,7 @@ try {
         default:
             logMessage("Unknown action: {$action}");
             logMessage(
-                'Usage: php bot-worker.php [run|once|status|flush]'
+                'Usage: php bot-worker.php [run|once|status|log|prune-log|flush]'
                 . ' [--max-runtime=N] [--sleep=N] [--batch=N] [--stale-after=N] [--lock=PATH] [--verbose]'
             );
             exit(1);

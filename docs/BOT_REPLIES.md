@@ -82,9 +82,10 @@ psql "$DATABASE_URL" -f database/migrations/023_add_bot_replies.sql
 | Enable auto-replies globally | off | Master switch. When off, no LLM request is ever made. |
 | DeepSeek API Key | – | From [platform.deepseek.com](https://platform.deepseek.com/). Stripped from the public settings payload. |
 | API Base URL | `https://api.deepseek.com` | Any OpenAI-compatible endpoint works. |
+| Reasoning | off | The v4 models reason internally; on a one-line reply that spent ~175 tokens (and the whole budget when it was 300) for no benefit. |
 | Model | `deepseek-v4-flash` | Dropdown built from `BotService::availableModels()` — the API rejects unknown names, so the valid ones live in one place. A value already stored for a custom endpoint is kept as an extra option. |
 | Temperature | `1.3` | DeepSeek's own recommendation for casual conversation. |
-| Max tokens per reply | `300` | |
+| Max tokens per reply | `1000` | Covers internal reasoning too. Too low and the reply is cut off mid-sentence. |
 | Message limit per conversation | `4` | Then the closing message is sent. |
 | Conversation history | `20` | Messages sent as context. |
 | Conversation context | built-in | Prefilled with the built-in text so it is visible and editable; empty falls back to the built-in one. |
@@ -239,6 +240,24 @@ set. `bot_persona` is appended, `bot_custom_prompt` replaces the whole thing. A
 formatting guardrail ("write only the message text, no quotes, no name prefix")
 is always appended last, custom prompt or not.
 
+### What the bot knows
+
+Each call carries: the context block, the persona, **who the peer is** (display
+name plus age/sex/location from `user_profiles`, so it does not ask what the
+profile already says), the last `bot_history_limit` messages of that thread, and
+— when the thread has been idle for over an hour — a trailing note saying how
+long ago they last spoke.
+
+The API is **stateless**: there is no conversation id, so the whole history is
+resent on every call. What makes that cheap is DeepSeek's automatic context
+caching, which needs a byte-identical prompt prefix. That is why the staleness
+note is a *trailing* message rather than part of the system prompt — it changes
+every minute and would invalidate the cache on every reply. Measured on two
+rounds of one thread: `cache_hit` 384/749 then 640/771.
+
+Not implemented, and not needed at the default budget of four bot messages:
+conversation summarisation. Raise the limits a lot and it would start to matter.
+
 ### Conversation context
 
 The persona alone is not enough: the model reads openers literally and answers
@@ -313,10 +332,31 @@ the current state instead of replying twice.
 - Each reply costs one LLM request. With the default budget, a conversation
   costs at most 5 requests (4 replies + 1 closing message).
 
+## Diagnostics
+
+Every LLM call is logged to `bot_llm_log` (request, reply, `finish_reason`, token
+usage including reasoning tokens, duration, error), which is what turned "replies
+are cut off" from guesswork into a one-line answer.
+
+```bash
+php bot-worker.php log              # recent calls + a 24h summary
+php bot-worker.php log --problems   # only failures and truncations
+php bot-worker.php prune-log        # drop entries past the retention window
+```
+
+The dashboard shows a **Bot LLM Tokens (24h)** card while auto-replies are on,
+including a truncation and error count. Retention defaults to 7 days and logging
+can be switched off in Settings → Diagnostics.
+
+To retest a bot from scratch, use **🧹 Clear conversations** in its bot dialog
+(or the 🧹 button in the Fake Users row): it deletes that bot's private messages,
+its per-thread budget and takeover state, and any queued reply.
+
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
+| Replies cut off mid-word / incoherent | `php bot-worker.php log --problems`. A `finish_reason` of `length` means the token budget ran out — raise **Max tokens** or leave **Reasoning** off. |
 | No replies at all | `php bot-worker.php status` — enabled? key set? worker running? |
 | `ALIVE but WEDGED` in `status` | The worker is stuck (usually a hung HTTP connection). Kill it; the next run takes the lock over on its own. |
 | "Another worker is already running" | Expected — the lock is doing its job. `status` shows which pid holds it. |

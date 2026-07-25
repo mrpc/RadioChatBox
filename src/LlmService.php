@@ -18,16 +18,28 @@ namespace RadioChatBox;
  */
 class LlmService
 {
+    /**
+     * Enough to cover a reasoning model's internal tokens plus the answer.
+     * The old 300 was spent entirely on reasoning, leaving a truncated reply.
+     */
+    public const DEFAULT_MAX_TOKENS = 1000;
+
     private string $apiKey;
     private string $baseUrl;
     private string $model;
     private int $timeout;
     private float $temperature;
     private int $maxTokens;
+    private bool $reasoning;
+    private ?LlmLog $log;
+    private ?int $lastStatus = null;
+
+    /** @var array<string,mixed> Metadata attached to log entries */
+    private array $logContext = [];
 
     /**
-     * @param array<string,mixed> $overrides api_key, base_url, model,
-     *                                      temperature, max_tokens, timeout
+     * @param array<string,mixed> $overrides api_key, base_url, model, temperature,
+     *                                      max_tokens, timeout, reasoning
      */
     public function __construct(array $overrides = [])
     {
@@ -48,14 +60,46 @@ class LlmService
             ? (int) $overrides['timeout']
             : (int) ($config['timeout'] ?? 20);
 
-        // DeepSeek recommends ~1.3 for casual conversation.
+        // 1.3 is DeepSeek's suggestion for casual chat, but with reasoning off it
+        // garbles Greek (wrong grammatical gender, mangled words), so default a
+        // little lower.
         $this->temperature = isset($overrides['temperature']) && $overrides['temperature'] !== ''
             ? (float) $overrides['temperature']
-            : 1.3;
+            : 1.0;
 
         $this->maxTokens = isset($overrides['max_tokens']) && (int) $overrides['max_tokens'] > 0
             ? max(16, (int) $overrides['max_tokens'])
-            : 300;
+            : self::DEFAULT_MAX_TOKENS;
+
+        // Off by default: deepseek-v4-* reason internally, which on a one-line
+        // chat reply burned ~175 tokens (and the whole budget at 300) for no
+        // benefit. Disabling it took a test reply from 195 tokens to 16.
+        $this->reasoning = isset($overrides['reasoning'])
+            && !in_array($overrides['reasoning'], ['', '0', 'false', false, 0], true);
+
+        $this->log = $overrides['log'] ?? null;
+    }
+
+    /**
+     * Attach conversation metadata to the log entries this client writes.
+     *
+     * @param array<string,mixed> $context fake_nickname, peer_username, purpose
+     */
+    public function withLogContext(array $context): self
+    {
+        $this->logContext = $context;
+
+        return $this;
+    }
+
+    public function isReasoningEnabled(): bool
+    {
+        return $this->reasoning;
+    }
+
+    public function getMaxTokens(): int
+    {
+        return $this->maxTokens;
     }
 
     /**
@@ -71,6 +115,8 @@ class LlmService
             'model' => $settings->get('bot_llm_model', ''),
             'temperature' => $settings->get('bot_llm_temperature', ''),
             'max_tokens' => $settings->get('bot_llm_max_tokens', ''),
+            'reasoning' => $settings->get('bot_llm_reasoning', 'false'),
+            'log' => new LlmLog($settings),
         ]);
     }
 
@@ -134,28 +180,93 @@ class LlmService
                 $messages
             ),
             'max_tokens' => $this->maxTokens,
+            'temperature' => $this->temperature,
             'stream' => false,
         ];
 
-        // Reasoning models ignore sampling parameters; only send them otherwise.
-        if (!str_contains($this->model, 'reasoner') && !str_contains($this->model, 'thinking')) {
-            $payload['temperature'] = $this->temperature;
+        if (!$this->reasoning) {
+            // Chat replies are one or two lines; internal reasoning only burns
+            // the token budget (and used to consume all of it).
+            $payload['thinking'] = ['type' => 'disabled'];
         }
 
-        $response = $this->post('/chat/completions', $payload);
+        $startedAt = microtime(true);
+        $entry = [
+            'model' => $this->model,
+            'endpoint' => $this->baseUrl . '/chat/completions',
+            'system_prompt' => $systemPrompt,
+            'messages' => $messages,
+            'max_tokens' => $this->maxTokens,
+            'temperature' => $this->temperature,
+            'reasoning' => $this->reasoning,
+        ] + $this->logContext;
+
+        try {
+            $response = $this->post('/chat/completions', $payload);
+        } catch (\Throwable $e) {
+            $this->writeLog($entry + [
+                'error' => $e->getMessage(),
+                'http_status' => $this->lastStatus,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            ]);
+            throw $e;
+        }
 
         $choice = $response['choices'][0] ?? null;
         $text = trim((string) ($choice['message']['content'] ?? ''));
+        $finishReason = $choice['finish_reason'] ?? null;
+        $usage = $response['usage'] ?? [];
+
+        $entry += [
+            'http_status' => $this->lastStatus,
+            'finish_reason' => $finishReason,
+            'reply' => $text,
+            'usage' => $usage,
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+        ];
+
+        // A 'length' finish means the budget ran out mid-sentence. Delivering
+        // that is what made replies look cut off and incoherent, so treat it as
+        // a failure rather than shipping a fragment.
+        if ($finishReason === 'length') {
+            $reasoningTokens = (int) ($usage['completion_tokens_details']['reasoning_tokens'] ?? 0);
+            $message = sprintf(
+                'LLM reply hit the %d-token budget and was truncated',
+                $this->maxTokens
+            );
+            if ($reasoningTokens > 0) {
+                $message .= sprintf(
+                    ' (%d of them spent on reasoning - raise Max tokens or turn reasoning off)',
+                    $reasoningTokens
+                );
+            }
+
+            $this->writeLog($entry + ['error' => $message]);
+
+            throw new \RuntimeException($message);
+        }
 
         if ($text === '') {
+            $this->writeLog($entry + ['error' => 'empty completion']);
+
             throw new \RuntimeException('LLM returned an empty completion');
         }
 
+        $this->writeLog($entry);
+
         return [
             'text' => $text,
-            'usage' => $response['usage'] ?? [],
-            'finish_reason' => $choice['finish_reason'] ?? null,
+            'usage' => $usage,
+            'finish_reason' => $finishReason,
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $entry
+     */
+    private function writeLog(array $entry): void
+    {
+        $this->log?->record($entry);
     }
 
     /**
@@ -163,7 +274,7 @@ class LlmService
      *
      * @return array<string,mixed>
      */
-    private function post(string $path, array $payload): array
+    protected function post(string $path, array $payload): array
     {
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($body === false) {
@@ -190,6 +301,8 @@ class LlmService
         $curlError = curl_error($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+
+        $this->lastStatus = $status ?: null;
 
         if ($raw === false || $curlError !== '') {
             throw new \RuntimeException('LLM request failed: ' . ($curlError ?: 'unknown cURL error'));

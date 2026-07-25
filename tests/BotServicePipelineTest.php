@@ -642,6 +642,74 @@ class BotServicePipelineTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Clearing a bot's history (for re-testing)
+    // ------------------------------------------------------------------
+
+    public function testClearingHistoryRemovesMessagesThreadsAndQueuedWork(): void
+    {
+        $this->incoming('geia');
+        $this->botSaid('geia sou');
+        $this->exhaustBudget(4);
+        $this->bot->takeOverThread($this->nick, $this->peer, 'admin');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession);
+
+        $cleared = $this->bot->clearHistoryFor($this->nick);
+
+        $this->assertSame(2, $cleared['messages']);
+        $this->assertSame(1, $cleared['threads']);
+        $this->assertGreaterThanOrEqual(1, $cleared['epochs']);
+
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM private_messages WHERE from_username = ? OR to_username = ?');
+        $stmt->execute([$this->nick, $this->nick]);
+        $this->assertSame(0, (int) $stmt->fetchColumn());
+        $this->assertNull($this->threadRow());
+        $this->assertSame(0, $this->currentEpoch(), 'a queued reply must not survive the wipe');
+    }
+
+    public function testAClearedBotStartsFromAFreshBudget(): void
+    {
+        $this->exhaustBudget(4);
+        $this->assertSame(4, $this->bot->getThreadState($this->nick, $this->peer)['messages_sent']);
+
+        $this->bot->clearHistoryFor($this->nick);
+
+        $this->assertSame(0, $this->bot->getThreadState($this->nick, $this->peer)['messages_sent']);
+        $this->assertFalse($this->bot->getThreadState($this->nick, $this->peer)['is_taken_over']);
+    }
+
+    public function testClearingAnUnknownBotIsHarmless(): void
+    {
+        $this->assertSame(
+            ['messages' => 0, 'threads' => 0, 'epochs' => 0],
+            $this->bot->clearHistoryFor('no_such_bot_xyz')
+        );
+    }
+
+    public function testClearingOneBotLeavesOthersAlone(): void
+    {
+        $otherNick = 'bot_keep_' . substr(bin2hex(random_bytes(4)), 0, 6);
+        $this->pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, TRUE)')
+            ->execute([$otherNick]);
+        $this->pdo->prepare(
+            'INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, ?, ?, ?, ?, NOW())'
+        )->execute([$this->peer, $this->peerSession, $otherNick, 'fake_' . md5($otherNick), 'geia']);
+
+        try {
+            $this->incoming('geia');
+            $this->bot->clearHistoryFor($this->nick);
+
+            $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM private_messages WHERE to_username = ?');
+            $stmt->execute([$otherNick]);
+            $this->assertSame(1, (int) $stmt->fetchColumn(), "another bot's messages must survive");
+        } finally {
+            $this->pdo->prepare('DELETE FROM private_messages WHERE to_username = ? OR from_username = ?')
+                ->execute([$otherNick, $otherNick]);
+            $this->pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$otherNick]);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // History building
     // ------------------------------------------------------------------
 
@@ -729,6 +797,26 @@ class BotServicePipelineTest extends TestCase
         $this->bot->processReplyJob($this->replyPayload(0));
 
         $this->assertStringContainsString('αν είσαι σε σχέση', $this->llm->calls[0]['system']);
+    }
+
+    public function testAStaleThreadIsFlaggedAsATrailingMessage(): void
+    {
+        // Three days between the peer's two messages.
+        $this->pdo->prepare(
+            'INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, ?, ?, ?, ?, NOW() - make_interval(days => 3))'
+        )->execute([$this->peer, $this->peerSession, $this->nick, 'fake_' . md5($this->nick), 'palia kouventa']);
+        $this->incoming('ksana geia');
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $messages = $this->llm->calls[0]['messages'];
+        $last = $messages[count($messages) - 1];
+
+        $this->assertSame('system', $last['role'], 'the note must be the trailing message');
+        $this->assertStringContainsString('3 μέρες', $last['content']);
+        // ...and never inside the prompt prefix the provider caches.
+        $this->assertStringNotContainsString('3 μέρες', $this->llm->calls[0]['system']);
     }
 
     public function testAPerBotTypingSpeedOverridesTheGlobalOne(): void
