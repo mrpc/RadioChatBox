@@ -79,6 +79,97 @@ class BotServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Conversation context
+    // ------------------------------------------------------------------
+
+    public function testPromptExplainsThatFreeMeansSingle(): void
+    {
+        // "είσαι ελεύθερη;" on a dating site asks about relationship status; the
+        // bot used to answer about having time to chat.
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria', 'sex' => 'female']);
+
+        $this->assertStringContainsString('είσαι ελεύθερη;', $prompt);
+        $this->assertStringContainsString('αν είσαι σε σχέση', $prompt);
+        $this->assertStringContainsString('ΟΧΙ αν έχεις χρόνο για κουβέντα', $prompt);
+    }
+
+    public function testPromptCoversTheOtherCommonOpeners(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+
+        foreach (['τι κάνεις;', 'από πού είσαι;', 'ασλ', 'τι ψάχνεις;'] as $phrase) {
+            $this->assertStringContainsString($phrase, $prompt, "{$phrase} is not explained");
+        }
+    }
+
+    public function testPromptTellsTheBotHowToRefusePhotosAndCamera(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+
+        $this->assertStringContainsString('φωτογραφία', $prompt);
+        $this->assertStringContainsString('κάμερα', $prompt);
+        // It must not out itself as software when refusing.
+        $this->assertStringContainsString('Μην πεις ποτέ ότι δεν μπορείς τεχνικά', $prompt);
+    }
+
+    public function testContextComesBeforeThePersona(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria', 'sex' => 'female', 'age' => 27]);
+
+        $this->assertLessThan(
+            strpos($prompt, 'Είσαι η Maria'),
+            strpos($prompt, 'ΠΛΑΙΣΙΟ:'),
+            'the environment context should frame the persona that follows'
+        );
+    }
+
+    public function testContextAlsoAppliesToACustomPrompt(): void
+    {
+        // The context describes the room, not the character, so a custom persona
+        // must not lose it.
+        $prompt = BotService::buildSystemPrompt([
+            'nickname' => 'Maria',
+            'bot_custom_prompt' => 'You are a pirate.',
+        ]);
+
+        $this->assertStringContainsString('ΠΛΑΙΣΙΟ:', $prompt);
+        $this->assertStringContainsString('You are a pirate.', $prompt);
+    }
+
+    public function testExtraContextIsAddedToTheBuiltInOne(): void
+    {
+        // Adding site-specific notes must not drop the phrase glossary.
+        $prompt = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria'],
+            'Το site είναι για μεταλλάδες, ανέφερε συναυλίες.'
+        );
+
+        $this->assertStringContainsString('chat γνωριμιών', $prompt);
+        $this->assertStringContainsString('αν είσαι σε σχέση', $prompt);
+        $this->assertStringContainsString('μεταλλάδες', $prompt);
+    }
+
+    public function testExtraContextComesAfterTheBuiltInContextAndBeforeThePersona(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria'], 'ΕΞΤΡΑ ΟΔΗΓΙΑ');
+
+        $builtIn = strpos($prompt, 'ΠΛΑΙΣΙΟ:');
+        $extra = strpos($prompt, 'ΕΞΤΡΑ ΟΔΗΓΙΑ');
+        $persona = strpos($prompt, 'Είσαι ο/η Maria.');
+
+        $this->assertLessThan($extra, $builtIn);
+        $this->assertLessThan($persona, $extra);
+    }
+
+    public function testNoExtraContextLeavesTheBuiltInOneIntact(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria'], '');
+
+        $this->assertStringContainsString('ΠΛΑΙΣΙΟ:', $prompt);
+        $this->assertStringContainsString('Είσαι ο/η Maria.', $prompt);
+    }
+
+    // ------------------------------------------------------------------
     // Typing delay
     // ------------------------------------------------------------------
 

@@ -106,7 +106,7 @@ class AdminSettingsUpdateTest extends TestCase
             'bot_replies_enabled' => 'true',
             'bot_llm_api_key' => 'sk-test-regression',
             'bot_llm_base_url' => 'https://api.deepseek.com',
-            'bot_llm_model' => 'deepseek-chat',
+            'bot_llm_model' => 'deepseek-v4-flash',
             'bot_llm_temperature' => '1.3',
             'bot_llm_max_tokens' => '300',
             'bot_max_messages_per_thread' => '5',
@@ -135,9 +135,9 @@ class AdminSettingsUpdateTest extends TestCase
         // Prime the cache, then make sure a write busts it.
         $this->settings->get('bot_llm_model');
 
-        $this->settings->updateFromAdmin(['bot_llm_model' => 'deepseek-reasoner']);
+        $this->settings->updateFromAdmin(['bot_llm_model' => 'deepseek-v4-pro']);
 
-        $this->assertSame('deepseek-reasoner', $this->settings->get('bot_llm_model'));
+        $this->assertSame('deepseek-v4-pro', $this->settings->get('bot_llm_model'));
     }
 
     // ------------------------------------------------------------------

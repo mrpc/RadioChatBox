@@ -19,19 +19,29 @@ use Redis;
  */
 class JobQueue
 {
-    private const ZSET_KEY = 'jobs:delayed';
-    private const HASH_KEY = 'jobs:data';
+    private const DEFAULT_NAMESPACE = 'jobs';
 
     /** Jobs that fail are retried up to this many times before being dropped. */
     public const MAX_ATTEMPTS = 3;
 
     private Redis $redis;
     private string $prefix;
+    private string $namespace;
 
-    public function __construct()
+    /**
+     * @param string $namespace Key namespace, so a separate queue (or a test)
+     *                          cannot claim or flush the live one
+     */
+    public function __construct(string $namespace = self::DEFAULT_NAMESPACE)
     {
         $this->redis = Database::getRedis();
         $this->prefix = Database::getRedisPrefix();
+        $this->namespace = $namespace !== '' ? $namespace : self::DEFAULT_NAMESPACE;
+    }
+
+    public function getNamespace(): string
+    {
+        return $this->namespace;
     }
 
     /**
@@ -56,8 +66,8 @@ class JobQueue
         ];
         unset($job['payload']['__attempts']);
 
-        $this->redis->hSet($this->prefixKey(self::HASH_KEY), $jobId, (string) json_encode($job, JSON_UNESCAPED_UNICODE));
-        $this->redis->zAdd($this->prefixKey(self::ZSET_KEY), $runAt, $jobId);
+        $this->redis->hSet($this->prefixKey('data'), $jobId, (string) json_encode($job, JSON_UNESCAPED_UNICODE));
+        $this->redis->zAdd($this->prefixKey('delayed'), $runAt, $jobId);
 
         return $jobId;
     }
@@ -70,7 +80,7 @@ class JobQueue
     public function claimDue(int $limit = 20): array
     {
         $ids = $this->redis->zRangeByScore(
-            $this->prefixKey(self::ZSET_KEY),
+            $this->prefixKey('delayed'),
             '0',
             (string) time(),
             ['limit' => [0, max(1, $limit)]]
@@ -84,12 +94,12 @@ class JobQueue
 
         foreach ($ids as $jobId) {
             // Whoever's ZREM returns 1 owns the job.
-            if ((int) $this->redis->zRem($this->prefixKey(self::ZSET_KEY), $jobId) !== 1) {
+            if ((int) $this->redis->zRem($this->prefixKey('delayed'), $jobId) !== 1) {
                 continue;
             }
 
-            $raw = $this->redis->hGet($this->prefixKey(self::HASH_KEY), $jobId);
-            $this->redis->hDel($this->prefixKey(self::HASH_KEY), $jobId);
+            $raw = $this->redis->hGet($this->prefixKey('data'), $jobId);
+            $this->redis->hDel($this->prefixKey('data'), $jobId);
 
             if (!is_string($raw)) {
                 continue;
@@ -140,7 +150,7 @@ class JobQueue
      */
     public function size(): int
     {
-        return (int) $this->redis->zCard($this->prefixKey(self::ZSET_KEY));
+        return (int) $this->redis->zCard($this->prefixKey('delayed'));
     }
 
     /**
@@ -149,7 +159,7 @@ class JobQueue
      */
     public function secondsUntilNext(): ?int
     {
-        $next = $this->redis->zRange($this->prefixKey(self::ZSET_KEY), 0, 0, true);
+        $next = $this->redis->zRange($this->prefixKey('delayed'), 0, 0, true);
 
         if (!is_array($next) || empty($next)) {
             return null;
@@ -166,14 +176,14 @@ class JobQueue
     public function flush(): int
     {
         $count = $this->size();
-        $this->redis->del($this->prefixKey(self::ZSET_KEY));
-        $this->redis->del($this->prefixKey(self::HASH_KEY));
+        $this->redis->del($this->prefixKey('delayed'));
+        $this->redis->del($this->prefixKey('data'));
 
         return $count;
     }
 
     private function prefixKey(string $key): string
     {
-        return $this->prefix . $key;
+        return $this->prefix . $this->namespace . ':' . $key;
     }
 }
