@@ -1608,6 +1608,107 @@
                     <p style="color: #6b7280; margin-bottom: 15px;">Toggle to activate/deactivate fake users. Active fake users appear in the user list.</p>
                     <div id="fake-users-table"></div>
                 </div>
+
+                <!-- Edit a fake user's profile -->
+                <div id="fake-edit-modal-overlay" class="modal-overlay" style="display: none;" onclick="closeFakeEditModal()">
+                    <div class="modal-content" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <h2>✏️ Edit Fake User</h2>
+                            <button class="modal-close" onclick="closeFakeEditModal()">✕</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Nickname <span style="color: #ef4444;">*</span></label>
+                                <input type="text" id="fake-edit-nickname" required minlength="3" maxlength="50">
+                                <small style="color: #6b7280;">
+                                    Renaming also updates the nickname in existing private messages and blocks,
+                                    so ongoing conversations keep working.
+                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label>Age</label>
+                                <select id="fake-edit-age"></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Sex</label>
+                                <select id="fake-edit-sex">
+                                    <option value="">Select Sex</option>
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Country</label>
+                                <select id="fake-edit-location">
+                                    <option value="">Select Country</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-outline" onclick="closeFakeEditModal()">Cancel</button>
+                            <button class="btn btn-success" onclick="saveFakeUserEdit()">Save</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bot (auto-reply) settings for a single fake user -->
+                <div id="fake-bot-modal-overlay" class="modal-overlay" style="display: none;" onclick="closeFakeBotModal()">
+                    <div class="modal-content" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <h2>🤖 Auto-Reply Bot — <span id="fake-bot-nickname"></span></h2>
+                            <button class="modal-close" onclick="closeFakeBotModal()">✕</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="fake-bot-global-warning" style="display: none; background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 6px; margin-bottom: 16px; color: #92400e; font-size: 13px;">
+                                Auto-replies are turned <strong>off globally</strong>. Enable “Fake user auto-replies” in Settings for this to take effect.
+                            </div>
+
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" id="fake-bot-enabled" style="width: auto;">
+                                    <span>Reply automatically to private messages</span>
+                                </label>
+                                <small style="color: #6b7280;">The LLM answers on behalf of this fake user until the message limit is reached.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Personality / interests</label>
+                                <textarea id="fake-bot-persona" rows="3" maxlength="2000" placeholder="e.g. Δουλεύει σε καφετέρια, ακούει ροκ, λατρεύει τις γάτες, λίγο πειραχτήρι" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                                <small style="color: #6b7280;">Appended to the generated prompt. Name, age and sex are added automatically.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Custom system prompt (advanced)</label>
+                                <textarea id="fake-bot-custom-prompt" rows="4" maxlength="2000" placeholder="Leave empty to use the default Greek/greeklish prompt" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                                <small style="color: #6b7280;">Replaces the generated prompt entirely. Leave empty unless you know what you're doing.</small>
+                            </div>
+
+                            <div style="display: flex; gap: 15px;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label>Message limit per conversation</label>
+                                    <input type="number" id="fake-bot-max-messages" min="0" max="100" placeholder="global">
+                                    <small style="color: #6b7280;">Empty = use the global setting.</small>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label>Typing speed (sec / word)</label>
+                                    <input type="number" id="fake-bot-typing-speed" min="0" max="10" step="0.1" placeholder="global">
+                                    <small style="color: #6b7280;">Empty = use the global setting.</small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Fallback goodbye variants (one per line)</label>
+                                <textarea id="fake-bot-farewell" rows="3" maxlength="4000" placeholder="Leave empty to use the global list" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                                <small style="color: #6b7280;">The closing message is normally written by the LLM so it fits the conversation. These lines are the fallback if that request fails (a random one is used) and act as tone examples.</small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-outline" onclick="closeFakeBotModal()">Cancel</button>
+                            <button class="btn btn-success" onclick="saveFakeBotSettings()">Save</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Impersonation Tab (Root/Owner only) -->
@@ -1650,8 +1751,15 @@
                                     <strong>Chatting with: <span id="impersonate-current-sender"></span></strong>
                                     <span style="color: #6b7280; margin-left: 10px;">as <strong id="impersonate-as-name"></strong></span>
                                     <div id="impersonate-as-info" style="margin-top: 8px; font-size: 13px; color: #6b7280;"></div>
+                                    <div id="impersonate-bot-status" style="margin-top: 8px; font-size: 13px; display: none;"></div>
                                 </div>
                                 <div style="display: flex; gap: 8px;">
+                                    <button id="impersonate-bot-release-btn" class="btn" onclick="releaseImpersonateBot(false)" style="background: #6366f1; padding: 6px 12px; font-size: 13px; display: none;">
+                                        🤖 Back to bot
+                                    </button>
+                                    <button id="impersonate-bot-reset-btn" class="btn" onclick="releaseImpersonateBot(true)" style="background: #8b5cf6; padding: 6px 12px; font-size: 13px; display: none;" title="Hand back to the bot and reset its message budget for this conversation">
+                                        ♻️ Back to bot + reset
+                                    </button>
                                     <button id="impersonate-block-btn" class="btn" onclick="toggleImpersonateBlock()" style="background: #ef4444; padding: 6px 12px; font-size: 13px; display: none;">
                                         🚫 Block
                                     </button>
@@ -2053,6 +2161,131 @@
                         <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
                             When real users are below this number, random fake users will be activated to fill the gap. Set to 0 to disable.
                         </small>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>🤖 Fake User Auto-Replies (Bots)</h2>
+                    <p style="color: #6b7280; margin-bottom: 15px;">
+                        Let fake users answer private messages automatically through an LLM (DeepSeek).
+                        Enable it per fake user in the <strong>Fake Users</strong> tab.
+                        Requires the <code>bot-worker.php</code> background worker to be running.
+                    </p>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="setting-bot-replies-enabled" style="width: auto;">
+                            <span>Enable auto-replies globally</span>
+                        </label>
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Master switch. When off, no LLM requests are made at all.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>DeepSeek API Key</label>
+                        <input type="password" id="setting-bot-llm-api-key" placeholder="sk-..." autocomplete="off">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Get a key at <a href="https://platform.deepseek.com/" target="_blank" style="color: #667eea;">platform.deepseek.com</a>.
+                            Never sent to the public frontend.
+                        </small>
+                    </div>
+
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>API Base URL</label>
+                            <input type="text" id="setting-bot-llm-base-url" placeholder="https://api.deepseek.com">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                Any OpenAI-compatible endpoint works.
+                            </small>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Model</label>
+                            <input type="text" id="setting-bot-llm-model" placeholder="deepseek-chat">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                e.g. <code>deepseek-chat</code> or <code>deepseek-reasoner</code>.
+                            </small>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Temperature</label>
+                            <input type="number" id="setting-bot-llm-temperature" min="0" max="2" step="0.1" placeholder="1.3">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                DeepSeek suggests 1.3 for casual conversation.
+                            </small>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Max tokens per reply</label>
+                            <input type="number" id="setting-bot-llm-max-tokens" min="16" max="2000" placeholder="300">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Message limit per conversation</label>
+                            <input type="number" id="setting-bot-max-messages" min="0" max="100" placeholder="4">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                After this many bot messages in a thread, the bot writes a closing message and stops replying.
+                            </small>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Conversation history (messages)</label>
+                            <input type="number" id="setting-bot-history-limit" min="2" max="100" placeholder="20">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                How much of the thread is sent as context.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Closing instruction (last message)</label>
+                        <textarea id="setting-bot-farewell-prompt" rows="3" maxlength="2000" placeholder="Leave empty to use the built-in Greek instruction" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Appended to the system prompt for the bot's <strong>last</strong> message, so the LLM writes a goodbye
+                            that fits what was being discussed instead of a canned line.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Fallback goodbye variants (one per line)</label>
+                        <textarea id="setting-bot-farewell-messages" rows="6" maxlength="4000" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                            Used only if the closing LLM request fails — a random line is picked, so conversations don't all end
+                            identically. They are also passed to the model as tone examples.
+                            Leave empty to use the built-in list shown above (<span id="bot-default-farewell-count">50+</span> variants) —
+                            <a href="#" onclick="fillDefaultFarewells(); return false;" style="color: #667eea;">copy it into the field</a> to edit.
+                        </small>
+                    </div>
+
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Typing speed (sec / word)</label>
+                            <input type="number" id="setting-bot-typing-seconds-per-word" min="0" max="10" step="0.1" placeholder="1.5">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                The reply is stored and pushed to the client only after this delay, so it looks typed.
+                            </small>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Min typing delay (sec)</label>
+                            <input type="number" id="setting-bot-typing-min-delay" min="0" max="300" placeholder="2">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Max typing delay (sec)</label>
+                            <input type="number" id="setting-bot-typing-max-delay" min="1" max="600" placeholder="45">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Min reading delay (sec)</label>
+                            <input type="number" id="setting-bot-read-delay-min" min="0" max="300" placeholder="2">
+                            <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 4px;">
+                                Pause before the bot starts "reading" the message.
+                            </small>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Max reading delay (sec)</label>
+                            <input type="number" id="setting-bot-read-delay-max" min="0" max="600" placeholder="8">
+                        </div>
                     </div>
                 </div>
 
@@ -4645,6 +4878,18 @@
         }
 
         // Fake Users Functions
+        // Fake users loaded in the table, reused by the bot settings modal
+        let fakeUsersCache = [];
+        let editingFakeBotId = null;
+
+        // Built-in goodbye variants (from the backend), shown as placeholders
+        let defaultFarewellMessages = '';
+
+        function fillDefaultFarewells() {
+            if (!defaultFarewellMessages) return;
+            document.getElementById('setting-bot-farewell-messages').value = defaultFarewellMessages;
+        }
+
         async function loadFakeUsers() {
             try {
                 const response = await fetch('/api/admin/list-fake-users.php', {
@@ -4660,6 +4905,9 @@
                         return;
                     }
                     
+                    // Cache the rows so the bot modal can prefill without refetching
+                    fakeUsersCache = data.fake_users;
+
                     table.innerHTML = `
                         <table>
                             <thead>
@@ -4669,6 +4917,7 @@
                                     <th>Sex</th>
                                     <th>Location</th>
                                     <th>Status</th>
+                                    <th>Bot</th>
                                     <th>Created</th>
                                     <th>Actions</th>
                                 </tr>
@@ -4685,11 +4934,18 @@
                                                 ${user.is_active ? '🟢 Active' : '⚫ Inactive'}
                                             </span>
                                         </td>
+                                        <td>
+                                            <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; ${user.bot_enabled ? 'background: #6366f1; color: white;' : 'background: #e5e7eb; color: #6b7280;'}">
+                                                ${user.bot_enabled ? '🤖 On' : 'Off'}
+                                            </span>
+                                        </td>
                                         <td>${new Date(user.created_at).toLocaleDateString()}</td>
                                         <td>
                                             <button class="btn btn-secondary" onclick="toggleFakeUser(${user.id})" style="margin-right: 5px;">
                                                 ${user.is_active ? 'Deactivate' : 'Activate'}
                                             </button>
+                                            <button class="btn btn-secondary" onclick="openFakeEditModal(${user.id})" style="margin-right: 5px;">✏️ Edit</button>
+                                            <button class="btn btn-secondary" onclick="openFakeBotModal(${user.id})" style="margin-right: 5px;">🤖 Bot</button>
                                             <button class="btn btn-danger" onclick="deleteFakeUser(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')">Delete</button>
                                         </td>
                                     </tr>
@@ -4820,6 +5076,187 @@
             } catch (error) {
                 console.error('Failed to delete fake user:', error);
                 alert('Failed to delete fake user');
+            }
+        }
+
+        // ====================================================================
+        // FAKE USER PROFILE EDITING
+        // ====================================================================
+
+        let editingFakeUserId = null;
+
+        function openFakeEditModal(id) {
+            const user = fakeUsersCache.find(u => u.id === id);
+            if (!user) {
+                alert('Fake user not found - refresh the list and try again');
+                return;
+            }
+
+            editingFakeUserId = id;
+
+            // Same option lists as the "add" form.
+            const ageSelect = document.getElementById('fake-edit-age');
+            ageSelect.innerHTML = '<option value="">Select Age</option>';
+            for (let i = 18; i <= 90; i++) {
+                ageSelect.innerHTML += `<option value="${i}">${i}</option>`;
+            }
+
+            const locationSelect = document.getElementById('fake-edit-location');
+            locationSelect.innerHTML = '<option value="">Select Country</option>';
+            if (typeof COUNTRIES !== 'undefined' && Array.isArray(COUNTRIES)) {
+                COUNTRIES.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country.code;
+                    option.textContent = `${country.flag} ${country.name}`;
+                    locationSelect.appendChild(option);
+                });
+            }
+
+            document.getElementById('fake-edit-nickname').value = user.nickname || '';
+            ageSelect.value = user.age ?? '';
+            document.getElementById('fake-edit-sex').value = user.sex || '';
+            locationSelect.value = user.location || '';
+
+            document.getElementById('fake-edit-modal-overlay').style.display = 'flex';
+        }
+
+        function closeFakeEditModal() {
+            document.getElementById('fake-edit-modal-overlay').style.display = 'none';
+            editingFakeUserId = null;
+        }
+
+        async function saveFakeUserEdit() {
+            if (!editingFakeUserId) return;
+
+            const nickname = document.getElementById('fake-edit-nickname').value.trim();
+
+            if (nickname.length < 3) {
+                alert('Nickname must be at least 3 characters');
+                return;
+            }
+
+            const original = fakeUsersCache.find(u => u.id === editingFakeUserId);
+            if (original && nickname !== original.nickname
+                && !confirm(`Rename "${original.nickname}" to "${nickname}"?\n\nExisting private messages and blocks will be updated to the new nickname.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/update-fake-user.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        id: editingFakeUserId,
+                        nickname,
+                        age: document.getElementById('fake-edit-age').value || null,
+                        sex: document.getElementById('fake-edit-sex').value || null,
+                        location: document.getElementById('fake-edit-location').value || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    closeFakeEditModal();
+                    loadFakeUsers();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to update fake user:', error);
+                alert('Failed to update fake user');
+            }
+        }
+
+        // ====================================================================
+        // FAKE USER BOT (LLM AUTO-REPLY) SETTINGS
+        // ====================================================================
+
+        async function openFakeBotModal(id) {
+            const user = fakeUsersCache.find(u => u.id === id);
+            if (!user) {
+                alert('Fake user not found - refresh the list and try again');
+                return;
+            }
+
+            editingFakeBotId = id;
+
+            document.getElementById('fake-bot-nickname').textContent = user.nickname;
+            document.getElementById('fake-bot-enabled').checked = !!user.bot_enabled;
+            document.getElementById('fake-bot-persona').value = user.bot_persona || '';
+            document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
+            document.getElementById('fake-bot-max-messages').value = user.bot_max_messages ?? '';
+            document.getElementById('fake-bot-typing-speed').value = user.bot_typing_seconds_per_word ?? '';
+            document.getElementById('fake-bot-farewell').value = user.bot_farewell_messages || '';
+
+            document.getElementById('fake-bot-modal-overlay').style.display = 'flex';
+
+            // Warn when the feature is off globally - a per-bot toggle alone
+            // would silently do nothing - and show the inherited goodbye list
+            // as the placeholder.
+            try {
+                const response = await fetch('/api/admin/settings.php', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                if (!data.success) return;
+
+                const enabledGlobally = data.settings.bot_replies_enabled === 'true';
+                document.getElementById('fake-bot-global-warning').style.display = enabledGlobally ? 'none' : 'block';
+
+                defaultFarewellMessages = data.settings.bot_default_farewell_messages || defaultFarewellMessages;
+
+                // An empty per-bot field falls back to the global list, and that
+                // in turn falls back to the built-in one.
+                document.getElementById('fake-bot-farewell').placeholder =
+                    data.settings.bot_farewell_messages || defaultFarewellMessages;
+            } catch (error) {
+                console.error('Failed to check global bot setting:', error);
+            }
+        }
+
+        function closeFakeBotModal() {
+            document.getElementById('fake-bot-modal-overlay').style.display = 'none';
+            editingFakeBotId = null;
+        }
+
+        async function saveFakeBotSettings() {
+            if (!editingFakeBotId) return;
+
+            const payload = {
+                id: editingFakeBotId,
+                bot_enabled: document.getElementById('fake-bot-enabled').checked,
+                bot_persona: document.getElementById('fake-bot-persona').value.trim(),
+                bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
+                bot_max_messages: document.getElementById('fake-bot-max-messages').value,
+                bot_typing_seconds_per_word: document.getElementById('fake-bot-typing-speed').value,
+                bot_farewell_messages: document.getElementById('fake-bot-farewell').value.trim()
+            };
+
+            try {
+                const response = await fetch('/api/admin/update-fake-user-bot.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    closeFakeBotModal();
+                    loadFakeUsers();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to save bot settings:', error);
+                alert('Failed to save bot settings');
             }
         }
 
@@ -5464,6 +5901,35 @@
                     
                     document.getElementById('setting-rate-limit-messages').value = settings.rate_limit_messages || '10';
                     document.getElementById('setting-rate-limit-window').value = settings.rate_limit_window || '60';
+
+                    // Fake user auto-replies (bots)
+                    document.getElementById('setting-bot-replies-enabled').checked = settings.bot_replies_enabled === 'true';
+                    document.getElementById('setting-bot-llm-api-key').value = settings.bot_llm_api_key || '';
+                    document.getElementById('setting-bot-llm-base-url').value = settings.bot_llm_base_url || 'https://api.deepseek.com';
+                    document.getElementById('setting-bot-llm-model').value = settings.bot_llm_model || 'deepseek-chat';
+                    document.getElementById('setting-bot-llm-temperature').value = settings.bot_llm_temperature || '1.3';
+                    document.getElementById('setting-bot-llm-max-tokens').value = settings.bot_llm_max_tokens || '300';
+                    document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
+                    document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
+                    document.getElementById('setting-bot-farewell-prompt').value = settings.bot_farewell_prompt || '';
+                    document.getElementById('setting-bot-farewell-messages').value = settings.bot_farewell_messages || '';
+
+                    // Show the built-in goodbye list as the placeholder, so it is
+                    // obvious what an empty field falls back to.
+                    defaultFarewellMessages = settings.bot_default_farewell_messages || '';
+                    const farewellField = document.getElementById('setting-bot-farewell-messages');
+                    farewellField.placeholder = defaultFarewellMessages;
+                    const farewellCount = document.getElementById('bot-default-farewell-count');
+                    if (farewellCount) {
+                        farewellCount.textContent = defaultFarewellMessages
+                            ? defaultFarewellMessages.split('\n').filter(line => line.trim()).length
+                            : '0';
+                    }
+                    document.getElementById('setting-bot-typing-seconds-per-word').value = settings.bot_typing_seconds_per_word || '1.5';
+                    document.getElementById('setting-bot-typing-min-delay').value = settings.bot_typing_min_delay || '2';
+                    document.getElementById('setting-bot-typing-max-delay').value = settings.bot_typing_max_delay || '45';
+                    document.getElementById('setting-bot-read-delay-min').value = settings.bot_read_delay_min || '2';
+                    document.getElementById('setting-bot-read-delay-max').value = settings.bot_read_delay_max || '8';
                     
                     // Load SEO & Branding settings
                     document.getElementById('setting-site-title').value = settings.site_title || '';
@@ -5618,6 +6084,23 @@
                 // Custom Scripts
                 header_scripts: document.getElementById('setting-header-scripts').value,
                 body_scripts: document.getElementById('setting-body-scripts').value,
+
+                // Fake user auto-replies (bots)
+                bot_replies_enabled: document.getElementById('setting-bot-replies-enabled').checked ? 'true' : 'false',
+                bot_llm_api_key: document.getElementById('setting-bot-llm-api-key').value.trim(),
+                bot_llm_base_url: document.getElementById('setting-bot-llm-base-url').value.trim() || 'https://api.deepseek.com',
+                bot_llm_model: document.getElementById('setting-bot-llm-model').value.trim() || 'deepseek-chat',
+                bot_llm_temperature: document.getElementById('setting-bot-llm-temperature').value || '1.3',
+                bot_llm_max_tokens: document.getElementById('setting-bot-llm-max-tokens').value || '300',
+                bot_max_messages_per_thread: document.getElementById('setting-bot-max-messages').value || '4',
+                bot_history_limit: document.getElementById('setting-bot-history-limit').value || '20',
+                bot_farewell_prompt: document.getElementById('setting-bot-farewell-prompt').value,
+                bot_farewell_messages: document.getElementById('setting-bot-farewell-messages').value,
+                bot_typing_seconds_per_word: document.getElementById('setting-bot-typing-seconds-per-word').value || '1.5',
+                bot_typing_min_delay: document.getElementById('setting-bot-typing-min-delay').value || '2',
+                bot_typing_max_delay: document.getElementById('setting-bot-typing-max-delay').value || '45',
+                bot_read_delay_min: document.getElementById('setting-bot-read-delay-min').value || '2',
+                bot_read_delay_max: document.getElementById('setting-bot-read-delay-max').value || '8',
             };
 
             try {
@@ -7291,6 +7774,109 @@
             return hex(md51(string));
         }
 
+        // ====================================================================
+        // BOT CONTROL FOR THE IMPERSONATED CONVERSATION
+        // ====================================================================
+
+        // Taking over stops the auto-reply bot for this fake user ↔ user pair,
+        // including replies that are already queued or generated.
+        async function takeOverImpersonateBot(fakeUser, senderUsername) {
+            try {
+                const resp = await fetch('/api/admin/impersonate-bot.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ fake_user: fakeUser, peer: senderUsername, action: 'take' })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    renderImpersonateBotStatus(data.state);
+                }
+            } catch (e) {
+                // Non-fatal: the server-side takeover also happens on send.
+                console.error('Failed to take over bot:', e);
+            }
+        }
+
+        async function releaseImpersonateBot(resetBudget) {
+            if (!currentImpersonateAs || !currentSender) return;
+
+            const message = resetBudget
+                ? `Hand "${currentSender}" back to the bot and reset its message budget?`
+                : `Hand "${currentSender}" back to the bot?`;
+            if (!confirm(message)) return;
+
+            try {
+                const resp = await fetch('/api/admin/impersonate-bot.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        fake_user: currentImpersonateAs,
+                        peer: currentSender,
+                        action: resetBudget ? 'reset' : 'release'
+                    })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    renderImpersonateBotStatus(data.state);
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error('Failed to release bot:', e);
+                alert('Failed to hand the conversation back to the bot');
+            }
+        }
+
+        function renderImpersonateBotStatus(state) {
+            const box = document.getElementById('impersonate-bot-status');
+            const releaseBtn = document.getElementById('impersonate-bot-release-btn');
+            const resetBtn = document.getElementById('impersonate-bot-reset-btn');
+            if (!box) return;
+
+            if (!state || !state.bot_enabled) {
+                box.style.display = 'none';
+                if (releaseBtn) releaseBtn.style.display = 'none';
+                if (resetBtn) resetBtn.style.display = 'none';
+                return;
+            }
+
+            let text;
+            let color;
+
+            if (state.is_taken_over) {
+                text = `🤖 Bot stopped — you have taken over this conversation (${state.messages_sent}/${state.max_messages} bot messages sent)`;
+                color = '#b45309';
+            } else if (state.farewell_sent_at) {
+                text = '🤖 Bot has ended this conversation (goodbye message sent)';
+                color = '#6b7280';
+            } else if (!state.globally_enabled) {
+                text = '🤖 Bot is enabled for this user but auto-replies are off globally';
+                color = '#b45309';
+            } else {
+                text = `🤖 Bot is replying automatically (${state.messages_sent}/${state.max_messages} messages sent)`;
+                color = '#4338ca';
+            }
+
+            if (state.last_error) {
+                text += ` — last error: ${state.last_error}`;
+                color = '#b91c1c';
+            }
+
+            box.textContent = text;
+            box.style.color = color;
+            box.style.display = 'block';
+
+            const canRelease = state.is_taken_over || state.farewell_sent_at;
+            if (releaseBtn) releaseBtn.style.display = canRelease ? 'inline-block' : 'none';
+            if (resetBtn) resetBtn.style.display = canRelease ? 'inline-block' : 'none';
+        }
+
         async function loadImpersonateBlockState(fakeUser, senderUsername) {
             const btn = document.getElementById('impersonate-block-btn');
             if (!btn) return;
@@ -7366,6 +7952,10 @@
 
             // Load block state for this conversation (fake user ↔ real user).
             loadImpersonateBlockState(fakeUser, senderUsername);
+
+            // Opening a conversation here means taking it over: the bot must
+            // stop replying as this fake user in this thread.
+            takeOverImpersonateBot(fakeUser, senderUsername);
 
             // Generate fake session ID using MD5 to match the format in private-message.php
             const fakeSessionId = 'fake_' + md5(fakeUser);

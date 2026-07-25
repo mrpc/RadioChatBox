@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use RadioChatBox\CorsHandler;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\BotService;
 use RadioChatBox\Database;
 
 header('Content-Type: application/json');
@@ -54,7 +55,12 @@ try {
         
         $settings['embed_code'] = $embedCode;
         $settings['embed_url'] = $embedUrl;
-        
+
+        // Built-in goodbye variants used when bot_farewell_messages is empty.
+        // Exposed read-only so the admin panel can show them as the placeholder
+        // instead of duplicating the list in the frontend.
+        $settings['bot_default_farewell_messages'] = BotService::DEFAULT_FAREWELLS;
+
         echo json_encode(['success' => true, 'settings' => $settings]);
         
     } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
