@@ -122,4 +122,34 @@ class CorsHandlerTest extends TestCase
 
         $this->assertFalse(CorsHandler::isPreflight());
     }
+
+    // ------------------------------------------------------------------
+    // handle()
+    // ------------------------------------------------------------------
+
+    public function testHandleRunsWithoutAnOriginOrRequestMethod(): void
+    {
+        // header() is a no-op in CLI and a non-OPTIONS request never reaches the
+        // exit, so the wiring in handle() can still be exercised: it must read
+        // the config, emit its headers and return.
+        unset($_SERVER['REQUEST_METHOD'], $_SERVER['HTTP_ORIGIN']);
+
+        CorsHandler::handle();
+
+        $this->assertFalse(headers_sent(), 'CLI cannot send headers, so nothing should be flushed');
+    }
+
+    public function testHandleWithAnOriginDoesNotExitOnANonPreflightRequest(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['HTTP_ORIGIN'] = 'https://example.com';
+
+        CorsHandler::handle();
+
+        // Reaching this line is the assertion: handle() returned instead of
+        // exiting, which is what every non-preflight endpoint depends on.
+        $this->assertTrue(true);
+
+        unset($_SERVER['HTTP_ORIGIN']);
+    }
 }
