@@ -58,9 +58,10 @@ class BotServicePipelineTest extends TestCase
             'bot_typing_max_delay' => '45',
             'bot_read_delay_min' => '0',
             'bot_read_delay_max' => '0',
-            // Ignoring is a dice roll, so every test that is not about it pins the
-            // chance to 0 - otherwise the suite fails at random.
-            'bot_ignore_chance' => '0',
+            // 100% chance of replying: whether a bot ignores a new conversation is a
+            // dice roll, and a dice roll must not decide whether the suite passes.
+            // The tests that are about ignoring set their own chance per bot.
+            'bot_ignore_chance' => '0', // 0% ignore == always reply
         ];
         $this->llm = new StubLlm();
 
