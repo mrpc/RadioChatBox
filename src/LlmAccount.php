@@ -32,12 +32,17 @@ class LlmAccount
 
     private SettingsService $settings;
     private LlmService $llm;
+    private string $provider;
+    /** @var array<string,mixed> */
+    private array $providerConfig;
     private ?\Redis $redis = null;
 
-    public function __construct(?SettingsService $settings = null, ?LlmService $llm = null)
+    public function __construct(?SettingsService $settings = null, ?LlmService $llm = null, ?string $provider = null)
     {
         $this->settings = $settings ?? new SettingsService();
-        $this->llm = $llm ?? LlmService::fromSettings($this->settings);
+        $this->llm = $llm ?? LlmService::fromSettings($this->settings, $provider);
+        $this->provider = $this->llm->getProvider();
+        $this->providerConfig = LlmProviders::config($this->provider);
 
         try {
             $this->redis = Database::getRedis();
@@ -52,6 +57,20 @@ class LlmAccount
         return $this->llm->isConfigured();
     }
 
+    public function getProvider(): string
+    {
+        return $this->provider;
+    }
+
+    /**
+     * Whether this provider reports a balance at all. OpenAI does not, so the
+     * panel must say "not reported" rather than showing a failure.
+     */
+    public function supportsBalance(): bool
+    {
+        return $this->providerConfig['balance_path'] !== null;
+    }
+
     /**
      * Remaining balance, or null when it cannot be fetched (no key, provider
      * error, or an endpoint that does not implement it). Never throws: a missing
@@ -61,11 +80,11 @@ class LlmAccount
      */
     public function balance(bool $fresh = false): ?array
     {
-        if (!$this->isConfigured()) {
+        if (!$this->isConfigured() || !$this->supportsBalance()) {
             return null;
         }
 
-        $key = 'llm:balance';
+        $key = 'llm:balance:' . $this->provider;
 
         if (!$fresh) {
             $cached = $this->cacheGet($key);
@@ -75,7 +94,7 @@ class LlmAccount
         }
 
         try {
-            $response = $this->llm->get('/user/balance');
+            $response = $this->llm->get((string) $this->providerConfig['balance_path']);
         } catch (\Throwable $e) {
             error_log('LlmAccount::balance failed: ' . $e->getMessage());
 
@@ -120,13 +139,13 @@ class LlmAccount
      */
     public function models(bool $fresh = false): array
     {
-        $fallback = ['models' => BotService::MODELS, 'source' => 'built-in'];
+        $fallback = ['models' => LlmProviders::models($this->provider), 'source' => 'built-in'];
 
         if (!$this->isConfigured()) {
             return $fallback;
         }
 
-        $key = 'llm:models';
+        $key = 'llm:models:' . $this->provider;
 
         if (!$fresh) {
             $cached = $this->cacheGet($key);
@@ -136,22 +155,26 @@ class LlmAccount
         }
 
         try {
-            $response = $this->llm->get('/models');
+            $response = $this->llm->get((string) $this->providerConfig['models_path']);
         } catch (\Throwable $e) {
             error_log('LlmAccount::models failed: ' . $e->getMessage());
 
             return $fallback;
         }
 
+        $known = LlmProviders::models($this->provider);
         $models = [];
+
         foreach ($response['data'] ?? [] as $model) {
             $id = trim((string) ($model['id'] ?? ''));
-            if ($id === '') {
+
+            // The catalogue also lists embeddings, audio and image models.
+            if ($id === '' || !LlmProviders::isChatModel($this->provider, $id)) {
                 continue;
             }
 
             // Keep the descriptions we have for known ids; the API supplies none.
-            $models[$id] = BotService::MODELS[$id] ?? $id;
+            $models[$id] = $known[$id] ?? $id;
         }
 
         if ($models === []) {
@@ -184,10 +207,11 @@ class LlmAccount
 
         try {
             $stmt = Database::getPDO()->prepare(
-                'INSERT INTO bot_llm_balance (currency, total_balance, granted_balance, topped_up_balance)
-                 VALUES (:currency, :total, :granted, :topped_up)'
+                'INSERT INTO bot_llm_balance (provider, currency, total_balance, granted_balance, topped_up_balance)
+                 VALUES (:provider, :currency, :total, :granted, :topped_up)'
             );
             $stmt->execute([
+                'provider' => $this->provider,
                 'currency' => $balance['currency'],
                 'total' => $balance['total'],
                 'granted' => $balance['granted'],
@@ -205,8 +229,9 @@ class LlmAccount
     private function snapshotIsDue(): bool
     {
         try {
-            $stmt = Database::getPDO()->query('SELECT MAX(created_at) FROM bot_llm_balance');
-            $last = $stmt === false ? null : $stmt->fetchColumn();
+            $stmt = Database::getPDO()->prepare('SELECT MAX(created_at) FROM bot_llm_balance WHERE provider = ?');
+            $stmt->execute([$this->provider]);
+            $last = $stmt->fetchColumn();
         } catch (\Throwable) {
             return false;
         }
@@ -234,9 +259,11 @@ class LlmAccount
                 'SELECT created_at, currency, total_balance
                  FROM bot_llm_balance
                  WHERE created_at > NOW() - make_interval(hours => :hours)
+                   AND provider = :provider
                  ORDER BY created_at ASC'
             );
             $stmt->bindValue(':hours', max(1, $hours), PDO::PARAM_INT);
+            $stmt->bindValue(':provider', $this->provider);
             $stmt->execute();
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {

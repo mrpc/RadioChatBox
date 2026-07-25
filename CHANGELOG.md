@@ -90,6 +90,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a healthy worker from one that is alive but wedged (exit code 2), and a lock
     left by a crashed or wedged worker is taken over automatically; optional
     systemd `sd_notify`/watchdog integration
+- Multiple LLM providers: DeepSeek and OpenAI, each with a full parameter set of
+  its own (key, base URL, model, temperature, token budget, reasoning where it
+  exists) so both stay configured at once and neither affects the other, plus
+  per-provider request shapes (token parameter name, reasoning switch, balance
+  endpoint). A fake user can override the provider and model, so different bots run
+  on different LLMs at the same time
+- Bots know when they receive a photo (the image is never sent to the LLM) and
+  react to it instead of answering the caption as if nothing were attached
+- Per-bot reply language (auto / greek / greeklish / english); greeklish is
+  instructed last in the prompt and enforced by transliterating the reply
 - Cost in money, not just tokens: remaining balance and hourly readings from the
   provider's `/user/balance` (real spend per window is the drop between readings),
   plus per-call cost priced at write time from editable unit prices

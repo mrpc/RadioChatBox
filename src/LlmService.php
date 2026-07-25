@@ -24,6 +24,7 @@ class LlmService
      */
     public const DEFAULT_MAX_TOKENS = 1000;
 
+    private string $provider;
     private string $apiKey;
     private string $baseUrl;
     private string $model;
@@ -32,28 +33,40 @@ class LlmService
     private int $maxTokens;
     private bool $reasoning;
     private ?LlmLog $log;
-    private ?int $lastStatus = null;
+    /** Protected so a test double can simulate an API error status. */
+    protected ?int $lastStatus = null;
 
     /** @var array<string,mixed> Metadata attached to log entries */
     private array $logContext = [];
 
     /**
-     * @param array<string,mixed> $overrides api_key, base_url, model, temperature,
-     *                                      max_tokens, timeout, reasoning
+     * @param array<string,mixed> $overrides provider, api_key, base_url, model,
+     *                                      temperature, max_tokens, timeout, reasoning
      */
     public function __construct(array $overrides = [])
     {
         $config = Config::get('llm', []);
 
-        $this->apiKey = $this->pick($overrides, 'api_key', (string) ($config['api_key'] ?? ''));
+        $this->provider = LlmProviders::resolve((string) ($overrides['provider'] ?? ''));
+        $providerConfig = LlmProviders::config($this->provider);
+
+        // The env fallbacks (DEEPSEEK_*) predate multi-provider support, so they
+        // only apply to the default provider: using a DeepSeek key or endpoint for
+        // an OpenAI request would send the wrong credentials to the wrong host.
+        $isDefaultProvider = $this->provider === LlmProviders::DEFAULT_PROVIDER;
+        $envKey = $isDefaultProvider ? (string) ($config['api_key'] ?? '') : '';
+        $envBaseUrl = $isDefaultProvider ? (string) ($config['base_url'] ?? '') : '';
+        $envModel = $isDefaultProvider ? (string) ($config['model'] ?? '') : '';
+
+        $this->apiKey = $this->pick($overrides, 'api_key', $envKey);
         $this->baseUrl = rtrim(
-            $this->pick($overrides, 'base_url', (string) ($config['base_url'] ?? 'https://api.deepseek.com')),
+            $this->pick($overrides, 'base_url', $envBaseUrl ?: (string) $providerConfig['base_url']),
             '/'
         );
         $this->model = $this->pick(
             $overrides,
             'model',
-            (string) ($config['model'] ?? '') ?: BotService::defaultModel()
+            $envModel ?: LlmProviders::defaultModel($this->provider)
         );
 
         $this->timeout = isset($overrides['timeout']) && (int) $overrides['timeout'] > 0
@@ -104,20 +117,70 @@ class LlmService
 
     /**
      * Build a client from the admin settings (with env fallbacks).
+     *
+     * @param string|null $provider Overrides the configured provider, so one bot
+     *                              can run on a different one than the rest
+     * @param string|null $model    Overrides the configured model
      */
-    public static function fromSettings(?SettingsService $settings = null): self
-    {
+    public static function fromSettings(
+        ?SettingsService $settings = null,
+        ?string $provider = null,
+        ?string $model = null
+    ): self {
         $settings ??= new SettingsService();
 
+        $provider = LlmProviders::resolve($provider, $settings);
+
+        // Each provider has its own full parameter set - key, endpoint, model,
+        // temperature, budget - so all of them stay configured at once and a bot
+        // pointed at one is unaffected by another's settings.
+        $keys = LlmProviders::settingKeys($provider);
+        $read = static fn (string $parameter, string $default = ''): string => $keys[$parameter] === null
+            ? $default
+            : (string) $settings->get((string) $keys[$parameter], $default);
+
+        $configuredModel = trim((string) $model);
+        if ($configuredModel === '') {
+            $configuredModel = trim($read('model'));
+
+            // A model configured for another provider would be rejected upstream.
+            $owner = LlmProviders::providerForModel($configuredModel);
+            if ($configuredModel !== '' && $owner !== null && $owner !== $provider) {
+                $configuredModel = '';
+            }
+        }
+
         return new self([
-            'api_key' => $settings->get('bot_llm_api_key', ''),
-            'base_url' => $settings->get('bot_llm_base_url', ''),
-            'model' => $settings->get('bot_llm_model', ''),
-            'temperature' => $settings->get('bot_llm_temperature', ''),
-            'max_tokens' => $settings->get('bot_llm_max_tokens', ''),
-            'reasoning' => $settings->get('bot_llm_reasoning', 'false'),
+            'provider' => $provider,
+            'api_key' => $read('api_key'),
+            'base_url' => $read('base_url'),
+            'model' => $configuredModel,
+            'temperature' => $read('temperature'),
+            'max_tokens' => $read('max_tokens'),
+            'reasoning' => $read('reasoning', 'false'),
             'log' => new LlmLog($settings),
         ]);
+    }
+
+    /**
+     * A client for one bot, honouring its per-fake-user provider and model
+     * overrides - which is what lets different bots run on different LLMs at the
+     * same time.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public static function forFakeUser(array $fakeUser, ?SettingsService $settings = null): self
+    {
+        return self::fromSettings(
+            $settings,
+            trim((string) ($fakeUser['bot_llm_provider'] ?? '')) ?: null,
+            trim((string) ($fakeUser['bot_llm_model'] ?? '')) ?: null
+        );
+    }
+
+    public function getProvider(): string
+    {
+        return $this->provider;
     }
 
     /**
@@ -173,18 +236,26 @@ class LlmService
             throw new \InvalidArgumentException('At least one message is required');
         }
 
+        $providerConfig = LlmProviders::config($this->provider);
+
         $payload = [
             'model' => $this->model,
             'messages' => array_merge(
                 [['role' => 'system', 'content' => $systemPrompt]],
                 $messages
             ),
-            'max_tokens' => $this->maxTokens,
-            'temperature' => $this->temperature,
+            // Named differently per provider (max_tokens vs max_completion_tokens).
+            (string) $providerConfig['token_param'] => $this->maxTokens,
             'stream' => false,
         ];
 
-        if (!$this->reasoning) {
+        if ($providerConfig['supports_temperature']) {
+            $payload['temperature'] = $this->temperature;
+        }
+
+        // Only providers that document a switch get one; sending an undocumented
+        // parameter is an HTTP 400, and the model's own default is fine.
+        if (!$this->reasoning && $providerConfig['reasoning_param'] === 'thinking') {
             // Chat replies are one or two lines; internal reasoning only burns
             // the token budget (and used to consume all of it).
             $payload['thinking'] = ['type' => 'disabled'];
@@ -192,6 +263,7 @@ class LlmService
 
         $startedAt = microtime(true);
         $entry = [
+            'provider' => $this->provider,
             'model' => $this->model,
             'endpoint' => $this->baseUrl . '/chat/completions',
             'system_prompt' => $systemPrompt,
@@ -202,7 +274,7 @@ class LlmService
         ] + $this->logContext;
 
         try {
-            $response = $this->post('/chat/completions', $payload);
+            $response = $this->postChat($payload);
         } catch (\Throwable $e) {
             $this->writeLog($entry + [
                 'error' => $e->getMessage(),
@@ -259,6 +331,77 @@ class LlmService
             'usage' => $usage,
             'finish_reason' => $finishReason,
         ];
+    }
+
+    /**
+     * Send the completion request, retrying once without a parameter the endpoint
+     * rejects.
+     *
+     * Provider APIs disagree on these and change them over time: some models take
+     * max_completion_tokens rather than max_tokens, and some refuse a temperature
+     * other than the default. A single retry keeps a new model working instead of
+     * failing every reply until someone edits the code.
+     *
+     * @param array<string,mixed> $payload
+     *
+     * @return array<string,mixed>
+     */
+    private function postChat(array $payload): array
+    {
+        try {
+            return $this->post('/chat/completions', $payload);
+        } catch (\RuntimeException $e) {
+            $retry = $this->payloadWithoutRejectedParam($payload, $e->getMessage());
+
+            if ($retry === null) {
+                throw $e;
+            }
+
+            error_log('LlmService: retrying without the parameter the API rejected: ' . $e->getMessage());
+
+            return $this->post('/chat/completions', $retry);
+        }
+    }
+
+    /**
+     * Rewrite a payload the endpoint complained about, or null when the error was
+     * not about a parameter we can adjust.
+     *
+     * @param array<string,mixed> $payload
+     *
+     * @return array<string,mixed>|null
+     */
+    private function payloadWithoutRejectedParam(array $payload, string $error): ?array
+    {
+        // Only worth retrying when the endpoint said the request was malformed.
+        if ($this->lastStatus !== 400) {
+            return null;
+        }
+
+        $error = strtolower($error);
+
+        foreach (['max_tokens' => 'max_completion_tokens', 'max_completion_tokens' => 'max_tokens'] as $sent => $alternative) {
+            if (isset($payload[$sent]) && str_contains($error, $sent)) {
+                $payload[$alternative] = $payload[$sent];
+                unset($payload[$sent]);
+
+                return $payload;
+            }
+        }
+
+        if (isset($payload['temperature']) && str_contains($error, 'temperature')) {
+            unset($payload['temperature']);
+
+            return $payload;
+        }
+
+        if (isset($payload['thinking']) && str_contains($error, 'thinking')) {
+            unset($payload['thinking']);
+
+            return $payload;
+        }
+
+        return null;
     }
 
     /**

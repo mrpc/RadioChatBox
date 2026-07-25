@@ -1778,6 +1778,24 @@
 
                             <div style="display: flex; gap: 15px;">
                                 <div class="form-group" style="flex: 1;">
+                                    <label>LLM provider</label>
+                                    <select id="fake-bot-provider" onchange="onFakeBotProviderChange()"></select>
+                                    <small style="color: #6b7280;">Empty = the global provider. Bots can run on different LLMs at the same time.</small>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label>Model</label>
+                                    <select id="fake-bot-model"></select>
+                                    <small style="color: #6b7280;">Empty = the global model.</small>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label>Writes in</label>
+                                    <select id="fake-bot-language"></select>
+                                    <small style="color: #6b7280;">Greeklish is enforced on the reply, not just requested.</small>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 15px;">
+                                <div class="form-group" style="flex: 1;">
                                     <label>Message limit per conversation</label>
                                     <input type="number" id="fake-bot-max-messages" min="0" max="100" placeholder="global">
                                     <small style="color: #6b7280;">Empty = use the global setting.</small>
@@ -2332,35 +2350,28 @@
                     </div>
 
                     <div class="settings-group">
-                        <h3>Connection</h3>
+                        <h3>Providers</h3>
                         <div class="form-group">
-                            <label>DeepSeek API Key</label>
-                            <input type="password" id="setting-bot-llm-api-key" placeholder="sk-..." autocomplete="off">
+                            <label>Default provider</label>
+                            <select id="setting-bot-llm-provider" onchange="onBotProviderChange()"></select>
                             <small>
-                                Get a key at <a href="https://platform.deepseek.com/" target="_blank">platform.deepseek.com</a>.
-                                Never sent to the public frontend.
+                                Used by every bot that does not pick its own. All providers below stay
+                                configured at the same time, so a fake user can point itself at any of them
+                                (in its bot dialog) and run independently of the others.
                             </small>
                         </div>
-                        <div class="form-group">
-                            <label>API Base URL</label>
-                            <input type="text" id="setting-bot-llm-base-url" placeholder="https://api.deepseek.com">
-                            <small>Any OpenAI-compatible endpoint works.</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Model</label>
-                            <select id="setting-bot-llm-model"></select>
-                            <small id="setting-bot-models-source">Only names the API accepts are offered.</small>
-                        </div>
                     </div>
+
+                    <!-- One block per provider, built from LlmProviders so each keeps its
+                         own key, endpoint, model and generation parameters. -->
+                    <div id="bot-provider-configs"></div>
 
                     <div class="settings-group">
                         <h3>Cost</h3>
                         <div class="form-group">
-                            <label>Remaining balance</label>
-                            <div id="setting-bot-balance" style="font-size: 20px; font-weight: 700;">—</div>
                             <small>
-                                Read from the provider (<code>GET /user/balance</code>), not calculated here.
-                                Per-conversation and per-call costs are in
+                                Each provider's remaining balance is shown in its block above, read from the
+                                provider itself. Per-conversation and per-call costs are in
                                 <a href="#" onclick="switchTab('bot-activity'); return false;">Bot&nbsp;Activity</a>.
                             </small>
                         </div>
@@ -2378,33 +2389,6 @@
                             <label>Currency</label>
                             <input type="text" id="setting-bot-llm-currency" maxlength="3" placeholder="USD" style="max-width: 120px;">
                             <small>Only labels the amounts; it does not convert them.</small>
-                        </div>
-                    </div>
-
-                    <div class="settings-group">
-                        <h3>Generation</h3>
-                        <div class="form-group">
-                            <label>Temperature</label>
-                            <input type="number" id="setting-bot-llm-temperature" min="0" max="2" step="0.1" placeholder="1.0">
-                            <small>1.3 is DeepSeek's suggestion, but garbles Greek with reasoning off; 1.0 reads better.</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Max tokens per reply</label>
-                            <input type="number" id="setting-bot-llm-max-tokens" min="16" max="8000" placeholder="1000">
-                            <small>
-                                Covers the model's internal reasoning too. Too low and the reply is cut off
-                                mid-sentence — that budget is what made replies look truncated.
-                            </small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-bot-llm-reasoning" style="width: auto;">
-                                Let the model reason before answering
-                            </label>
-                            <small>
-                                Off is right for one-line chat replies: reasoning spent ~175 tokens per answer
-                                (and the whole budget when it was 300) for no visible benefit.
-                            </small>
                         </div>
                     </div>
 
@@ -5187,34 +5171,209 @@
             document.getElementById('setting-bot-context-prompt').value = botDefaultContextPrompt;
         }
 
-        // Model options come from BotService::availableModels() via the settings
-        // endpoint, so the valid names are never duplicated in the frontend.
-        function populateBotModelOptions(models, current, fallback) {
-            const select = document.getElementById('setting-bot-llm-model');
-            if (!select) return;
+        // Providers and their models, from the settings endpoint (LlmProviders), so
+        // the valid combinations are never duplicated in the frontend.
+        let botProviders = {};
+        let botLanguages = {};
+        let botDefaultProvider = 'deepseek';
 
-            const options = models && typeof models === 'object' ? models : {};
-            const selected = current || fallback || Object.keys(options)[0] || '';
+        /**
+         * Fill a <select> from an {value: label} map. An empty first option is added
+         * when emptyLabel is given, which is how "use the global setting" is offered.
+         */
+        function populateSelectOptions(id, options, selected, emptyLabel) {
+            const select = document.getElementById(id);
+            if (!select) return;
 
             select.innerHTML = '';
 
-            // A value configured for a custom endpoint may not be in the list;
-            // keep it rather than silently switching the model on save.
-            if (selected && !(selected in options)) {
+            if (emptyLabel !== null && emptyLabel !== undefined) {
+                const blank = document.createElement('option');
+                blank.value = '';
+                blank.textContent = emptyLabel;
+                select.appendChild(blank);
+            }
+
+            // Keep a stored value that is not on offer (a custom endpoint's model),
+            // rather than silently switching it on save.
+            if (selected && !(selected in (options || {}))) {
                 const custom = document.createElement('option');
                 custom.value = selected;
                 custom.textContent = selected + ' (custom)';
                 select.appendChild(custom);
             }
 
-            Object.entries(options).forEach(([id, label]) => {
+            Object.entries(options || {}).forEach(([value, label]) => {
                 const option = document.createElement('option');
-                option.value = id;
-                option.textContent = label || id;
+                option.value = value;
+                option.textContent = label || value;
                 select.appendChild(option);
             });
 
-            select.value = selected;
+            select.value = selected || '';
+        }
+
+        // Per-bot provider/model override in the fake user's bot dialog.
+        function populateFakeBotProviderOptions(provider, model) {
+            const providerLabels = {};
+            Object.entries(botProviders).forEach(([id, p]) => { providerLabels[id] = p.label; });
+
+            populateSelectOptions('fake-bot-provider', providerLabels, provider, 'Global setting');
+            populateFakeBotModelOptions(model);
+        }
+
+        function populateFakeBotModelOptions(model) {
+            const provider = document.getElementById('fake-bot-provider')?.value || '';
+            // With no provider chosen the bot follows the global one, so offering a
+            // model here would be a promise we cannot keep.
+            const models = provider && botProviders[provider] ? botProviders[provider].models : {};
+
+            populateSelectOptions('fake-bot-model', models, model, 'Global setting');
+        }
+
+        function onFakeBotProviderChange() {
+            // Switching provider invalidates the model: the other provider's API
+            // would reject it.
+            populateFakeBotModelOptions('');
+        }
+
+        // Models fetched live from the provider currently configured server-side.
+        let botLiveModels = {};
+        let botLiveModelsProvider = '';
+        let botLiveModelsSource = 'built-in';
+
+        /**
+         * Render one configuration block per provider, from the registry the backend
+         * exposes. Every provider keeps its own key, endpoint, model and generation
+         * parameters, all configured at the same time - so bots pointed at different
+         * providers never share a setting.
+         *
+         * Field ids are `setting--<settingKey>`, which is what saveSettings collects.
+         */
+        function renderBotProviderConfigs(settings) {
+            const host = document.getElementById('bot-provider-configs');
+            if (!host) return;
+
+            const active = document.getElementById('setting-bot-llm-provider')?.value || botDefaultProvider;
+
+            host.innerHTML = Object.entries(botProviders).map(([id, provider]) => {
+                const keys = provider.settings || {};
+                const isActive = id === active;
+
+                // The live list only applies to the provider the backend is using;
+                // for the others, offer their built-in models.
+                const models = id === botLiveModelsProvider && Object.keys(botLiveModels).length
+                    ? botLiveModels
+                    : provider.models;
+                const modelSource = id === botLiveModelsProvider && botLiveModelsSource === 'api'
+                    ? 'Fetched live from the provider, so retired models disappear on their own.'
+                    : 'Built-in list for this provider; it is fetched live once this provider is the default.';
+
+                const selectedModel = settings[keys.model] || provider.default_model;
+                const modelOptions = Object.assign({}, models);
+                if (selectedModel && !(selectedModel in modelOptions)) {
+                    modelOptions[selectedModel] = selectedModel + ' (custom)';
+                }
+
+                return `
+                    <div class="settings-group">
+                        <h3>
+                            ${escapeHtml(provider.label)}
+                            ${isActive ? '<span style="font-size: 11px; font-weight: 600; color: #10b981; text-transform: uppercase; letter-spacing: .05em;">default</span>' : ''}
+                        </h3>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" id="setting--${keys.api_key}" placeholder="sk-..." autocomplete="off"
+                                   value="${escapeHtml(settings[keys.api_key] || '')}">
+                            <small>
+                                Get a key at <a href="${escapeHtml(provider.api_key_url)}" target="_blank">${escapeHtml(provider.api_key_url.replace(/^https?:\/\//, ''))}</a>.
+                                Never sent to the public frontend.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Base URL</label>
+                            <input type="text" id="setting--${keys.base_url}" placeholder="${escapeHtml(provider.default_base_url)}"
+                                   value="${escapeHtml(settings[keys.base_url] || '')}">
+                            <small>Any OpenAI-compatible endpoint works — change it only for a proxy.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <select id="setting--${keys.model}">
+                                ${Object.entries(modelOptions).map(([modelId, label]) => `
+                                    <option value="${escapeHtml(modelId)}" ${modelId === selectedModel ? 'selected' : ''}>${escapeHtml(label || modelId)}</option>
+                                `).join('')}
+                            </select>
+                            <small>${modelSource}</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Temperature</label>
+                            <input type="number" id="setting--${keys.temperature}" min="0" max="2" step="0.1" placeholder="1.0"
+                                   value="${escapeHtml(settings[keys.temperature] || '')}">
+                            <small>1.3 is DeepSeek's suggestion, but garbles Greek with reasoning off; 1.0 reads better.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Max tokens per reply</label>
+                            <input type="number" id="setting--${keys.max_tokens}" min="16" max="8000" placeholder="1000"
+                                   value="${escapeHtml(settings[keys.max_tokens] || '')}">
+                            <small>
+                                Covers the model's internal reasoning too. Too low and the reply is cut off
+                                mid-sentence — that budget is what made replies look truncated.
+                            </small>
+                        </div>
+                        ${keys.reasoning ? `
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting--${keys.reasoning}" style="width: auto;"
+                                       ${settings[keys.reasoning] === 'true' ? 'checked' : ''}>
+                                Let the model reason before answering
+                            </label>
+                            <small>
+                                Off is right for one-line chat replies: reasoning spent ~175 tokens per answer
+                                (and the whole budget when it was 300) for no visible benefit.
+                            </small>
+                        </div>` : `
+                        <div class="form-group">
+                            <small style="color: #6b7280;">This provider has no documented reasoning switch, so none is sent.</small>
+                        </div>`}
+                        <div class="form-group">
+                            <label>Remaining balance</label>
+                            <div id="bot-balance--${id}" style="font-size: 18px; font-weight: 700;">${provider.supports_balance ? '—' : '<span style="font-size: 13px; font-weight: 400; color: #6b7280;">Not reported by this provider — check its own dashboard</span>'}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            loadBotBalanceField();
+        }
+
+        /**
+         * Re-render so the "default" badge follows the selection. Values are read
+         * back out of the fields first, or switching would discard unsaved edits.
+         */
+        function onBotProviderChange() {
+            renderBotProviderConfigs(collectBotProviderSettings());
+        }
+
+        /**
+         * The provider fields as a {settingKey: value} map, which is both what gets
+         * saved and what a re-render is seeded from.
+         */
+        function collectBotProviderSettings() {
+            const values = {};
+
+            Object.values(botProviders).forEach(provider => {
+                Object.values(provider.settings || {}).forEach(key => {
+                    if (!key) return;
+
+                    const field = document.getElementById('setting--' + key);
+                    if (!field) return;
+
+                    values[key] = field.type === 'checkbox'
+                        ? (field.checked ? 'true' : 'false')
+                        : field.value.trim();
+                });
+            });
+
+            return values;
         }
 
         function fillDefaultFarewells() {
@@ -5618,7 +5777,7 @@
                                 <tr>
                                     <td>${new Date(e.created_at).toLocaleString()}</td>
                                     <td>${escapeHtml(e.fake_nickname || '-')} → ${escapeHtml(e.peer_username || '-')}</td>
-                                    <td>${escapeHtml(e.purpose || 'reply')}</td>
+                                    <td>${escapeHtml(e.purpose || 'reply')}${e.provider ? `<br><span style="font-size:11px;color:#6b7280;">${escapeHtml(e.provider)}</span>` : ''}</td>
                                     <td title="prompt ${u.prompt_tokens || '?'} / completion ${u.completion_tokens || '?'}">
                                         ${u.total_tokens || '?'}${reasoning ? ` <span style="color:#b45309;">(+${reasoning} reasoning)</span>` : ''}
                                         ${u.prompt_cache_hit_tokens ? `<br><span style="font-size:11px;color:#10b981;">cache ${u.prompt_cache_hit_tokens}</span>` : ''}
@@ -5682,7 +5841,7 @@
                         <div><strong>When</strong><br>${new Date(c.created_at).toLocaleString()}</div>
                         <div><strong>Thread</strong><br>${escapeHtml(c.fake_nickname || '-')} → ${escapeHtml(c.peer_username || '-')}</div>
                         <div><strong>Purpose</strong><br>${escapeHtml(c.purpose || 'reply')}</div>
-                        <div><strong>Model</strong><br>${escapeHtml(c.model)}</div>
+                        <div><strong>Model</strong><br>${escapeHtml(c.model)}${c.provider ? `<br><span style="font-size:11px;color:#6b7280;">${escapeHtml(c.provider)}</span>` : ''}</div>
                         <div><strong>Reasoning</strong><br>${c.reasoning ? 'on' : 'off'}</div>
                         <div><strong>Budget</strong><br>${c.max_tokens} tokens</div>
                         <div><strong>Finish</strong><br>${escapeHtml(c.finish_reason || '-')}</div>
@@ -5819,6 +5978,13 @@
             document.getElementById('fake-bot-enabled').checked = !!user.bot_enabled;
             document.getElementById('fake-bot-persona').value = user.bot_persona || '';
             document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
+            populateFakeBotProviderOptions(user.bot_llm_provider || '', user.bot_llm_model || '');
+            populateSelectOptions(
+                'fake-bot-language',
+                botLanguages,
+                user.bot_reply_language || 'auto',
+                null
+            );
             document.getElementById('fake-bot-max-messages').value = user.bot_max_messages ?? '';
             document.getElementById('fake-bot-typing-speed').value = user.bot_typing_seconds_per_word ?? '';
             document.getElementById('fake-bot-farewell').value = user.bot_farewell_messages || '';
@@ -5901,6 +6067,9 @@
                 bot_enabled: document.getElementById('fake-bot-enabled').checked,
                 bot_persona: document.getElementById('fake-bot-persona').value.trim(),
                 bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
+                bot_llm_provider: document.getElementById('fake-bot-provider').value,
+                bot_llm_model: document.getElementById('fake-bot-model').value,
+                bot_reply_language: document.getElementById('fake-bot-language').value,
                 bot_max_messages: document.getElementById('fake-bot-max-messages').value,
                 bot_typing_seconds_per_word: document.getElementById('fake-bot-typing-speed').value,
                 bot_farewell_messages: document.getElementById('fake-bot-farewell').value.trim()
@@ -6525,31 +6694,37 @@
             }
         }
 
-        // The balance belongs next to the prices: it is the figure that is not an
-        // estimate, so it is also how you notice the prices have gone stale.
+        /**
+         * Each provider's balance, next to its own settings: it is the figure that is
+         * not an estimate, so it is also how you notice the prices have gone stale.
+         */
         async function loadBotBalanceField() {
-            const box = document.getElementById('setting-bot-balance');
-            if (!box) return;
+            const small = 'font-size: 13px; font-weight: 400;';
 
-            try {
-                const data = await botActivityFetch({ view: 'balance' });
+            await Promise.all(Object.entries(botProviders).map(async ([id, provider]) => {
+                const box = document.getElementById('bot-balance--' + id);
+                if (!box || !provider.supports_balance) return;
 
-                if (!data.success || !data.configured) {
-                    box.innerHTML = '<span style="font-size: 14px; font-weight: 400; color: #6b7280;">No API key configured</span>';
-                    return;
+                try {
+                    const data = await botActivityFetch({ view: 'balance', provider: id });
+
+                    if (!data.success || !data.configured) {
+                        box.innerHTML = `<span style="${small} color: #6b7280;">No API key configured</span>`;
+                        return;
+                    }
+                    if (!data.balance) {
+                        box.innerHTML = `<span style="${small} color: #b45309;">Could not read the balance from the provider</span>`;
+                        return;
+                    }
+
+                    box.innerHTML = `${formatMoney(data.balance.total, data.balance.currency)}
+                        <span style="${small} color: ${data.balance.is_available ? '#10b981' : '#b91c1c'};">
+                            ${data.balance.is_available ? '✓ sufficient' : '⚠️ too low - calls will fail'}
+                        </span>`;
+                } catch (error) {
+                    box.innerHTML = `<span style="${small} color: #6b7280;">—</span>`;
                 }
-                if (!data.balance) {
-                    box.innerHTML = '<span style="font-size: 14px; font-weight: 400; color: #b45309;">Could not read the balance from the provider</span>';
-                    return;
-                }
-
-                box.innerHTML = `${formatMoney(data.balance.total, data.balance.currency)}
-                    <span style="font-size: 13px; font-weight: 400; color: ${data.balance.is_available ? '#10b981' : '#b91c1c'};">
-                        ${data.balance.is_available ? '✓ sufficient' : '⚠️ too low - calls will fail'}
-                    </span>`;
-            } catch (error) {
-                box.innerHTML = '<span style="font-size: 14px; font-weight: 400; color: #6b7280;">—</span>';
-            }
+            }));
         }
 
         async function loadSettings() {
@@ -6601,12 +6776,24 @@
 
                     // Fake user auto-replies (bots)
                     document.getElementById('setting-bot-replies-enabled').checked = settings.bot_replies_enabled === 'true';
-                    document.getElementById('setting-bot-llm-api-key').value = settings.bot_llm_api_key || '';
-                    document.getElementById('setting-bot-llm-base-url').value = settings.bot_llm_base_url || 'https://api.deepseek.com';
-                    populateBotModelOptions(settings.bot_available_models, settings.bot_llm_model, settings.bot_default_model);
-                    document.getElementById('setting-bot-llm-temperature').value = settings.bot_llm_temperature || '1.0';
-                    document.getElementById('setting-bot-llm-max-tokens').value = settings.bot_llm_max_tokens || '1000';
-                    document.getElementById('setting-bot-llm-reasoning').checked = settings.bot_llm_reasoning === 'true';
+
+                    botProviders = settings.bot_providers || {};
+                    botLanguages = settings.bot_languages || {};
+                    botDefaultProvider = settings.bot_default_provider || 'deepseek';
+
+                    const providerLabels = {};
+                    Object.entries(botProviders).forEach(([id, p]) => { providerLabels[id] = p.label; });
+                    populateSelectOptions(
+                        'setting-bot-llm-provider',
+                        providerLabels,
+                        settings.bot_llm_provider || botDefaultProvider,
+                        null
+                    );
+                    // The live list is for the active provider only; the others show
+                    // their built-in models.
+                    botLiveModels = settings.bot_available_models || {};
+                    botLiveModelsProvider = settings.bot_active_provider || botDefaultProvider;
+                    renderBotProviderConfigs(settings);
                     document.getElementById('setting-bot-llm-log-enabled').checked = settings.bot_llm_log_enabled !== 'false';
                     document.getElementById('setting-bot-llm-log-retention-days').value = settings.bot_llm_log_retention_days || '7';
 
@@ -6619,16 +6806,7 @@
                     }
                     document.getElementById('setting-bot-llm-currency').value = settings.bot_llm_currency || 'USD';
 
-                    // Say where the model list came from: a live list means a retired
-                    // model disappears without a code change.
-                    const modelsSource = document.getElementById('setting-bot-models-source');
-                    if (modelsSource) {
-                        modelsSource.textContent = settings.bot_available_models_source === 'api'
-                            ? 'Fetched live from the provider, so retired models disappear on their own.'
-                            : 'The provider could not be reached, so this is the built-in list.';
-                    }
-
-                    loadBotBalanceField();
+                    botLiveModelsSource = settings.bot_available_models_source || 'built-in';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
                     document.getElementById('setting-bot-summary-enabled').checked = settings.bot_summary_enabled !== 'false';
@@ -6978,12 +7156,9 @@
 
                 // Fake user auto-replies (bots)
                 bot_replies_enabled: document.getElementById('setting-bot-replies-enabled').checked ? 'true' : 'false',
-                bot_llm_api_key: document.getElementById('setting-bot-llm-api-key').value.trim(),
-                bot_llm_base_url: document.getElementById('setting-bot-llm-base-url').value.trim() || 'https://api.deepseek.com',
-                bot_llm_model: document.getElementById('setting-bot-llm-model').value,
-                bot_llm_temperature: document.getElementById('setting-bot-llm-temperature').value || '1.0',
-                bot_llm_max_tokens: document.getElementById('setting-bot-llm-max-tokens').value || '1000',
-                bot_llm_reasoning: document.getElementById('setting-bot-llm-reasoning').checked ? 'true' : 'false',
+                bot_llm_provider: document.getElementById('setting-bot-llm-provider').value,
+                // Every provider's own key, endpoint, model and generation params.
+                ...collectBotProviderSettings(),
                 bot_llm_log_enabled: document.getElementById('setting-bot-llm-log-enabled').checked ? 'true' : 'false',
                 bot_llm_log_retention_days: document.getElementById('setting-bot-llm-log-retention-days').value || '7',
                 bot_llm_prices: document.getElementById('setting-bot-llm-prices').value.trim(),

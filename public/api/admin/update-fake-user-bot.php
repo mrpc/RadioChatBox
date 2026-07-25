@@ -10,6 +10,9 @@
  *   bot_custom_prompt?: string,
  *   bot_farewell_messages?: string,
  *   bot_max_messages?: int|null,
+ *   bot_llm_provider?: string,   // '' = use the global provider
+ *   bot_llm_model?: string,      // '' = use the global model
+ *   bot_reply_language?: string, // auto|greek|greeklish|english
  *   bot_typing_seconds_per_word?: float|null
  * }
  *
@@ -59,6 +62,9 @@ try {
         'bot_farewell_messages',
         'bot_max_messages',
         'bot_typing_seconds_per_word',
+        'bot_llm_provider',
+        'bot_llm_model',
+        'bot_reply_language',
     ];
 
     $options = [];

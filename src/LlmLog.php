@@ -58,11 +58,11 @@ class LlmLog
         try {
             $stmt = $this->pdo->prepare(
                 'INSERT INTO bot_llm_log
-                    (fake_nickname, peer_username, purpose, model, endpoint, system_prompt,
+                    (fake_nickname, peer_username, purpose, provider, model, endpoint, system_prompt,
                      messages, max_tokens, temperature, reasoning, http_status, finish_reason,
                      reply, usage, duration_ms, error, cost, currency)
                  VALUES
-                    (:fake_nickname, :peer_username, :purpose, :model, :endpoint, :system_prompt,
+                    (:fake_nickname, :peer_username, :purpose, :provider, :model, :endpoint, :system_prompt,
                      :messages, :max_tokens, :temperature, :reasoning, :http_status, :finish_reason,
                      :reply, :usage, :duration_ms, :error, :cost, :currency)'
             );
@@ -70,6 +70,7 @@ class LlmLog
             $stmt->bindValue(':fake_nickname', $entry['fake_nickname'] ?? null);
             $stmt->bindValue(':peer_username', $entry['peer_username'] ?? null);
             $stmt->bindValue(':purpose', (string) ($entry['purpose'] ?? 'reply'));
+            $stmt->bindValue(':provider', $entry['provider'] ?? null);
             $stmt->bindValue(':model', (string) ($entry['model'] ?? ''));
             $stmt->bindValue(':endpoint', $entry['endpoint'] ?? null);
             $stmt->bindValue(':system_prompt', $entry['system_prompt'] ?? null);
@@ -195,7 +196,7 @@ class LlmLog
         $total = (int) $stmt->fetchColumn();
 
         $stmt = $this->pdo->prepare(
-            'SELECT id, created_at, fake_nickname, peer_username, purpose, model, reasoning,
+            'SELECT id, created_at, fake_nickname, peer_username, purpose, provider, model, reasoning,
                     max_tokens, http_status, finish_reason, reply, usage, duration_ms, error,
                     cost, currency
              FROM bot_llm_log' . $clause . '

@@ -65,8 +65,14 @@ class SettingsService
         'body_scripts',
         // Fake user auto-replies (bots)
         'bot_replies_enabled',
+        'bot_llm_provider',
         'bot_llm_api_key',
         'bot_llm_base_url',
+        'bot_openai_api_key',
+        'bot_openai_base_url',
+        'bot_openai_model',
+        'bot_openai_temperature',
+        'bot_openai_max_tokens',
         'bot_llm_model',
         'bot_llm_temperature',
         'bot_llm_max_tokens',
@@ -102,6 +108,8 @@ class SettingsService
         'ads_refresh_interval' => [1, 3600],
         'bot_llm_temperature' => [0, 2],
         'bot_llm_max_tokens' => [16, 8000],
+        'bot_openai_temperature' => [0, 2],
+        'bot_openai_max_tokens' => [16, 8000],
         'bot_llm_log_retention_days' => [1, 365],
         'bot_max_messages_per_thread' => [0, 100],
         'bot_history_limit' => [2, 100],
@@ -255,6 +263,13 @@ class SettingsService
 
                 if ($key === 'max_photo_size_mb') {
                     $value = $this->validatePhotoSize($value, $maxPhotoSizeMb);
+                } elseif ($key === 'bot_llm_provider') {
+                    // An unknown provider would leave the bots with no endpoint.
+                    if (!LlmProviders::isKnown((string) $value)) {
+                        $rejected[$key] = 'Unknown provider. Known: '
+                            . implode(', ', array_keys(LlmProviders::available())) . '.';
+                        continue;
+                    }
                 } elseif ($key === 'bot_llm_prices') {
                     // Storing an unparseable price table would silently cost every
                     // call at zero, so keep the old one and say why.

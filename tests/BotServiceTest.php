@@ -385,4 +385,65 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('ΤΕΛΕΥΤΑΙΟ', BotService::DEFAULT_FAREWELL_PROMPT);
         $this->assertStringContainsString('ΜΗΝ κάνεις καμία ερώτηση', BotService::DEFAULT_FAREWELL_PROMPT);
     }
+
+    // ------------------------------------------------------------------
+    // Reply language
+    // ------------------------------------------------------------------
+
+    public function testGreekIsTransliteratedTheWayGreeksWriteIt(): void
+    {
+        $this->assertSame(
+            'Geia sou, ti kaneis;',
+            BotService::toGreeklish('Γεια σου, τι κάνεις;')
+        );
+        // Digraphs and the letters with more than one latin character.
+        $this->assertSame('Thessalonikh', BotService::toGreeklish('Θεσσαλονίκη'));
+        $this->assertSame('psyxh mou', BotService::toGreeklish('ψυχή μου'));
+        $this->assertSame('ksero', BotService::toGreeklish('ξερο'));
+        $this->assertSame('mporoume', BotService::toGreeklish('μπορουμε'));
+        // ου must not become "oy".
+        $this->assertSame('douleia', BotService::toGreeklish('δουλεια'));
+    }
+
+    public function testTransliterationLeavesEverythingElseAlone(): void
+    {
+        $this->assertSame('ti kaneis re 😅 ok', BotService::toGreeklish('ti kaneis re 😅 ok'));
+        $this->assertSame('kala 123 !;', BotService::toGreeklish('καλα 123 !;'));
+    }
+
+    public function testEnforcementOnlyAppliesToTheGreeklishChoice(): void
+    {
+        // A model that drifted back to Greek script is corrected...
+        $this->assertSame('kala eimai', BotService::enforceLanguage('καλά είμαι', 'greeklish'));
+        // ...and every other choice is left exactly as written.
+        foreach (['auto', 'greek', 'english', ''] as $language) {
+            $this->assertSame(
+                'καλά είμαι',
+                BotService::enforceLanguage('καλά είμαι', $language),
+                "must not rewrite for: {$language}"
+            );
+        }
+    }
+
+    public function testEveryLanguageChoiceHasAnInstruction(): void
+    {
+        foreach (array_keys(BotService::LANGUAGES) as $language) {
+            $this->assertNotSame('', trim(BotService::languageInstruction($language)), $language);
+        }
+
+        // The greeklish one has to be unmistakable: a polite hint was ignored.
+        $greeklish = BotService::languageInstruction('greeklish');
+        $this->assertStringContainsString('ΥΠΟΧΡΕΩΤΙΚΟ', $greeklish);
+        $this->assertStringContainsString('λατινικούς χαρακτήρες', $greeklish);
+    }
+
+    public function testTheLanguageInstructionIsTheLastThingInThePrompt(): void
+    {
+        $prompt = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria', 'age' => 27, 'sex' => 'female', 'bot_reply_language' => 'greeklish']
+        );
+
+        // Position matters: buried in Greek prose, the instruction lost.
+        $this->assertStringEndsWith(BotService::languageInstruction('greeklish'), $prompt);
+    }
 }

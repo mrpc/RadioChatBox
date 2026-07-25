@@ -20,7 +20,19 @@ ALTER TABLE fake_users
     ADD COLUMN IF NOT EXISTS bot_custom_prompt TEXT,
     ADD COLUMN IF NOT EXISTS bot_max_messages INTEGER,
     ADD COLUMN IF NOT EXISTS bot_typing_seconds_per_word NUMERIC(4,2),
-    ADD COLUMN IF NOT EXISTS bot_farewell_messages TEXT;
+    ADD COLUMN IF NOT EXISTS bot_farewell_messages TEXT,
+    -- Per-bot provider and model override, so different bots can run on
+    -- different LLMs at the same time (NULL = use the global setting)
+    ADD COLUMN IF NOT EXISTS bot_llm_provider VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS bot_llm_model VARCHAR(100),
+    -- Script to write in: NULL/'auto' mirrors whatever the peer uses
+    ADD COLUMN IF NOT EXISTS bot_reply_language VARCHAR(20);
+
+ALTER TABLE fake_users
+    DROP CONSTRAINT IF EXISTS valid_bot_reply_language;
+ALTER TABLE fake_users
+    ADD CONSTRAINT valid_bot_reply_language
+    CHECK (bot_reply_language IS NULL OR bot_reply_language IN ('auto', 'greek', 'greeklish', 'english'));
 
 ALTER TABLE fake_users
     DROP CONSTRAINT IF EXISTS valid_bot_max_messages;
@@ -42,6 +54,9 @@ COMMENT ON COLUMN fake_users.bot_custom_prompt IS 'Full persona override; when s
 COMMENT ON COLUMN fake_users.bot_max_messages IS 'Per-bot override of bot_max_messages_per_thread (NULL = use global setting)';
 COMMENT ON COLUMN fake_users.bot_typing_seconds_per_word IS 'Per-bot override of bot_typing_seconds_per_word (NULL = use global setting)';
 COMMENT ON COLUMN fake_users.bot_farewell_messages IS 'Per-bot goodbye variants, one per line, used only if the closing LLM call fails';
+COMMENT ON COLUMN fake_users.bot_llm_provider IS 'Per-bot LLM provider override, e.g. deepseek or openai (NULL = use bot_llm_provider setting)';
+COMMENT ON COLUMN fake_users.bot_llm_model IS 'Per-bot model override (NULL = use bot_llm_model setting)';
+COMMENT ON COLUMN fake_users.bot_reply_language IS 'Script the bot writes in: auto (mirror the peer), greek, greeklish or english';
 
 -- ============================================================================
 -- PER-CONVERSATION BOT STATE
@@ -98,6 +113,7 @@ CREATE TABLE IF NOT EXISTS bot_llm_log (
     peer_username VARCHAR(100),
     purpose VARCHAR(30) NOT NULL DEFAULT 'reply',
     -- Request
+    provider VARCHAR(30),
     model VARCHAR(100) NOT NULL,
     endpoint VARCHAR(255),
     system_prompt TEXT,
@@ -119,7 +135,8 @@ CREATE TABLE IF NOT EXISTS bot_llm_log (
 
 ALTER TABLE bot_llm_log
     ADD COLUMN IF NOT EXISTS cost NUMERIC(14,8),
-    ADD COLUMN IF NOT EXISTS currency VARCHAR(3);
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(3),
+    ADD COLUMN IF NOT EXISTS provider VARCHAR(30);
 
 CREATE INDEX IF NOT EXISTS idx_bot_llm_log_created_at ON bot_llm_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bot_llm_log_thread ON bot_llm_log(fake_nickname, peer_username, created_at DESC);
@@ -143,13 +160,18 @@ COMMENT ON COLUMN bot_llm_log.cost IS 'Cost of this call from the bot_llm_prices
 CREATE TABLE IF NOT EXISTS bot_llm_balance (
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Balances are per provider, so spend is measured against the right account
+    provider VARCHAR(30) NOT NULL DEFAULT 'deepseek',
     currency VARCHAR(3) NOT NULL,
     total_balance NUMERIC(14,4) NOT NULL,
     granted_balance NUMERIC(14,4),
     topped_up_balance NUMERIC(14,4)
 );
 
-CREATE INDEX IF NOT EXISTS idx_bot_llm_balance_created_at ON bot_llm_balance(created_at DESC);
+ALTER TABLE bot_llm_balance
+    ADD COLUMN IF NOT EXISTS provider VARCHAR(30) NOT NULL DEFAULT 'deepseek';
+
+CREATE INDEX IF NOT EXISTS idx_bot_llm_balance_created_at ON bot_llm_balance(provider, created_at DESC);
 
 COMMENT ON TABLE bot_llm_balance IS 'Periodic readings of the LLM provider balance (GET /user/balance); consecutive drops are real spend';
 
@@ -175,6 +197,11 @@ FROM (VALUES
 ) AS p(model, cache_hit, cache_miss, output)
 WHERE l.cost IS NULL AND l.usage IS NOT NULL AND l.model = p.model;
 
+-- Same for the provider: everything logged before the column existed was DeepSeek,
+-- which was the only provider at the time.
+UPDATE bot_llm_log SET provider = 'deepseek'
+WHERE provider IS NULL AND model LIKE 'deepseek%';
+
 -- ============================================================================
 -- DEFAULT SETTINGS
 -- ============================================================================
@@ -192,6 +219,13 @@ WHERE l.cost IS NULL AND l.usage IS NOT NULL AND l.model = p.model;
 --                       no visible benefit (16 tokens per reply with it off).
 --   bot_llm_temperature 1.3 is DeepSeek's suggestion for casual chat, but with
 --                       reasoning off it garbles Greek grammar.
+--   bot_llm_provider    which API the bots call by default (see
+--                       src/LlmProviders.php). Every provider has its OWN full
+--                       parameter set - bot_llm_* for DeepSeek, bot_openai_* for
+--                       OpenAI - so all of them stay configured at the same time
+--                       and a fake user can point itself at any of them
+--                       (fake_users.bot_llm_provider / bot_llm_model) without being
+--                       affected by another provider's settings.
 --   bot_llm_prices      unit prices per 1M tokens as JSON, because the provider
 --                       has no pricing endpoint (/models returns ids only). Empty
 --                       means the built-in table in src/LlmPricing.php; editing
@@ -201,8 +235,14 @@ WHERE l.cost IS NULL AND l.usage IS NOT NULL AND l.model = p.model;
 
 INSERT INTO settings (setting_key, setting_value) VALUES
     ('bot_replies_enabled', 'false'),
+    ('bot_llm_provider', 'deepseek'),
     ('bot_llm_api_key', ''),
     ('bot_llm_base_url', 'https://api.deepseek.com'),
+    ('bot_openai_api_key', ''),
+    ('bot_openai_base_url', 'https://api.openai.com/v1'),
+    ('bot_openai_model', 'gpt-5.4-mini'),
+    ('bot_openai_temperature', '1.0'),
+    ('bot_openai_max_tokens', '1000'),
     ('bot_llm_model', 'deepseek-v4-flash'),
     ('bot_llm_temperature', '1.0'),
     ('bot_llm_max_tokens', '1000'),

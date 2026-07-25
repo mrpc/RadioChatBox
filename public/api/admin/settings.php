@@ -7,6 +7,7 @@ use RadioChatBox\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmPricing;
+use RadioChatBox\LlmProviders;
 use RadioChatBox\SettingsService;
 
 header('Content-Type: application/json');
@@ -64,13 +65,37 @@ try {
         // instead of duplicating the list in the frontend.
         $settings['bot_default_farewell_messages'] = BotService::DEFAULT_FAREWELLS;
 
-        // Model list for the settings dropdown, from the provider's /models
+        // Providers the bots can use, with their built-in model lists, so the
+        // dropdowns can switch provider without a round trip.
+        $settingsService = new SettingsService();
+        $providers = [];
+        foreach (LlmProviders::PROVIDERS as $providerId => $providerConfig) {
+            $providers[$providerId] = [
+                'label' => $providerConfig['label'],
+                'models' => $providerConfig['models'],
+                'default_model' => $providerConfig['default_model'],
+                // Which setting holds each parameter, so the panel can render one
+                // full block per provider without duplicating the key names.
+                'settings' => $providerConfig['settings'],
+                'api_key_url' => $providerConfig['api_key_url'],
+                'default_base_url' => $providerConfig['base_url'],
+                'supports_balance' => $providerConfig['balance_path'] !== null,
+            ];
+        }
+        $settings['bot_providers'] = $providers;
+        $settings['bot_default_provider'] = LlmProviders::DEFAULT_PROVIDER;
+
+        // Model list for the settings dropdown, from the active provider's /models
         // endpoint where possible so a retired model (as deepseek-chat was) shows
         // up without a code change; the built-in list is the fallback.
-        $account = new LlmAccount(new SettingsService());
+        $account = new LlmAccount($settingsService);
         $models = $account->models();
         $settings['bot_available_models'] = $models['models'];
         $settings['bot_available_models_source'] = $models['source'];
+        $settings['bot_active_provider'] = $account->getProvider();
+
+        // Scripts a bot can be told to write in.
+        $settings['bot_languages'] = BotService::LANGUAGES;
         $settings['bot_default_context_prompt'] = BotService::DEFAULT_CONTEXT_PROMPT;
         $settings['bot_default_model'] = BotService::defaultModel();
 

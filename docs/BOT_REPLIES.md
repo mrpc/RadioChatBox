@@ -375,11 +375,78 @@ The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies ar
 on, showing the day's cost and the balance left. Retention defaults to 7 days and
 logging can be switched off in Settings → Diagnostics.
 
+## Providers
+
+The bots talk to an OpenAI-compatible `/chat/completions` endpoint, and which one
+is a setting. `src/LlmProviders.php` is the registry - adding a provider is an
+entry in that table, not a change to the call path:
+
+Every provider carries a **full parameter set of its own**, so they are all
+configured at the same time and bots pointed at different providers run completely
+independently:
+
+| | DeepSeek | OpenAI |
+|---|---|---|
+| API key | `bot_llm_api_key` | `bot_openai_api_key` |
+| Base URL | `bot_llm_base_url` | `bot_openai_base_url` |
+| Model | `bot_llm_model` | `bot_openai_model` |
+| Temperature | `bot_llm_temperature` | `bot_openai_temperature` |
+| Max tokens | `bot_llm_max_tokens` | `bot_openai_max_tokens` |
+| Reasoning | `bot_llm_reasoning` (`thinking: {type: disabled}`) | n/a - no documented switch, none sent |
+| Token budget parameter | `max_tokens` | `max_completion_tokens` |
+| Balance endpoint | `/user/balance` | none - use their dashboard |
+
+No setting is shared between two providers, so changing one never affects the
+other. Settings → Bots renders **one block per provider** (key, endpoint, model,
+temperature, budget, reasoning where it exists, and that provider's balance) from
+the registry, plus a **default provider** used by bots that do not pick their own.
+
+A model is only offered for the provider that serves it, and a model configured for
+another provider is ignored rather than sent (it would come back as HTTP 400).
+Where a provider renames a parameter, the request is retried once without the
+rejected one (`max_tokens` ↔ `max_completion_tokens`, a refused `temperature`),
+so a new model keeps working instead of failing every reply until someone edits
+the code.
+
+### Different bots on different LLMs
+
+A fake user can override the provider and the model
+(`fake_users.bot_llm_provider`, `fake_users.bot_llm_model`, both in its bot
+dialog). Empty means "use the default provider and its model", so one bot can run
+on OpenAI - with OpenAI's own key, endpoint, temperature and budget - while the
+rest stay on DeepSeek with theirs. The per-call log records which provider
+answered.
+
+## What the bot writes in
+
+`fake_users.bot_reply_language`, in the bot dialog:
+
+- **auto** (default) — mirror the peer: greeklish in, greeklish out.
+- **greek**, **greeklish**, **english** — explicit.
+
+Asking for greeklish inside the persona text did not work: the instruction sat in
+a wall of Greek prose that the model read as the intended output language. So the
+choice is now (a) a real field, (b) instructed **last** in the system prompt, which
+is the hardest position to ignore, and (c) **enforced** — a reply that comes back in
+Greek script is transliterated (`BotService::toGreeklish()`), since this is a
+constraint we can satisfy ourselves rather than hope for.
+
+## Photos
+
+The image is never sent to the LLM - no vision call, no analysis. The bot is only
+made **aware** that one arrived: an attachment becomes
+`[σου έστειλε μια φωτογραφία]` in the history, **also when it comes with a
+caption** (which used to hide it, so the bot answered the caption as if nothing
+were attached). The context prompt then tells it to react like a person looking at
+a photo - a general comment or a question about it - without describing what it
+shows and without ever admitting it cannot see images.
+
 ## What it costs
 
 Two different numbers, and the difference matters:
 
-**Real money** comes from the provider: `GET /user/balance`. It is shown as
+**Real money** comes from the provider, where it offers one: `GET /user/balance`
+(DeepSeek does, OpenAI does not - the panel says so instead of showing a failure). It is shown as
 "Balance left" in Bot Activity and in Settings → Bots → Cost, and the worker
 records a reading every hour (`bot_llm_balance`), so the drop between two readings
 gives "actually spent" for a window. A top-up is reported separately instead of

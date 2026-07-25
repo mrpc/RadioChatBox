@@ -29,7 +29,8 @@ class FakeUserService
         $stmt = $this->pdo->query("
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                   bot_typing_seconds_per_word, bot_farewell_messages
+                   bot_typing_seconds_per_word, bot_farewell_messages,
+                   bot_llm_provider, bot_llm_model, bot_reply_language
             FROM fake_users
             ORDER BY created_at DESC
         ");
@@ -44,7 +45,8 @@ class FakeUserService
         $stmt = $this->pdo->prepare("
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                   bot_typing_seconds_per_word, bot_farewell_messages
+                   bot_typing_seconds_per_word, bot_farewell_messages,
+                   bot_llm_provider, bot_llm_model, bot_reply_language
             FROM fake_users
             WHERE nickname = ?
         ");
@@ -75,6 +77,10 @@ class FakeUserService
             'bot_farewell_messages' => PDO::PARAM_STR,
             'bot_max_messages' => PDO::PARAM_INT,
             'bot_typing_seconds_per_word' => PDO::PARAM_STR,
+            // Per-bot overrides, so bots can run on different LLMs side by side
+            'bot_llm_provider' => PDO::PARAM_STR,
+            'bot_llm_model' => PDO::PARAM_STR,
+            'bot_reply_language' => PDO::PARAM_STR,
         ];
 
         $sets = [];
@@ -97,6 +103,18 @@ class FakeUserService
                 $value = max(0, min(100, (int) $value));
             } elseif ($column === 'bot_typing_seconds_per_word') {
                 $value = (string) max(0, min(10, (float) $value));
+            } elseif ($column === 'bot_llm_provider') {
+                // An unknown provider would leave this bot without an endpoint;
+                // treat it as "use the global setting".
+                if (!LlmProviders::isKnown((string) $value)) {
+                    $value = null;
+                    $type = PDO::PARAM_NULL;
+                }
+            } elseif ($column === 'bot_reply_language') {
+                if (!isset(BotService::LANGUAGES[(string) $value])) {
+                    $value = null;
+                    $type = PDO::PARAM_NULL;
+                }
             }
 
             $sets[] = "{$column} = :{$column}";
@@ -113,7 +131,8 @@ class FakeUserService
             WHERE id = :id
             RETURNING id, nickname, age, sex, location, is_active, created_at,
                       bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                      bot_typing_seconds_per_word, bot_farewell_messages
+                      bot_typing_seconds_per_word, bot_farewell_messages,
+                      bot_llm_provider, bot_llm_model, bot_reply_language
         ");
 
         foreach ($values as $column => [$value, $type]) {
@@ -135,7 +154,8 @@ class FakeUserService
         $stmt = $this->pdo->prepare("
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                   bot_typing_seconds_per_word, bot_farewell_messages
+                   bot_typing_seconds_per_word, bot_farewell_messages,
+                   bot_llm_provider, bot_llm_model, bot_reply_language
             FROM fake_users
             WHERE id = ?
         ");
@@ -230,7 +250,8 @@ class FakeUserService
                 WHERE id = :id
                 RETURNING id, nickname, age, sex, location, is_active, created_at,
                           bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                          bot_typing_seconds_per_word, bot_farewell_messages
+                          bot_typing_seconds_per_word, bot_farewell_messages,
+                      bot_llm_provider, bot_llm_model, bot_reply_language
             ");
             $stmt->execute([
                 'nickname' => $newNickname ?? $current['nickname'],

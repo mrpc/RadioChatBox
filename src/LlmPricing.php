@@ -24,15 +24,27 @@ class LlmPricing
     public const CURRENCY = 'USD';
 
     /**
-     * USD per 1M tokens, from https://api-docs.deepseek.com/quick_start/pricing
-     * (checked 2026-07-25). A starting point for the setting, not a source of
-     * truth: if the provider changes prices, edit the setting.
+     * USD per 1M tokens. A starting point for the setting, not a source of truth:
+     * if a provider changes prices, edit the setting.
+     *
+     * DeepSeek: https://api-docs.deepseek.com/quick_start/pricing
+     * OpenAI:   https://developers.openai.com/api/docs/pricing
+     * (both checked 2026-07-25)
      *
      * @var array<string,array{cache_hit:float,cache_miss:float,output:float}>
      */
     public const SEED_PRICES = [
+        // DeepSeek
         'deepseek-v4-flash' => ['cache_hit' => 0.0028, 'cache_miss' => 0.14, 'output' => 0.28],
         'deepseek-v4-pro' => ['cache_hit' => 0.003625, 'cache_miss' => 0.435, 'output' => 0.87],
+        // OpenAI
+        'gpt-5.6-sol' => ['cache_hit' => 0.50, 'cache_miss' => 5.00, 'output' => 30.00],
+        'gpt-5.6-terra' => ['cache_hit' => 0.25, 'cache_miss' => 2.50, 'output' => 15.00],
+        'gpt-5.6-luna' => ['cache_hit' => 0.10, 'cache_miss' => 1.00, 'output' => 6.00],
+        'gpt-5.5' => ['cache_hit' => 0.50, 'cache_miss' => 5.00, 'output' => 30.00],
+        'gpt-5.4' => ['cache_hit' => 0.25, 'cache_miss' => 2.50, 'output' => 15.00],
+        'gpt-5.4-mini' => ['cache_hit' => 0.075, 'cache_miss' => 0.75, 'output' => 4.50],
+        'gpt-5.4-nano' => ['cache_hit' => 0.02, 'cache_miss' => 0.20, 'output' => 1.25],
     ];
 
     private const BUCKETS = ['cache_hit', 'cache_miss', 'output'];
@@ -160,18 +172,40 @@ class LlmPricing
             return null;
         }
 
-        $cacheHit = (int) ($usage['prompt_cache_hit_tokens'] ?? 0);
-        $cacheMiss = (int) ($usage['prompt_cache_miss_tokens'] ?? 0);
+        ['hit' => $cacheHit, 'miss' => $cacheMiss] = self::splitPromptTokens($usage);
         $output = (int) ($usage['completion_tokens'] ?? 0);
-
-        // Providers that don't report the cache split bill it all as uncached.
-        if ($cacheHit === 0 && $cacheMiss === 0) {
-            $cacheMiss = (int) ($usage['prompt_tokens'] ?? 0);
-        }
 
         return (($cacheHit * $prices['cache_hit'])
             + ($cacheMiss * $prices['cache_miss'])
             + ($output * $prices['output'])) / 1_000_000;
+    }
+
+    /**
+     * Split the prompt tokens into cached and uncached, whichever way the provider
+     * reports it.
+     *
+     * DeepSeek gives the split directly (prompt_cache_hit_tokens /
+     * prompt_cache_miss_tokens); OpenAI gives only the cached count
+     * (prompt_tokens_details.cached_tokens) and the rest is uncached. A provider
+     * that reports neither billed everything as uncached, which is how it must be
+     * costed - not as free.
+     *
+     * @param array<string,mixed> $usage
+     *
+     * @return array{hit:int,miss:int}
+     */
+    public static function splitPromptTokens(array $usage): array
+    {
+        $prompt = (int) ($usage['prompt_tokens'] ?? 0);
+        $hit = (int) ($usage['prompt_cache_hit_tokens'] ?? 0);
+        $miss = (int) ($usage['prompt_cache_miss_tokens'] ?? 0);
+
+        if ($hit === 0 && $miss === 0) {
+            $hit = (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0);
+            $miss = max(0, $prompt - $hit);
+        }
+
+        return ['hit' => $hit, 'miss' => $miss];
     }
 
     /**

@@ -38,40 +38,41 @@ class BotService
     private const EPOCH_TTL = 604800; // 7 days
 
     /**
-     * Models the admin panel offers, newest first. The API rejects anything it
-     * does not recognise, so this list is the single source of truth: the
-     * settings dropdown is built from it via availableModels().
+     * Models the admin panel offers. Kept as a thin delegation to LlmProviders,
+     * which is the single source of truth now that a bot can run on any of
+     * several providers.
      *
-     * A custom endpoint (bot_llm_base_url) may need a name that is not here;
-     * the panel keeps whatever is already stored as an extra option, and the
-     * value is not validated server-side for that reason.
+     * A custom endpoint may need a name that is not listed; the panel keeps
+     * whatever is already stored as an extra option, and the value is not
+     * validated server-side for that reason.
      *
      * @var array<string,string> model id => human label
      */
-    public const MODELS = [
-        'deepseek-v4-flash' => 'DeepSeek V4 Flash — fast and cheap, fits short chat replies',
-        'deepseek-v4-pro' => 'DeepSeek V4 Pro — more capable, slower and pricier',
-    ];
+    public const MODELS = LlmProviders::PROVIDERS[LlmProviders::DEFAULT_PROVIDER]['models'];
 
     /**
+     * Every model across every provider, for the settings dropdown.
+     *
      * @return array<string,string> model id => human label
      */
-    public static function availableModels(): array
+    public static function availableModels(?string $provider = null): array
     {
-        return self::MODELS;
+        return $provider === null
+            ? LlmProviders::allModels()
+            : LlmProviders::models($provider);
     }
 
     /**
-     * Default model: the first entry, chosen for one-line casual replies.
+     * Default model of the default provider, chosen for one-line casual replies.
      */
-    public static function defaultModel(): string
+    public static function defaultModel(?string $provider = null): string
     {
-        return (string) array_key_first(self::MODELS);
+        return LlmProviders::defaultModel($provider ?? LlmProviders::DEFAULT_PROVIDER);
     }
 
     public static function isKnownModel(string $model): bool
     {
-        return isset(self::MODELS[$model]);
+        return LlmProviders::providerForModel($model) !== null;
     }
 
     /**
@@ -151,6 +152,25 @@ class BotService
      * that are actually used and the two requests a bot cannot satisfy
      * (photos, camera), which it has to refuse without sounding like software.
      */
+    /**
+     * Scripts a bot can be told to write in. 'auto' mirrors the peer, which is
+     * what a person does; the rest are explicit and enforced.
+     */
+    public const LANGUAGES = [
+        'auto' => 'Same as the other person (recommended)',
+        'greek' => 'Greek (ελληνικά)',
+        'greeklish' => 'Greeklish (latin characters)',
+        'english' => 'English',
+    ];
+
+    /**
+     * How an attached photo appears in the history. The image itself is never sent
+     * to the LLM - we only want the bot to know it received one, and to react like
+     * a person would.
+     */
+    public const PHOTO_MARKER_IN = '[σου έστειλε μια φωτογραφία]';
+    public const PHOTO_MARKER_OUT = '[έστειλες μια φωτογραφία]';
+
     public const DEFAULT_CONTEXT_PROMPT = <<<'CONTEXT'
         ΠΛΑΙΣΙΟ: Είσαι σε ελληνικό chat γνωριμιών, σε ιδιωτική 1-on-1 συνομιλία με άγνωστο/η. Οι κουβέντες είναι γνωριμία, χαλαρό φλερτ και μικροπράγματα της καθημερινότητας.
 
@@ -163,6 +183,8 @@ class BotService
         - "τι ψάχνεις;" -> τι σχέση/παρέα ψάχνεις εδώ.
 
         Αν σου ζητήσουν φωτογραφία, κάμερα, βιντεοκλήση, τηλέφωνο, Instagram ή άλλο κοινωνικό δίκτυο, αρνήσου χαλαρά με μια ανθρώπινη δικαιολογία (π.χ. δεν έχω πρόχειρη, δεν τα δίνω έτσι, ας τα πούμε πρώτα εδώ). Μην πεις ποτέ ότι δεν μπορείς τεχνικά.
+
+        ΦΩΤΟΓΡΑΦΙΕΣ: Όταν στο ιστορικό δεις "[σου έστειλε μια φωτογραφία]", σημαίνει ότι ο συνομιλητής σου έστειλε φωτογραφία. ΔΕΝ ξέρεις τι δείχνει, οπότε ΜΗΝ την περιγράψεις και μην υποθέσεις τι απεικονίζει. Αντέδρασε φυσικά και σύντομα, όπως θα έκανε άνθρωπος που την κοιτάζει τώρα: ένα γενικό σχόλιο ή μια ερώτηση γι' αυτήν (π.χ. "ωραία φώτο, πού βγήκε αυτή;", "εσύ είσαι εδώ;", "χαχα τι κάνεις εκεί;"). Μην πεις ποτέ ότι δεν μπορείς να δεις εικόνες ή ότι είσαι πρόγραμμα.
         CONTEXT;
 
     /**
@@ -206,9 +228,29 @@ class BotService
         $this->llm = $llm;
     }
 
-    private function llm(): LlmService
+    /**
+     * The LLM client for one bot. A fake user can override the provider and the
+     * model, so different bots can run on different LLMs at the same time; an
+     * injected client always wins, which is what the tests use.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    /** @var array<string,LlmService> Clients by provider|model */
+    private array $llmClients = [];
+
+    private function llm(array $fakeUser = []): LlmService
     {
-        return $this->llm ??= LlmService::fromSettings($this->settings);
+        if ($this->llm !== null) {
+            return $this->llm;
+        }
+
+        $provider = trim((string) ($fakeUser['bot_llm_provider'] ?? ''));
+        $model = trim((string) ($fakeUser['bot_llm_model'] ?? ''));
+        $key = $provider . '|' . $model;
+
+        // Memoised per provider/model combination: a worker processes many jobs
+        // and most of them share one.
+        return $this->llmClients[$key] ??= LlmService::forFakeUser($fakeUser, $this->settings);
     }
 
     // ========================================================================
@@ -312,7 +354,7 @@ class BotService
         // the hardcoded variants are only the fallback when the API fails.
         $isFarewell = (int) $thread['messages_sent'] >= $maxMessages;
 
-        $llm = $this->llm()->withLogContext([
+        $llm = $this->llm($fakeUser)->withLogContext([
             'fake_nickname' => (string) $fakeUser['nickname'],
             'peer_username' => $peer,
             'purpose' => $isFarewell ? 'farewell' : 'reply',
@@ -364,7 +406,10 @@ class BotService
 
             try {
                 $result = $llm->chat($systemPrompt, $history);
-                $reply = self::sanitizeReply($result['text'], $maxLength);
+                $reply = self::enforceLanguage(
+                    self::sanitizeReply($result['text'], $maxLength),
+                    self::replyLanguage($fakeUser)
+                );
             } catch (\Throwable $e) {
                 $this->recordThreadError($fakeUserId, $peer, $e->getMessage());
 
@@ -381,7 +426,10 @@ class BotService
                 return 'skipped: empty reply after sanitising';
             }
 
-            $reply = self::sanitizeReply($this->pickFarewellFor($fakeUser), $maxLength);
+            $reply = self::enforceLanguage(
+                self::sanitizeReply($this->pickFarewellFor($fakeUser), $maxLength),
+                self::replyLanguage($fakeUser)
+            );
         }
 
         // Same content rules as a human message (dangerous content, blacklisted URLs).
@@ -859,7 +907,7 @@ class BotService
             };
 
             $prompt = $identity . ' Μιλάς ανώνυμα σε ένα 1-on-1 chat.'
-                . ' Απάντα πολύ σύντομα, χαλαρά, χρησιμοποιώντας greeklish ή καθημερινά ελληνικά με συντομογραφίες.'
+                . ' Απάντα πολύ σύντομα και χαλαρά, με καθημερινό ύφος και συντομογραφίες.'
                 . ' Κάνε πού και πού κανένα μικρό ορθογραφικό - αλλά η πρόταση να βγάζει πάντα νόημα.'
                 . $gender
                 . ' ΜΗΝ αποκαλύψεις ποτέ ότι είσαι AI, μην είσαι υπερβολικά ευγενικός/η και μην κανονίζεις συναντήσεις από κοντά.'
@@ -896,7 +944,91 @@ class BotService
             $prompt .= "\n\nΤι έχει προηγηθεί σε αυτή τη συζήτηση (παλιότερα μηνύματα): " . $summary;
         }
 
+        // Last, and therefore hardest to ignore. Stable per bot, so it stays part
+        // of the cacheable prefix.
+        $prompt .= "\n\n" . self::languageInstruction(self::replyLanguage($fakeUser));
+
         return $context . "\n\n" . $prompt;
+    }
+
+    /**
+     * Which script a bot writes in.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public static function replyLanguage(array $fakeUser): string
+    {
+        $language = strtolower(trim((string) ($fakeUser['bot_reply_language'] ?? '')));
+
+        return isset(self::LANGUAGES[$language]) ? $language : 'auto';
+    }
+
+    /**
+     * The instruction that makes the choice stick.
+     *
+     * It has to be explicit and it has to come last: a persona line asking for
+     * greeklish was being ignored, because it sat inside a wall of Greek prose
+     * that the model read as the intended output language.
+     */
+    public static function languageInstruction(string $language): string
+    {
+        return match ($language) {
+            'greeklish' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις ΑΠΟΚΛΕΙΣΤΙΚΑ σε greeklish, δηλαδή ελληνικά'
+                . ' με λατινικούς χαρακτήρες (π.χ. "ti kaneis re, kala eimai egw, esy?").'
+                . ' ΜΗΝ χρησιμοποιήσεις ΚΑΝΕΝΑΝ ελληνικό χαρακτήρα στην απάντησή σου,'
+                . ' ούτε μία λέξη στα ελληνικά. Emoji επιτρέπονται.',
+            'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.',
+            'english' => 'LANGUAGE - MANDATORY: Reply in English only, in a casual chat tone.',
+            default => 'ΓΛΩΣΣΑ: Απαντάς με το ίδιο αλφάβητο που χρησιμοποιεί ο συνομιλητής -'
+                . ' αν σου γράφει greeklish (ελληνικά με λατινικούς χαρακτήρες) απάντα σε greeklish,'
+                . ' αν σου γράφει ελληνικά απάντα στα ελληνικά.',
+        };
+    }
+
+    /**
+     * Make the greeklish choice true regardless of what the model returned.
+     *
+     * The instruction is not always honoured - models drift back to Greek script
+     * mid-conversation - and this is a constraint we can satisfy ourselves, so it
+     * is enforced rather than hoped for.
+     */
+    public static function enforceLanguage(string $text, string $language): string
+    {
+        if ($language !== 'greeklish' || !preg_match('/\p{Greek}/u', $text)) {
+            return $text;
+        }
+
+        return self::toGreeklish($text);
+    }
+
+    /**
+     * Transliterate Greek script to the latin spelling used in Greek chat.
+     */
+    public static function toGreeklish(string $text): string
+    {
+        // Digraphs first, so ου does not become "oy".
+        $digraphs = [
+            'ου' => 'ou', 'ΟΥ' => 'OU', 'Ου' => 'Ou', 'οΥ' => 'oU',
+            'ού' => 'ou', 'Ού' => 'Ou',
+            'θ' => 'th', 'Θ' => 'Th',
+            'χ' => 'x', 'Χ' => 'X',
+            'ψ' => 'ps', 'Ψ' => 'Ps',
+            'ξ' => 'ks', 'Ξ' => 'Ks',
+        ];
+
+        $letters = [
+            'α' => 'a', 'ά' => 'a', 'β' => 'v', 'γ' => 'g', 'δ' => 'd', 'ε' => 'e', 'έ' => 'e',
+            'ζ' => 'z', 'η' => 'h', 'ή' => 'h', 'ι' => 'i', 'ί' => 'i', 'ϊ' => 'i', 'ΐ' => 'i',
+            'κ' => 'k', 'λ' => 'l', 'μ' => 'm', 'ν' => 'n', 'ο' => 'o', 'ό' => 'o', 'π' => 'p',
+            'ρ' => 'r', 'σ' => 's', 'ς' => 's', 'τ' => 't', 'υ' => 'y', 'ύ' => 'y', 'ϋ' => 'y',
+            'ΰ' => 'y', 'φ' => 'f', 'ω' => 'w', 'ώ' => 'w',
+            'Α' => 'A', 'Ά' => 'A', 'Β' => 'V', 'Γ' => 'G', 'Δ' => 'D', 'Ε' => 'E', 'Έ' => 'E',
+            'Ζ' => 'Z', 'Η' => 'H', 'Ή' => 'H', 'Ι' => 'I', 'Ί' => 'I', 'Κ' => 'K', 'Λ' => 'L',
+            'Μ' => 'M', 'Ν' => 'N', 'Ο' => 'O', 'Ό' => 'O', 'Π' => 'P', 'Ρ' => 'R', 'Σ' => 'S',
+            'Τ' => 'T', 'Υ' => 'Y', 'Ύ' => 'Y', 'Φ' => 'F', 'Ω' => 'W', 'Ώ' => 'W',
+        ];
+
+        return strtr($text, $digraphs + $letters);
     }
 
     /**
@@ -1187,12 +1319,18 @@ class BotService
         foreach ($rows as $row) {
             $role = $row['from_username'] === $fakeNickname ? 'assistant' : 'user';
             $content = trim((string) $row['message']);
+            $hasPhoto = !empty($row['attachment_id']);
 
-            if ($content === '') {
-                if (empty($row['attachment_id'])) {
-                    continue;
-                }
-                $content = $role === 'user' ? '[σου έστειλε μια φωτογραφία]' : '[έστειλες μια φωτογραφία]';
+            if ($content === '' && !$hasPhoto) {
+                continue;
+            }
+
+            // The bot cannot see the image, but it must know one arrived - and a
+            // photo sent WITH a caption used to be invisible, so it reacted to the
+            // caption as if nothing had been attached.
+            if ($hasPhoto) {
+                $marker = $role === 'user' ? self::PHOTO_MARKER_IN : self::PHOTO_MARKER_OUT;
+                $content = $content === '' ? $marker : $marker . ' ' . $content;
             }
 
             // Merge consecutive turns from the same side - chat APIs expect
@@ -1316,7 +1454,7 @@ class BotService
         }
 
         try {
-            $result = $this->llm()
+            $result = $this->llm($fakeUser)
                 ->withLogContext([
                     'fake_nickname' => $fakeNickname,
                     'peer_username' => $peer,
@@ -1452,7 +1590,8 @@ class BotService
         $stmt = $this->pdo->prepare('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
-                   bot_farewell_messages
+                   bot_farewell_messages, bot_llm_provider, bot_llm_model,
+                   bot_reply_language
             FROM fake_users
             WHERE nickname = ? AND is_active = TRUE AND bot_enabled = TRUE
         ');
@@ -1470,7 +1609,8 @@ class BotService
         $stmt = $this->pdo->prepare('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
-                   bot_farewell_messages
+                   bot_farewell_messages, bot_llm_provider, bot_llm_model,
+                   bot_reply_language
             FROM fake_users
             WHERE id = ? AND is_active = TRUE AND bot_enabled = TRUE
         ');

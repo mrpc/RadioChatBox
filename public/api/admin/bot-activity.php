@@ -150,6 +150,8 @@ try {
                 'logging' => $log->isEnabled(),
                 'summary' => $summary,
                 'balance' => $account->balance(),
+                'provider' => $account->getProvider(),
+                'supports_balance' => $account->supportsBalance(),
                 'currency' => LlmPricing::fromSettings($settings)->getCurrency(),
                 'priced_models' => array_keys(LlmPricing::fromSettings($settings)->all()),
             ]);
@@ -157,11 +159,16 @@ try {
 
         case 'balance':
             // Straight from the provider: the one figure that is not an estimate.
-            $account = new LlmAccount($settings);
+            // Providers are configured independently, so each has its own balance.
+            $account = new LlmAccount($settings, null, $_GET['provider'] ?? null);
 
             echo json_encode([
                 'success' => true,
                 'configured' => $account->isConfigured(),
+                'provider' => $account->getProvider(),
+                // Not every provider has a balance endpoint (OpenAI does not), and
+                // that is different from a failed read.
+                'supports_balance' => $account->supportsBalance(),
                 'balance' => $account->balance(!empty($_GET['fresh'])),
             ]);
             break;

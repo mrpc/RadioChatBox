@@ -985,6 +985,122 @@ class BotServicePipelineTest extends TestCase
         $this->assertStringContainsString('φωτογραφία', $messages[0]['content']);
     }
 
+    /**
+     * A photo sent WITH a caption used to be invisible: the attachment was only
+     * turned into a marker when the text was empty, so the bot answered the caption
+     * as if nothing had been attached.
+     */
+    public function testAPhotoWithACaptionStillTellsTheBotAPhotoArrived(): void
+    {
+        $this->pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())"
+        )->execute([
+            $this->peer,
+            $this->peerSession,
+            $this->nick,
+            'fake_' . md5($this->nick),
+            'δες εδώ',
+            'att_' . uniqid(),
+        ]);
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $content = $this->llm->calls[0]['messages'][0]['content'];
+        $this->assertStringContainsString(BotService::PHOTO_MARKER_IN, $content);
+        $this->assertStringContainsString('δες εδώ', $content, 'the caption must survive too');
+    }
+
+    public function testThePromptExplainsHowToHandleAPhotoItCannotSee(): void
+    {
+        $this->incoming('geia');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $prompt = $this->llm->calls[0]['system'];
+
+        // The image is never uploaded, so the bot has to react without describing it
+        // and without admitting it is a program that cannot see.
+        $this->assertStringContainsString('ΦΩΤΟΓΡΑΦΙΕΣ', $prompt);
+        $this->assertStringContainsString(BotService::PHOTO_MARKER_IN, $prompt);
+    }
+
+    // ------------------------------------------------------------------
+    // Reply language
+    // ------------------------------------------------------------------
+
+    /**
+     * Asking for greeklish in the persona was being ignored, so the choice is now
+     * an explicit setting, instructed last in the prompt AND enforced on the reply.
+     */
+    public function testAGreeklishBotIsInstructedAndItsReplyIsTransliterated(): void
+    {
+        $this->setBotColumn('bot_reply_language', 'greeklish');
+        $this->incoming('γεια, τι κανεις;');
+        $this->llm->reply = 'καλά είμαι ρε, εσύ;';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $prompt = $this->llm->calls[0]['system'];
+        $this->assertStringContainsString('greeklish', $prompt);
+        // Last position: an instruction buried in Greek prose was being ignored.
+        $this->assertStringContainsString('ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ', $prompt);
+
+        $delivered = $this->claimAll();
+        $this->assertSame('kala eimai re, esy;', $delivered[0]['payload']['message']);
+    }
+
+    public function testAGreekBotIsLeftAlone(): void
+    {
+        $this->setBotColumn('bot_reply_language', 'greek');
+        $this->incoming('geia');
+        $this->llm->reply = 'καλά είμαι ρε';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertSame('καλά είμαι ρε', $this->claimAll()[0]['payload']['message']);
+    }
+
+    public function testWithoutAChoiceTheBotIsToldToMirrorThePeer(): void
+    {
+        $this->incoming('ti kaneis re');
+        $this->llm->reply = 'kala esy;';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertStringContainsString(
+            'ίδιο αλφάβητο',
+            $this->llm->calls[0]['system'],
+            'auto should mirror the script the peer writes in'
+        );
+        // Nothing is rewritten in auto mode.
+        $this->assertSame('kala esy;', $this->claimAll()[0]['payload']['message']);
+    }
+
+    public function testAnInvalidLanguageValueFallsBackToAuto(): void
+    {
+        $this->assertSame('auto', BotService::replyLanguage(['bot_reply_language' => 'klingon']));
+        $this->assertSame('auto', BotService::replyLanguage([]));
+    }
+
+    // ------------------------------------------------------------------
+    // Per-bot provider and model
+    // ------------------------------------------------------------------
+
+    public function testAFakeUsersProviderAndModelAreStoredAndUsed(): void
+    {
+        $this->setBotColumn('bot_llm_provider', 'openai');
+        $this->setBotColumn('bot_llm_model', 'gpt-5.4-nano');
+
+        $stmt = $this->pdo->prepare('SELECT bot_llm_provider, bot_llm_model FROM fake_users WHERE id = ?');
+        $stmt->execute([$this->fakeUserId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $client = \RadioChatBox\LlmService::forFakeUser($row, $this->settings);
+
+        $this->assertSame('openai', $client->getProvider());
+        $this->assertSame('gpt-5.4-nano', $client->getModel());
+    }
+
     public function testEmptyMessagesWithoutAnAttachmentAreIgnored(): void
     {
         $this->pdo->prepare(
