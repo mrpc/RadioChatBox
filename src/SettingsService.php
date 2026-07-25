@@ -11,7 +11,97 @@ class SettingsService
     private Redis $redis;
     private string $prefix;
     private const SETTINGS_CACHE_KEY = 'settings:all';
+    private const RATE_LIMIT_CACHE_KEY = 'settings:rate_limit';
     private const CACHE_TTL = 300; // 5 minutes
+
+    /**
+     * Settings the admin panel is allowed to write.
+     *
+     * Anything not listed here is ignored by updateFromAdmin(), so a new setting
+     * must be added to this list or it will never be saved.
+     *
+     * @var list<string>
+     */
+    public const ADMIN_EDITABLE = [
+        'rate_limit_messages',
+        'rate_limit_window',
+        'color_scheme',
+        'page_title',
+        'require_profile',
+        'chat_mode',
+        'allow_photo_uploads',
+        'gif_enabled',
+        'gif_provider',
+        'giphy_api_key',
+        'klipy_api_key',
+        'max_photo_size_mb',
+        'minimum_users',
+        // Radio stream status (Icecast/Shoutcast)
+        'radio_status_url',
+        // SEO & Branding
+        'site_title',
+        'site_description',
+        'site_keywords',
+        'meta_author',
+        'meta_og_image',
+        'meta_og_type',
+        'favicon_url',
+        'logo_url',
+        'brand_color',
+        'brand_name',
+        // Analytics
+        'analytics_enabled',
+        'analytics_provider',
+        'analytics_tracking_id',
+        // Advertisements
+        'ads_enabled',
+        'ads_main_top',
+        'ads_main_bottom',
+        'ads_chat_sidebar',
+        'ads_refresh_interval',
+        'ads_refresh_enabled',
+        // Custom Scripts
+        'header_scripts',
+        'body_scripts',
+        // Fake user auto-replies (bots)
+        'bot_replies_enabled',
+        'bot_llm_api_key',
+        'bot_llm_base_url',
+        'bot_llm_model',
+        'bot_llm_temperature',
+        'bot_llm_max_tokens',
+        'bot_max_messages_per_thread',
+        'bot_history_limit',
+        'bot_farewell_prompt',
+        'bot_farewell_messages',
+        'bot_typing_seconds_per_word',
+        'bot_typing_min_delay',
+        'bot_typing_max_delay',
+        'bot_read_delay_min',
+        'bot_read_delay_max',
+    ];
+
+    /**
+     * Bounds for numeric settings, clamped on write. The bot delays and token
+     * caps drive external API calls, so they are not left to the client.
+     *
+     * @var array<string,array{0:float,1:float}>
+     */
+    private const NUMERIC_BOUNDS = [
+        'rate_limit_messages' => [1, 1000],
+        'rate_limit_window' => [1, 3600],
+        'minimum_users' => [0, 10000],
+        'ads_refresh_interval' => [1, 3600],
+        'bot_llm_temperature' => [0, 2],
+        'bot_llm_max_tokens' => [16, 4000],
+        'bot_max_messages_per_thread' => [0, 100],
+        'bot_history_limit' => [2, 100],
+        'bot_typing_seconds_per_word' => [0, 10],
+        'bot_typing_min_delay' => [0, 300],
+        'bot_typing_max_delay' => [1, 600],
+        'bot_read_delay_min' => [0, 300],
+        'bot_read_delay_max' => [0, 600],
+    ];
 
     public function __construct()
     {
@@ -115,6 +205,110 @@ class SettingsService
         }
 
         return $result;
+    }
+
+    /**
+     * Apply a batch of settings coming from the admin panel.
+     *
+     * Keys outside ADMIN_EDITABLE are ignored and returned, so the caller can
+     * report them: a new setting missing from the whitelist would otherwise look
+     * like it saved successfully. Numeric settings are clamped to their bounds.
+     *
+     * @param array<string,mixed> $data
+     * @param float|null          $maxPhotoSizeMb PHP's upload_max_filesize in MB,
+     *                                            used to cap max_photo_size_mb
+     *
+     * @return array{saved: list<string>, ignored: list<string>}
+     *
+     * @throws \InvalidArgumentException when a value fails validation
+     */
+    public function updateFromAdmin(array $data, ?float $maxPhotoSizeMb = null): array
+    {
+        $saved = [];
+        $ignored = [];
+
+        $this->pdo->beginTransaction();
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO settings (setting_key, setting_value, updated_at)
+                 VALUES (:key, :value, NOW())
+                 ON CONFLICT (setting_key)
+                 DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()'
+            );
+
+            foreach ($data as $key => $value) {
+                if (!in_array($key, self::ADMIN_EDITABLE, true)) {
+                    $ignored[] = (string) $key;
+                    continue;
+                }
+
+                if ($key === 'max_photo_size_mb') {
+                    $value = $this->validatePhotoSize($value, $maxPhotoSizeMb);
+                } elseif (isset(self::NUMERIC_BOUNDS[$key])) {
+                    $value = $this->clampNumeric($key, $value);
+                }
+
+                $stmt->execute(['key' => $key, 'value' => (string) $value]);
+                $saved[] = (string) $key;
+            }
+
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+
+        $this->invalidateCache();
+
+        return ['saved' => $saved, 'ignored' => $ignored];
+    }
+
+    /**
+     * Clamp a numeric setting to its configured bounds, keeping whole numbers
+     * whole (2 rather than 2.0). An empty value is left alone so a field can be
+     * cleared back to "use the default".
+     */
+    private function clampNumeric(string $key, mixed $value): string
+    {
+        if ($value === '' || $value === null) {
+            return '';
+        }
+
+        [$min, $max] = self::NUMERIC_BOUNDS[$key];
+        $clamped = max($min, min($max, (float) $value));
+
+        return $clamped === floor($clamped) ? (string) (int) $clamped : (string) $clamped;
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     */
+    private function validatePhotoSize(mixed $value, ?float $maxPhotoSizeMb): string
+    {
+        $requested = (int) $value;
+
+        if ($requested < 1) {
+            throw new \InvalidArgumentException('Photo size limit must be at least 1MB');
+        }
+
+        if ($maxPhotoSizeMb !== null && $requested > $maxPhotoSizeMb) {
+            throw new \InvalidArgumentException(sprintf(
+                "Photo size limit cannot exceed PHP's upload_max_filesize (%sMB)",
+                rtrim(rtrim(number_format($maxPhotoSizeMb, 2, '.', ''), '0'), '.')
+            ));
+        }
+
+        return (string) $requested;
+    }
+
+    /**
+     * Drop every cached view of the settings.
+     */
+    public function invalidateCache(): void
+    {
+        $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
+        $this->redis->del($this->prefixKey(self::RATE_LIMIT_CACHE_KEY));
     }
 
     /**

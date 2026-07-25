@@ -5,6 +5,7 @@ use RadioChatBox\CorsHandler;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BotService;
 use RadioChatBox\Database;
+use RadioChatBox\SettingsService;
 
 header('Content-Type: application/json');
 
@@ -73,99 +74,26 @@ try {
             exit;
         }
         
-        $allowedSettings = [
-            'rate_limit_messages',
-            'rate_limit_window',
-            'color_scheme',
-            'page_title',
-            'require_profile',
-            'chat_mode',
-            'allow_photo_uploads',
-            'gif_enabled',
-            'gif_provider',
-            'giphy_api_key',
-            'klipy_api_key',
-            'max_photo_size_mb',
-            'minimum_users',
-            // Radio stream status (Icecast/Shoutcast)
-            'radio_status_url',
-            // SEO & Branding
-            'site_title',
-            'site_description',
-            'site_keywords',
-            'meta_author',
-            'meta_og_image',
-            'meta_og_type',
-            'favicon_url',
-            'logo_url',
-            'brand_color',
-            'brand_name',
-            // Analytics
-            'analytics_enabled',
-            'analytics_provider',
-            'analytics_tracking_id',
-            // Advertisements
-            'ads_enabled',
-            'ads_main_top',
-            'ads_main_bottom',
-            'ads_chat_sidebar',
-            'ads_refresh_interval',
-            'ads_refresh_enabled',
-            // Custom Scripts
-            'header_scripts',
-            'body_scripts',
-        ];
-        
-        // Get PHP's upload_max_filesize limit
+        // The whitelist, clamping and validation live in SettingsService so they
+        // can be tested; this endpoint only translates HTTP to that call.
         $phpMaxUpload = ini_get('upload_max_filesize');
-        $phpMaxUploadBytes = $phpMaxUpload;
+        $phpMaxUploadMb = (float) $phpMaxUpload;
         if (preg_match('/^(\d+)(K|M|G)$/i', $phpMaxUpload, $matches)) {
-            $value = (int)$matches[1];
+            $value = (float) $matches[1];
             $unit = strtoupper($matches[2]);
-            $phpMaxUploadBytes = $value * ($unit === 'G' ? 1024 : ($unit === 'M' ? 1 : 1/1024));
+            $phpMaxUploadMb = $value * ($unit === 'G' ? 1024 : ($unit === 'M' ? 1 : 1 / 1024));
         }
-        
-        $db->beginTransaction();
-        
-        foreach ($data as $key => $value) {
-            if ($key === 'max_photo_size_mb') {
-                // Validate against PHP's upload_max_filesize
-                $requestedSize = (int)$value;
-                if ($requestedSize > $phpMaxUploadBytes) {
-                    throw new \InvalidArgumentException(
-                        "Photo size limit cannot exceed PHP's upload_max_filesize ({$phpMaxUpload})"
-                    );
-                }
-                if ($requestedSize < 1) {
-                    throw new \InvalidArgumentException("Photo size limit must be at least 1MB");
-                }
-                $stmt = $db->prepare("
-                    INSERT INTO settings (setting_key, setting_value, updated_at) 
-                    VALUES (?, ?, NOW())
-                    ON CONFLICT (setting_key) 
-                    DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
-                ");
-                $stmt->execute([$key, $value]);
-            } elseif (in_array($key, $allowedSettings)) {
-                $stmt = $db->prepare("
-                    INSERT INTO settings (setting_key, setting_value, updated_at) 
-                    VALUES (?, ?, NOW())
-                    ON CONFLICT (setting_key) 
-                    DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
-                ");
-                $stmt->execute([$key, $value]);
-            }
+
+        $result = (new SettingsService())->updateFromAdmin($data, $phpMaxUploadMb);
+
+        $response = ['success' => true, 'message' => 'Settings updated successfully'];
+
+        if (!empty($result['ignored'])) {
+            $response['ignored'] = $result['ignored'];
+            $response['message'] .= ' (ignored unknown keys: ' . implode(', ', $result['ignored']) . ')';
         }
-        
-        $db->commit();
-        
-        // Invalidate ALL settings caches in Redis
-        $redis = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
-        $redis->del($prefix . 'settings:all');  // Main settings cache
-        $redis->del($prefix . 'settings:rate_limit');  // Rate limit specific cache
-        
-        echo json_encode(['success' => true, 'message' => 'Settings updated successfully']);
+
+        echo json_encode($response);
         
     } else {
         http_response_code(405);
