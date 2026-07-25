@@ -81,6 +81,14 @@ class SettingsService
             unset($all[$key]);
         }
 
+        // Bot (fake user auto-reply) configuration is internal: the frontend
+        // never needs it and the prompts/limits should not be discoverable.
+        foreach (array_keys($all) as $key) {
+            if (str_starts_with($key, 'bot_')) {
+                unset($all[$key]);
+            }
+        }
+
         return $all;
     }
 

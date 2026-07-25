@@ -62,6 +62,16 @@ class Config
                 'history_limit' => (int)(getenv('CHAT_HISTORY_LIMIT') ?: 100),
                 'message_ttl' => (int)(getenv('CHAT_MESSAGE_TTL') ?: 3600),
             ],
+            // LLM provider used by the fake user auto-reply bots (DeepSeek by
+            // default; any OpenAI-compatible endpoint works). These are only
+            // fallbacks: the admin panel settings (bot_llm_*) take precedence,
+            // and every bot_* setting is stripped from the public payload.
+            'llm' => [
+                'api_key' => getenv('DEEPSEEK_API_KEY') ?: '',
+                'base_url' => getenv('DEEPSEEK_BASE_URL') ?: 'https://api.deepseek.com',
+                'model' => getenv('DEEPSEEK_MODEL') ?: 'deepseek-chat',
+                'timeout' => (int)(getenv('DEEPSEEK_TIMEOUT') ?: 20),
+            ],
             'allowed_origins' => explode(',', getenv('ALLOWED_ORIGINS') ?: '*'),
             'version' => getenv('APP_VERSION') ?: self::getAutoVersion(),
         ];
