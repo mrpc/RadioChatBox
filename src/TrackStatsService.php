@@ -290,6 +290,32 @@ class TrackStatsService
      * Enrich up to $limit tracks that have not been enriched yet
      * (most-recently-played first). Returns how many were processed.
      */
+    /**
+     * Enrich a track only if it has never been enriched.
+     *
+     * enrichTrack() always calls the external APIs, so a track that already has its
+     * album and artwork must not be sent through again - which is what would happen
+     * on every replay if a track change enriched unconditionally.
+     */
+    public function enrichIfPending(int $trackId): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare('SELECT enriched_at FROM tracks WHERE id = ?');
+            $stmt->execute([$trackId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            error_log('TrackStatsService::enrichIfPending failed: ' . $e->getMessage());
+
+            return false;
+        }
+
+        if ($row === false || $row['enriched_at'] !== null) {
+            return false;
+        }
+
+        return $this->enrichTrack($trackId);
+    }
+
     public function enrichPending(int $limit = 5): int
     {
         try {

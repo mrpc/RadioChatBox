@@ -105,6 +105,38 @@ class WorkerReloaderTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Is anybody going to restart us?
+    // ------------------------------------------------------------------
+
+    /**
+     * "Exit and let the supervisor restart me" is only a reload when a supervisor
+     * exists. Run by hand - which is how it actually was - exiting would just stop the
+     * worker, so this decides between exiting and respawning.
+     */
+    public function testSupervisionIsDetectedFromTheEnvironment(): void
+    {
+        // systemd sets INVOCATION_ID for every unit, NOTIFY_SOCKET under Type=notify;
+        // supervisord sets SUPERVISOR_ENABLED; Docker's policy is invisible from
+        // inside, hence the explicit marker.
+        foreach (['INVOCATION_ID', 'NOTIFY_SOCKET', 'SUPERVISOR_ENABLED', 'WORKER_SUPERVISED'] as $marker) {
+            $this->assertTrue(WorkerReloader::isSupervised([$marker => 'set']), $marker);
+        }
+    }
+
+    public function testAnUnsupervisedProcessIsRecognised(): void
+    {
+        $this->assertFalse(WorkerReloader::isSupervised([]));
+        // Empty is not set: an exported-but-blank variable must not read as supervised.
+        $this->assertFalse(WorkerReloader::isSupervised(['INVOCATION_ID' => '', 'NOTIFY_SOCKET' => '   ']));
+    }
+
+    public function testNonStringEnvironmentEntriesAreIgnored(): void
+    {
+        // $_SERVER holds argv as an array, which used to raise a conversion warning.
+        $this->assertFalse(WorkerReloader::isSupervised(['argv' => ['a', 'b'], 'INVOCATION_ID' => null]));
+    }
+
+    // ------------------------------------------------------------------
     // Settings
     // ------------------------------------------------------------------
 

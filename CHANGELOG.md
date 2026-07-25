@@ -112,6 +112,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   react to it instead of answering the caption as if nothing were attached
 - Per-bot reply language (auto / greek / greeklish / english); greeklish is
   instructed last in the prompt and enforced by transliterating the reply
+- The worker can run the periodic jobs itself instead of crontab (`run --schedule`):
+  stats snapshots and aggregations, cleanup, LLM log pruning, balance snapshots — and
+  the stream is polled every 30s (was every 5 min, so short tracks were missed), with a
+  new track enriched the moment it appears. Opt-in; the database dump stays in cron
+- Worker health on the dashboard: running / stuck / stopped, uptime, heartbeat age,
+  queue depth, and every periodic task's last run, duration and error
+- Fixed: asking the stats API for N periods could return N+1 rows once a real
+  aggregation existed, because the computed current period was added after the limit
 - The bot worker keeps itself current: a settings change is adopted in place, and a
   code change makes it exit between batches so the supervisor restarts it on the new
   code (`--no-reload` to disable)

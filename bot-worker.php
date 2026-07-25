@@ -11,6 +11,8 @@
  *   php bot-worker.php once
  *   php bot-worker.php status [--stale-after=SECONDS]
  *   php bot-worker.php log [--limit=N] [--problems]
+ *   php bot-worker.php schedule
+ *   php bot-worker.php run-task <name>
  *   php bot-worker.php flush
  *
  * Common options: --lock=PATH, --stale-after=SECONDS, --verbose.
@@ -28,6 +30,8 @@
  *             configuration. Exit code: 0 healthy/idle, 2 worker looks wedged.
  *   log     - Recent LLM calls with token usage, so a bad or truncated reply can
  *             be traced. --problems shows only failures and truncations.
+ *   schedule    - List the periodic tasks with their cadence and last run.
+ *   run-task    - Run one periodic task now, by name.
  *   flush   - Drop every scheduled job (cancels pending bot replies).
  *
  * `run` and `once` hold a single-instance lock with a heartbeat (src/WorkerLock.php,
@@ -71,6 +75,7 @@ use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
 use RadioChatBox\LlmPricing;
 use RadioChatBox\LlmService;
+use RadioChatBox\Scheduler;
 use RadioChatBox\SettingsService;
 use RadioChatBox\WorkerLock;
 use RadioChatBox\WorkerReloader;
@@ -331,6 +336,28 @@ try {
                 ));
             }
 
+            $scheduleState = (new Scheduler($settings))->state();
+            if ($scheduleState !== []) {
+                logMessage('');
+                logMessage('Scheduled tasks');
+                foreach (Scheduler::TASKS as $task => $meta) {
+                    $row = $scheduleState[$task] ?? null;
+                    logMessage(sprintf(
+                        '  %-22s %s',
+                        $task,
+                        $row === null
+                            ? 'never run'
+                            : sprintf(
+                                'last %s (%s, %sms)%s',
+                                $row['last_run_at'],
+                                $row['last_status'],
+                                $row['last_duration_ms'],
+                                (int) $row['failures'] > 0 ? sprintf(' - %d failure(s)', $row['failures']) : ''
+                            )
+                    ));
+                }
+            }
+
             // Non-zero so monitoring can alert on a wedged worker.
             exit($isWedged ? 2 : 0);
 
@@ -432,6 +459,44 @@ try {
             }
             exit(0);
 
+        case 'schedule':
+            $scheduler = new Scheduler($settings);
+            $state = $scheduler->state();
+            $due = $scheduler->dueTasks();
+
+            logMessage('Scheduled tasks (run them with: bot-worker.php run --schedule)');
+            foreach ($scheduler->tasks() as $task => $meta) {
+                $row = $state[$task] ?? null;
+                logMessage(sprintf(
+                    '  %-22s every %-7s %-11s %s',
+                    $task,
+                    formatDuration((int) $meta['every']),
+                    in_array($task, $due, true) ? 'DUE NOW' : '',
+                    $row === null ? 'never run' : 'last ' . $row['last_run_at'] . ' (' . $row['last_status'] . ')'
+                ));
+                logMessage('       ' . $meta['description']);
+            }
+            exit(0);
+
+        case 'run-task':
+            $taskName = $argv[2] ?? '';
+
+            if ($taskName === '' || !isset(Scheduler::TASKS[$taskName])) {
+                logMessage('Usage: php bot-worker.php run-task <name>. Known tasks: '
+                    . implode(', ', array_keys(Scheduler::TASKS)));
+                exit(1);
+            }
+
+            $result = (new Scheduler($settings))->run($taskName);
+            logMessage(sprintf(
+                'Task %s: %s in %dms%s',
+                $result['task'],
+                $result['status'],
+                $result['duration_ms'],
+                $result['error'] === null ? '' : ' - ' . $result['error']
+            ));
+            exit($result['status'] === 'ok' ? 0 : 1);
+
         case 'prune-log':
             $deleted = (new LlmLog($settings))->prune();
             logMessage("Deleted {$deleted} LLM log entr(ies) past the retention window");
@@ -474,6 +539,11 @@ try {
             $bot = new BotService($settings, $queue);
             $account = new LlmAccount($settings);
 
+            // Periodic maintenance, in place of crontab entries. Opt-in, so an
+            // existing crontab keeps working until it is removed by hand.
+            $withSchedule = isset($options['schedule']) || in_array('--schedule', $argv, true);
+            $scheduler = $withSchedule ? new Scheduler($settings) : null;
+
             // A daemon otherwise runs the code and the configuration it started with.
             $reloader = new WorkerReloader();
             $reloader->baseline();
@@ -481,6 +551,7 @@ try {
 
             $startedAt = time();
             $running = true;
+            $codeChanged = false;
             $totalProcessed = 0;
 
             // Graceful shutdown so systemd restarts / deploys don't cut a job
@@ -541,19 +612,32 @@ try {
                     // a fresh one. Jobs are in Redis and the lock is released below,
                     // so nothing is lost.
                     if ($autoReload && $reloader->codeChanged()) {
-                        logMessage('Code changed on disk - exiting so the supervisor restarts on the new code');
+                        $codeChanged = true;
                         break;
                     }
 
-                    // Record the provider balance now and then, so real spend over
-                    // a period can be measured rather than estimated. Rate-limits
-                    // itself to LlmAccount::SNAPSHOT_INTERVAL and never throws.
-                    $recorded = $account->snapshot();
-                    if ($recorded !== null && $verbose) {
-                        logMessage(sprintf(
-                            'Balance snapshot: %s',
-                            LlmPricing::format($recorded['total'], $recorded['currency'])
-                        ));
+                    if ($scheduler !== null) {
+                        // Between batches, so a slow aggregation never delays a reply
+                        // that is already due; the heartbeat keeps the lock lease.
+                        foreach ($scheduler->runDue(fn () => $lock->heartbeat()) as $result) {
+                            logMessage(sprintf(
+                                'Task %s: %s in %dms%s',
+                                $result['task'],
+                                $result['status'],
+                                $result['duration_ms'],
+                                $result['error'] === null ? '' : ' - ' . $result['error']
+                            ));
+                        }
+                    } else {
+                        // Without the scheduler, at least keep recording the balance so
+                        // real spend stays measurable. Rate-limits itself.
+                        $recorded = $account->snapshot();
+                        if ($recorded !== null && $verbose) {
+                            logMessage(sprintf(
+                                'Balance snapshot: %s',
+                                LlmPricing::format($recorded['total'], $recorded['currency'])
+                            ));
+                        }
                     }
 
                     sleep($sleep);
@@ -563,15 +647,66 @@ try {
                 $lock->release();
             }
 
+            // PHP cannot reload code into a running process, so the reload IS a new
+            // process. Under a supervisor that is its job; run by hand or in a
+            // container with no restart policy there is nobody to do it, and exiting
+            // would simply stop the worker - so it starts its replacement itself.
+            if ($codeChanged) {
+                if (WorkerReloader::isSupervised()) {
+                    logMessage('Code changed on disk - exiting so the supervisor starts a fresh process');
+                    exit(0);
+                }
+
+                $respawns = (int) ($options['respawned'] ?? 0);
+                $uptime = time() - $startedAt;
+
+                // A worker that lived a sensible while was healthy, so the count only
+                // guards against a crash loop.
+                if ($uptime >= 60) {
+                    $respawns = 0;
+                }
+
+                if ($respawns >= 5) {
+                    logMessage('Code changed, but this process has already respawned 5 times without staying up - stopping instead of looping');
+                    exit(1);
+                }
+
+                logMessage(sprintf(
+                    'Code changed on disk and nothing is supervising this process - restarting myself (attempt %d)',
+                    $respawns + 1
+                ));
+
+                $arguments = array_values(array_filter(
+                    array_slice($argv, 1),
+                    static fn (string $argument): bool => !str_starts_with($argument, '--respawned=')
+                ));
+                $arguments[] = '--respawned=' . ($respawns + 1);
+
+                $command = sprintf(
+                    'nohup sh -c %s > /dev/null 2>&1 &',
+                    escapeshellarg(sprintf(
+                        // The delay lets this process finish releasing the lock, or the
+                        // replacement would exit reporting that a worker is running.
+                        'sleep 3; exec %s %s %s',
+                        escapeshellcmd(PHP_BINARY),
+                        escapeshellarg(__FILE__),
+                        implode(' ', array_map('escapeshellarg', $arguments))
+                    ))
+                );
+
+                exec($command);
+                exit(0);
+            }
+
             logMessage("Worker stopped after {$totalProcessed} job(s)");
             exit(0);
 
         default:
             logMessage("Unknown action: {$action}");
             logMessage(
-                'Usage: php bot-worker.php [run|once|status|log|prune-log|flush]'
+                'Usage: php bot-worker.php [run|once|status|log|prune-log|schedule|run-task|flush]'
                 . ' [--max-runtime=N] [--sleep=N] [--batch=N] [--stale-after=N] [--lock=PATH]'
-                . ' [--no-reload] [--verbose]'
+                . ' [--schedule] [--no-reload] [--verbose]'
             );
             exit(1);
     }

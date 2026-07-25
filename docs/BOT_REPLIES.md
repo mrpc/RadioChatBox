@@ -378,6 +378,45 @@ The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies ar
 on, showing the day's cost and the balance left. Retention defaults to 7 days and
 logging can be switched off in Settings → Diagnostics.
 
+## Periodic tasks (instead of crontab)
+
+`run --schedule` makes the worker run the recurring jobs itself. It is **opt-in**, so
+an existing crontab keeps working untouched; running both is harmless, since a task
+will not run twice inside its own interval.
+
+| Task | Every | What it replaces |
+|---|---|---|
+| `track_poll` | **30s** (`track_poll_seconds`) | the track half of `stats-cron.php snapshot` |
+| `track_enrich` | 5m | the enrichment sweep |
+| `stats_snapshot` | 5m | `*/5 * * * * stats-cron.php snapshot` |
+| `stats_hourly` … `stats_yearly` | hourly / daily, at fixed UTC times | the aggregation entries |
+| `cleanup` | 1h | the `cleanup.php?token=` cron URL |
+| `prune_llm_log` | daily 03:00 | `bot-worker.php prune-log` |
+| `llm_balance_snapshot` | 1h | (was inline in the worker) |
+
+The stream is polled every 30 seconds because the current track has to be caught while
+it is playing - bundled with the five-minute snapshot, a three-minute song was missed
+entirely. It is cheap: recording de-duplicates atomically, so nothing is written until
+the track actually changes, and a track nobody has seen before is enriched right then
+rather than waiting for the sweep.
+
+Why the worker and not cron: it already guarantees a single instance with a heartbeat
+(so a slow run cannot overlap itself), shuts down gracefully, logs, and now reports
+every task's last run on the dashboard. **The database dump stays in cron** - it has to
+keep working when the application is broken, and if the worker is the broken part,
+backups must not stop with it.
+
+```bash
+php bot-worker.php schedule          # cadence, last run, what is due
+php bot-worker.php run-task cleanup  # run one now
+php bot-worker.php status            # worker health + every task's last run
+```
+
+The dashboard's **Background Worker** card shows the same thing: running / stuck /
+stopped, uptime, heartbeat age, queue depth, and a click opens every task with its last
+run, duration and error. A stopped worker now means no bot replies *and* no maintenance,
+which is exactly why it belongs there.
+
 ## The worker keeps itself current
 
 A PHP daemon runs the code and the configuration it started with, so `run` watches
@@ -388,11 +427,18 @@ for both:
   rebuilds what was derived from settings - the LLM client holds the key, model,
   temperature and budget it was constructed with, so clearing the settings cache alone
   would never reach it. The lock and the queue are untouched.
-- **Code changes make it exit.** PHP cannot reload code into a running process, so the
-  honest move is to notice (file sizes and mtimes across `src/`, `bot-worker.php` and
-  `composer.lock`) and exit cleanly between batches. `Restart=always` then starts a
-  fresh process on the new code; jobs live in Redis and the lock is released on the way
-  out, so nothing is lost. `--no-reload` turns it off.
+- **Code changes need a new process**, because PHP cannot reload code into a running
+  one. The worker notices (file sizes and mtimes across `src/`, `bot-worker.php` and
+  `composer.lock`) and then either exits cleanly for its supervisor to replace it, or -
+  when nothing is supervising it - **starts its own replacement** and exits. Jobs live
+  in Redis and the lock is released either way, so nothing is lost. `--no-reload` turns
+  it off.
+
+  Supervision is detected from the environment (`INVOCATION_ID`/`NOTIFY_SOCKET` from
+  systemd, `SUPERVISOR_ENABLED` from supervisord, or `WORKER_SUPERVISED` set by hand -
+  Docker's restart policy is invisible from inside the container, which is why the
+  `worker` service in `docker-compose.yml` sets it). Self-respawn gives up after five
+  attempts that failed to stay up for a minute, so a crash cannot become a loop.
 
 ```
 [13:49:47] Code changed on disk - exiting so the supervisor restarts on the new code

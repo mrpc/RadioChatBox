@@ -453,6 +453,11 @@ class StatsService
             }
         }
 
+        // The computed current period was added on top of a full page of stored rows,
+        // so the caller's limit has to be re-applied - asking for one week and getting
+        // two is a broken contract, and the extra row lands in the UI.
+        $results = array_slice($results, 0, max(1, $limit));
+
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));
 
@@ -528,6 +533,9 @@ class StatsService
             }
         }
 
+        // Same as the weekly list: re-apply the caller's limit after the merge.
+        $results = array_slice($results, 0, max(1, $limit));
+
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));
 
@@ -588,6 +596,9 @@ class StatsService
                 ]);
             }
         }
+
+        // Same as the weekly and monthly lists: re-apply the caller's limit.
+        $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));

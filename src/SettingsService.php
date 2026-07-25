@@ -70,6 +70,7 @@ class SettingsService
         'header_scripts',
         'body_scripts',
         // Fake user auto-replies (bots)
+        'track_poll_seconds',
         'bot_replies_enabled',
         'bot_llm_provider',
         'bot_llm_api_key',
@@ -115,6 +116,7 @@ class SettingsService
         'rate_limit_window' => [1, 3600],
         'minimum_users' => [0, 10000],
         'ads_refresh_interval' => [1, 3600],
+        'track_poll_seconds' => [10, 3600],
         'bot_llm_temperature' => [0, 2],
         'bot_llm_max_tokens' => [16, 8000],
         'bot_openai_temperature' => [0, 2],

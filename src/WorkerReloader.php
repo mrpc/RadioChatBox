@@ -13,10 +13,11 @@ namespace RadioChatBox;
  *   temperature and budget) are snapshots taken at construction. So the worker
  *   watches a version stamp and rebuilds those objects when it moves, without
  *   dropping the lock or losing queued work.
- * - **Code** cannot be reloaded into a running PHP process at all. The honest answer
- *   is to notice and exit cleanly between jobs, so the supervisor starts a fresh
- *   process with the new code (`Restart=always`). Nothing is lost: jobs live in
- *   Redis, and the lock is released on the way out.
+ * - **Code** cannot be reloaded into a running PHP process at all, so the reload has
+ *   to be a new process. Under a supervisor, exiting cleanly between jobs is enough
+ *   (`Restart=always`); with nothing supervising it, exiting would just stop the
+ *   worker, so it starts its own replacement instead. Nothing is lost either way:
+ *   jobs live in Redis and the lock is released on the way out.
  */
 class WorkerReloader
 {
@@ -104,6 +105,36 @@ class WorkerReloader
         }
 
         return $this->codeFingerprint() !== $this->codeFingerprint;
+    }
+
+    /**
+     * Whether something will restart this process if it exits.
+     *
+     * It matters because "exit and let the supervisor restart me" is only a reload
+     * when a supervisor exists. Run by hand, or in a container with no restart
+     * policy, exiting would just stop the worker - so the caller respawns itself
+     * instead.
+     *
+     * systemd sets INVOCATION_ID for every unit it starts, and NOTIFY_SOCKET under
+     * Type=notify; supervisord sets SUPERVISOR_ENABLED. Docker's restart policy is
+     * invisible from inside the container, hence the explicit override.
+     *
+     * @param array<string,string>|null $env Defaults to the real environment
+     */
+    public static function isSupervised(?array $env = null): bool
+    {
+        // Not array_map('strval', ...): $_SERVER holds arrays too (argv).
+        $env ??= $_SERVER;
+
+        foreach (['INVOCATION_ID', 'NOTIFY_SOCKET', 'SUPERVISOR_ENABLED', 'WORKER_SUPERVISED'] as $marker) {
+            $value = $env[$marker] ?? getenv($marker);
+
+            if (is_string($value) && trim($value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ------------------------------------------------------------------

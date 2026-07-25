@@ -287,5 +287,55 @@ class StatsServiceComputeMethodsTest extends TestCase
         $this->assertEquals(24, $summary['today']['total_messages'],
             'Should use hourly data (24) not daily data (6)');
     }
+
+    /**
+     * Regression: the computed current period was unshifted on top of a full page of
+     * stored rows, so asking for one week returned two - a broken contract, and an
+     * extra row in the statistics UI. It only showed up once a real aggregation had
+     * run, which is why nothing caught it before.
+     */
+    public function testTheLimitStillHoldsWhenTheCurrentPeriodIsAdded()
+    {
+        $today = date('Y-m-d');
+
+        // Hourly data, so the current week/month/year are computed and prepended.
+        $sql = "INSERT INTO stats_hourly
+                (stat_hour, active_users, guest_users, registered_users,
+                 total_messages, private_messages, photo_uploads, new_registrations,
+                 radio_listeners_avg, radio_listeners_peak, peak_concurrent_users)
+                VALUES (:stat_hour, 7, 3, 4, 21, 2, 1, 1, 9, 19, 6)
+                ON CONFLICT (stat_hour) DO UPDATE SET active_users = EXCLUDED.active_users";
+        self::$pdo->prepare($sql)->execute(['stat_hour' => $today . ' 11:00:00']);
+
+        // A stored row for a finished period, which is what a real aggregation leaves
+        // behind (the weekly task aggregates the week that ended).
+        self::$pdo->prepare(
+            "INSERT INTO stats_weekly (stat_year, stat_week, week_start_date, active_users, total_messages)
+             VALUES (:year, :week, :start, 3, 9)
+             ON CONFLICT (stat_year, stat_week) DO UPDATE SET active_users = EXCLUDED.active_users"
+        )->execute([
+            'year' => (int) date('Y'),
+            'week' => max(1, (int) date('W') - 1),
+            'start' => date('Y-m-d', strtotime('monday last week')),
+        ]);
+
+        // Redis caches these lists for an hour.
+        $redis = \RadioChatBox\Database::getRedis();
+        foreach ($redis->keys(\RadioChatBox\Database::getRedisPrefix() . 'stats:*') ?: [] as $key) {
+            $redis->del($key);
+        }
+        foreach ($redis->keys('stats:*') ?: [] as $key) {
+            $redis->del($key);
+        }
+
+        $this->assertCount(1, $this->statsService->getWeeklyStats(null, 1), 'one week means one row');
+        $this->assertCount(2, $this->statsService->getWeeklyStats(null, 2));
+        $this->assertCount(1, $this->statsService->getMonthlyStats(null, 1));
+        $this->assertCount(1, $this->statsService->getYearlyStats(1));
+
+        // The current period is still the one on top.
+        $weekly = $this->statsService->getWeeklyStats(null, 1);
+        $this->assertSame((int) date('W'), (int) $weekly[0]['stat_week']);
+    }
 }
 
