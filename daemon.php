@@ -50,8 +50,8 @@ switch ($action) {
         $ownState = $supervisor->ownLock()->readState();
         $ownAge = $supervisor->ownLock()->heartbeatAge($ownState);
         logLine(sprintf(
-            'instance %s | supervisor %s',
-            $supervisor->instance(),
+            'installation %s | supervisor %s',
+            $supervisor->label(),
             $ownState === null
                 ? 'NOT RUNNING (nothing will restart the workers)'
                 : sprintf('pid %s, heartbeat %s', $ownState['pid'] ?? '?', $ownAge === null ? 'unknown' : $ownAge . 's ago')
@@ -113,14 +113,14 @@ switch ($action) {
         // One supervisor per installation: a second one would see the same empty slots
         // and start a second worker for each.
         if (!$dryRun && !$supervisor->claim($heldBy)) {
-            logLine('Another supervisor is already running for instance ' . $supervisor->instance()
+            logLine('Another supervisor is already running for installation ' . $supervisor->instance()
                 . ' (' . $heldBy . ') - nothing to do.');
             exit(0);
         }
 
         logLine(sprintf(
-            'Supervisor started (instance %s, pid %d, interval %ds%s), watching: %s',
-            $supervisor->instance(),
+            'Supervisor started (installation %s, pid %d, interval %ds%s), watching: %s',
+            $supervisor->label(),
             getmypid(),
             $interval,
             $dryRun ? ', dry run' : '',

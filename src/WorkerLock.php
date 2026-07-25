@@ -50,7 +50,7 @@ class WorkerLock
     }
 
     /**
-     * `logs/<name>-<instance>.lock`, falling back to the system temp directory
+     * `logs/<name>-<installation>.lock`, falling back to the system temp directory
      * when logs/ is not writable.
      *
      * Note for systemd units: with `PrivateTmp=true` the temp fallback is not
@@ -69,9 +69,11 @@ class WorkerLock
             $dir = sys_get_temp_dir();
         }
 
-        // Scoped by installation: two instances on one server must not share a lock,
-        // or one of them silently never runs.
-        return $dir . '/' . $name . '-' . Database::getInstanceName() . '.lock';
+        // Scoped by installation, not by database: two copies of the code can use the
+        // same database name, and when logs/ is not writable this falls back to the
+        // shared temp directory - where one installation's lock would silently keep the
+        // other's worker from ever starting.
+        return $dir . '/' . $name . '-' . Installation::id() . '.lock';
     }
 
     public function getPath(): string

@@ -17,7 +17,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 use RadioChatBox\AdminAuth;
 use RadioChatBox\CorsHandler;
 use RadioChatBox\DaemonSupervisor;
-use RadioChatBox\Database;
+use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Scheduler;
 use RadioChatBox\SettingsService;
@@ -87,8 +87,9 @@ try {
 
     echo json_encode([
         'success' => true,
-        // Several installations can share a server; say which one this is.
-        'instance' => Database::getInstanceName(),
+        // Several installations can share a server; say which directory this one is.
+        'instance' => Installation::id(),
+        'root' => Installation::root(),
         'supervisor' => [
             'running' => $supervisorState !== null && $supervisor->ownLock()->isHeldByAnother(),
             'pid' => $supervisorState['pid'] ?? null,

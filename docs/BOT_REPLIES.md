@@ -467,19 +467,34 @@ the release is not a checkout, detection is simply skipped rather than guessed a
 
 ### Several installations on one server
 
-Everything that could collide is scoped by installation - Redis keys, both lock files,
-the daemon ids and the status output. The scope is the database name, or `APP_INSTANCE`
-when two installations share one:
+Different directories, often the same code and sometimes the same database name. So
+everything a *process* owns is named per **installation directory**, not per database:
 
 ```
-logs/daemon-supervisor-<instance>.lock
-logs/worker-<instance>.lock
-radiochatbox:<instance>:*          (Redis)
+logs/daemon-supervisor-<installation>.lock
+logs/worker-<installation>.lock
 ```
 
-So each instance runs its own supervisor and its own worker, and a second supervisor for
-the *same* instance refuses to start - otherwise the doubling the supervisor exists to
-prevent would come from the supervisor itself.
+where `<installation>` is `mysite-3f9a1b2c` — the directory name plus a short hash of its
+absolute path. The hash matters because two release paths can both end in `current`, and
+because when `logs/` is not writable the lock falls back to the shared system temp
+directory, where a name like `worker-radiochatbox.lock` from one installation would
+silently keep the other's worker from ever starting. `APP_INSTANCE=mysite` overrides it
+when a name you chose reads better in logs and unit files.
+
+The Redis prefix (`radiochatbox:<database>:`) deliberately stays keyed by **database**:
+that scopes *data* — sessions, caches, chat history — and two installations pointed at
+one database are meant to share it.
+
+So each installation runs its own supervisor and its own worker, and a second supervisor
+for the *same* installation refuses to start — otherwise the doubling the supervisor
+exists to prevent would come from the supervisor itself.
+
+```bash
+$ php daemon.php status
+installation mysite-3f9a1b2c (/var/www/mysite) | supervisor pid 4123, heartbeat 2s ago
+worker       running   pid 4130   heartbeat 0s ago   jobs 87
+```
 
 ## The worker keeps itself current
 

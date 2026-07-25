@@ -117,8 +117,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wedged one (alive but no heartbeat) to restart, and on a new deployed commit asks
   every worker to come back on the new code — always by request, never by kill
 - Renamed `bot-worker.php` to `worker.php`: it no longer only answers bots
-- Everything is scoped per installation (`APP_INSTANCE`, else the database name), so
-  several instances on one server run independent supervisors and workers
+- Lock files and daemon ids are scoped per installation **directory** (`APP_INSTANCE`,
+  else the directory name plus a hash of its path), so several installations on one
+  server — same code, possibly the same database name — run independent supervisors and
+  workers. The Redis prefix stays keyed by database, since that scopes data
 - The worker can run the periodic jobs itself instead of crontab (`run --schedule`):
   stats snapshots and aggregations, cleanup, LLM log pruning, balance snapshots — and
   the stream is polled every 30s (was every 5 min, so short tracks were missed), with a

@@ -23,10 +23,10 @@ namespace RadioChatBox;
  * A deployment is detected from `.git/HEAD` rather than from file timestamps: a commit
  * hash changes once per deploy, while mtimes change on every editor save.
  *
- * Everything is scoped by installation (Database::getInstanceName(), i.e. the database
- * name unless APP_INSTANCE says otherwise), because several instances share a server:
- * the supervisor's own lock, the workers' locks and the daemon ids all carry it, so two
- * supervisors run side by side without ever managing each other's processes.
+ * Everything is scoped by installation (Installation::id() - the directory, not the
+ * database), because several copies of the code run on one server: the supervisor's own
+ * lock, the workers' locks and the daemon ids all carry it, so two supervisors run side
+ * by side without ever managing each other's processes.
  */
 class DaemonSupervisor
 {
@@ -124,7 +124,15 @@ class DaemonSupervisor
      */
     public function instance(): string
     {
-        return Database::getInstanceName();
+        return Installation::id();
+    }
+
+    /**
+     * Identity and directory, because the identity alone does not tell you where to look.
+     */
+    public function label(): string
+    {
+        return Installation::label();
     }
 
     /**
@@ -396,6 +404,7 @@ class DaemonSupervisor
 
             $rows[] = [
                 'instance' => $this->instance(),
+                'root' => Installation::root(),
                 'daemon' => $id,
                 'description' => $daemon['description'] ?? '',
                 'running' => $alive,

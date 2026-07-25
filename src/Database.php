@@ -94,13 +94,14 @@ class Database
     }
 
     /**
-     * Which installation this is.
+     * Which *data* this installation owns, for the Redis key prefix.
      *
-     * Several instances can share a server, so everything with a name that could
-     * collide - Redis keys, lock files, daemon ids, log lines - is scoped by this. The
-     * database name is the discriminator because it is already what separates two
-     * installations; APP_INSTANCE overrides it when two of them share a database name
-     * on different hosts.
+     * Keyed by database, because that is what the data belongs to: two installations
+     * pointed at one database share sessions and caches on purpose.
+     *
+     * For anything a process owns - lock files, daemon ids, log lines - use
+     * Installation::id() instead: that is per directory, and two copies can perfectly
+     * well use the same database name.
      */
     public static function getInstanceName(): string
     {

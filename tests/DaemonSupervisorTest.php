@@ -4,6 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\DaemonSupervisor;
+use RadioChatBox\Installation;
 
 /**
  * Covers the supervisor: the one process that needs supervising from outside, so that
@@ -243,57 +244,76 @@ class DaemonSupervisorTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Several instances on one server
+    // Several installations on one server
     // ------------------------------------------------------------------
 
     /**
-     * Two installations share a server, so every name that could collide is scoped by
-     * instance - otherwise one instance's supervisor manages the other's worker, or one
-     * of them silently never runs.
+     * The discriminator is the installation *directory*, not the database: two copies of
+     * the code can use identically named databases, and when logs/ is not writable the
+     * lock lands in the shared temp directory - where one installation's lock would keep
+     * the other's worker from ever starting.
      */
-    public function testNamesAreScopedByInstance(): void
+    public function testTheIdentityIsTheInstallationDirectory(): void
     {
-        $first = \RadioChatBox\Database::getInstanceName();
-        $firstWorkerLock = \RadioChatBox\WorkerLock::defaultPath('worker');
-        $firstSupervisorLock = (new DaemonSupervisor())->ownLock()->getPath();
+        Installation::reset();
+        $id = Installation::id();
 
-        putenv('APP_INSTANCE=another_site');
+        // Readable label plus a hash of the absolute path, so two directories with the
+        // same name (…/current on two release paths) still differ.
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_.-]+-[0-9a-f]{8}$/', $id);
+        $this->assertStringStartsWith(basename(Installation::root()), $id);
+        $this->assertSame($id, Installation::id(), 'it must not change between calls');
+        $this->assertStringContainsString(Installation::root(), Installation::label());
+    }
 
-        try {
-            $second = \RadioChatBox\Database::getInstanceName();
+    public function testTheLockFilesCarryTheInstallationIdentity(): void
+    {
+        Installation::reset();
 
-            $this->assertSame('another_site', $second);
-            $this->assertNotSame($first, $second);
-            $this->assertNotSame($firstWorkerLock, \RadioChatBox\WorkerLock::defaultPath('worker'));
-            $this->assertNotSame($firstSupervisorLock, (new DaemonSupervisor())->ownLock()->getPath());
-            $this->assertStringContainsString('another_site', \RadioChatBox\Database::getRedisPrefix());
-        } finally {
-            putenv('APP_INSTANCE');
+        foreach (['worker', 'daemon-supervisor'] as $name) {
+            $this->assertStringContainsString(
+                $name . '-' . Installation::id() . '.lock',
+                \RadioChatBox\WorkerLock::defaultPath($name)
+            );
         }
     }
 
-    public function testAnInstanceNameIsSafeForAFilename(): void
+    /**
+     * Data is a different scope: two installations pointed at one database share
+     * sessions and caches on purpose, so the Redis prefix stays keyed by database.
+     */
+    public function testTheDataScopeIsNotTheInstallationScope(): void
+    {
+        Installation::reset();
+
+        $this->assertStringNotContainsString(
+            Installation::id(),
+            \RadioChatBox\Database::getRedisPrefix(),
+            'changing the Redis prefix would orphan sessions, caches and history'
+        );
+    }
+
+    public function testAChosenNameWinsAndIsMadeFilenameSafe(): void
     {
         putenv('APP_INSTANCE=weird/name with spaces');
+        Installation::reset();
 
         try {
-            $name = \RadioChatBox\Database::getInstanceName();
-
-            $this->assertSame('weird_name_with_spaces', $name);
-            // The path has directories; the instance part must not add any.
+            $this->assertSame('weird_name_with_spaces', Installation::id());
             $this->assertStringNotContainsString('/', basename(\RadioChatBox\WorkerLock::defaultPath('worker')));
-            $this->assertStringContainsString('weird_name_with_spaces', \RadioChatBox\WorkerLock::defaultPath('worker'));
         } finally {
             putenv('APP_INSTANCE');
+            Installation::reset();
         }
     }
 
     /**
      * The doubling the supervisor exists to prevent must not come from the supervisor.
      */
-    public function testASecondSupervisorForTheSameInstanceIsRefused(): void
+    public function testASecondSupervisorForTheSameInstallationIsRefused(): void
     {
         putenv('APP_INSTANCE=claim_test_' . bin2hex(random_bytes(3)));
+        Installation::reset();
 
         try {
             $first = new DaemonSupervisor();
@@ -308,6 +328,7 @@ class DaemonSupervisorTest extends TestCase
             @unlink($lock);
         } finally {
             putenv('APP_INSTANCE');
+            Installation::reset();
         }
     }
 
