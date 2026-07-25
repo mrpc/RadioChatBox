@@ -145,7 +145,20 @@ try {
     
     $prefix = Database::getRedisPrefix();
     $redis->publish($prefix . 'chat:private_messages', json_encode($messageData));
-    
+
+    // The admin is now speaking as this fake user: silence the bot for this
+    // conversation, including any reply that is already queued or generated.
+    try {
+        (new \RadioChatBox\BotService())->takeOverThread(
+            $impersonateAs,
+            $toUsername,
+            $currentUser['username'] ?? ''
+        );
+    } catch (Exception $e) {
+        // Never fail the admin's message because of bot bookkeeping.
+        error_log('Failed to stop bot on impersonation: ' . $e->getMessage());
+    }
+
     // Log impersonation for audit
     error_log("IMPERSONATION: Admin {$currentUser['username']} sent message as {$impersonateAs} to {$toUsername}");
     
