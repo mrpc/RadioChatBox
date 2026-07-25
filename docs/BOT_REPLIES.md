@@ -434,11 +434,11 @@ for both:
   in Redis and the lock is released either way, so nothing is lost. `--no-reload` turns
   it off.
 
-  Supervision is detected from the environment (`INVOCATION_ID`/`NOTIFY_SOCKET` from
-  systemd, `SUPERVISOR_ENABLED` from supervisord, or `WORKER_SUPERVISED` set by hand -
-  Docker's restart policy is invisible from inside the container, which is why the
-  `worker` service in `docker-compose.yml` sets it). Self-respawn gives up after five
-  attempts that failed to stay up for a minute, so a crash cannot become a loop.
+  Supervision is detected from the environment: `INVOCATION_ID`/`NOTIFY_SOCKET` from
+  systemd, `SUPERVISOR_ENABLED` from supervisord, or `WORKER_SUPERVISED` exported by
+  hand for anything else that restarts it. Under the systemd unit above nothing needs
+  configuring. Self-respawn gives up after five attempts that failed to stay up for a
+  minute, so a crash cannot become a loop.
 
 ```
 [13:49:47] Code changed on disk - exiting so the supervisor restarts on the new code

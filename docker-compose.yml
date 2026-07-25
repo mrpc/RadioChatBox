@@ -25,40 +25,6 @@ services:
     networks:
       - radiochatbox
 
-  # The background worker: bot replies and the periodic tasks (stats, cleanup, track
-  # polling). It is its own service so Docker restarts it - which is also what makes
-  # the code-change reload work, since PHP cannot reload code into a running process
-  # and the worker has to be replaced by a fresh one.
-  #
-  # Add --schedule to the command to move the crontab jobs in here (see
-  # docs/BOT_REPLIES.md); without it the worker only delivers bot replies.
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: radiochatbox_worker
-    restart: unless-stopped
-    command: php /var/www/html/bot-worker.php run --sleep=1
-    volumes:
-      - ./:/var/www/html
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=radiochatbox
-      - DB_USER=radiochatbox
-      - DB_PASSWORD=radiochatbox_secret
-      - TZ=Europe/Athens
-      # Tells the worker something will restart it, so a code change is a clean exit
-      # rather than a self-respawn.
-      - WORKER_SUPERVISED=docker
-    depends_on:
-      - redis
-      - postgres
-    networks:
-      - radiochatbox
-
   redis:
     image: redis:7-alpine
     container_name: radiochatbox_redis
