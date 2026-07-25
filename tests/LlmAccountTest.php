@@ -27,17 +27,26 @@ class LlmAccountTest extends TestCase
     {
         $this->pdo = Database::getPDO();
         $this->pdo->exec('DELETE FROM bot_llm_balance');
+        $this->clearLlmCache();
     }
 
     protected function tearDown(): void
     {
         $this->pdo->exec('DELETE FROM bot_llm_balance');
 
-        // These tests share Redis with the running app; don't leave a stub balance
-        // or model list behind for the admin panel to read.
+        // These tests share Redis with the running app, in both directions: a stub
+        // balance must not be left behind for the panel to read, and a real cached
+        // value must not be read here instead of the stub (which silently turned
+        // every cost assertion into whatever the app last fetched).
+        $this->clearLlmCache();
+    }
+
+    private function clearLlmCache(): void
+    {
         $redis = Database::getRedis();
-        foreach (['llm:balance', 'llm:models'] as $key) {
-            $redis->del(Database::getRedisPrefix() . $key);
+
+        foreach ($redis->keys(Database::getRedisPrefix() . 'llm:*') ?: [] as $key) {
+            $redis->del($key);
         }
     }
 
@@ -203,6 +212,71 @@ class LlmAccountTest extends TestCase
         $this->assertSame('provider', $costs['source']);
     }
 
+    /**
+     * Regression: start_time selects the bucket that CONTAINS it, and buckets are cut
+     * at UTC midnight - so asking for "now minus 24h" returned yesterday's bucket,
+     * which was empty, and the panel reported $0 while the provider's own dashboard
+     * showed real spend.
+     */
+    public function testTheCostsWindowIsAlignedToTheDailyBuckets(): void
+    {
+        $stub = new StubAccountLlm([]);
+        $account = new LlmAccount(
+            $this->settingsFor(['bot_llm_provider' => 'openai', 'bot_openai_admin_key' => 'sk-admin-x']),
+            $stub,
+            'openai',
+            $stub
+        );
+
+        $account->providerCosts(24);
+        $account->providerCosts(7 * 24);
+
+        $paths = array_keys($stub->calls);
+        $midnight = strtotime('today midnight UTC');
+
+        $this->assertContains(
+            '/organization/costs?start_time=' . $midnight . '&bucket_width=1d&limit=1',
+            $paths,
+            'a 24h window is today\'s bucket, not the one before it'
+        );
+        $this->assertContains(
+            '/organization/costs?start_time=' . ($midnight - 6 * 86400) . '&bucket_width=1d&limit=7',
+            $paths,
+            'a 7d window needs seven buckets ending with today'
+        );
+    }
+
+    public function testAStringAmountIsStillSummed(): void
+    {
+        // The API returns amounts as strings with thirty decimals.
+        $account = $this->account(
+            [
+                '/organization/costs?start_time=X&bucket_width=1d&limit=1' => [
+                    'data' => [['results' => [
+                        ['amount' => ['value' => '0.004164000000000000000000000000', 'currency' => 'usd']],
+                    ]]],
+                ],
+            ],
+            ['bot_llm_provider' => 'openai', 'bot_openai_admin_key' => 'sk-admin-x'],
+            'openai'
+        );
+
+        $this->assertSame(0.004164, round($account->providerCosts(24)['spent'], 8));
+    }
+
+    public function testAnEmptyBucketMeansNothingSpentYet(): void
+    {
+        $account = $this->account(
+            ['/organization/costs?start_time=X&bucket_width=1d&limit=1' => ['data' => [['results' => []]]]],
+            ['bot_llm_provider' => 'openai', 'bot_openai_admin_key' => 'sk-admin-x'],
+            'openai'
+        );
+
+        $costs = $account->providerCosts(24);
+        $this->assertNotNull($costs, 'an empty bucket is an answer, not a failure');
+        $this->assertSame(0.0, $costs['spent']);
+    }
+
     public function testCostsNeedTheAdminKeyRatherThanTheChatKey(): void
     {
         $account = $this->account(
@@ -366,7 +440,19 @@ class LlmAccountTest extends TestCase
      */
     private function account(array $responses, array $settingsOverrides = [], ?string $provider = null): LlmAccount
     {
-        $settings = new class ($settingsOverrides) extends SettingsService {
+        // The same stub answers the organisation endpoints, which in production use a
+        // separate admin credential.
+        $stub = new StubAccountLlm($responses);
+
+        return new LlmAccount($this->settingsFor($settingsOverrides), $stub, $provider, $stub);
+    }
+
+    /**
+     * @param array<string,string> $overrides
+     */
+    private function settingsFor(array $overrides): SettingsService
+    {
+        return new class ($overrides) extends SettingsService {
             /** @param array<string,string> $overrides */
             public function __construct(private array $overrides = [])
             {
@@ -378,12 +464,6 @@ class LlmAccountTest extends TestCase
                 return $this->overrides[$key] ?? parent::get($key, $default);
             }
         };
-
-        // The same stub answers the organisation endpoints, which in production use a
-        // separate admin credential.
-        $stub = new StubAccountLlm($responses);
-
-        return new LlmAccount($settings, $stub, $provider, $stub);
     }
 
     /**

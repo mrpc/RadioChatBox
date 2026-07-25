@@ -129,12 +129,14 @@ class LlmAccount
             return $cached;
         }
 
-        // Buckets are daily, so ask for whole days back from midnight-ish and let the
-        // API decide the boundaries.
-        $startTime = time() - ($days * 86400);
+        // Buckets are daily and cut at UTC midnight, and start_time selects the bucket
+        // that CONTAINS it - so "now minus 24h" returns yesterday's bucket, which for
+        // the first day of use is empty. Align to midnight and ask for one bucket per
+        // day, today included, or the answer reads as "spent nothing".
+        $startTime = strtotime('today midnight UTC') - (($days - 1) * 86400);
         $path = LlmProviders::costsPath($this->provider)
             . '?start_time=' . $startTime
-            . '&bucket_width=1d&limit=' . min(180, max(1, $days));
+            . '&bucket_width=1d&limit=' . min(180, $days);
 
         try {
             $response = $this->adminClient()->get($path);

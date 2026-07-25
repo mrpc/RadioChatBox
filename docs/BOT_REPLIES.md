@@ -542,6 +542,11 @@ Two different numbers, and the difference matters:
 | Actually spent | derived from balance readings | `GET /organization/costs` |
 | Credential | the chat key | an **admin key** (`sk-admin-...`), the costs endpoint refuses a project key |
 
+One trap worth knowing: the costs buckets are daily and cut at **UTC midnight**, and
+`start_time` selects the bucket that *contains* it - so asking for "now minus 24
+hours" returns yesterday's bucket, which on the first day of use is empty and reads
+as "spent nothing". The window is aligned to midnight for that reason.
+
 For DeepSeek the worker records a balance reading every hour and the drop between two
 of them is real spend. OpenAI publishes no credit balance at all, so instead its own
 costs endpoint is asked what was spent - which needs the optional
@@ -551,6 +556,10 @@ Without that key the panel says so rather than showing a failure. It is shown as
 records a reading every hour (`bot_llm_balance`), so the drop between two readings
 gives "actually spent" for a window. A top-up is reported separately instead of
 cancelling out spend.
+
+The two agree: on the first day of OpenAI use the panel's estimate for the day was
+$0.004164 and OpenAI's own costs endpoint reported $0.004164. If they ever diverge,
+the unit prices are the thing to edit.
 
 **Per-call cost** is computed, because the provider publishes no pricing endpoint
 (`/models` returns ids and owners only). Each call is priced when it is logged, so
