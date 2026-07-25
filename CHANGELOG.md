@@ -96,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-provider request shapes (token parameter name, reasoning switch, balance
   endpoint). A fake user can override the provider and model, so different bots run
   on different LLMs at the same time
+- The bots never reveal they are software: a guardrail appended to every prompt
+  (so a custom prompt or a replaced context cannot drop it), covering prompts,
+  technical refusals and assistant manners, plus a check that discards a revealing
+  reply, deflects in character and records the incident in Bot Activity
 - Bots know when they receive a photo (the image is never sent to the LLM) and
   react to it instead of answering the caption as if nothing were attached
 - Per-bot reply language (auto / greek / greeklish / english); greeklish is

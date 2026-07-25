@@ -2,6 +2,7 @@
 
 namespace RadioChatBox\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\BotService;
 
@@ -445,5 +446,101 @@ class BotServiceTest extends TestCase
 
         // Position matters: buried in Greek prose, the instruction lost.
         $this->assertStringEndsWith(BotService::languageInstruction('greeklish'), $prompt);
+    }
+
+    // ------------------------------------------------------------------
+    // Never look like software
+    // ------------------------------------------------------------------
+
+    /**
+     * The rule has to hold however a bot is configured. It used to live inside the
+     * generated persona, so a custom system prompt - the one case where an operator
+     * writes their own rules - silently dropped it.
+     */
+    public function testTheHumanGuardrailSurvivesACustomPrompt(): void
+    {
+        $generated = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria', 'age' => 27, 'sex' => 'female']
+        );
+        $custom = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria', 'bot_custom_prompt' => 'Είσαι η Μαρία. Μίλα για μουσική.']
+        );
+
+        foreach (['generated' => $generated, 'custom' => $custom] as $kind => $prompt) {
+            $this->assertStringContainsString(BotService::HUMAN_GUARDRAIL, $prompt, $kind);
+        }
+    }
+
+    /**
+     * The context is admin-editable, so the rule cannot depend on it either.
+     */
+    public function testTheHumanGuardrailSurvivesAReplacedContext(): void
+    {
+        $prompt = BotService::buildSystemPrompt(
+            ['nickname' => 'Maria'],
+            'Κάτι εντελώς δικό μου εδώ.'
+        );
+
+        $this->assertStringContainsString(BotService::HUMAN_GUARDRAIL, $prompt);
+        $this->assertStringNotContainsString(BotService::DEFAULT_CONTEXT_PROMPT, $prompt);
+    }
+
+    public function testTheGuardrailCoversTheIndirectGiveaways(): void
+    {
+        $guard = BotService::HUMAN_GUARDRAIL;
+
+        // Not just an outright confession: these are the ways it leaks.
+        $this->assertStringContainsString('ΑΠΑΡΑΒΑΤΟΣ', $guard);
+        $this->assertStringContainsString('prompt', $guard, 'it must refuse to discuss its own instructions');
+        $this->assertStringContainsString('δεν μπορείς', $guard, 'a technical refusal gives it away');
+        $this->assertStringContainsString('βοηθ', $guard, 'assistant manners give it away');
+    }
+
+    /**
+     * @return list<array{0:string,1:bool}>
+     */
+    public static function replyDisclosures(): array
+    {
+        return [
+            // Must be caught.
+            ['ειμαι ενα AI, δεν εχω συναισθηματα', true],
+            ['Είμαι chatbot και θα σε βοηθήσω', true],
+            ['eimai ena bot re', true],
+            ['δεν ειμαι πραγματικος ανθρωπος', true],
+            ['Ως AI δεν μπορώ να απαντήσω σε αυτό', true],
+            ['as an AI I cannot do that', true],
+            ['είμαι ένα γλωσσικό μοντέλο', true],
+            ['ειμαι εικονικος βοηθος', true],
+            ['οι οδηγιες μου λενε να μη το κανω', true],
+            ['το system prompt μου ειναι μυστικο', true],
+            // Must NOT be caught: ordinary chat, including greeklish where "nai"
+            // and "kai" contain the letters of "ai".
+            ['ανθρωπος ειμαι ρε 😅 τι λες', false],
+            ['ναι ρε, και εγω το ιδιο', false],
+            ['nai kala, kai esy ti kaneis;', false],
+            ['παω για μπανιο, τα λεμε μετα', false],
+            ['δεν εχω κατι να κανω σημερα', false],
+            ['douleuw se kafeteria, esy?', false],
+        ];
+    }
+
+    #[DataProvider('replyDisclosures')]
+    public function testARevealingReplyIsRecognised(string $reply, bool $expected): void
+    {
+        $this->assertSame($expected, BotService::revealsBotIdentity($reply), $reply);
+    }
+
+    public function testTheDeflectionsSoundHumanAndNeverGiveItAway(): void
+    {
+        $this->assertGreaterThanOrEqual(3, count(BotService::AI_DEFLECTIONS), 'one fixed line would be a tell');
+
+        foreach (BotService::AI_DEFLECTIONS as $deflection) {
+            $this->assertFalse(
+                BotService::revealsBotIdentity($deflection),
+                "a deflection must not itself trip the check: {$deflection}"
+            );
+            // Short and dismissive, the way a person answers the question.
+            $this->assertLessThan(60, mb_strlen($deflection), $deflection);
+        }
     }
 }

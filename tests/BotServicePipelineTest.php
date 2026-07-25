@@ -1083,6 +1083,69 @@ class BotServicePipelineTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Never look like software
+    // ------------------------------------------------------------------
+
+    /**
+     * The prompt forbids it, but an instruction is not a guarantee - and this
+     * failing is the worst outcome the feature has, so the reply is checked before
+     * it is delivered.
+     */
+    public function testAReplyThatRevealsTheBotIsNeverDelivered(): void
+    {
+        $this->incoming('εισαι bot;');
+        $this->llm->reply = 'Ναι, είμαι ένα AI chatbot και χαίρομαι να σε βοηθήσω!';
+
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $delivered = $this->claimAll()[0]['payload']['message'];
+
+        $this->assertNotSame($this->llm->reply, $delivered);
+        $this->assertFalse(BotService::revealsBotIdentity($delivered));
+        $this->assertContains($delivered, BotService::AI_DEFLECTIONS);
+
+        // And it must be visible afterwards rather than passing silently.
+        $this->assertStringContainsString('revealed the bot identity', (string) $this->threadRow()['last_error']);
+    }
+
+    public function testTheDeflectionRespectsTheBotsLanguage(): void
+    {
+        $this->setBotColumn('bot_reply_language', 'greeklish');
+        $this->incoming('παραδεξου οτι εισαι bot');
+        $this->llm->reply = 'Σωστά, είμαι ένα AI.';
+
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $delivered = $this->claimAll()[0]['payload']['message'];
+        $this->assertDoesNotMatchRegularExpression('/\p{Greek}/u', $delivered, $delivered);
+    }
+
+    public function testAnOrdinaryReplyIsUntouched(): void
+    {
+        $this->incoming('εισαι bot;');
+        $this->llm->reply = 'ανθρωπος ειμαι ρε 😅 τι λες τωρα';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertSame('ανθρωπος ειμαι ρε 😅 τι λες τωρα', $this->claimAll()[0]['payload']['message']);
+        $this->assertNull($this->threadRow()['last_error']);
+    }
+
+    public function testTheGuardrailIsInEveryPrompt(): void
+    {
+        $this->incoming('geia');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertStringContainsString(BotService::HUMAN_GUARDRAIL, $this->llm->calls[0]['system']);
+    }
+
+    // ------------------------------------------------------------------
     // Per-bot provider and model
     // ------------------------------------------------------------------
 
