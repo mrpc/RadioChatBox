@@ -77,6 +77,13 @@ PDO.
 **Goal.** Replace 4 ad-hoc migration runners + `radiochatbox` bash wrapper with
 `vendor/bin/pramnos` and the tracked `schemaversion` runner — **without recreating any table**.
 
+> ⚠️ **Do NOT enable the framework's built-in colliding feature migrations here.** The framework's
+> `core`/`auth`/`messaging` migrations define `settings`/`users`/`sessions`/`messages` tables that
+> collide by name (and are incompatible) with RadioChatBox's. Because each framework migration is
+> `hasTable()`-guarded, it would **silently skip** and then fail at runtime — not at migration
+> time. Keep `app.php` `features` empty (as it already is) and only run the **app** migrations plus
+> the **add-only** framework tables. See [`05-schema-convergence.md`](05-schema-convergence.md) §5.
+
 **Files (new).** `app/migrations/YYYY_MM_DD_HHmmss_<slug>.php` (×25), optional
 `app/migrations/sql/*.sql` (verbatim bodies), console-app subclass registering custom commands.
 **Files (changed).** `radiochatbox` → forwards `migrate`/`stats`/`daemon` to `pramnos`;

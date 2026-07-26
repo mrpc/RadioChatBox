@@ -23,6 +23,11 @@ Read in order:
    WebSocket + SSE edge over a swappable backplane (Redis / Database / Kafka / custom adapters),
    run as an orchestrated daemon. RadioChatBox uses the Redis adapter; Kafka/Database adapters
    cover other deployments.
+6. **[05 — Schema convergence](05-schema-convergence.md)** — how (and how carefully) to bring the
+   RadioChatBox schema closer to the framework's canonical schema. Documents the four
+   incompatible table-name collisions (`settings`/`users`/`sessions`/`messages`) that the
+   framework's `hasTable()`-guarded migrations would **silently skip**, the framework tables that
+   are safe to add, and a safe convergence sequence. **Governs Phase 2.**
 
 ## TL;DR
 
