@@ -260,21 +260,38 @@ workload — no per-minute process spawn, shares the worker's warm connections, 
 
 ---
 
-## 7. Real-time (SSE) — Keep, then Enhance
+## 7. Real-time — SSE today; WebSockets unlocked by the daemon model
 
-The framework has **no SSE and no Redis pub/sub** — its real-time story is
-Pusher/Reverb/WebSocket (`BroadcastingManager` + `broadcast:serve` + `pramnos-echo.js`).
-Rewriting the SSE client/server to WebSockets is a large, user-visible change with no BC upside.
+**Why RadioChatBox is on SSE, not WebSockets.** Not because Cloudflare blocks WebSockets (it
+proxies them), but because a WS server needs a **long-lived process holding the socket**, which
+can't live inside Apache/PHP-FPM; SSE is plain HTTP that traverses Apache + Cloudflare unchanged.
+The only Cloudflare cost is its ~100s idle cap on streamed HTTP, which `stream.php` dodges with a
+**95s force-reconnect**. Fan-out is Redis pub/sub.
+
+**What the framework offers.** Its real-time story is Pusher-protocol / WebSocket:
+`BroadcastingManager` + drivers (`Null`/`Log`/`Pusher`), `LocalBroadcastServer` (pure-PHP WS
+server, RFC 6455 + Pusher v7, **dev-only**, fans out by **tailing a log file**, not Redis),
+`broadcast:serve`, and the `pramnos-echo.js` client. Production WS is expected to be Pusher cloud
+or self-hosted **Laravel Reverb** via `PusherDriver`. There is **no SSE helper and no Redis
+transport** built in.
+
+**What changes with the daemon orchestrator (Phase 3).** Once we run long-lived PHP daemons on the
+OS, a **standalone WebSocket server on its own port becomes feasible** — Apache is bypassed and
+Cloudflare proxies `wss://` while keeping the connection open, which *removes* the 95s reconnect
+hack. WebSockets go from "impossible under Apache" to "a supervised daemon".
 
 **Plan:**
-- **Keep** `public/api/stream.php` as a raw long-lived streaming endpoint (Apache is already
-  tuned for it: `output_buffering Off`, `Timeout 3600`). If it ever moves into a framework
-  controller, it stays a streaming action (`exec()` echoes; a `Response` is not mandatory).
-- **Enhance** the framework with a **Redis pub/sub broadcasting driver** implementing
-  `Broadcasting\Drivers\DriverInterface`, so app code can `broadcast($channel,$event,$payload)`
-  through the framework abstraction while Redis remains the transport and SSE remains the client
-  delivery ([`02`](02-framework-improvements.md) §2). This unifies the API without touching the
-  wire protocol.
+- **Keep** `public/api/stream.php` (SSE) working throughout — Apache is already tuned for it
+  (`output_buffering Off`, `Timeout 3600`). It remains the **fallback** transport for
+  clients/networks where WS fails. If it moves into a controller, it stays a streaming action.
+- **Enhance** the framework ([`02`](02-framework-improvements.md) §2) with (1) a Redis
+  `DriverInterface` so `broadcast($channel,$event,$payload)` publishes to Redis as today, (2) a
+  **Redis-sourced WS server** (upgrade of `LocalBroadcastServer`) run as an **orchestrated
+  daemon** — the piece the daemon model unlocks — and (3) an SSE helper over the same Redis
+  transport. One broadcast API; Redis stays the bus; the browser is served by the WS daemon
+  (primary) or SSE (fallback).
+- **Decision:** treat WebSockets as an **opt-in upgrade after** the infra phases, not a
+  prerequisite. SSE keeps working the whole time, so there is no flag-day and full BC.
 
 ---
 

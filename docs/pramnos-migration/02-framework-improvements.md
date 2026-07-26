@@ -34,31 +34,64 @@ clearly as a transitional compat shim. **BC: additive, no signatures change.**
 
 ---
 
-## 2. (P1) Redis pub/sub broadcasting driver + SSE support
+## 2. (P1) Redis-backed broadcasting for **both** SSE and WebSockets
 
-**Gap.** RadioChatBox's real-time layer is **SSE + Redis pub/sub** (`public/api/stream.php`
-subscribes to prefixed channels `chat:updates`, `chat:user_updates`, `chat:private_messages`).
-The framework's `Broadcasting` subsystem is **Pusher-protocol / WebSocket** only —
-`BroadcastingManager` + drivers `Null`/`Log`/`Pusher`, `LocalBroadcastServer` (WebSocket),
-`broadcast:serve`, `pramnos-echo.js`. There is **no SSE endpoint helper and no Redis pub/sub
-transport**. This is the single biggest divergence.
+**Context — how RadioChatBox does real-time today, and why.** RadioChatBox uses **SSE**, *not*
+WebSockets. This is not because Cloudflare blocks WebSockets (it proxies them fine), but because:
+(a) a WebSocket server needs a **long-lived process holding the socket**, which cannot live inside
+the Apache / mod_php / PHP-FPM request model that serves the app; and (b) SSE is plain HTTP, so it
+traverses Apache + Cloudflare with zero special proxying — the only cost is Cloudflare's ~100s idle
+cap on streamed HTTP, which `public/api/stream.php` dodges with a **95s force-reconnect**
+("Cloudflare limit"). Fan-out is **Redis pub/sub** (`chat:updates`, `chat:user_updates`,
+`chat:private_messages`).
 
-**Enhancement.** Two additive pieces so RadioChatBox can broadcast through the framework
-abstraction while keeping SSE + Redis on the wire (no client rewrite):
+**What changes now.** With the daemon orchestrator ([`01`](01-native-integration-map.md) §5.3,
+[`03`](03-integration-plan.md) Phase 3) we run **long-lived PHP processes directly on the OS**, so
+a **standalone WebSocket server on its own port is finally feasible** — Apache is bypassed, and
+Cloudflare proxies `wss://` to it and keeps the connection open (which *removes* the 95s reconnect
+hack). WebSockets become a real option, not just SSE.
 
-1. **`Broadcasting\Drivers\RedisDriver implements DriverInterface`** — `broadcast($channel,
-   $event, array $payload)` does `$redis->publish($prefix.$channel, json_encode([...]))`.
-   Registered by `BroadcastingServiceProvider` when `broadcasting.driver = 'redis'` in `app.php`.
-2. **An SSE helper** — e.g. `Broadcasting\SseStream` (or a `Http\Response::eventStream(callable)`
-   factory) that encapsulates the `text/event-stream` headers, `ob_end_clean()`, the
-   subscribe-loop, periodic ping, and the 95s force-reconnect that `stream.php` hand-rolls today,
-   consuming a dedicated Redis subscribe connection.
+**What the framework ships (initial WS infrastructure — yes, but dev-grade).**
+- `Broadcasting\LocalBroadcastServer` — a pure-PHP WebSocket server implementing RFC 6455 +
+  **Pusher Wire Protocol v7** (handshake, framing, ping/keepalive, `pusher:subscribe`), single
+  `stream_select` loop, started by `broadcast:serve` (`--host/--port/--app-key/--log-file`).
+  **Explicitly "development only"**: single-threaded, **no TLS, no auth**, and — critically — its
+  fan-out source is **tailing a `LogDriver` JSONL file** (`pollLogFile()`), *not* Redis.
+- `BroadcastingManager` + `DriverInterface` + drivers `Null` / `Log` / `Pusher`. `PusherDriver`
+  publishes over the Pusher HTTP API and works with Pusher cloud **or Laravel Reverb** (a
+  self-hosted Pusher-compatible WS server) — the intended *production* WS story is "publish via
+  `PusherDriver` → Reverb/Pusher serves the sockets".
+- `pramnos-echo.js` — a Pusher-compatible JS client (Pusher cloud / Reverb / `LocalBroadcastServer`).
 
-**Why in the framework, not just the app.** Keeps the `broadcast($channel,$event,$payload)` call
-sites framework-native and lets any Pramnos app choose SSE+Redis vs. Pusher by config. RadioChatBox
-then deletes its bespoke publish/subscribe glue.
+**The gap.** There is **no Redis pub/sub transport** and **no production-grade WS server** in the
+framework. The bundled server is dev-only and log-file-based; production expects an external
+Reverb/Pusher. RadioChatBox already has the *right* fan-out (Redis pub/sub) — it just needs a
+server that consumes it.
 
-**BC:** additive — new driver + new class; existing Null/Log/Pusher drivers untouched.
+**Enhancement (additive).**
+
+1. **`Broadcasting\Drivers\RedisDriver implements DriverInterface`** — `broadcast($channel,$event,
+   array $payload)` → `$redis->publish($prefix.$channel, json_encode([...]))`. App processes keep
+   publishing exactly as today. Registered when `broadcasting.driver = 'redis'` in `app.php`.
+2. **A production-capable WS server sourced from Redis** — upgrade `LocalBroadcastServer` (or add a
+   sibling, e.g. `RedisBroadcastServer`) so its fan-out source is a **Redis `subscribe` loop**
+   instead of / in addition to log-file tailing, plus TLS-termination-friendly operation and a
+   subscribe-auth hook for `private-`/`presence-` channels. Runs as an **orchestrated daemon**
+   (`broadcast:serve --source=redis`) supervised exactly like the worker — the piece the OS-level
+   daemon model unlocks.
+3. **An SSE helper** — e.g. `Broadcasting\SseStream` (or `Http\Response::eventStream(callable)`)
+   that encapsulates the `text/event-stream` headers, `ob_end_clean()`, the Redis subscribe loop,
+   periodic ping, and the 95s reconnect that `stream.php` hand-rolls — so **SSE stays available as
+   a fallback** for clients/networks where WS fails, sharing the same Redis transport.
+
+**Result.** One `broadcast($channel,$event,$payload)` API; Redis stays the transport; the browser
+can be served by **either** the WS daemon (primary, no 95s churn) **or** SSE (fallback), both
+subscribing to the same Redis channels. RadioChatBox deletes its bespoke publish/subscribe glue.
+
+**Why in the framework, not just the app.** Makes SSE+Redis and Redis-backed WebSockets a
+first-class choice for any Pramnos app (alongside the existing Pusher/Reverb path), instead of the
+dev-only log-tail server. **BC:** additive — new driver, new/extended server mode, new SSE helper;
+existing `Null`/`Log`/`Pusher` drivers and the current log-tail behaviour are untouched.
 
 ---
 
@@ -179,7 +212,7 @@ apps like RadioChatBox have a one-liner. Pure convenience.
 | # | Improvement | Priority | Blocks | BC |
 |---|---|---|---|---|
 | 1 | Optional PDO-compat accessor | P3 | (accelerates DB convergence) | additive |
-| 2 | Redis broadcasting driver + SSE helper | **P1** | real-time migration | additive |
+| 2 | Redis broadcasting driver + Redis-sourced WS server + SSE helper | **P1** | real-time migration (WS unlocked by daemons) | additive |
 | 3 | Redis queue driver (driver abstraction) | P2 | worker/queue convergence | additive |
 | 4 | Router instance-method controller dispatch | **P1** | attribute-routed controllers (Phase 6) | fix, additive |
 | 5 | Graceful missing-extension diagnostics | **P1** | clean bootstrap on our hosts | additive |
