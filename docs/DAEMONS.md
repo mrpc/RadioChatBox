@@ -43,6 +43,10 @@ a server:
 
 `/etc/systemd/system/radiochatbox-daemon@.service`
 
+The `%i` is the instance name you pass after the `@`; here it is the site's domain, and the
+path to that installation is built from it. Adjust `WorkingDirectory` to match your own
+layout:
+
 ```ini
 [Unit]
 Description=RadioChatBox daemon supervisor (%i)
@@ -50,10 +54,10 @@ After=network.target postgresql.service redis.service
 
 [Service]
 Type=simple
-User=www-data
-WorkingDirectory=/var/www/%i
-ExecStart=/usr/bin/php /var/www/%i/daemon.php run
-ExecStop=/usr/bin/php /var/www/%i/daemon.php stop
+User=siteuser
+WorkingDirectory=/home/siteuser/domains/%i/public_html
+ExecStart=/usr/bin/php /home/siteuser/domains/%i/public_html/daemon.php run
+ExecStop=/usr/bin/php /home/siteuser/domains/%i/public_html/daemon.php stop
 
 Restart=always
 RestartSec=5
@@ -70,10 +74,13 @@ SyslogIdentifier=radiochatbox-daemon-%i
 WantedBy=multi-user.target
 ```
 
+One installation is one instance, so a server that hosts several enables one per site:
+
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now radiochatbox-daemon@mysite
-journalctl -u radiochatbox-daemon@mysite -f
+sudo systemctl enable --now radiochatbox-daemon@radio.example.com
+sudo systemctl enable --now radiochatbox-daemon@news.example.com
+journalctl -u radiochatbox-daemon@radio.example.com -f
 ```
 
 Note what is **not** in the unit: the worker. Starting it is the supervisor's job, and
@@ -149,8 +156,11 @@ never double up.
 
 ### Level 1 — cron drives the supervisor (recommended without systemd)
 
+One line per installation — the supervisor is scoped to the directory it runs in:
+
 ```cron
-* * * * * cd /var/www/mysite && php daemon.php once >> logs/daemon.log 2>&1
+* * * * * cd /home/siteuser/domains/radio.example.com/public_html && php daemon.php once >> logs/daemon.log 2>&1
+* * * * * cd /home/siteuser/domains/news.example.com/public_html && php daemon.php once >> logs/daemon.log 2>&1
 ```
 
 Every minute the supervisor does exactly one reconciliation pass and exits: it starts the
@@ -171,7 +181,7 @@ No supervisor at all. Two shapes:
 
 ```cron
 # A worker that lives for one minute at a time.
-* * * * * cd /var/www/mysite && php worker.php run --schedule --max-runtime=55 >> logs/worker.log 2>&1
+* * * * * cd /home/siteuser/domains/radio.example.com/public_html && php worker.php run --schedule --max-runtime=55 >> logs/worker.log 2>&1
 ```
 
 The worker runs for 55 seconds, exits, and the next minute's cron starts a fresh one.
@@ -180,7 +190,7 @@ new deploy is picked up automatically, because each minute is a new process.
 
 ```cron
 # Or: process whatever is due, then exit.
-* * * * * cd /var/www/mysite && php worker.php once --schedule >> logs/worker.log 2>&1
+* * * * * cd /home/siteuser/domains/radio.example.com/public_html && php worker.php once --schedule >> logs/worker.log 2>&1
 ```
 
 Cheapest of all, and enough when replies do not need to be prompt: a reply scheduled for
@@ -193,12 +203,12 @@ Still supported, and what an existing installation already has. Use this if you 
 rather not move the schedule into the worker:
 
 ```cron
-*/5 * * * * cd /var/www/mysite && php stats-cron.php snapshot >> logs/stats-cron.log 2>&1
-5   * * * * cd /var/www/mysite && php stats-cron.php hourly   >> logs/stats-cron.log 2>&1
-10  0 * * * cd /var/www/mysite && php stats-cron.php daily    >> logs/stats-cron.log 2>&1
-0   * * * * curl -s "https://mysite/api/cron/cleanup.php?token=SECRET" > /dev/null
-0   3 * * * cd /var/www/mysite && php worker.php prune-log    >> logs/worker.log 2>&1
-* * * * *   cd /var/www/mysite && php worker.php run --max-runtime=55 >> logs/worker.log 2>&1
+*/5 * * * * cd /home/siteuser/domains/radio.example.com/public_html && php stats-cron.php snapshot >> logs/stats-cron.log 2>&1
+5   * * * * cd /home/siteuser/domains/radio.example.com/public_html && php stats-cron.php hourly   >> logs/stats-cron.log 2>&1
+10  0 * * * cd /home/siteuser/domains/radio.example.com/public_html && php stats-cron.php daily    >> logs/stats-cron.log 2>&1
+0   * * * * curl -s "https://radio.example.com/api/cron/cleanup.php?token=SECRET" > /dev/null
+0   3 * * * cd /home/siteuser/domains/radio.example.com/public_html && php worker.php prune-log    >> logs/worker.log 2>&1
+* * * * *   cd /home/siteuser/domains/radio.example.com/public_html && php worker.php run --max-runtime=55 >> logs/worker.log 2>&1
 ```
 
 Two things to know if you stay here: the track is only recorded every five minutes (short
@@ -213,7 +223,7 @@ satisfied.
 ### What always stays in cron
 
 ```cron
-0 2 * * * cd /var/www/mysite && pg_dump ... | gzip > backups/daily_$(date +\%Y\%m\%d).sql.gz
+0 2 * * * cd /home/siteuser/domains/radio.example.com/public_html && pg_dump ... | gzip > backups/daily_$(date +\%Y\%m\%d).sql.gz
 ```
 
 The database dump. It has to keep working when the application is broken — and if the
@@ -233,7 +243,7 @@ duration and error.
 
 ```bash
 $ php daemon.php status
-installation mysite-3f9a1b2c (/var/www/mysite) | supervisor pid 4123, heartbeat 2s ago
+installation public_html-3f9a1b2c (/home/siteuser/domains/radio.example.com/public_html) | supervisor pid 4123, heartbeat 2s ago
 bot_worker   running   pid 4130   heartbeat 0s ago   jobs 87
              Bot replies and the periodic tasks
 
@@ -247,7 +257,7 @@ track_poll             every 30s     DUE NOW   last 2026-07-25 14:04:48 (ok)
 parsing the output:
 
 ```cron
-*/5 * * * * cd /var/www/mysite && php daemon.php status > /dev/null || echo "RadioChatBox daemons unhealthy" | mail -s alert you@example.com
+*/5 * * * * cd /home/siteuser/domains/radio.example.com/public_html && php daemon.php status > /dev/null || echo "RadioChatBox daemons unhealthy" | mail -s alert you@example.com
 ```
 
 ---
@@ -255,19 +265,32 @@ parsing the output:
 ## Several installations on one server
 
 Different directories, often the same code and sometimes the same database name. Anything
-a *process* owns is therefore named per installation **directory**:
+a *process* owns is therefore named per installation **directory**. Take two installations
+that share both the code and the leaf directory name:
 
 ```
-logs/daemon-supervisor-mysite-3f9a1b2c.lock
-logs/worker-mysite-3f9a1b2c.lock
+/home/siteuser/domains/radio.example.com/public_html
+/home/siteuser/domains/news.example.com/public_html
 ```
 
-`mysite-3f9a1b2c` is the directory name plus a short hash of its absolute path. **Nothing
-to configure** — it comes from the path, so a second installation is distinct the moment
-it exists. The hash matters because two release paths can both end in `current`, and
-because when `logs/` is not writable the lock falls back to the shared system temp
-directory, where a name like `worker-radiochatbox.lock` from one installation would
-silently keep the other's worker from ever starting.
+Each gets its own locks, and they never collide:
+
+```
+logs/daemon-supervisor-public_html-3f9a1b2c.lock   # radio.example.com
+logs/worker-public_html-3f9a1b2c.lock
+
+logs/daemon-supervisor-public_html-7c2e4d10.lock   # news.example.com
+logs/worker-public_html-7c2e4d10.lock
+```
+
+`public_html-3f9a1b2c` is the directory name plus a short hash of its absolute path.
+**Nothing to configure** — it comes from the path, so a second installation is distinct the
+moment it exists. The hash is what does the work here: both paths end in `public_html`, so
+the visible part is identical and only the hash of the full path tells them apart. The same
+is true when two release paths both end in `current`. And when `logs/` is not writable the
+lock falls back to the shared system temp directory, where a name like
+`worker-public_html.lock` from one installation would otherwise silently keep the other's
+worker from ever starting.
 
 A setting would have been worse than useless here: copied along with the directory, it
 would recreate the very collision it prevents.
