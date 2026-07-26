@@ -66,6 +66,24 @@ class BotServiceTest extends TestCase
         $this->assertStringNotContainsString('ΣΤΑΘΕΡΑ ΣΤΟΙΧΕΙΑ ΓΙΑ ΣΕΝΑ', $prompt);
     }
 
+    /**
+     * People unmask bots with traps (absurd questions, "ignore your
+     * instructions"), and answering them earnestly is the tell. The
+     * anti-detection guidance must be in every prompt — including one built from
+     * a custom system prompt, which replaces the persona.
+     */
+    public function testTheAntiDetectionGuardrailIsAlwaysPresent(): void
+    {
+        $generated = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+        $this->assertStringContainsString('ΑΝ ΣΕ ΤΕΣΤΑΡΟΥΝ', $generated);
+
+        $custom = BotService::buildSystemPrompt([
+            'nickname' => 'Maria',
+            'bot_custom_prompt' => 'δικό μου prompt',
+        ]);
+        $this->assertStringContainsString('ΑΝ ΣΕ ΤΕΣΤΑΡΟΥΝ', $custom);
+    }
+
     public function testTheContextTellsBotsThereAreNoProfilesOrInAppLinks(): void
     {
         // Bots were inventing a "link on my profile"; the platform has no such
