@@ -4426,6 +4426,12 @@
                     updateHistory = true;
                 }
             }
+            // Bot Activity is only reachable when bots are enabled — the nav item is
+            // hidden then, so block direct navigation via hash/direct calls too.
+            if (tabName === 'bot-activity' && !botRepliesEnabled) {
+                tabName = 'dashboard';
+                updateHistory = true;
+            }
             // Update sidebar navigation
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
             const navItem = document.querySelector(`.nav-item[data-tab="${tabName}"]`);
@@ -5223,6 +5229,8 @@
         let botProviders = {};
         let botLanguages = {};
         let botDefaultProvider = 'deepseek';
+        // Whether bot auto-replies are enabled globally; gates the Bot Activity nav item.
+        let botRepliesEnabled = false;
 
         /**
          * Fill a <select> from an {value: label} map. An empty first option is added
@@ -7021,7 +7029,10 @@
                     document.getElementById('setting-rate-limit-window').value = settings.rate_limit_window || '60';
 
                     // Fake user auto-replies (bots)
-                    document.getElementById('setting-bot-replies-enabled').checked = settings.bot_replies_enabled === 'true';
+                    botRepliesEnabled = settings.bot_replies_enabled === 'true';
+                    document.getElementById('setting-bot-replies-enabled').checked = botRepliesEnabled;
+                    // Bot Activity only makes sense when bots are actually running.
+                    applyBotActivityNavVisibility();
 
                     botProviders = settings.bot_providers || {};
                     botLanguages = settings.bot_languages || {};
@@ -8030,7 +8041,17 @@
             }
         }
 
+        // Single source of truth for the Bot Activity nav item: it needs both a
+        // role that may see it (root/owner) and bots actually enabled globally.
+        function applyBotActivityNavVisibility() {
+            const nav = document.getElementById('nav-bot-activity');
+            if (!nav) return;
+            const roleAllows = currentUserRole === 'root' || currentUserRole === 'owner';
+            nav.style.display = (roleAllows && botRepliesEnabled) ? 'flex' : 'none';
+        }
+
         function applyRoleBasedRestrictions(role) {
+            currentUserRole = role;
             // Hide/show nav items based on role
             const adminUsersNav = document.getElementById('nav-admin-users');
             const settingsNav = document.getElementById('nav-settings');
@@ -8121,6 +8142,10 @@
                 if (activeUsersTitle) activeUsersTitle.textContent = 'Active Users (Real)';
                 if (activeUsersSubline) activeUsersSubline.textContent = 'Currently online (real users)';
             }
+
+            // The role branches above may have shown Bot Activity; the global
+            // bot-replies setting has the final say.
+            applyBotActivityNavVisibility();
         }
 
         async function loadAdminUsers() {
