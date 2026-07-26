@@ -7171,6 +7171,9 @@
 
                     const providerLabels = {};
                     Object.entries(botProviders).forEach(([id, p]) => { providerLabels[id] = p.label; });
+                    // "Both" is a global-only option: pick a provider at random per
+                    // conversation. Not offered as a per-fake-user override.
+                    providerLabels['both'] = 'Both (random per conversation)';
                     populateSelectOptions(
                         'setting-bot-llm-provider',
                         providerLabels,

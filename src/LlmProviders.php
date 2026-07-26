@@ -22,6 +22,13 @@ class LlmProviders
     public const DEFAULT_PROVIDER = 'deepseek';
 
     /**
+     * A pseudo-provider for the global setting only: run on every provider,
+     * choosing one per conversation. It is not a real endpoint, so it is never a
+     * valid per-bot override — only a valid value of the global bot_llm_provider.
+     */
+    public const BOTH = 'both';
+
+    /**
      * @var array<string,array<string,mixed>>
      */
     public const PROVIDERS = [
@@ -119,6 +126,15 @@ class LlmProviders
     public static function isKnown(string $provider): bool
     {
         return isset(self::PROVIDERS[$provider]);
+    }
+
+    /**
+     * Valid values for the global provider setting: any real provider, or the
+     * "both" pseudo-provider. Per-bot overrides must still be a real provider.
+     */
+    public static function isValidGlobalSelection(string $provider): bool
+    {
+        return $provider === self::BOTH || self::isKnown($provider);
     }
 
     /**

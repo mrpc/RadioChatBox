@@ -125,6 +125,15 @@ class LlmProvidersTest extends TestCase
         $this->assertSame('deepseek', LlmProviders::resolve('deepseek', $settings), 'a per-bot choice wins');
     }
 
+    public function testBothIsValidForTheGlobalSettingButIsNotARealProvider(): void
+    {
+        // "both" may be saved as the global provider, but it is not an endpoint.
+        $this->assertTrue(LlmProviders::isValidGlobalSelection(LlmProviders::BOTH));
+        $this->assertTrue(LlmProviders::isValidGlobalSelection('openai'));
+        $this->assertFalse(LlmProviders::isValidGlobalSelection('nope'));
+        $this->assertFalse(LlmProviders::isKnown(LlmProviders::BOTH));
+    }
+
     public function testEachModelIsClaimedByExactlyOneProvider(): void
     {
         $this->assertSame('deepseek', LlmProviders::providerForModel('deepseek-v4-flash'));

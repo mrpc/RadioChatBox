@@ -324,19 +324,64 @@ class BotService
         $this->llmClients = [];
     }
 
-    private function llm(array $fakeUser = []): LlmService
+    private function llm(array $fakeUser = [], ?string $peer = null): LlmService
     {
         if ($this->llm !== null) {
             return $this->llm;
         }
 
-        $provider = trim((string) ($fakeUser['bot_llm_provider'] ?? ''));
+        $provider = $this->conversationProvider($fakeUser, $peer);
         $model = trim((string) ($fakeUser['bot_llm_model'] ?? ''));
         $key = $provider . '|' . $model;
 
         // Memoised per provider/model combination: a worker processes many jobs
         // and most of them share one.
-        return $this->llmClients[$key] ??= LlmService::forFakeUser($fakeUser, $this->settings);
+        return $this->llmClients[$key] ??= LlmService::fromSettings(
+            $this->settings,
+            $provider !== '' ? $provider : null,
+            $model !== '' ? $model : null
+        );
+    }
+
+    /**
+     * The provider a conversation should run on.
+     *
+     * A per-bot override always wins. Otherwise, when the global provider is set
+     * to "both", one of the configured providers is chosen per conversation —
+     * deterministically from the bot+peer pair, so a conversation stays on one
+     * provider instead of flipping between replies, while different conversations
+     * spread across both. Any other global value falls through to the normal
+     * resolution (empty return → LlmService reads the global setting).
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public function conversationProvider(array $fakeUser, ?string $peer): string
+    {
+        $perBot = trim((string) ($fakeUser['bot_llm_provider'] ?? ''));
+        if ($perBot !== '') {
+            return $perBot;
+        }
+
+        $global = strtolower(trim((string) $this->settings->get('bot_llm_provider', '')));
+        if ($global === LlmProviders::BOTH) {
+            return self::pickBothProvider((int) ($fakeUser['id'] ?? 0), (string) $peer);
+        }
+
+        return '';
+    }
+
+    /**
+     * Pick one provider for a conversation when the global setting is "both".
+     * Deterministic in the bot+peer pair so the choice is stable for the life of
+     * the conversation without storing any per-thread state, and spread roughly
+     * evenly across conversations.
+     */
+    private static function pickBothProvider(int $fakeUserId, string $peer): string
+    {
+        $providers = array_keys(LlmProviders::PROVIDERS);
+        $index = crc32($fakeUserId . ':' . $peer) % count($providers);
+
+        return $providers[$index];
     }
 
     // ========================================================================
@@ -473,7 +518,7 @@ class BotService
         // the hardcoded variants are only the fallback when the API fails.
         $isFarewell = (int) $thread['messages_sent'] >= $maxMessages;
 
-        $llm = $this->llm($fakeUser)->withLogContext([
+        $llm = $this->llm($fakeUser, $peer)->withLogContext([
             'fake_nickname' => (string) $fakeUser['nickname'],
             'peer_username' => $peer,
             'purpose' => $isFarewell ? 'farewell' : 'reply',
@@ -1866,7 +1911,7 @@ class BotService
         }
 
         try {
-            $result = $this->llm($fakeUser)
+            $result = $this->llm($fakeUser, $peer)
                 ->withLogContext([
                     'fake_nickname' => $fakeNickname,
                     'peer_username' => $peer,

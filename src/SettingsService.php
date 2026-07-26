@@ -278,9 +278,10 @@ class SettingsService
                     $value = $this->validatePhotoSize($value, $maxPhotoSizeMb);
                 } elseif ($key === 'bot_llm_provider') {
                     // An unknown provider would leave the bots with no endpoint.
-                    if (!LlmProviders::isKnown((string) $value)) {
+                    // "both" is allowed here (global only): pick one per conversation.
+                    if (!LlmProviders::isValidGlobalSelection((string) $value)) {
                         $rejected[$key] = 'Unknown provider. Known: '
-                            . implode(', ', array_keys(LlmProviders::available())) . '.';
+                            . implode(', ', array_keys(LlmProviders::available())) . ', ' . LlmProviders::BOTH . '.';
                         continue;
                     }
                 } elseif ($key === 'bot_llm_prices') {

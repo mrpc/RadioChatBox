@@ -234,6 +234,41 @@ class BotServicePipelineTest extends TestCase
         $this->assertFalse($this->bot->willAutoReply(['bot_enabled' => true]));
     }
 
+    public function testConversationProviderHonoursThePerBotOverride(): void
+    {
+        // A per-bot provider wins even when the global setting is "both".
+        $this->settings->values['bot_llm_provider'] = 'both';
+        $this->assertSame(
+            'openai',
+            $this->bot->conversationProvider(['id' => 1, 'bot_llm_provider' => 'openai'], 'alice')
+        );
+    }
+
+    public function testConversationProviderFallsThroughForAConcreteGlobal(): void
+    {
+        // Not "both" and no override: empty means "use the global setting".
+        $this->settings->values['bot_llm_provider'] = 'deepseek';
+        $this->assertSame('', $this->bot->conversationProvider(['id' => 1], 'alice'));
+    }
+
+    public function testBothPicksOneProviderStablyPerConversation(): void
+    {
+        $this->settings->values['bot_llm_provider'] = 'both';
+        $providers = array_keys(\RadioChatBox\LlmProviders::PROVIDERS);
+
+        // Same bot+peer always resolves to the same provider (no mid-chat flip).
+        $chosen = $this->bot->conversationProvider(['id' => 7], 'nikos');
+        $this->assertContains($chosen, $providers);
+        $this->assertSame($chosen, $this->bot->conversationProvider(['id' => 7], 'nikos'));
+
+        // Across many conversations the choice spreads over every provider.
+        $seen = [];
+        for ($i = 0; $i < 40; $i++) {
+            $seen[$this->bot->conversationProvider(['id' => $i], 'peer' . $i)] = true;
+        }
+        $this->assertCount(count($providers), $seen);
+    }
+
     public function testListThreadsReportsWhetherTheFakeUserIsActive(): void
     {
         $this->incoming('geia');
