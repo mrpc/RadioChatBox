@@ -12,20 +12,47 @@ BEGIN;
 -- STEP 1: Rename enum type admin_role → user_role
 -- ============================================================================
 
-ALTER TYPE admin_role RENAME TO user_role;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admin_role')
+       AND NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        ALTER TYPE admin_role RENAME TO user_role;
+    END IF;
+END $$;
 
 -- ============================================================================
 -- STEP 2: Rename tables in correct dependency order
 -- ============================================================================
 
+-- Each rename is guarded on the source existing and the target not existing, so
+-- a re-run is a no-op and never renames the already-migrated tables by mistake.
+
 -- Rename users → user_activity first (no incoming FKs except messages/private_messages which are nullable)
-ALTER TABLE users RENAME TO user_activity;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_activity') THEN
+        ALTER TABLE users RENAME TO user_activity;
+    END IF;
+END $$;
 
 -- Rename active_users → sessions (no incoming FKs)
-ALTER TABLE active_users RENAME TO sessions;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'active_users')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'sessions') THEN
+        ALTER TABLE active_users RENAME TO sessions;
+    END IF;
+END $$;
 
 -- Rename admin_users → users last (has self-referencing FK)
-ALTER TABLE admin_users RENAME TO users;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'admin_users')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        ALTER TABLE admin_users RENAME TO users;
+    END IF;
+END $$;
 
 -- ============================================================================
 -- STEP 3: Add user_id columns to sessions and user_activity
@@ -54,7 +81,15 @@ COMMENT ON COLUMN user_activity.user_id IS 'References authenticated user accoun
 -- ============================================================================
 
 -- Indexes for user_activity (formerly users)
-ALTER INDEX IF EXISTS idx_users_username RENAME TO idx_user_activity_username;
+-- idx_users_username is guarded on its target too: a later step recreates that
+-- name (from idx_admin_users_username), so a re-run would otherwise collide.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'idx_users_username' AND relkind = 'i')
+       AND NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'idx_user_activity_username' AND relkind = 'i') THEN
+        ALTER INDEX idx_users_username RENAME TO idx_user_activity_username;
+    END IF;
+END $$;
 ALTER INDEX IF EXISTS idx_users_ip_address RENAME TO idx_user_activity_ip_address;
 
 -- Indexes for sessions (formerly active_users)
@@ -75,7 +110,15 @@ ALTER INDEX IF EXISTS idx_admin_users_is_active RENAME TO idx_users_is_active;
 -- ============================================================================
 
 -- Sessions table constraints (formerly active_users)
-ALTER TABLE sessions RENAME CONSTRAINT active_users_username_session_unique TO sessions_username_session_unique;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'active_users_username_session_unique'
+    ) THEN
+        ALTER TABLE sessions RENAME CONSTRAINT active_users_username_session_unique TO sessions_username_session_unique;
+    END IF;
+END $$;
 
 -- ============================================================================
 -- STEP 6: Update database functions to use new table names

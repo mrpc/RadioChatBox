@@ -1,5 +1,12 @@
 -- Statistics Tables Migration
 -- Tracks hourly, daily, weekly, monthly, and yearly statistics
+--
+-- The aggregate_hourly_stats function below references stats_hourly.radio_listeners,
+-- a column a later migration (008) drops. On a fresh install the column still
+-- exists here; on a re-run it does not, and body validation would reject the
+-- CREATE. Disabling that check keeps this migration idempotent — 008 replaces
+-- the function with the current-schema version immediately afterwards anyway.
+SET check_function_bodies = false;
 -- 
 -- Metrics tracked:
 -- - Active chatting users (authenticated + anonymous)
@@ -31,7 +38,7 @@ CREATE TABLE IF NOT EXISTS stats_hourly (
     UNIQUE(stat_hour)
 );
 
-CREATE INDEX idx_stats_hourly_stat_hour ON stats_hourly(stat_hour DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_hourly_stat_hour ON stats_hourly(stat_hour DESC);
 
 COMMENT ON TABLE stats_hourly IS 'Hourly aggregated statistics - one row per hour';
 COMMENT ON COLUMN stats_hourly.stat_hour IS 'Start of the hour (e.g., 2024-01-15 14:00:00)';
@@ -42,7 +49,16 @@ COMMENT ON COLUMN stats_hourly.total_messages IS 'Count of public chat messages 
 COMMENT ON COLUMN stats_hourly.private_messages IS 'Count of private messages sent';
 COMMENT ON COLUMN stats_hourly.photo_uploads IS 'Count of photos uploaded';
 COMMENT ON COLUMN stats_hourly.new_registrations IS 'Count of new user accounts created';
-COMMENT ON COLUMN stats_hourly.radio_listeners IS 'Average radio listeners during this hour';
+-- Guarded: migration 008 drops this column, so on a re-run it is gone.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'stats_hourly' AND column_name = 'radio_listeners'
+    ) THEN
+        COMMENT ON COLUMN stats_hourly.radio_listeners IS 'Average radio listeners during this hour';
+    END IF;
+END $$;
 COMMENT ON COLUMN stats_hourly.peak_concurrent_users IS 'Maximum concurrent users online at any moment';
 
 -- ============================================================================
@@ -66,7 +82,7 @@ CREATE TABLE IF NOT EXISTS stats_daily (
     UNIQUE(stat_date)
 );
 
-CREATE INDEX idx_stats_daily_stat_date ON stats_daily(stat_date DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_daily_stat_date ON stats_daily(stat_date DESC);
 
 COMMENT ON TABLE stats_daily IS 'Daily aggregated statistics - one row per day';
 COMMENT ON COLUMN stats_daily.radio_listeners_avg IS 'Average radio listeners throughout the day';
@@ -95,8 +111,8 @@ CREATE TABLE IF NOT EXISTS stats_weekly (
     UNIQUE(stat_year, stat_week)
 );
 
-CREATE INDEX idx_stats_weekly_year_week ON stats_weekly(stat_year DESC, stat_week DESC);
-CREATE INDEX idx_stats_weekly_week_start ON stats_weekly(week_start_date DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_weekly_year_week ON stats_weekly(stat_year DESC, stat_week DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_weekly_week_start ON stats_weekly(week_start_date DESC);
 
 COMMENT ON TABLE stats_weekly IS 'Weekly aggregated statistics - one row per week (ISO week numbering)';
 COMMENT ON COLUMN stats_weekly.stat_week IS 'ISO week number (1-53)';
@@ -124,7 +140,7 @@ CREATE TABLE IF NOT EXISTS stats_monthly (
     UNIQUE(stat_year, stat_month)
 );
 
-CREATE INDEX idx_stats_monthly_year_month ON stats_monthly(stat_year DESC, stat_month DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_monthly_year_month ON stats_monthly(stat_year DESC, stat_month DESC);
 
 COMMENT ON TABLE stats_monthly IS 'Monthly aggregated statistics - one row per month';
 
@@ -148,7 +164,7 @@ CREATE TABLE IF NOT EXISTS stats_yearly (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_stats_yearly_year ON stats_yearly(stat_year DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_yearly_year ON stats_yearly(stat_year DESC);
 
 COMMENT ON TABLE stats_yearly IS 'Yearly aggregated statistics - one row per year';
 
@@ -164,7 +180,7 @@ CREATE TABLE IF NOT EXISTS stats_snapshots (
     active_sessions INTEGER DEFAULT 0
 );
 
-CREATE INDEX idx_stats_snapshots_time ON stats_snapshots(snapshot_time DESC);
+CREATE INDEX IF NOT EXISTS idx_stats_snapshots_time ON stats_snapshots(snapshot_time DESC);
 
 COMMENT ON TABLE stats_snapshots IS 'Real-time snapshots taken every 5-15 minutes for calculating averages and peaks. Note: concurrent_users and radio_listeners are SEPARATE services - someone can listen to radio without being in chat, and vice versa.';
 COMMENT ON COLUMN stats_snapshots.concurrent_users IS 'Number of CHAT users in sessions table at snapshot time (excludes radio-only listeners)';

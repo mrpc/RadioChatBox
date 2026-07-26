@@ -8,14 +8,24 @@ ALTER TABLE stats_hourly
 ADD COLUMN IF NOT EXISTS radio_listeners_avg INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS radio_listeners_peak INTEGER DEFAULT 0;
 
--- Migrate existing data from radio_listeners to radio_listeners_avg
-UPDATE stats_hourly 
-SET radio_listeners_avg = radio_listeners,
-    radio_listeners_peak = radio_listeners
-WHERE radio_listeners IS NOT NULL;
+-- Migrate existing data from radio_listeners to radio_listeners_avg.
+-- Guarded so a re-run (after the column has been dropped below) does not fail
+-- to even parse a reference to the now-missing column.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'stats_hourly' AND column_name = 'radio_listeners'
+    ) THEN
+        UPDATE stats_hourly
+        SET radio_listeners_avg = radio_listeners,
+            radio_listeners_peak = radio_listeners
+        WHERE radio_listeners IS NOT NULL;
+    END IF;
+END $$;
 
 -- Remove old radio_listeners column (replaced by avg and peak)
-ALTER TABLE stats_hourly 
+ALTER TABLE stats_hourly
 DROP COLUMN IF EXISTS radio_listeners;
 
 -- Add column comments

@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS admin_notifications (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_admin_notifications_created_at ON admin_notifications(created_at DESC);
-CREATE INDEX idx_admin_notifications_type ON admin_notifications(notification_type);
-CREATE INDEX idx_admin_notifications_metadata ON admin_notifications USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS idx_admin_notifications_created_at ON admin_notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications(notification_type);
+CREATE INDEX IF NOT EXISTS idx_admin_notifications_metadata ON admin_notifications USING GIN (metadata);
 
 COMMENT ON TABLE admin_notifications IS 'Notifications for admin panel - each notification is shared across all admins';
 COMMENT ON COLUMN admin_notifications.notification_type IS 'Type of notification (fake_user_dm, report, suspicious_activity, etc.)';
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS admin_notification_reads (
     UNIQUE(notification_id, admin_username)
 );
 
-CREATE INDEX idx_admin_notification_reads_notification ON admin_notification_reads(notification_id);
-CREATE INDEX idx_admin_notification_reads_admin ON admin_notification_reads(admin_username);
+CREATE INDEX IF NOT EXISTS idx_admin_notification_reads_notification ON admin_notification_reads(notification_id);
+CREATE INDEX IF NOT EXISTS idx_admin_notification_reads_admin ON admin_notification_reads(admin_username);
 
 COMMENT ON TABLE admin_notification_reads IS 'Tracks which admins have read which notifications - per-admin read states';
 COMMENT ON COLUMN admin_notification_reads.notification_id IS 'Reference to the notification';
