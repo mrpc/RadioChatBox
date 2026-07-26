@@ -5,33 +5,52 @@ namespace RadioChatBox\Migrations;
 use Pramnos\Database\Migration;
 
 /**
- * Baselined from database/migrations/012_backfill_all_message_user_ids.sql.
+ * Migrated from database/migrations/012_backfill_all_message_user_ids.sql.
  *
- * Runs the original, idempotent RadioChatBox SQL verbatim (the file remains the
- * single source of truth). On an existing database every statement is a no-op
- * (guarded with IF [NOT] EXISTS / ON CONFLICT), so the first `migrate` run simply
- * records it in schemaversion; on a fresh database it builds the schema.
+ * PostgreSQL-specific SQL (plpgsql functions / triggers / guarded DO blocks /
+ * data backfills) that the schema-builder DSL cannot express, kept verbatim and
+ * self-contained. Idempotent, so the tracked runner records it as applied on an
+ * existing database and it builds the schema on a fresh one.
  */
 final class BackfillAllMessageUserIds extends Migration
 {
-    public $description = 'Baselined: 012_backfill_all_message_user_ids.sql';
+    public $description = 'Migrated: 012_backfill_all_message_user_ids.sql';
 
-    // The SQL files manage their own BEGIN/COMMIT and mix DDL that Postgres will
-    // not run inside a wrapping transaction, so do not double-wrap here.
+    // The SQL manages its own transactions; do not double-wrap.
     public bool $transactional = false;
 
     public function up(): void
     {
-        $root = defined('ROOT') ? ROOT : dirname(__DIR__, 2);
-        $sql = (string) file_get_contents($root . '/database/migrations/012_backfill_all_message_user_ids.sql');
-        if (trim($sql) !== '') {
-            $this->DB()->statement($sql);
-        }
+        $sql = <<<'SQL'
+-- Migration 012: Backfill user_id for ALL messages where username matches a registered user
+-- This updates both public messages and private messages
+
+-- Update public messages
+UPDATE messages m
+SET user_id = u.id
+FROM users u
+WHERE m.username = u.username
+  AND m.user_id IS NULL;
+
+-- Update private messages from_user_id
+UPDATE private_messages pm
+SET from_user_id = u.id
+FROM users u
+WHERE pm.from_username = u.username
+  AND pm.from_user_id IS NULL;
+
+-- Update private messages to_user_id
+UPDATE private_messages pm
+SET to_user_id = u.id
+FROM users u
+WHERE pm.to_username = u.username
+  AND pm.to_user_id IS NULL;
+SQL;
+        $this->DB()->statement($sql);
     }
 
     public function down(): void
     {
-        // Baselined migration: no automated rollback. The original SQL is
-        // additive/idempotent and predates the framework runner.
+        // Baselined migration: no automated rollback.
     }
 }

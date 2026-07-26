@@ -2,36 +2,33 @@
 
 namespace RadioChatBox\Migrations;
 
+use Pramnos\Database\Blueprint;
 use Pramnos\Database\Migration;
 
 /**
- * Baselined from database/migrations/020_add_pinned_track_to_messages.sql.
+ * Let a public chat message pin the track that was playing when it was sent.
  *
- * Runs the original, idempotent RadioChatBox SQL verbatim (the file remains the
- * single source of truth). On an existing database every statement is a no-op
- * (guarded with IF [NOT] EXISTS / ON CONFLICT), so the first `migrate` run simply
- * records it in schemaversion; on a fresh database it builds the schema.
+ * Native SchemaBuilder rewrite of database/migrations/020_add_pinned_track_to_messages.sql.
+ * (This column is not created by init.sql, so no existence guard is needed.)
  */
 final class AddPinnedTrackToMessages extends Migration
 {
-    public $description = 'Baselined: 020_add_pinned_track_to_messages.sql';
+    public $description = 'Add pinned_track to messages';
 
-    // The SQL files manage their own BEGIN/COMMIT and mix DDL that Postgres will
-    // not run inside a wrapping transaction, so do not double-wrap here.
     public bool $transactional = false;
 
     public function up(): void
     {
-        $root = defined('ROOT') ? ROOT : dirname(__DIR__, 2);
-        $sql = (string) file_get_contents($root . '/database/migrations/020_add_pinned_track_to_messages.sql');
-        if (trim($sql) !== '') {
-            $this->DB()->statement($sql);
-        }
+        $this->schema()->table('messages', function (Blueprint $table) {
+            $table->string('pinned_track', 500)->nullable()->default(null)
+                ->comment('Snapshot of the now-playing track pinned to this message (NULL if none).');
+        });
     }
 
     public function down(): void
     {
-        // Baselined migration: no automated rollback. The original SQL is
-        // additive/idempotent and predates the framework runner.
+        $this->schema()->table('messages', function (Blueprint $table) {
+            $table->dropColumn('pinned_track');
+        });
     }
 }

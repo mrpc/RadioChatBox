@@ -5,33 +5,44 @@ namespace RadioChatBox\Migrations;
 use Pramnos\Database\Migration;
 
 /**
- * Baselined from database/migrations/014_optimize_private_messages_indexes.sql.
+ * Migrated from database/migrations/014_optimize_private_messages_indexes.sql.
  *
- * Runs the original, idempotent RadioChatBox SQL verbatim (the file remains the
- * single source of truth). On an existing database every statement is a no-op
- * (guarded with IF [NOT] EXISTS / ON CONFLICT), so the first `migrate` run simply
- * records it in schemaversion; on a fresh database it builds the schema.
+ * PostgreSQL-specific SQL (plpgsql functions / triggers / guarded DO blocks /
+ * data backfills) that the schema-builder DSL cannot express, kept verbatim and
+ * self-contained. Idempotent, so the tracked runner records it as applied on an
+ * existing database and it builds the schema on a fresh one.
  */
 final class OptimizePrivateMessagesIndexes extends Migration
 {
-    public $description = 'Baselined: 014_optimize_private_messages_indexes.sql';
+    public $description = 'Migrated: 014_optimize_private_messages_indexes.sql';
 
-    // The SQL files manage their own BEGIN/COMMIT and mix DDL that Postgres will
-    // not run inside a wrapping transaction, so do not double-wrap here.
+    // The SQL manages its own transactions; do not double-wrap.
     public bool $transactional = false;
 
     public function up(): void
     {
-        $root = defined('ROOT') ? ROOT : dirname(__DIR__, 2);
-        $sql = (string) file_get_contents($root . '/database/migrations/014_optimize_private_messages_indexes.sql');
-        if (trim($sql) !== '') {
-            $this->DB()->statement($sql);
-        }
+        $sql = <<<'SQL'
+-- Migration 014: Optimize private_messages indexes for conversation queries
+-- Created: 2026-01-09
+-- Description: Adds composite index to speed up private message conversation queries
+
+-- Add composite index for conversation queries
+-- This optimizes queries that filter by both usernames and session_ids
+CREATE INDEX IF NOT EXISTS idx_pm_conversation ON private_messages(
+    from_username, to_username, from_session_id, to_session_id
+);
+
+-- This index speeds up queries like:
+-- WHERE (from_username = ? AND from_session_id = ? AND to_username = ?)
+--    OR (from_username = ? AND to_username = ? AND to_session_id = ?)
+
+COMMENT ON INDEX idx_pm_conversation IS 'Optimizes private message conversation queries by covering common WHERE clauses';
+SQL;
+        $this->DB()->statement($sql);
     }
 
     public function down(): void
     {
-        // Baselined migration: no automated rollback. The original SQL is
-        // additive/idempotent and predates the framework runner.
+        // Baselined migration: no automated rollback.
     }
 }

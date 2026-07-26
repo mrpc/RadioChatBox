@@ -53,25 +53,29 @@ class MigrationBaselineTest extends TestCase
     }
 
     /**
-     * Every Migration class file references a SQL file that actually exists, so a
-     * baselined migration can never point at a deleted/renamed SQL file.
+     * Every Migration class actually implements up() — the migrations are
+     * self-contained (inline SQL via $this->DB()->statement(), or the schema
+     * builder), never a leftover scaffold stub. Guards against a generated-but-
+     * empty migration silently doing nothing.
      */
-    public function testEveryMigrationClassReferencesAnExistingSqlFile(): void
+    public function testEveryMigrationClassImplementsUp(): void
     {
         $files = glob(self::MIG_DIR . '/*.php') ?: [];
         $this->assertNotEmpty($files);
 
         foreach ($files as $file) {
             $src = (string) file_get_contents($file);
-            $this->assertMatchesRegularExpression(
-                '/database\/migrations\/[^\']+\.sql/',
+            $name = basename($file);
+
+            $this->assertStringNotContainsString(
+                'TODO: implement',
                 $src,
-                basename($file) . ' does not reference a database/migrations SQL file.'
+                "{$name} still contains the scaffold stub — up() is not implemented."
             );
-            preg_match('/database\/migrations\/([^\']+\.sql)/', $src, $m);
-            $this->assertFileExists(
-                self::SQL_DIR . '/' . $m[1],
-                basename($file) . " references missing SQL file {$m[1]}."
+            $this->assertMatchesRegularExpression(
+                '/\$this->DB\(\)->statement\(|\$this->schema\(\)/',
+                $src,
+                "{$name} does not run any SQL or schema change in up()."
             );
         }
     }

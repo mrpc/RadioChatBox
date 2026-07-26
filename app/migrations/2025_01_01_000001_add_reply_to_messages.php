@@ -5,33 +5,40 @@ namespace RadioChatBox\Migrations;
 use Pramnos\Database\Migration;
 
 /**
- * Baselined from database/migrations/001_add_reply_to_messages.sql.
+ * Migrated from database/migrations/001_add_reply_to_messages.sql.
  *
- * Runs the original, idempotent RadioChatBox SQL verbatim (the file remains the
- * single source of truth). On an existing database every statement is a no-op
- * (guarded with IF [NOT] EXISTS / ON CONFLICT), so the first `migrate` run simply
- * records it in schemaversion; on a fresh database it builds the schema.
+ * PostgreSQL-specific SQL (plpgsql functions / triggers / guarded DO blocks /
+ * data backfills) that the schema-builder DSL cannot express, kept verbatim and
+ * self-contained. Idempotent, so the tracked runner records it as applied on an
+ * existing database and it builds the schema on a fresh one.
  */
 final class AddReplyToMessages extends Migration
 {
-    public $description = 'Baselined: 001_add_reply_to_messages.sql';
+    public $description = 'Migrated: 001_add_reply_to_messages.sql';
 
-    // The SQL files manage their own BEGIN/COMMIT and mix DDL that Postgres will
-    // not run inside a wrapping transaction, so do not double-wrap here.
+    // The SQL manages its own transactions; do not double-wrap.
     public bool $transactional = false;
 
     public function up(): void
     {
-        $root = defined('ROOT') ? ROOT : dirname(__DIR__, 2);
-        $sql = (string) file_get_contents($root . '/database/migrations/001_add_reply_to_messages.sql');
-        if (trim($sql) !== '') {
-            $this->DB()->statement($sql);
-        }
+        $sql = <<<'SQL'
+-- Add reply_to column to messages table for message threading
+-- This allows users to reply to specific messages and maintain conversation context
+
+ALTER TABLE messages
+ADD COLUMN IF NOT EXISTS reply_to VARCHAR(255) DEFAULT NULL;
+
+-- Add foreign key reference (soft reference since message_id is not a true FK)
+CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to);
+
+-- Add comment for documentation
+COMMENT ON COLUMN messages.reply_to IS 'References the message_id of the parent message being replied to';
+SQL;
+        $this->DB()->statement($sql);
     }
 
     public function down(): void
     {
-        // Baselined migration: no automated rollback. The original SQL is
-        // additive/idempotent and predates the framework runner.
+        // Baselined migration: no automated rollback.
     }
 }

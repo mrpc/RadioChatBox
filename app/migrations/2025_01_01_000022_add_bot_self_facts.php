@@ -2,36 +2,33 @@
 
 namespace RadioChatBox\Migrations;
 
+use Pramnos\Database\Blueprint;
 use Pramnos\Database\Migration;
 
 /**
- * Baselined from database/migrations/025_add_bot_self_facts.sql.
+ * A bot's stable self-facts "canon" (one per fake user).
  *
- * Runs the original, idempotent RadioChatBox SQL verbatim (the file remains the
- * single source of truth). On an existing database every statement is a no-op
- * (guarded with IF [NOT] EXISTS / ON CONFLICT), so the first `migrate` run simply
- * records it in schemaversion; on a fresh database it builds the schema.
+ * Native SchemaBuilder rewrite of database/migrations/025_add_bot_self_facts.sql.
+ * (This column is not created by init.sql, so no existence guard is needed.)
  */
 final class AddBotSelfFacts extends Migration
 {
-    public $description = 'Baselined: 025_add_bot_self_facts.sql';
+    public $description = 'Add bot_self_facts to fake_users';
 
-    // The SQL files manage their own BEGIN/COMMIT and mix DDL that Postgres will
-    // not run inside a wrapping transaction, so do not double-wrap here.
     public bool $transactional = false;
 
     public function up(): void
     {
-        $root = defined('ROOT') ? ROOT : dirname(__DIR__, 2);
-        $sql = (string) file_get_contents($root . '/database/migrations/025_add_bot_self_facts.sql');
-        if (trim($sql) !== '') {
-            $this->DB()->statement($sql);
-        }
+        $this->schema()->table('fake_users', function (Blueprint $table) {
+            $table->text('bot_self_facts')->nullable()
+                ->comment('Canon of stable self-facts the bot has committed to (appearance, personal details), injected into every reply so it stays consistent across conversations.');
+        });
     }
 
     public function down(): void
     {
-        // Baselined migration: no automated rollback. The original SQL is
-        // additive/idempotent and predates the framework runner.
+        $this->schema()->table('fake_users', function (Blueprint $table) {
+            $table->dropColumn('bot_self_facts');
+        });
     }
 }

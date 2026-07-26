@@ -5,33 +5,52 @@ namespace RadioChatBox\Migrations;
 use Pramnos\Database\Migration;
 
 /**
- * Baselined from database/migrations/013_add_display_name_snapshots.sql.
+ * Migrated from database/migrations/013_add_display_name_snapshots.sql.
  *
- * Runs the original, idempotent RadioChatBox SQL verbatim (the file remains the
- * single source of truth). On an existing database every statement is a no-op
- * (guarded with IF [NOT] EXISTS / ON CONFLICT), so the first `migrate` run simply
- * records it in schemaversion; on a fresh database it builds the schema.
+ * PostgreSQL-specific SQL (plpgsql functions / triggers / guarded DO blocks /
+ * data backfills) that the schema-builder DSL cannot express, kept verbatim and
+ * self-contained. Idempotent, so the tracked runner records it as applied on an
+ * existing database and it builds the schema on a fresh one.
  */
 final class AddDisplayNameSnapshots extends Migration
 {
-    public $description = 'Baselined: 013_add_display_name_snapshots.sql';
+    public $description = 'Migrated: 013_add_display_name_snapshots.sql';
 
-    // The SQL files manage their own BEGIN/COMMIT and mix DDL that Postgres will
-    // not run inside a wrapping transaction, so do not double-wrap here.
+    // The SQL manages its own transactions; do not double-wrap.
     public bool $transactional = false;
 
     public function up(): void
     {
-        $root = defined('ROOT') ? ROOT : dirname(__DIR__, 2);
-        $sql = (string) file_get_contents($root . '/database/migrations/013_add_display_name_snapshots.sql');
-        if (trim($sql) !== '') {
-            $this->DB()->statement($sql);
-        }
+        $sql = <<<'SQL'
+-- Migration 013: Add display_name snapshots to messages for audit purposes
+-- Created: 2026-01-09
+-- Description: Stores display_name at message send time for historical audit trail.
+--              UI continues to show current display_name via JOINs, but admins can 
+--              see what name was used when message was actually sent.
+
+BEGIN;
+
+-- Add display_name snapshot to public messages
+ALTER TABLE messages 
+ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
+
+COMMENT ON COLUMN messages.display_name IS 'Display name at time message was sent (snapshot for audit trail - UI shows current display_name via JOIN)';
+
+-- Add display_name snapshots to private messages
+ALTER TABLE private_messages
+ADD COLUMN IF NOT EXISTS from_display_name VARCHAR(100),
+ADD COLUMN IF NOT EXISTS to_display_name VARCHAR(100);
+
+COMMENT ON COLUMN private_messages.from_display_name IS 'Sender display name at time message was sent (snapshot for audit trail - UI shows current display_name via JOIN)';
+COMMENT ON COLUMN private_messages.to_display_name IS 'Recipient display name at time message was sent (snapshot for audit trail - UI shows current display_name via JOIN)';
+
+COMMIT;
+SQL;
+        $this->DB()->statement($sql);
     }
 
     public function down(): void
     {
-        // Baselined migration: no automated rollback. The original SQL is
-        // additive/idempotent and predates the framework runner.
+        // Baselined migration: no automated rollback.
     }
 }
