@@ -32,6 +32,21 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('μην κανονίζεις συναντήσεις από κοντά', $prompt);
     }
 
+    public function testSplitIntoMessagesBreaksOnLinesAndCaps(): void
+    {
+        // A single line stays one message.
+        $this->assertSame(['μονο ένα'], BotService::splitIntoMessages('μονο ένα'));
+
+        // Lines become separate messages; blank lines are dropped.
+        $this->assertSame(['πρωτο', 'δευτερο'], BotService::splitIntoMessages("πρωτο\nδευτερο"));
+        $this->assertSame(['α', 'β'], BotService::splitIntoMessages("α\n\n  \nβ"));
+
+        // Overflow beyond the cap folds into the last message, never dropped.
+        $capped = BotService::splitIntoMessages("1\n2\n3\n4\n5\n6");
+        $this->assertCount(4, $capped);
+        $this->assertSame('4 5 6', $capped[3]);
+    }
+
     public function testTheSelfFactsCanonIsInjectedIntoThePrompt(): void
     {
         // Facts the bot has committed to must reach every reply so it stays

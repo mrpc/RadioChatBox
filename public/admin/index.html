@@ -2503,6 +2503,15 @@
                             </small>
                         </div>
                         <div class="form-group">
+                            <label>Reply as several messages (%)</label>
+                            <input type="number" id="setting-bot-multi-message-chance" min="0" max="100" placeholder="25">
+                            <small>
+                                Chance a reply comes out as 2-3 short messages in a row instead of one,
+                                like people do in chat. Delivered as separate bubbles with their own typing
+                                delays. 0 = always a single message.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>History sent as context (messages)</label>
                             <input type="number" id="setting-bot-history-limit" min="2" max="100" placeholder="20">
                             <small>More history means better answers and a bigger request.</small>
@@ -7364,6 +7373,7 @@
                     document.getElementById('setting-bot-ignore-chance').value = settings.bot_ignore_chance ?? '30';
                     document.getElementById('setting-bot-ignore-per-active-chat').value = settings.bot_ignore_chance_per_active_chat ?? '5';
                     document.getElementById('setting-bot-returning-peer-boost').value = settings.bot_returning_peer_reply_boost ?? '80';
+                    document.getElementById('setting-bot-multi-message-chance').value = settings.bot_multi_message_chance ?? '25';
                     document.getElementById('setting-bot-insult-threshold').value = settings.bot_insult_block_threshold ?? '3';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
                     document.getElementById('setting-bot-summary-enabled').checked = settings.bot_summary_enabled !== 'false';
@@ -7730,6 +7740,9 @@
                 bot_returning_peer_reply_boost: document.getElementById('setting-bot-returning-peer-boost').value === ''
                     ? '80'
                     : document.getElementById('setting-bot-returning-peer-boost').value,
+                bot_multi_message_chance: document.getElementById('setting-bot-multi-message-chance').value === ''
+                    ? '25'
+                    : document.getElementById('setting-bot-multi-message-chance').value,
                 bot_insult_block_threshold: document.getElementById('setting-bot-insult-threshold').value === ''
                     ? '3'
                     : document.getElementById('setting-bot-insult-threshold').value,

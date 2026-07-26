@@ -716,6 +716,49 @@ class BotServicePipelineTest extends TestCase
         $this->assertNotEmpty(array_filter($jobs, fn ($j) => $j['type'] === BotService::JOB_REPLY));
     }
 
+    public function testAMultiLineReplyIsDeliveredAsSeparateBubblesCountingOneTurn(): void
+    {
+        $this->incoming('geia');
+        $this->llm->reply = "γεια!\nτι κανεις;"; // two lines
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $jobs = array_values(array_filter(
+            $this->claimAll(),
+            fn ($j) => $j['type'] === BotService::JOB_DELIVER
+        ));
+        $this->assertCount(2, $jobs, 'each line becomes its own bubble');
+
+        $messages = array_map(fn ($j) => $j['payload']['message'], $jobs);
+        sort($messages);
+        $this->assertSame(['γεια!', 'τι κανεις;'], $messages);
+
+        // Exactly one bubble is the final one (counts the turn, may end the chat).
+        $finals = array_filter($jobs, fn ($j) => $j['payload']['is_final']);
+        $this->assertCount(1, $finals);
+
+        // Delivering both spends the budget once, not twice.
+        foreach ($jobs as $job) {
+            $this->bot->processDeliverJob($job['payload']);
+        }
+        $this->assertSame(1, (int) $this->threadRow()['messages_sent']);
+    }
+
+    public function testTheMultiMessageDirectiveFollowsTheConfiguredChance(): void
+    {
+        $this->incoming('geia');
+
+        $this->settings->values['bot_multi_message_chance'] = '100';
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $this->assertStringContainsString('ΑΥΤΗ ΤΗ ΦΟΡΑ', end($this->llm->calls)['system']);
+
+        $this->llm->calls = [];
+        $this->settings->values['bot_multi_message_chance'] = '0';
+        $this->incoming('kai kati allo');
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $this->assertStringNotContainsString('ΑΥΤΗ ΤΗ ΦΟΡΑ', end($this->llm->calls)['system']);
+    }
+
     public function testDeliveryIsDroppedWhenSupersededByANewerMessage(): void
     {
         $this->incoming('older');
