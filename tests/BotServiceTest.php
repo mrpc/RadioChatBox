@@ -84,6 +84,22 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('ΑΝ ΣΕ ΤΕΣΤΑΡΟΥΝ', $custom);
     }
 
+    /**
+     * Below the block threshold the LLM writes the reply to an insult, and by
+     * default it de-escalates like a therapist — a bot tell. The prompt must
+     * carry the guidance to react like a real, insulted person instead, and it
+     * must survive a custom prompt.
+     */
+    public function testTheRudenessGuardrailIsAlwaysPresent(): void
+    {
+        $generated = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+        $this->assertStringContainsString('ΑΝ ΣΕ ΒΡΙΣΟΥΝ', $generated);
+        $this->assertStringContainsString('ΜΗΝ απαντάς διπλωματικά', $generated);
+
+        $custom = BotService::buildSystemPrompt(['nickname' => 'Maria', 'bot_custom_prompt' => 'δικό μου']);
+        $this->assertStringContainsString('ΑΝ ΣΕ ΒΡΙΣΟΥΝ', $custom);
+    }
+
     public function testTheContextTellsBotsThereAreNoProfilesOrInAppLinks(): void
     {
         // Bots were inventing a "link on my profile"; the platform has no such

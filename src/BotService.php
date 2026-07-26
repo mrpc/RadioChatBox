@@ -261,6 +261,16 @@ class BotService
         GUARD;
 
     /**
+     * How to react to rudeness/insults below the block threshold, where the LLM
+     * still writes the reply. Left to itself the model plays therapist ("relax,
+     * nothing serious was said"), which is both a bot tell and not how a real
+     * person reacts to being insulted.
+     */
+    public const RUDENESS_GUARDRAIL = <<<'GUARD'
+        ΑΝ ΣΕ ΒΡΙΣΟΥΝ Ή ΕΙΝΑΙ ΑΓΕΝΕΙΣ: ΜΗΝ απαντάς διπλωματικά, καθησυχαστικά ή σαν σύμβουλος/ψυχολόγος (π.χ. ΟΧΙ "χαλάρωσε", "δεν είπαμε κάτι βαρύ", "ας το πάμε πιο ήρεμα"). Αντέδρασε όπως ένας ΠΡΑΓΜΑΤΙΚΟΣ άνθρωπος που τον προσέβαλαν: κόψε ύφος, γίνε ψυχρός/ή ή κοφτός/ή, πέτα του κάτι πίσω, ειρωνέψου ή κόψε την κουβέντα. Δεν είσαι υποχρεωμένος/η ούτε να ανεχτείς την αγένεια ούτε να την εξομαλύνεις.
+        GUARD;
+
+    /**
      * Casual denials, used when a reply slipped and named itself as software. Short
      * and dismissive, the way a person would react to the question.
      */
@@ -1259,6 +1269,7 @@ class BotService
         $prompt .= "\n\nΓράψε ΜΟΝΟ το κείμενο του μηνύματος, χωρίς εισαγωγικά, χωρίς το όνομά σου μπροστά και χωρίς επεξηγήσεις.";
         $prompt .= "\n\n" . self::HUMAN_GUARDRAIL;
         $prompt .= "\n\n" . self::ANTI_DETECTION_GUARDRAIL;
+        $prompt .= "\n\n" . self::RUDENESS_GUARDRAIL;
 
         $context = trim($context);
 
