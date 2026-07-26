@@ -143,6 +143,15 @@ class BotServicePipelineTest extends TestCase
         $stmt->execute();
     }
 
+    /** A live thread for this bot with another peer, replied to just now. */
+    private function insertActiveThread(string $peer): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads (fake_user_id, peer_username, messages_sent, last_reply_at)
+             VALUES (?, ?, 1, NOW())'
+        )->execute([$this->fakeUserId, $peer]);
+    }
+
     /** This bot's row from listThreads(), or null if it is not listed. */
     private function threadInList(): ?array
     {
@@ -232,6 +241,33 @@ class BotServicePipelineTest extends TestCase
 
         $this->settings->values['bot_replies_enabled'] = 'false';
         $this->assertFalse($this->bot->willAutoReply(['bot_enabled' => true]));
+    }
+
+    public function testIgnoreModifierAccessorsFallBackToDefaults(): void
+    {
+        $this->assertSame(BotService::DEFAULT_IGNORE_CHANCE_PER_ACTIVE_CHAT, $this->bot->ignoreChancePerActiveChat());
+        $this->assertSame(BotService::DEFAULT_RETURNING_PEER_REPLY_BOOST, $this->bot->returningPeerReplyBoost());
+    }
+
+    public function testEffectiveIgnoreRisesWithActiveChatsAndFallsForAKnownPeer(): void
+    {
+        $this->settings->values['bot_ignore_chance'] = '10';
+        $this->settings->values['bot_ignore_chance_per_active_chat'] = '5';
+        $this->settings->values['bot_returning_peer_reply_boost'] = '80';
+
+        $fakeUser = ['id' => $this->fakeUserId, 'nickname' => $this->nick, 'bot_ignore_chance' => null];
+
+        // Stranger, no other chats: just the base chance.
+        $this->assertSame(10, $this->bot->effectiveIgnoreChance($fakeUser, $this->peer));
+
+        // Two other live conversations: +5 each.
+        $this->insertActiveThread('peerA_' . $this->peer);
+        $this->insertActiveThread('peerB_' . $this->peer);
+        $this->assertSame(20, $this->bot->effectiveIgnoreChance($fakeUser, $this->peer));
+
+        // The peer is now someone the bot has answered before: -80, clamped at 0.
+        $this->botSaid('geia');
+        $this->assertSame(0, $this->bot->effectiveIgnoreChance($fakeUser, $this->peer));
     }
 
     public function testConversationProviderHonoursThePerBotOverride(): void

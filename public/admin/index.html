@@ -2472,6 +2472,22 @@
                             </small>
                         </div>
                         <div class="form-group">
+                            <label>+ Ignore per active chat (%)</label>
+                            <input type="number" id="setting-bot-ignore-per-active-chat" min="0" max="100" placeholder="5">
+                            <small>
+                                Added to the ignore chance for each other conversation the bot is
+                                already in — a busy bot picks up fewer new people. 0 = off.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>− Ignore for a known peer (%)</label>
+                            <input type="number" id="setting-bot-returning-peer-boost" min="0" max="100" placeholder="80">
+                            <small>
+                                Subtracted from the ignore chance when the peer is someone the bot has
+                                replied to before — a familiar face is answered far more readily.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>History sent as context (messages)</label>
                             <input type="number" id="setting-bot-history-limit" min="2" max="100" placeholder="20">
                             <small>More history means better answers and a bigger request.</small>
@@ -7211,6 +7227,8 @@
                     botLiveModelsSource = settings.bot_available_models_source || 'built-in';
                     document.getElementById('setting-bot-max-messages').value = settings.bot_max_messages_per_thread || '4';
                     document.getElementById('setting-bot-ignore-chance').value = settings.bot_ignore_chance ?? '30';
+                    document.getElementById('setting-bot-ignore-per-active-chat').value = settings.bot_ignore_chance_per_active_chat ?? '5';
+                    document.getElementById('setting-bot-returning-peer-boost').value = settings.bot_returning_peer_reply_boost ?? '80';
                     document.getElementById('setting-bot-insult-threshold').value = settings.bot_insult_block_threshold ?? '3';
                     document.getElementById('setting-bot-history-limit').value = settings.bot_history_limit || '20';
                     document.getElementById('setting-bot-summary-enabled').checked = settings.bot_summary_enabled !== 'false';
@@ -7571,6 +7589,12 @@
                 bot_ignore_chance: document.getElementById('setting-bot-ignore-chance').value === ''
                     ? '30'
                     : document.getElementById('setting-bot-ignore-chance').value,
+                bot_ignore_chance_per_active_chat: document.getElementById('setting-bot-ignore-per-active-chat').value === ''
+                    ? '5'
+                    : document.getElementById('setting-bot-ignore-per-active-chat').value,
+                bot_returning_peer_reply_boost: document.getElementById('setting-bot-returning-peer-boost').value === ''
+                    ? '80'
+                    : document.getElementById('setting-bot-returning-peer-boost').value,
                 bot_insult_block_threshold: document.getElementById('setting-bot-insult-threshold').value === ''
                     ? '3'
                     : document.getElementById('setting-bot-insult-threshold').value,

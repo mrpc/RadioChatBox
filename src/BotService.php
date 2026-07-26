@@ -190,6 +190,26 @@ class BotService
     public const DEFAULT_IGNORE_CHANCE = 30;
 
     /**
+     * Added to the ignore chance for each other conversation the bot is already
+     * in: a person juggling several chats picks up fewer new ones. Percentage
+     * points per active chat.
+     */
+    public const DEFAULT_IGNORE_CHANCE_PER_ACTIVE_CHAT = 5;
+
+    /**
+     * Subtracted from the ignore chance when the peer is someone the bot has
+     * replied to before: you answer a familiar face far more readily than a
+     * stranger. Percentage points (a reply-chance boost).
+     */
+    public const DEFAULT_RETURNING_PEER_REPLY_BOOST = 80;
+
+    /**
+     * How recently a conversation must have had a bot reply to count as "active"
+     * for the per-active-chat ignore bump.
+     */
+    private const ACTIVE_CHAT_WINDOW_MINUTES = 30;
+
+    /**
      * The one rule that has to hold no matter how a bot is configured: it must
      * never come across as software.
      *
@@ -1301,7 +1321,7 @@ class BotService
             return false;
         }
 
-        $chance = $this->ignoreChanceFor($fakeUser);
+        $chance = $this->effectiveIgnoreChance($fakeUser, $peer);
         $ignore = $chance > 0 && random_int(1, 100) <= $chance;
 
         // Record the outcome either way, so a burst of messages before the first
@@ -1333,6 +1353,93 @@ class BotService
         }
 
         return max(0, min(100, (int) $chance));
+    }
+
+    /**
+     * The ignore chance actually used for a new conversation, adjusted for how
+     * busy the bot is and whether it knows the peer:
+     *   base + (active chats × per-chat bump) − (returning-peer reply boost)
+     * clamped to 0-100. A busy bot ignores new people more; a familiar peer is
+     * answered far more readily.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public function effectiveIgnoreChance(array $fakeUser, string $peer): int
+    {
+        $chance = $this->ignoreChanceFor($fakeUser);
+        $fakeUserId = (int) ($fakeUser['id'] ?? 0);
+
+        $perChat = $this->ignoreChancePerActiveChat();
+        if ($perChat > 0 && $fakeUserId > 0) {
+            $chance += $perChat * $this->countActiveChats($fakeUserId, $peer);
+        }
+
+        $boost = $this->returningPeerReplyBoost();
+        if ($boost > 0 && $this->hasRepliedToPeerBefore((string) ($fakeUser['nickname'] ?? ''), $peer)) {
+            $chance -= $boost;
+        }
+
+        return max(0, min(100, $chance));
+    }
+
+    public function ignoreChancePerActiveChat(): int
+    {
+        $value = $this->settings->get('bot_ignore_chance_per_active_chat', self::DEFAULT_IGNORE_CHANCE_PER_ACTIVE_CHAT);
+
+        return max(0, min(100, (int) $value));
+    }
+
+    public function returningPeerReplyBoost(): int
+    {
+        $value = $this->settings->get('bot_returning_peer_reply_boost', self::DEFAULT_RETURNING_PEER_REPLY_BOOST);
+
+        return max(0, min(100, (int) $value));
+    }
+
+    /**
+     * How many other conversations this bot is currently in: a live thread (not
+     * ended, blocked or ignored) with a bot reply inside the recency window. The
+     * conversation being decided is excluded via its peer.
+     */
+    private function countActiveChats(int $fakeUserId, string $excludePeer): int
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*)
+             FROM bot_threads
+             WHERE fake_user_id = :fid
+               AND peer_username <> :peer
+               AND farewell_sent_at IS NULL
+               AND blocked_at IS NULL
+               AND is_ignored = FALSE
+               AND last_reply_at IS NOT NULL
+               AND last_reply_at > NOW() - make_interval(mins => :window)"
+        );
+        $stmt->bindValue(':fid', $fakeUserId, PDO::PARAM_INT);
+        $stmt->bindValue(':peer', $excludePeer);
+        $stmt->bindValue(':window', self::ACTIVE_CHAT_WINDOW_MINUTES, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Whether this bot has ever sent a message to this peer — i.e. they are not
+     * strangers to each other.
+     */
+    private function hasRepliedToPeerBefore(string $fakeNickname, string $peer): bool
+    {
+        if ($fakeNickname === '' || $peer === '') {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM private_messages
+             WHERE from_username = :fake AND to_username = :peer
+             LIMIT 1'
+        );
+        $stmt->execute(['fake' => $fakeNickname, 'peer' => $peer]);
+
+        return $stmt->fetchColumn() !== false;
     }
 
     /**
