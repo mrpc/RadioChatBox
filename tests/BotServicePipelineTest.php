@@ -837,8 +837,8 @@ class BotServicePipelineTest extends TestCase
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
-        // Two calls: the summary, then the reply.
-        $this->assertCount(2, $this->llm->calls);
+        // Three calls: the summary, the self-facts extraction, then the reply.
+        $this->assertCount(3, $this->llm->calls);
         $this->assertStringContainsString('Συνόψισε', $this->llm->calls[0]['system']);
         $this->assertStringContainsString('user message 1', $this->llm->calls[0]['messages'][0]['content']);
 
@@ -846,9 +846,31 @@ class BotServicePipelineTest extends TestCase
         $this->assertNotSame('', $stored);
         $this->assertNotNull($this->threadRow()['summary_upto_id']);
 
-        // ...and the reply carries it.
-        $this->assertStringContainsString('Τι έχει προηγηθεί', $this->llm->calls[1]['system']);
-        $this->assertStringContainsString($stored, $this->llm->calls[1]['system']);
+        // ...and the reply (the last call) carries it.
+        $reply = end($this->llm->calls);
+        $this->assertStringContainsString('Τι έχει προηγηθεί', $reply['system']);
+        $this->assertStringContainsString($stored, $reply['system']);
+    }
+
+    public function testSelfFactsCanonIsBuiltOnTheSummaryCadence(): void
+    {
+        $this->settings->values['bot_history_limit'] = '4';
+        $this->longThread(5);
+        $this->llm->reply = 'ύψος 1.60, μπλε μαλλιά, πράσινα μάτια';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        // A self-facts extraction ran (its instruction is about the "canon")...
+        $ran = false;
+        foreach ($this->llm->calls as $call) {
+            if (str_contains($call['system'], 'canon')) { $ran = true; break; }
+        }
+        $this->assertTrue($ran, 'a self-facts extraction should run on the summary cadence');
+
+        // ...and the canon was stored on the fake user (bot-level, not per-thread).
+        $stmt = $this->pdo->prepare('SELECT bot_self_facts FROM fake_users WHERE id = ?');
+        $stmt->execute([$this->fakeUserId]);
+        $this->assertNotSame('', (string) $stmt->fetchColumn());
     }
 
     public function testASummaryIsNotRedoneForEveryNewMessage(): void
@@ -858,7 +880,7 @@ class BotServicePipelineTest extends TestCase
         $this->settings->values['bot_history_limit'] = '4';
         $this->longThread(5);
         $this->bot->processReplyJob($this->replyPayload(0));
-        $this->assertCount(2, $this->llm->calls, 'first reply summarises');
+        $this->assertCount(3, $this->llm->calls, 'first reply summarises and updates self-facts');
 
         $this->llm->calls = [];
         $this->incoming('kai kati allo');
@@ -897,7 +919,7 @@ class BotServicePipelineTest extends TestCase
         $this->longThread(4);
         $this->bot->processReplyJob($this->replyPayload(0));
 
-        $this->assertCount(2, $this->llm->calls, 'new dropped messages need a fresh summary');
+        $this->assertCount(3, $this->llm->calls, 'new dropped messages need a fresh summary (+ self-facts + reply)');
         // The previous summary is fed back in rather than re-reading everything.
         $this->assertStringContainsString('Περίληψη μέχρι τώρα', $this->llm->calls[0]['messages'][0]['content']);
         $this->assertGreaterThan($firstUpto, (int) $this->threadRow()['summary_upto_id']);

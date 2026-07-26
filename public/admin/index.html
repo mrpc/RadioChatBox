@@ -1796,6 +1796,12 @@
                                 <small style="color: #6b7280;">Replaces the generated prompt entirely. Leave empty unless you know what you're doing.</small>
                             </div>
 
+                            <div class="form-group">
+                                <label>Self-facts (canon)</label>
+                                <textarea id="fake-bot-self-facts" rows="3" maxlength="2000" placeholder="e.g. ύψος 1.60, μπλε μαλλιά, πράσινα μάτια — ό,τι πρέπει να λέει πάντα ίδιο για τον εαυτό του" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                                <small style="color: #6b7280;">Stable facts the bot has committed to (appearance, personal details). Kept consistent across all conversations, and updated automatically from what the bot says. You can seed or correct it here.</small>
+                            </div>
+
                             <div style="display: flex; gap: 15px;">
                                 <div class="form-group" style="flex: 1;">
                                     <label>LLM provider</label>
@@ -6489,6 +6495,7 @@
             document.getElementById('fake-bot-enabled').checked = !!user.bot_enabled;
             document.getElementById('fake-bot-persona').value = user.bot_persona || '';
             document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
+            document.getElementById('fake-bot-self-facts').value = user.bot_self_facts || '';
             populateFakeBotProviderOptions(user.bot_llm_provider || '', user.bot_llm_model || '');
             populateSelectOptions(
                 'fake-bot-language',
@@ -6579,6 +6586,7 @@
                 bot_enabled: document.getElementById('fake-bot-enabled').checked,
                 bot_persona: document.getElementById('fake-bot-persona').value.trim(),
                 bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
+                bot_self_facts: document.getElementById('fake-bot-self-facts').value.trim(),
                 bot_llm_provider: document.getElementById('fake-bot-provider').value,
                 bot_llm_model: document.getElementById('fake-bot-model').value,
                 bot_reply_language: document.getElementById('fake-bot-language').value,

@@ -179,6 +179,7 @@ class FakeUserServiceTest extends TestCase
             $service->updateBotSettings((int) $created['id'], [
                 'bot_enabled' => true,
                 'bot_persona' => 'content creator',
+                'bot_self_facts' => 'ύψος 1.60, μπλε μαλλιά',
                 'bot_reply_language' => 'greeklish',
                 'bot_ignore_chance' => 40,
             ]);
@@ -200,6 +201,7 @@ class FakeUserServiceTest extends TestCase
             $this->assertSame(29, $row['age']);
             $this->assertTrue($row['bot_enabled']);
             $this->assertSame('content creator', $row['bot_persona']);
+            $this->assertSame('ύψος 1.60, μπλε μαλλιά', $row['bot_self_facts']);
             $this->assertSame('greeklish', $row['bot_reply_language']);
             $this->assertSame(40, $row['bot_ignore_chance']);
         } finally {

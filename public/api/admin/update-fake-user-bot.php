@@ -59,6 +59,7 @@ try {
         'bot_enabled',
         'bot_persona',
         'bot_custom_prompt',
+        'bot_self_facts',
         'bot_farewell_messages',
         'bot_max_messages',
         'bot_ignore_chance',
@@ -76,7 +77,7 @@ try {
     }
 
     // Keep prompts to a sane size - they are sent on every LLM request.
-    foreach (['bot_persona', 'bot_custom_prompt'] as $key) {
+    foreach (['bot_persona', 'bot_custom_prompt', 'bot_self_facts'] as $key) {
         if (isset($options[$key]) && mb_strlen((string) $options[$key]) > 2000) {
             throw new InvalidArgumentException('Prompt fields are limited to 2000 characters');
         }

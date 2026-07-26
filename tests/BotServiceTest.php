@@ -32,6 +32,25 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('μην κανονίζεις συναντήσεις από κοντά', $prompt);
     }
 
+    public function testTheSelfFactsCanonIsInjectedIntoThePrompt(): void
+    {
+        // Facts the bot has committed to must reach every reply so it stays
+        // consistent (e.g. always the same appearance).
+        $prompt = BotService::buildSystemPrompt([
+            'nickname' => 'Maria',
+            'bot_self_facts' => "ύψος 1.60\nμπλε μαλλιά, πράσινα μάτια",
+        ]);
+
+        $this->assertStringContainsString('ΣΤΑΘΕΡΑ ΣΤΟΙΧΕΙΑ ΓΙΑ ΣΕΝΑ', $prompt);
+        $this->assertStringContainsString('μπλε μαλλιά', $prompt);
+    }
+
+    public function testTheSelfFactsBlockIsOmittedWhenEmpty(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+        $this->assertStringNotContainsString('ΣΤΑΘΕΡΑ ΣΤΟΙΧΕΙΑ ΓΙΑ ΣΕΝΑ', $prompt);
+    }
+
     public function testTheContextTellsBotsThereAreNoProfilesOrInAppLinks(): void
     {
         // Bots were inventing a "link on my profile"; the platform has no such

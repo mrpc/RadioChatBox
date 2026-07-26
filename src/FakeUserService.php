@@ -43,7 +43,7 @@ class FakeUserService
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                    bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
+                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
             FROM fake_users
             ORDER BY created_at DESC
         ");
@@ -59,7 +59,7 @@ class FakeUserService
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                    bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
+                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
             FROM fake_users
             WHERE nickname = ?
         ");
@@ -87,6 +87,7 @@ class FakeUserService
             'bot_enabled' => PDO::PARAM_BOOL,
             'bot_persona' => PDO::PARAM_STR,
             'bot_custom_prompt' => PDO::PARAM_STR,
+            'bot_self_facts' => PDO::PARAM_STR,
             'bot_farewell_messages' => PDO::PARAM_STR,
             'bot_max_messages' => PDO::PARAM_INT,
             'bot_ignore_chance' => PDO::PARAM_INT,
@@ -146,7 +147,7 @@ class FakeUserService
             RETURNING id, nickname, age, sex, location, is_active, created_at,
                       bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                       bot_typing_seconds_per_word, bot_farewell_messages,
-                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
+                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
         ");
 
         foreach ($values as $column => [$value, $type]) {
@@ -169,7 +170,7 @@ class FakeUserService
             SELECT id, nickname, age, sex, location, is_active, created_at,
                    bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                    bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
+                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
             FROM fake_users
             WHERE id = ?
         ");
@@ -265,7 +266,7 @@ class FakeUserService
                 RETURNING id, nickname, age, sex, location, is_active, created_at,
                           bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
                           bot_typing_seconds_per_word, bot_farewell_messages,
-                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance
+                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
             ");
             $stmt->execute([
                 'nickname' => $newNickname ?? $current['nickname'],
@@ -390,7 +391,7 @@ class FakeUserService
      */
     private const PORTABLE_COLUMNS = [
         'nickname', 'age', 'sex', 'location',
-        'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_max_messages',
+        'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_self_facts', 'bot_max_messages',
         'bot_typing_seconds_per_word', 'bot_farewell_messages',
         'bot_llm_provider', 'bot_llm_model', 'bot_reply_language', 'bot_ignore_chance',
     ];
