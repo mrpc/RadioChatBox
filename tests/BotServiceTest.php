@@ -42,6 +42,28 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('δεν υπάρχουν προφίλ', $prompt);
     }
 
+    public function testBotsAreToldNotToUseOverFamiliarAddressAndCannedLinesAreClean(): void
+    {
+        // The prompt instructs against "ρε"/"βρε" toward a stranger.
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+        $this->assertStringContainsString('ΥΦΟΣ', $prompt);
+        $this->assertStringContainsString('χρησιμοποιείς ΠΟΤΕ', $prompt);
+
+        // Canned strings reach the user without passing through the model, so
+        // they must not contain "ρε"/"βρε" themselves. Space-pad and use a
+        // byte-safe substring check (some lines carry emoji).
+        $canned = array_merge(
+            BotService::AI_DEFLECTIONS,
+            BotService::ABUSE_BRUSH_OFFS,
+            preg_split('/\R/', trim(BotService::DEFAULT_FAREWELLS))
+        );
+        foreach ($canned as $line) {
+            $padded = ' ' . $line . ' ';
+            $this->assertFalse(str_contains($padded, ' ρε '), $line);
+            $this->assertFalse(str_contains($padded, ' βρε '), $line);
+        }
+    }
+
     public function testBuildSystemPromptUsesMasculineArticle(): void
     {
         $prompt = BotService::buildSystemPrompt([
