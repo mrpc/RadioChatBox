@@ -73,11 +73,12 @@ try {
         $recipient = $stmt->fetch();
 
         $isFakeUser = false;
+        $fakeUserBotEnabled = false;
         if ($recipient) {
             $toSessionId = $recipient['session_id'];
         } else {
             // No live session. Check if it's an active fake user.
-            $stmt = $db->prepare("SELECT nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE");
+            $stmt = $db->prepare("SELECT nickname, bot_enabled FROM fake_users WHERE nickname = ? AND is_active = TRUE");
             $stmt->execute([$toUsername]);
             $fakeUser = $stmt->fetch();
 
@@ -85,6 +86,7 @@ try {
                 // Create a fake session ID for the fake user
                 $toSessionId = 'fake_' . md5($toUsername);
                 $isFakeUser = true;
+                $fakeUserBotEnabled = (bool) $fakeUser['bot_enabled'];
             } else {
                 // Grace period: the recipient has no live session, but they may
                 // have just gone offline (browser reload / unstable connection).
@@ -162,32 +164,41 @@ try {
         $prefix = Database::getRedisPrefix();
         $redis->publish($prefix . 'chat:private_messages', json_encode($messageData));
 
-        // If message was sent to a fake user, create admin notification
+        // If message was sent to a fake user, create admin notification —
+        // UNLESS an AI bot is going to answer it. A bot handles its own
+        // conversations, so alerting the admin about every DM to it is just
+        // spam. We still notify for fake users a human has to answer: bot
+        // disabled on this one, or auto-replies switched off globally.
         if ($isFakeUser) {
-            try {
-                $stmt = $db->prepare("SELECT create_fake_user_dm_notification(?, ?, ?, ?)");
-                $stmt->execute([
-                    $fromUsername,
-                    $toUsername,
-                    $message ?: '[Photo attachment]',
-                    $result['id']
-                ]);
-                $notificationId = $stmt->fetchColumn();
+            $botWillHandle = $fakeUserBotEnabled
+                && (new \RadioChatBox\SettingsService())->get('bot_replies_enabled', 'false') === 'true';
 
-                // Publish notification to Redis for real-time admin alerts
-                $notificationData = [
-                    'id' => $notificationId,
-                    'type' => 'fake_user_dm',
-                    'from_username' => $fromUsername,
-                    'to_username' => $toUsername,
-                    'message_preview' => substr($message ?: '[Photo attachment]', 0, 100),
-                    'message_id' => $result['id'],
-                    'timestamp' => time()
-                ];
-                $redis->publish($prefix . 'chat:admin_notifications', json_encode($notificationData));
-            } catch (Exception $e) {
-                // Log error but don't fail the message send
-                error_log("Failed to create admin notification: " . $e->getMessage());
+            if (!$botWillHandle) {
+                try {
+                    $stmt = $db->prepare("SELECT create_fake_user_dm_notification(?, ?, ?, ?)");
+                    $stmt->execute([
+                        $fromUsername,
+                        $toUsername,
+                        $message ?: '[Photo attachment]',
+                        $result['id']
+                    ]);
+                    $notificationId = $stmt->fetchColumn();
+
+                    // Publish notification to Redis for real-time admin alerts
+                    $notificationData = [
+                        'id' => $notificationId,
+                        'type' => 'fake_user_dm',
+                        'from_username' => $fromUsername,
+                        'to_username' => $toUsername,
+                        'message_preview' => substr($message ?: '[Photo attachment]', 0, 100),
+                        'message_id' => $result['id'],
+                        'timestamp' => time()
+                    ];
+                    $redis->publish($prefix . 'chat:admin_notifications', json_encode($notificationData));
+                } catch (Exception $e) {
+                    // Log error but don't fail the message send
+                    error_log("Failed to create admin notification: " . $e->getMessage());
+                }
             }
 
             // Schedule an automatic bot reply. This only queues a job (the LLM
