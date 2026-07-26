@@ -7,6 +7,22 @@ use PDO;
 class MessageFilter
 {
     /**
+     * Memoized "GIF feature enabled" flag. null = not yet resolved.
+     * Held as a class property (not a function static) so tests can clear it
+     * via resetCaches() after changing the gif_enabled setting.
+     */
+    private static ?bool $gifEnabledCache = null;
+
+    /**
+     * Test seam: forget cached settings-derived state so a changed setting is
+     * re-read on the next call. Mirrors Database::reset(); only needed in tests.
+     */
+    public static function resetCaches(): void
+    {
+        self::$gifEnabledCache = null;
+    }
+
+    /**
      * Filter message for public chat
      * Replaces blocked content with ***
      */
@@ -271,19 +287,17 @@ class MessageFilter
      */
     private static function isGifEnabled(): bool
     {
-        static $gifEnabled = null;
-        
-        if ($gifEnabled === null) {
+        if (self::$gifEnabledCache === null) {
             try {
                 $settingsService = new SettingsService();
-                $gifEnabled = $settingsService->get('gif_enabled', 'true') === 'true';
+                self::$gifEnabledCache = $settingsService->get('gif_enabled', 'true') === 'true';
             } catch (\Exception $e) {
                 // Default to true if we can't check settings
-                $gifEnabled = true;
+                self::$gifEnabledCache = true;
             }
         }
-        
-        return $gifEnabled;
+
+        return self::$gifEnabledCache;
     }
     
     /**

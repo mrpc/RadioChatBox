@@ -3,10 +3,59 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
+use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
+use RadioChatBox\SettingsService;
 
 class MessageFilterTest extends TestCase
 {
+    /** The gif_enabled value present before the test, so tearDown can restore it. */
+    private ?string $previousGifEnabled = null;
+
+    /**
+     * The GIF-preservation tests assert the feature is ON. That is gated by the
+     * `gif_enabled` setting, which lives in the shared database and can be left
+     * OFF by real admin use or other tests. To stay deterministic we force it on
+     * here (snapshotting the prior value to restore in tearDown) and clear
+     * MessageFilter's memoized flag so the change is picked up.
+     */
+    protected function setUp(): void
+    {
+        $pdo = Database::getPDO();
+        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt->execute(['gif_enabled']);
+        $value = $stmt->fetchColumn();
+        $this->previousGifEnabled = $value === false ? null : (string) $value;
+
+        $pdo->prepare(
+            'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+             ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+        )->execute(['gif_enabled', 'true']);
+
+        (new SettingsService())->invalidateCache();
+        MessageFilter::resetCaches();
+    }
+
+    /**
+     * Restore gif_enabled to exactly what it was, so this test never leaks state
+     * into the shared database (which is what made these tests flaky before).
+     */
+    protected function tearDown(): void
+    {
+        $pdo = Database::getPDO();
+        if ($this->previousGifEnabled === null) {
+            $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['gif_enabled']);
+        } else {
+            $pdo->prepare(
+                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+            )->execute(['gif_enabled', $this->previousGifEnabled]);
+        }
+
+        (new SettingsService())->invalidateCache();
+        MessageFilter::resetCaches();
+    }
+
     public function testFilterPublicMessageRemovesUrls()
     {
         $message = 'Check out this link: https://example.com';
