@@ -100,6 +100,17 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('ΑΝ ΣΕ ΒΡΙΣΟΥΝ', $custom);
     }
 
+    /**
+     * A chat nickname is a handle, not a name; a bot that answers "what's your
+     * name?" with the handle (e.g. "XoXo_Gossip") gives itself away. The prompt
+     * must tell it the nickname is not necessarily its real name.
+     */
+    public function testThePromptClarifiesTheNicknameIsNotNecessarilyTheName(): void
+    {
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'XoXo_Gossip']);
+        $this->assertStringContainsString('ψευδώνυμό σου στο chat', $prompt);
+    }
+
     public function testTheContextTellsBotsThereAreNoProfilesOrInAppLinks(): void
     {
         // Bots were inventing a "link on my profile"; the platform has no such
@@ -540,7 +551,7 @@ class BotServiceTest extends TestCase
         // Greek characters rather than latin ones.
         $greeklish = BotService::languageInstruction('greeklish');
         $this->assertStringContainsString('ΥΠΟΧΡΕΩΤΙΚΟ', $greeklish);
-        $this->assertStringContainsString('ελληνικούς χαρακτήρες', $greeklish);
+        $this->assertStringContainsString('ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες', $greeklish);
     }
 
     public function testTheLanguageInstructionIsTheLastThingInThePrompt(): void

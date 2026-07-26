@@ -1272,7 +1272,7 @@ class BotServicePipelineTest extends TestCase
         // produced by transliterating the reply (asserted below), not by forcing
         // the model to type latin characters.
         $this->assertStringContainsString('ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ', $prompt);
-        $this->assertStringContainsString('ελληνικούς χαρακτήρες', $prompt);
+        $this->assertStringContainsString('ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες', $prompt);
 
         $delivered = $this->claimAll();
         $this->assertSame('kala eimai re, esy;', $delivered[0]['payload']['message']);

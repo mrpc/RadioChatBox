@@ -1258,6 +1258,14 @@ class BotService
             $prompt .= "\n\nΕπιπλέον στοιχεία για τον χαρακτήρα σου: {$persona}";
         }
 
+        // The nickname is a chat handle, not a name. Bots that answer "what's
+        // your name?" with the handle (e.g. "XoXo_Gossip") give themselves away.
+        if ($name !== '') {
+            $prompt .= "\n\nΤο \"{$name}\" είναι το ψευδώνυμό σου στο chat, όχι απαραίτητα το κανονικό σου όνομα."
+                . ' Αν σε ρωτήσουν πώς σε λένε και το ψευδώνυμο δεν μοιάζει με κανονικό όνομα, πες ένα'
+                . ' απλό κανονικό μικρό όνομα και κράτα το ΠΑΝΤΑ ίδιο.';
+        }
+
         // The self-facts canon: things the bot has already said about itself and
         // must not contradict (e.g. always the same appearance).
         $selfFacts = trim((string) ($fakeUser['bot_self_facts'] ?? ''));
@@ -1634,9 +1642,13 @@ class BotService
     {
         return match ($language) {
             // Written as Greek here on purpose; the reply is transliterated to
-            // greeklish by enforceLanguage() after generation.
-            'greeklish' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις σε φυσικά, καθημερινά ελληνικά,'
-                . ' με ελληνικούς χαρακτήρες, όπως μιλάει ο κόσμος στο chat. Emoji επιτρέπονται.',
+            // greeklish by enforceLanguage() after generation. This must win even
+            // over a persona that says "writes in greeklish".
+            'greeklish' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις ΠΑΝΤΑ με ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες'
+                . ' (φυσικά, καθημερινά ελληνικά, όπως μιλάει ο κόσμος στο chat). ΠΟΤΕ λατινικούς'
+                . ' χαρακτήρες / greeklish, ΑΚΟΜΑ κι αν ο χαρακτήρας ή κάποια άλλη οδηγία σου λέει'
+                . ' να γράφεις greeklish - το σύστημα κάνει μόνο του τη μετατροπή σε greeklish μετά.'
+                . ' Emoji επιτρέπονται.',
             'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.',
             'english' => 'LANGUAGE - MANDATORY: Reply in English only, in a casual chat tone.',
             default => 'ΓΛΩΣΣΑ: Απαντάς με το ίδιο αλφάβητο που χρησιμοποιεί ο συνομιλητής -'
