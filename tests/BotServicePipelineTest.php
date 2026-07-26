@@ -64,6 +64,9 @@ class BotServicePipelineTest extends TestCase
             // The tests that are about ignoring set their own chance per bot.
             'bot_ignore_chance' => '0', // 0% ignore == always reply
             'bot_insult_block_threshold' => '3',
+            // Deterministic: no immediate block unless a test asks for it, so the
+            // strike-threshold tests are not decided by a dice roll.
+            'bot_immediate_block_chance' => '0',
             // Deterministic emoji: keep the (common) ones so replies are not
             // altered by a dice roll. Emoji-stripping is tested explicitly.
             'bot_emoji_chance' => '100',
@@ -1472,6 +1475,27 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame(1, (int) $this->threadRow()['insult_count']);
         $this->assertNull($this->threadRow()['blocked_at']);
         $this->assertFalse((new BlockService())->hasBlocked($this->nick, $this->peer));
+    }
+
+    /**
+     * With the immediate-block chance at 100%, a single abusive message blocks
+     * the peer on the spot, before the strike threshold is reached.
+     */
+    public function testAnAbusiveMessageCanBlockImmediately(): void
+    {
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        $this->settings->values['bot_immediate_block_chance'] = '100';
+        $this->incoming('poutana');
+
+        $replied = $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'poutana');
+
+        $this->assertFalse($replied, 'no normal reply — it blocks instead');
+        $thread = $this->threadRow();
+        $this->assertSame(1, (int) $thread['insult_count'], 'blocked on the first strike');
+        $this->assertNotNull($thread['blocked_at']);
+        $this->assertTrue((new BlockService())->hasBlocked($this->nick, $this->peer));
     }
 
     public function testRepeatedAbuseMakesTheBotBlockThePeer(): void

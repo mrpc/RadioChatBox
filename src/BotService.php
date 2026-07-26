@@ -163,6 +163,13 @@ class BotService
     public const DEFAULT_INSULT_BLOCK_THRESHOLD = 3;
 
     /**
+     * Chance (%) that an abusive message blocks the peer immediately, before the
+     * strike threshold is reached — some people just don't put up with it and
+     * block on the spot.
+     */
+    public const DEFAULT_IMMEDIATE_BLOCK_CHANCE = 10;
+
+    /**
      * What the bot says on its way out, before blocking.
      *
      * Canned rather than generated: being insulted should not cost an API call, and
@@ -1369,6 +1376,14 @@ class BotService
         )));
     }
 
+    public function immediateBlockChance(): int
+    {
+        return max(0, min(100, (int) $this->settings->get(
+            'bot_immediate_block_chance',
+            self::DEFAULT_IMMEDIATE_BLOCK_CHANCE
+        )));
+    }
+
     /**
      * Count an abusive message and, once the bot has had enough, block the peer -
      * through the same dm_blocks mechanism as the DM block button, so the block
@@ -1401,9 +1416,12 @@ class BotService
             'peer' => $peer,
         ]);
 
-        if ($strikes < $threshold) {
-            // Not yet: the bot answers this one normally, like a person who lets a
-            // first insult slide.
+        // Usually a first insult slides (answered normally) until the threshold,
+        // but there is a chance the bot has none of it and blocks on the spot.
+        $immediate = $this->immediateBlockChance() > 0
+            && random_int(1, 100) <= $this->immediateBlockChance();
+
+        if ($strikes < $threshold && !$immediate) {
             return false;
         }
 
