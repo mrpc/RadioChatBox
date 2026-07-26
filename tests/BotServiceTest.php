@@ -135,6 +135,17 @@ class BotServiceTest extends TestCase
     }
 
     /**
+     * "Are you a bot?" answers must not feel canned: the guardrail no longer
+     * hands the model stock phrases to copy, and tells it to vary its wording.
+     */
+    public function testTheBotDenialGuidanceAsksForVariedWording(): void
+    {
+        $this->assertStringContainsString('ΔΙΚΑ ΣΟΥ διαφορετικά λόγια', BotService::HUMAN_GUARDRAIL);
+        // The old stock phrases must be gone from the guidance.
+        $this->assertStringNotContainsString('ανθρωπος ειμαι 😅", "χαχα', BotService::HUMAN_GUARDRAIL);
+    }
+
+    /**
      * A chat nickname is a handle, not a name; a bot that answers "what's your
      * name?" with the handle (e.g. "XoXo_Gossip") gives itself away. The prompt
      * must tell it the nickname is not necessarily its real name.
