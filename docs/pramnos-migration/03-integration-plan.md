@@ -72,7 +72,17 @@ PDO.
 
 ---
 
-## Phase 2 — Console + tracked migrations (framework is clearly better)
+## Phase 2 — Console + tracked migrations (framework is clearly better) — ✅ IMPLEMENTED
+
+> **As built** (commit `feat: Phase 2 — tracked migrations`): scoping is done with
+> **`bin/rcb migrate --path=app/migrations`**, not `migration_cutoff`. Because RadioChatBox's SQL
+> is already idempotent, the first run on an existing DB is a safe no-op that just records the 22
+> migrations in `schemaversion`; a fresh DB builds the schema. `--path` excludes every framework
+> migration (verified: no framework tables created, app tables untouched, 2nd run = nothing
+> pending). A console-safe entry point (`bin/rcb`) wires Settings + a connected Database *without*
+> `Application::init()` (which would run SessionTracking against the colliding `sessions` table);
+> `src/Application.php` is the required per-app kernel subclass. So `migration_cutoff` / manual
+> `schemaversion` seeding (described below) proved unnecessary — kept here for reference.
 
 **Goal.** Replace 4 ad-hoc migration runners + `radiochatbox` bash wrapper with
 `vendor/bin/pramnos` and the tracked `schemaversion` runner — **without recreating any table**.
