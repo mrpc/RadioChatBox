@@ -818,6 +818,7 @@ class BotService
         $stmt = $this->pdo->prepare('
             SELECT f.nickname,
                    f.bot_enabled,
+                   f.is_active,
                    f.bot_max_messages,
                    t.peer_username,
                    t.messages_sent,
@@ -858,6 +859,9 @@ class BotService
             $thread['message_count'] = (int) $thread['message_count'];
             $thread['is_taken_over'] = (bool) $thread['is_taken_over'];
             $thread['bot_enabled'] = (bool) $thread['bot_enabled'];
+            // An inactive fake user cannot reply: the guard skips its jobs. The
+            // panel needs this to distinguish it from a healthy "replying" thread.
+            $thread['is_active'] = (bool) $thread['is_active'];
         }
 
         return $threads;
@@ -951,6 +955,7 @@ class BotService
         $stmt = $this->pdo->prepare('
             SELECT f.nickname,
                    f.bot_enabled,
+                   f.is_active,
                    f.bot_max_messages,
                    t.messages_sent,
                    t.is_taken_over,
@@ -982,6 +987,8 @@ class BotService
         return [
             'globally_enabled' => $this->isEnabled(),
             'bot_enabled' => (bool) $row['bot_enabled'],
+            // An inactive fake user cannot reply: the guard skips its jobs.
+            'is_active' => (bool) $row['is_active'],
             'messages_sent' => (int) ($row['messages_sent'] ?? 0),
             'max_messages' => $maxMessages,
             'is_taken_over' => (bool) ($row['is_taken_over'] ?? false),

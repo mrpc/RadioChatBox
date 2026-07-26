@@ -5915,6 +5915,7 @@
                                 let state = '🤖 replying';
                                 let color = '#4338ca';
                                 if (!t.bot_enabled) { state = 'bot off'; color = '#6b7280'; }
+                                else if (t.is_active === false) { state = '💤 fake user inactive — not replying'; color = '#b45309'; }
                                 else if (t.blocked_at) { state = `🚫 blocked the user${t.insult_count ? ' after ' + t.insult_count + ' abusive msg(s)' : ''}`; color = '#b91c1c'; }
                                 else if (t.is_ignored) { state = '🙈 ignored from the start'; color = '#6b7280'; }
                                 else if (t.is_taken_over) { state = `👤 taken over${t.taken_over_by ? ' by ' + escapeHtml(t.taken_over_by) : ''}`; color = '#b45309'; }
@@ -5974,10 +5975,12 @@
                     <h2>${escapeHtml(fakeUser)} ↔ ${escapeHtml(peer)}</h2>
                     <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4b5563; margin-bottom: 12px;">
                         <span>Budget: <strong>${state.messages_sent ?? 0}/${state.max_messages ?? '-'}</strong></span>
-                        <span>${state.blocked_at
+                        <span>${state.is_active === false
+                            ? '💤 fake user inactive — the bot will not reply until it is active again'
+                            : (state.blocked_at
                             ? `🚫 the bot blocked this user${state.insult_count ? ' after ' + state.insult_count + ' abusive message(s)' : ''}`
                             : (state.is_ignored ? '🙈 ignored from the start — the bot never replies here'
-                            : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active')))}</span>
+                            : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active'))))}</span>
                         ${state.insult_count && !state.blocked_at ? `<span style="color:#b45309;" title="The bot blocks at ${data.insult_threshold}">⚠️ ${state.insult_count}/${data.insult_threshold} abusive message(s)</span>` : ''}
                         ${state.last_error ? `<span style="color:#b91c1c;">error: ${escapeHtml(state.last_error)}</span>` : ''}
                     </div>
@@ -9213,7 +9216,10 @@
             let text;
             let color;
 
-            if (state.is_taken_over) {
+            if (state.is_active === false) {
+                text = '💤 This fake user is currently inactive — the bot will not reply until it is active again';
+                color = '#b45309';
+            } else if (state.is_taken_over) {
                 text = `🤖 Bot stopped — you have taken over this conversation (${state.messages_sent}/${state.max_messages} bot messages sent)`;
                 color = '#b45309';
             } else if (state.farewell_sent_at) {
