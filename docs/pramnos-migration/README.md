@@ -18,6 +18,11 @@ Read in order:
 4. **[03 — Integration plan](03-integration-plan.md)** — the step-by-step, phase-by-phase execution
    plan (files, steps, acceptance test, rollback per phase) for adopting the framework's better
    implementations.
+5. **[04 — Broadcasting backplane architecture](04-broadcasting-backplane-architecture.md)** — a
+   framework-level proposal for a strong, **pluggable** real-time/socket infrastructure:
+   WebSocket + SSE edge over a swappable backplane (Redis / Database / Kafka / custom adapters),
+   run as an orchestrated daemon. RadioChatBox uses the Redis adapter; Kafka/Database adapters
+   cover other deployments.
 
 ## TL;DR
 
