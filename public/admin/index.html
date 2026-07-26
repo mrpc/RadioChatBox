@@ -4453,7 +4453,7 @@
             }
             // Bot Activity is only reachable when bots are enabled — the nav item is
             // hidden then, so block direct navigation via hash/direct calls too.
-            if (tabName === 'bot-activity' && !botRepliesEnabled) {
+            if (tabName === 'bot-activity' && botSettingsLoaded && !botRepliesEnabled) {
                 tabName = 'dashboard';
                 updateHistory = true;
             }
@@ -5264,6 +5264,9 @@
         let botDefaultProvider = 'deepseek';
         // Whether bot auto-replies are enabled globally; gates the Bot Activity nav item.
         let botRepliesEnabled = false;
+        // Until settings load we do not yet know if bots are on, so we must not
+        // redirect away from the Bot Activity tab (e.g. on a page refresh).
+        let botSettingsLoaded = false;
 
         /**
          * Fill a <select> from an {value: label} map. An empty first option is added
@@ -6079,6 +6082,12 @@
                                     ? `<br><span style="font-size:11px;color:#b45309;" title="The bot blocks this user at ${threshold}">⚠️ ${strikes}/${threshold} abusive</span>`
                                     : '';
 
+                                const nk = escapeHtml(t.nickname).replace(/'/g, "\\'");
+                                const pk = escapeHtml(t.peer_username).replace(/'/g, "\\'");
+                                const forceBtn = t.is_ignored
+                                    ? `<button class="btn btn-secondary" style="margin-left:6px;" title="The bot ignored this conversation from the start — reply anyway" onclick="botRowForce('${nk}', '${pk}')">▶️ Reply anyway</button>`
+                                    : `<button class="btn btn-secondary" style="margin-left:6px;" title="Clear stuck states (ended, spent budget) and make the bot reply now" onclick="botRowForce('${nk}', '${pk}')">⚡ Force</button>`;
+
                                 return `
                                     <tr>
                                         <td><strong>${escapeHtml(t.nickname)}</strong></td>
@@ -6087,7 +6096,7 @@
                                         <td>${t.message_count}</td>
                                         <td style="color: ${color};">${state}${strikeNote}</td>
                                         <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}</td>
-                                        <td><button class="btn btn-secondary" onclick="openBotThread('${escapeHtml(t.nickname).replace(/'/g, "\\'")}', '${escapeHtml(t.peer_username).replace(/'/g, "\\'")}')">View</button></td>
+                                        <td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="openBotThread('${nk}', '${pk}')">View</button>${forceBtn}</td>
                                     </tr>`;
                             }).join('')}
                         </tbody>
@@ -6197,22 +6206,36 @@
             if (box) { box.style.display = 'none'; delete box.dataset.loaded; }
         }
 
-        // Take/release/force actions on the currently open Bot Activity conversation.
-        async function botThreadAction(action) {
-            if (!currentBotThread) return null;
+        // take/release/reset/force on a bot conversation, by fake user + peer.
+        async function botConversationAction(fakeUser, peer, action) {
             try {
                 const res = await fetch('/api/admin/impersonate-bot.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                    body: JSON.stringify({ fake_user: currentBotThread.fakeUser, peer: currentBotThread.peer, action })
+                    body: JSON.stringify({ fake_user: fakeUser, peer, action })
                 });
                 const data = await res.json();
                 if (!data.success) { alert('Error: ' + (data.error || 'Action failed')); return null; }
                 return data;
             } catch (e) {
-                console.error('Bot thread action failed:', e);
+                console.error('Bot conversation action failed:', e);
                 alert('Action failed');
                 return null;
+            }
+        }
+
+        // Same, for the conversation currently open in the detail panel.
+        async function botThreadAction(action) {
+            if (!currentBotThread) return null;
+            return botConversationAction(currentBotThread.fakeUser, currentBotThread.peer, action);
+        }
+
+        // Force from a Conversations table row.
+        async function botRowForce(fakeUser, peer) {
+            if (!(await botConversationAction(fakeUser, peer, 'force'))) return;
+            loadBotActivityThreads();
+            if (currentBotThread && currentBotThread.fakeUser === fakeUser && currentBotThread.peer === peer) {
+                openBotThread(fakeUser, peer);
             }
         }
 
@@ -7282,6 +7305,7 @@
 
                     // Fake user auto-replies (bots)
                     botRepliesEnabled = settings.bot_replies_enabled === 'true';
+                    botSettingsLoaded = true;
                     document.getElementById('setting-bot-replies-enabled').checked = botRepliesEnabled;
                     // Bot Activity only makes sense when bots are actually running.
                     applyBotActivityNavVisibility();
