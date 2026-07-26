@@ -5212,6 +5212,8 @@
         // Fake Users Functions
         // Fake users loaded in the table, reused by the bot settings modal
         let fakeUsersCache = [];
+        // Client-side sort state for the fake users table. dir: 1 asc, -1 desc.
+        let fakeUsersSort = { key: 'created_at', dir: -1 };
         let editingFakeBotId = null;
 
         // Built-in goodbye variants (from the backend), shown as placeholders
@@ -5454,66 +5456,104 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    const table = document.getElementById('fake-users-table');
-                    
-                    if (data.fake_users.length === 0) {
-                        table.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No fake users created yet. Add one above!</p>';
-                        return;
-                    }
-                    
                     // Cache the rows so the bot modal can prefill without refetching
+                    // and so sorting can re-render without another request.
                     fakeUsersCache = data.fake_users;
-
-                    table.innerHTML = `
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Nickname</th>
-                                    <th>Age</th>
-                                    <th>Sex</th>
-                                    <th>Location</th>
-                                    <th>Status</th>
-                                    <th>Bot</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${data.fake_users.map(user => `
-                                    <tr>
-                                        <td>${escapeHtml(user.nickname)}</td>
-                                        <td>${user.age || 'N/A'}</td>
-                                        <td>${user.sex || 'N/A'}</td>
-                                        <td>${escapeHtml(user.location || 'N/A')}</td>
-                                        <td>
-                                            <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; ${user.is_active ? 'background: #10b981; color: white;' : 'background: #6b7280; color: white;'}">
-                                                ${user.is_active ? '🟢 Active' : '⚫ Inactive'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; ${user.bot_enabled ? 'background: #6366f1; color: white;' : 'background: #e5e7eb; color: #6b7280;'}">
-                                                ${user.bot_enabled ? '🤖 On' : 'Off'}
-                                            </span>
-                                        </td>
-                                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                                        <td>
-                                            <button class="btn btn-secondary" onclick="toggleFakeUser(${user.id})" style="margin-right: 5px;">
-                                                ${user.is_active ? 'Deactivate' : 'Activate'}
-                                            </button>
-                                            <button class="btn btn-secondary" onclick="openFakeEditModal(${user.id})" style="margin-right: 5px;">✏️ Edit</button>
-                                            <button class="btn btn-secondary" onclick="openFakeBotModal(${user.id})" style="margin-right: 5px;">🤖 Bot</button>
-                                            <button class="btn btn-secondary" onclick="clearFakeBotHistory(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')" style="margin-right: 5px;" title="Delete this bot's conversations">🧹</button>
-                                            <button class="btn btn-danger" onclick="deleteFakeUser(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')">Delete</button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
+                    renderFakeUsersTable();
                 }
             } catch (error) {
                 console.error('Failed to load fake users:', error);
             }
+        }
+
+        // Re-sort the fake user table by a column; a second click on the same
+        // column flips the direction. Sorts the cached rows, so it never refetches.
+        function sortFakeUsers(key) {
+            if (fakeUsersSort.key === key) {
+                fakeUsersSort.dir *= -1;
+            } else {
+                fakeUsersSort = { key, dir: 1 };
+            }
+            renderFakeUsersTable();
+        }
+
+        function renderFakeUsersTable() {
+            const table = document.getElementById('fake-users-table');
+            if (!table) return;
+
+            if (fakeUsersCache.length === 0) {
+                table.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No fake users created yet. Add one above!</p>';
+                return;
+            }
+
+            const { key, dir } = fakeUsersSort;
+            const rows = [...fakeUsersCache].sort((a, b) => {
+                let av = a[key];
+                let bv = b[key];
+                if (key === 'created_at') { av = av ? Date.parse(av) : 0; bv = bv ? Date.parse(bv) : 0; }
+                else if (key === 'age') { av = av ?? -Infinity; bv = bv ?? -Infinity; }
+                else if (key === 'is_active' || key === 'bot_enabled') { av = av ? 1 : 0; bv = bv ? 1 : 0; }
+                else { av = (av ?? '').toString().toLowerCase(); bv = (bv ?? '').toString().toLowerCase(); }
+                if (av < bv) return -1 * dir;
+                if (av > bv) return 1 * dir;
+                return 0;
+            });
+
+            // Columns that can be sorted, plus a caret on the active one.
+            const cols = [
+                { key: 'nickname', label: 'Nickname' },
+                { key: 'age', label: 'Age' },
+                { key: 'sex', label: 'Sex' },
+                { key: 'location', label: 'Location' },
+                { key: 'is_active', label: 'Status' },
+                { key: 'bot_enabled', label: 'Bot' },
+                { key: 'created_at', label: 'Created' },
+            ];
+            const headCells = cols.map(c => {
+                const caret = key === c.key ? (dir === 1 ? ' ▲' : ' ▼') : '';
+                return `<th onclick="sortFakeUsers('${c.key}')" style="cursor: pointer; user-select: none;" title="Sort by ${c.label}">${c.label}${caret}</th>`;
+            }).join('');
+
+            table.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            ${headCells}
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(user => `
+                            <tr>
+                                <td>${escapeHtml(user.nickname)}</td>
+                                <td>${user.age || 'N/A'}</td>
+                                <td>${user.sex || 'N/A'}</td>
+                                <td>${escapeHtml(user.location || 'N/A')}</td>
+                                <td>
+                                    <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; ${user.is_active ? 'background: #10b981; color: white;' : 'background: #6b7280; color: white;'}">
+                                        ${user.is_active ? '🟢 Active' : '⚫ Inactive'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; ${user.bot_enabled ? 'background: #6366f1; color: white;' : 'background: #e5e7eb; color: #6b7280;'}">
+                                        ${user.bot_enabled ? '🤖 On' : 'Off'}
+                                    </span>
+                                </td>
+                                <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                                <td>
+                                    <button class="btn btn-secondary" onclick="toggleFakeUser(${user.id})" style="margin-right: 5px;">
+                                        ${user.is_active ? 'Deactivate' : 'Activate'}
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="openFakeEditModal(${user.id})" style="margin-right: 5px;">✏️ Edit</button>
+                                    <button class="btn btn-secondary" onclick="openFakeBotModal(${user.id})" style="margin-right: 5px;">🤖 Bot</button>
+                                    <button class="btn btn-secondary" onclick="clearFakeBotHistory(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')" style="margin-right: 5px;" title="Delete this bot's conversations">🧹</button>
+                                    <button class="btn btn-danger" onclick="deleteFakeUser(${user.id}, '${escapeHtml(user.nickname).replace(/'/g, "\\'")}')">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
         async function addFakeUser() {
