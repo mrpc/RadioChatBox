@@ -653,6 +653,11 @@ class BotService
                 $summaryState['summary']
             );
 
+            // The current day/time, in the system prompt (not buried in history)
+            // so the model actually honours it — no "back from work" on a Sunday.
+            $tz = new \DateTimeZone(getenv('TZ') ?: 'Europe/Athens');
+            $systemPrompt .= "\n\n" . self::currentTimeNote(new \DateTime('now', $tz));
+
             if ($isFarewell) {
                 $systemPrompt .= "\n\n" . $this->getFarewellDirective($fakeUser);
             } elseif (($chance = $this->multiMessageChance()) > 0 && random_int(1, 100) <= $chance) {
@@ -660,16 +665,11 @@ class BotService
                 $systemPrompt .= "\n\n" . self::MULTI_MESSAGE_DIRECTIVE;
             }
 
-            // Volatile notes go last, so the cached prefix above stays intact.
+            // Volatile note goes last in history, so the cached prefix stays intact.
             $staleNote = self::staleThreadNote($peerFacts);
             if ($staleNote !== '') {
                 $history[] = ['role' => 'system', 'content' => $staleNote];
             }
-
-            // The current day/time, so the bot does not talk about school on a
-            // Sunday or say "good morning" at night.
-            $tz = new \DateTimeZone(getenv('TZ') ?: 'Europe/Athens');
-            $history[] = ['role' => 'system', 'content' => self::currentTimeNote(new \DateTime('now', $tz))];
 
             try {
                 $result = $llm->chat($systemPrompt, $history);
@@ -1908,11 +1908,14 @@ class BotService
             $hour < 21 => 'βράδυ',
             default => 'βράδυ (αργά)',
         };
-        $weekend = in_array((int) $now->format('w'), [0, 6], true) ? ' Είναι Σαββατοκύριακο.' : '';
+        $weekend = in_array((int) $now->format('w'), [0, 6], true)
+            ? ' ΕΙΝΑΙ ΣΑΒΒΑΤΟΚΥΡΙΑΚΟ - όχι δουλειά/σχολείο/μάθημα σαν καθημερινή (εκτός αν ο χαρακτήρας σου δουλεύει βάρδιες/ΣΚ).'
+            : '';
 
         return sprintf(
-            'ΤΩΡΑ είναι %s %s %s, %s (%s, ώρα Ελλάδας).%s Λάβε το υπόψη σου στις απαντήσεις σου'
-            . ' (π.χ. σωστός χαιρετισμός για την ώρα, μη μιλάς για δουλειά/σχολείο σαν καθημερινή αν είναι αργία/ΣΚ).',
+            'ΠΡΑΓΜΑΤΙΚΟΤΗΤΑ ΤΩΡΑ (ΥΠΟΧΡΕΩΤΙΚΟ να ταιριάζει η απάντησή σου): είναι %s %s %s, %s (%s, ώρα Ελλάδας).%s'
+            . ' Ταίριαξε ΠΑΝΤΑ χαιρετισμό και δραστηριότητες με την πραγματική ημέρα/ώρα - μη λες ότι μόλις γύρισες'
+            . ' ή πας για δουλειά/σχολείο αν δεν κολλάει με την ώρα και τη μέρα.',
             $day,
             $now->format('j'),
             $month,

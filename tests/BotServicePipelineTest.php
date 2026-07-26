@@ -768,19 +768,16 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
-     * The reply call must be told the current day and time, so replies fit
-     * reality (no "just got back from school" on a Sunday).
+     * The reply's system prompt (not a buried history note, so the model honours
+     * it) must carry the current day and time, so replies fit reality — no "just
+     * got back from work" on a Sunday.
      */
-    public function testTheCurrentDayAndTimeAreGivenToTheModel(): void
+    public function testTheCurrentDayAndTimeAreInTheSystemPrompt(): void
     {
         $this->incoming('geia');
         $this->bot->processReplyJob($this->replyPayload(0));
 
-        $system = array_map(
-            fn ($m) => $m['content'] ?? '',
-            end($this->llm->calls)['messages']
-        );
-        $this->assertStringContainsString('ΤΩΡΑ είναι', implode("\n", $system));
+        $this->assertStringContainsString('ΠΡΑΓΜΑΤΙΚΟΤΗΤΑ ΤΩΡΑ', end($this->llm->calls)['system']);
     }
 
     public function testTheMultiMessageDirectiveFollowsTheConfiguredChance(): void

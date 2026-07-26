@@ -77,7 +77,7 @@ class BotServiceTest extends TestCase
         $note = BotService::currentTimeNote($sunday);
 
         $this->assertStringContainsString('Κυριακή', $note);
-        $this->assertStringContainsString('Σαββατοκύριακο', $note);
+        $this->assertStringContainsString('ΣΑΒΒΑΤΟΚΥΡΙΑΚΟ', $note);
         $this->assertStringContainsString('22:30', $note);
     }
 
