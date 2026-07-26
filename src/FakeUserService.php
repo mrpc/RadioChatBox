@@ -429,12 +429,18 @@ class FakeUserService
      * never overwritten, and nothing is ever deleted. Each row is independent, so
      * one bad entry cannot abort the rest.
      *
+     * When $updateExisting is true, a nickname that already belongs to a fake
+     * user has its profile and bot settings overwritten from the row instead of
+     * being skipped (real accounts are still never touched, and nothing is
+     * deleted). Default is false: purely additive.
+     *
      * @param array<int,mixed> $rows
-     * @return array{imported:list<string>,skipped:list<string>,invalid:list<array{nickname:?string,reason:string}>}
+     * @return array{imported:list<string>,updated:list<string>,skipped:list<string>,invalid:list<array{nickname:?string,reason:string}>}
      */
-    public function importFakeUsers(array $rows): array
+    public function importFakeUsers(array $rows, bool $updateExisting = false): array
     {
         $imported = [];
+        $updated = [];
         $skipped = [];
         $invalid = [];
 
@@ -450,16 +456,38 @@ class FakeUserService
                 continue;
             }
 
-            // No overwrites: an existing nickname is left exactly as it is.
-            if ($this->nicknameTaken($nickname, 0)) {
-                $skipped[] = $nickname;
-                continue;
-            }
-
             try {
                 [$age, $sex, $location] = $this->normalizeProfileForImport($row);
             } catch (\InvalidArgumentException $e) {
                 $invalid[] = ['nickname' => $nickname, 'reason' => $e->getMessage()];
+                continue;
+            }
+
+            $existing = $this->getFakeUserByNickname($nickname);
+
+            if ($existing !== null) {
+                // An existing fake user: skip, or overwrite its settings.
+                if (!$updateExisting) {
+                    $skipped[] = $nickname;
+                    continue;
+                }
+
+                try {
+                    // updateFakeUser manages its own transaction and the nickname
+                    // is unchanged, so no rename happens; updateBotSettings then
+                    // applies the full bot config from the row.
+                    $this->updateFakeUser((int) $existing['id'], ['age' => $age, 'sex' => $sex, 'location' => $location]);
+                    $this->updateBotSettings((int) $existing['id'], $row);
+                    $updated[] = $nickname;
+                } catch (\Throwable $e) {
+                    $skipped[] = $nickname;
+                }
+                continue;
+            }
+
+            // Not a fake user. A real account owning the nickname is off limits.
+            if ($this->nicknameTaken($nickname, 0)) {
+                $skipped[] = $nickname;
                 continue;
             }
 
@@ -476,13 +504,13 @@ class FakeUserService
                 if ($this->pdo->inTransaction()) {
                     $this->pdo->rollBack();
                 }
-                // A race that slipped past nicknameTaken, or a constraint the
-                // row still violated: skip it rather than fail the whole import.
+                // A race that slipped past the existence check, or a constraint
+                // the row still violated: skip it rather than fail the import.
                 $skipped[] = $nickname;
             }
         }
 
-        return ['imported' => $imported, 'skipped' => $skipped, 'invalid' => $invalid];
+        return ['imported' => $imported, 'updated' => $updated, 'skipped' => $skipped, 'invalid' => $invalid];
     }
 
     /**

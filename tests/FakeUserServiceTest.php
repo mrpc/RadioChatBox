@@ -255,6 +255,39 @@ class FakeUserServiceTest extends TestCase
         }
     }
 
+    public function testImportUpdatesExistingUsersOnlyWhenAsked(): void
+    {
+        $pdo = \RadioChatBox\Database::getPDO();
+        $service = new \RadioChatBox\FakeUserService();
+        $nick = 'upd_' . substr(bin2hex(random_bytes(5)), 0, 8);
+
+        try {
+            $created = $service->addFakeUser($nick, 25, 'female', 'GR');
+            $service->updateBotSettings((int) $created['id'], ['bot_persona' => 'ORIGINAL']);
+
+            $row = [['nickname' => $nick, 'age' => 41, 'sex' => 'male', 'bot_persona' => 'UPDATED', 'bot_enabled' => true]];
+
+            // Default: existing users are skipped, nothing changes.
+            $skip = $service->importFakeUsers($row);
+            $this->assertSame([$nick], $skip['skipped']);
+            $this->assertSame([], $skip['updated']);
+            $this->assertSame('ORIGINAL', $service->getFakeUserByNickname($nick)['bot_persona']);
+
+            // Opt-in: profile and bot settings are overwritten from the row.
+            $upd = $service->importFakeUsers($row, true);
+            $this->assertSame([$nick], $upd['updated']);
+            $this->assertSame([], $upd['skipped']);
+
+            $after = $service->getFakeUserByNickname($nick);
+            $this->assertSame('UPDATED', $after['bot_persona']);
+            $this->assertSame(41, (int) $after['age']);
+            $this->assertSame('male', $after['sex']);
+            $this->assertTrue((bool) $after['bot_enabled']);
+        } finally {
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$nick]);
+        }
+    }
+
     /**
      * A bot in a live conversation must not be a rotation candidate, while an
      * idle bot stays eligible. Read-only: it inspects the candidate list rather

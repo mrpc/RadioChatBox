@@ -1709,9 +1709,13 @@
                 <div class="section">
                     <h2>Fake Users List</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Toggle to activate/deactivate fake users. Active fake users appear in the user list.</p>
-                    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
                         <button class="btn btn-secondary" onclick="exportFakeUsers()" title="Download all fake users and their bot settings as a JSON file">⬇️ Export JSON</button>
-                        <button class="btn btn-secondary" onclick="document.getElementById('fake-users-import-file').click()" title="Import fake users from a JSON file. Existing nicknames are skipped — nothing is overwritten or deleted.">⬆️ Import JSON</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('fake-users-import-file').click()" title="Import fake users from a JSON file. New nicknames are added; nothing is ever deleted.">⬆️ Import JSON</button>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; color: #4b5563; font-size: 13px;" title="When on, existing fake users have their profile and bot settings overwritten from the file. When off, they are skipped.">
+                            <input type="checkbox" id="fake-users-import-update" style="width: auto;">
+                            Update existing on import
+                        </label>
                         <input type="file" id="fake-users-import-file" accept="application/json,.json" style="display: none;" onchange="importFakeUsers(this)">
                     </div>
                     <div id="fake-users-table"></div>
@@ -5515,11 +5519,16 @@
                 return;
             }
 
+            const updateExisting = document.getElementById('fake-users-import-update')?.checked || false;
+            const body = Array.isArray(parsed)
+                ? { fake_users: parsed, update_existing: updateExisting }
+                : { ...parsed, update_existing: updateExisting };
+
             try {
                 const response = await fetch('/api/admin/import-fake-users.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                    body: JSON.stringify(parsed)
+                    body: JSON.stringify(body)
                 });
                 const data = await response.json();
                 if (!data.success) {
@@ -5527,7 +5536,9 @@
                     return;
                 }
 
-                let summary = `Imported ${data.imported}, skipped ${data.skipped} (already existed)`;
+                let summary = `Imported ${data.imported}`;
+                if (data.updated) summary += `, updated ${data.updated}`;
+                summary += `, skipped ${data.skipped} (already existed)`;
                 if (data.invalid) summary += `, ${data.invalid} invalid`;
                 if (data.skipped_nicknames && data.skipped_nicknames.length) {
                     summary += `\n\nSkipped: ${data.skipped_nicknames.join(', ')}`;

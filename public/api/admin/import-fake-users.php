@@ -35,15 +35,20 @@ try {
         throw new InvalidArgumentException('No fake users to import');
     }
 
+    // Opt-in: overwrite the settings of fake users that already exist.
+    $updateExisting = !empty($input['update_existing']);
+
     $fakeUserService = new FakeUserService();
-    $result = $fakeUserService->importFakeUsers(array_values($rows));
+    $result = $fakeUserService->importFakeUsers(array_values($rows), $updateExisting);
 
     echo json_encode([
         'success' => true,
         'imported' => count($result['imported']),
+        'updated' => count($result['updated']),
         'skipped' => count($result['skipped']),
         'invalid' => count($result['invalid']),
         'imported_nicknames' => $result['imported'],
+        'updated_nicknames' => $result['updated'],
         'skipped_nicknames' => $result['skipped'],
         'invalid_rows' => $result['invalid'],
     ]);
