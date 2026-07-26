@@ -16,8 +16,12 @@ class FakeUserService
      * actively chatting must not be pulled offline mid-conversation — that both
      * looks broken to the user and, because the guard requires an active fake
      * user, silently stops the bot from ever replying.
+     *
+     * Generous on purpose: chats have long natural gaps (someone replies half an
+     * hour later), and pulling a bot out during one of those gaps is exactly the
+     * bug this guards against, so the window is hours rather than minutes.
      */
-    private const ACTIVE_CONVERSATION_WINDOW_MINUTES = 15;
+    private const ACTIVE_CONVERSATION_WINDOW_MINUTES = 180;
 
     private PDO $pdo;
     private Redis $redis;
