@@ -47,6 +47,40 @@ class BotServiceTest extends TestCase
         $this->assertSame('4 5 6', $capped[3]);
     }
 
+    /**
+     * Emoji policy: only common emoji survive and at most one, and only when
+     * keeping is allowed. Unusual emoji and extras are always stripped.
+     */
+    public function testFilterEmojisKeepsOnlyOneCommonEmoji(): void
+    {
+        // 💅 and ✨ are not in the common set; 😅 is — so only 😅 survives.
+        $this->assertSame('γεια 😅', BotService::filterEmojis('γεια 💅✨😅', true));
+
+        // A second common emoji is dropped (at most one).
+        $this->assertSame('γεια 😊', BotService::filterEmojis('γεια 😊 😂', true));
+
+        // When not keeping, every emoji goes.
+        $this->assertSame('γεια', BotService::filterEmojis('γεια 😅', false));
+
+        // Uncommon-only text loses its emoji even when keeping is allowed.
+        $this->assertSame('γεια', BotService::filterEmojis('γεια 💅', true));
+    }
+
+    /**
+     * The time note names the weekday, flags a weekend and includes the clock
+     * time, so a bot does not invent a workday on a Sunday.
+     */
+    public function testCurrentTimeNoteDescribesTheMoment(): void
+    {
+        // 2026-07-26 is a Sunday.
+        $sunday = new \DateTime('2026-07-26 22:30', new \DateTimeZone('Europe/Athens'));
+        $note = BotService::currentTimeNote($sunday);
+
+        $this->assertStringContainsString('Κυριακή', $note);
+        $this->assertStringContainsString('Σαββατοκύριακο', $note);
+        $this->assertStringContainsString('22:30', $note);
+    }
+
     public function testTheSelfFactsCanonIsInjectedIntoThePrompt(): void
     {
         // Facts the bot has committed to must reach every reply so it stays

@@ -219,6 +219,24 @@ class BotService
     /** At most this many bubbles from a single reply, so it never spams. */
     private const MAX_MESSAGE_PARTS = 4;
 
+    /**
+     * Chance (%) that a delivered message keeps an emoji at all. Emojis on every
+     * message are a strong bot tell, so most messages get none and only this
+     * small fraction keep one (at most).
+     */
+    public const DEFAULT_EMOJI_CHANCE = 5;
+
+    /**
+     * The only emoji a bot may keep — the everyday ones people actually use in
+     * chat. Anything outside this set is stripped, so a stray unusual emoji is
+     * never a tell. Stored without variation selectors/skin tones for lookup.
+     */
+    public const COMMON_EMOJIS = [
+        '😂', '😅', '😄', '😁', '😊', '🙂', '😉', '😍', '😘', '😜',
+        '😏', '😎', '🤔', '😐', '😢', '😭', '🙈', '👍', '🙏', '❤',
+        '🔥', '🥰', '😌', '😳', '😋', '😬',
+    ];
+
     /** Appended to the prompt when this reply should come out as a few messages. */
     private const MULTI_MESSAGE_DIRECTIVE = 'ΑΥΤΗ ΤΗ ΦΟΡΑ: απάντησε με 2-3 σύντομα, ξεχωριστά'
         . ' μηνύματα αντί για ένα - το καθένα σε ΔΙΚΗ ΤΟΥ γραμμή (χωρισμένα με νέα γραμμή),'
@@ -642,11 +660,16 @@ class BotService
                 $systemPrompt .= "\n\n" . self::MULTI_MESSAGE_DIRECTIVE;
             }
 
-            // Volatile note goes last, so the cached prefix above stays intact.
+            // Volatile notes go last, so the cached prefix above stays intact.
             $staleNote = self::staleThreadNote($peerFacts);
             if ($staleNote !== '') {
                 $history[] = ['role' => 'system', 'content' => $staleNote];
             }
+
+            // The current day/time, so the bot does not talk about school on a
+            // Sunday or say "good morning" at night.
+            $tz = new \DateTimeZone(getenv('TZ') ?: 'Europe/Athens');
+            $history[] = ['role' => 'system', 'content' => self::currentTimeNote(new \DateTime('now', $tz))];
 
             try {
                 $result = $llm->chat($systemPrompt, $history);
@@ -1864,6 +1887,71 @@ class BotService
     }
 
     /**
+     * A short note about the current day and time, so the bot's replies fit
+     * reality — it does not invent a workday on a weekend, and greets by the
+     * right time of day.
+     */
+    public static function currentTimeNote(\DateTimeInterface $now): string
+    {
+        $days = ['Κυριακή', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο'];
+        $months = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου',
+            'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
+
+        $day = $days[(int) $now->format('w')];
+        $month = $months[(int) $now->format('n')];
+        $hour = (int) $now->format('G');
+
+        $partOfDay = match (true) {
+            $hour < 5 => 'αργά τη νύχτα',
+            $hour < 12 => 'πρωί',
+            $hour < 17 => 'μεσημέρι/απόγευμα',
+            $hour < 21 => 'βράδυ',
+            default => 'βράδυ (αργά)',
+        };
+        $weekend = in_array((int) $now->format('w'), [0, 6], true) ? ' Είναι Σαββατοκύριακο.' : '';
+
+        return sprintf(
+            'ΤΩΡΑ είναι %s %s %s, %s (%s, ώρα Ελλάδας).%s Λάβε το υπόψη σου στις απαντήσεις σου'
+            . ' (π.χ. σωστός χαιρετισμός για την ώρα, μη μιλάς για δουλειά/σχολείο σαν καθημερινή αν είναι αργία/ΣΚ).',
+            $day,
+            $now->format('j'),
+            $month,
+            $now->format('H:i'),
+            $partOfDay,
+            $weekend
+        );
+    }
+
+    /**
+     * Emoji policy for a delivered message: strip every emoji outside the common
+     * set entirely, and keep at most ONE common emoji — and only when $keepOne
+     * is true. Constant emojis, and unusual ones, are both bot tells.
+     */
+    public static function filterEmojis(string $text, bool $keepOne): string
+    {
+        $kept = 0;
+        // An emoji cluster: a pictographic base plus its variation selectors,
+        // skin-tone modifiers and ZWJ-joined pieces.
+        $pattern = '/\p{Extended_Pictographic}(?:\x{FE0F}|\x{200D}\p{Extended_Pictographic}|[\x{1F3FB}-\x{1F3FF}])*/u';
+        $out = preg_replace_callback($pattern, static function (array $m) use (&$kept, $keepOne): string {
+            if (!$keepOne || $kept >= 1) {
+                return '';
+            }
+            // Normalise away variation selectors / skin tones / joiners to look up.
+            $base = preg_replace('/[\x{FE0F}\x{200D}\x{1F3FB}-\x{1F3FF}]/u', '', $m[0]) ?? $m[0];
+            if (in_array($base, self::COMMON_EMOJIS, true)) {
+                $kept++;
+                return $m[0];
+            }
+            return '';
+        }, $text);
+
+        $out = preg_replace('/[ \t]{2,}/u', ' ', (string) ($out ?? $text));
+
+        return trim((string) $out);
+    }
+
+    /**
      * Split a reply into the separate messages it should be delivered as: one
      * per line, the way a person sends a few short messages in a row. Capped so
      * a reply never turns into a flood, and collapses to a single message when
@@ -1989,11 +2077,25 @@ class BotService
 
         $min = (int) $this->settings->get('bot_typing_min_delay', 2);
         $max = (int) $this->settings->get('bot_typing_max_delay', 45);
+        $emojiChance = (int) $this->settings->get('bot_emoji_chance', self::DEFAULT_EMOJI_CHANCE);
 
         // A reply may be several short messages (one per line). They are
         // delivered as separate bubbles, each after its own typing delay, so
         // they arrive one after another like a person sending them in a row.
-        $parts = self::splitIntoMessages($text);
+        // Emoji are rare: most bubbles are stripped of them entirely, and only
+        // an occasional one keeps a single emoji — constant emojis are a tell.
+        $parts = [];
+        foreach (self::splitIntoMessages($text) as $part) {
+            $keepEmoji = $emojiChance > 0 && random_int(1, 100) <= $emojiChance;
+            $part = self::filterEmojis($part, $keepEmoji);
+            if ($part !== '') {
+                $parts[] = $part;
+            }
+        }
+        // Never lose the whole reply if capping emptied every bubble.
+        if ($parts === []) {
+            $parts = [trim($text)];
+        }
         $lastIndex = count($parts) - 1;
 
         $cumulative = 0;

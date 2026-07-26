@@ -64,6 +64,9 @@ class BotServicePipelineTest extends TestCase
             // The tests that are about ignoring set their own chance per bot.
             'bot_ignore_chance' => '0', // 0% ignore == always reply
             'bot_insult_block_threshold' => '3',
+            // Deterministic emoji: keep the (common) ones so replies are not
+            // altered by a dice roll. Emoji-stripping is tested explicitly.
+            'bot_emoji_chance' => '100',
         ];
         $this->llm = new StubLlm();
 
@@ -436,10 +439,11 @@ class BotServicePipelineTest extends TestCase
         $this->assertStringContainsString($this->nick, $this->llm->calls[0]['system']);
         $this->assertStringContainsString('27 ετών', $this->llm->calls[0]['system']);
 
-        // The user's message is the last turn the model sees.
+        // The user's message is the last user turn the model sees (trailing
+        // system notes about time/staleness may follow it).
         $messages = $this->llm->calls[0]['messages'];
-        $this->assertSame('user', $messages[count($messages) - 1]['role']);
-        $this->assertSame('ti kaneis;', $messages[count($messages) - 1]['content']);
+        $userTurns = array_values(array_filter($messages, fn ($m) => $m['role'] === 'user'));
+        $this->assertSame('ti kaneis;', end($userTurns)['content']);
 
         $jobs = $this->claimAll();
         $this->assertSame(BotService::JOB_DELIVER, $jobs[0]['type']);
@@ -742,6 +746,41 @@ class BotServicePipelineTest extends TestCase
             $this->bot->processDeliverJob($job['payload']);
         }
         $this->assertSame(1, (int) $this->threadRow()['messages_sent']);
+    }
+
+    /**
+     * With the emoji chance at zero, every emoji is stripped from the delivered
+     * message — a bot that sprinkles emoji on each reply is a giveaway.
+     */
+    public function testEmojisAreStrippedFromTheDeliveredMessageWhenTheChanceIsZero(): void
+    {
+        $this->settings->values['bot_emoji_chance'] = '0';
+        $this->incoming('geia');
+        $this->llm->reply = 'γεια 😅';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $deliver = array_values(array_filter(
+            $this->claimAll(),
+            fn ($j) => $j['type'] === BotService::JOB_DELIVER
+        ))[0];
+        $this->assertSame('γεια', $deliver['payload']['message']);
+    }
+
+    /**
+     * The reply call must be told the current day and time, so replies fit
+     * reality (no "just got back from school" on a Sunday).
+     */
+    public function testTheCurrentDayAndTimeAreGivenToTheModel(): void
+    {
+        $this->incoming('geia');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $system = array_map(
+            fn ($m) => $m['content'] ?? '',
+            end($this->llm->calls)['messages']
+        );
+        $this->assertStringContainsString('ΤΩΡΑ είναι', implode("\n", $system));
     }
 
     public function testTheMultiMessageDirectiveFollowsTheConfiguredChance(): void
@@ -1185,7 +1224,8 @@ class BotServicePipelineTest extends TestCase
         $messages = $this->llm->calls[0]['messages'];
         $roles = array_column($messages, 'role');
 
-        $this->assertSame(['user', 'assistant', 'user'], $roles);
+        // The conversation turns (a trailing system note about time follows).
+        $this->assertSame(['user', 'assistant', 'user'], array_slice($roles, 0, 3));
         $this->assertStringContainsString('geia', $messages[0]['content']);
         $this->assertStringContainsString('eisai ekei;', $messages[0]['content']);
     }
@@ -1686,11 +1726,18 @@ class BotServicePipelineTest extends TestCase
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
+        // The stale note is a trailing system message (the current-time note,
+        // also volatile, follows it).
         $messages = $this->llm->calls[0]['messages'];
-        $last = $messages[count($messages) - 1];
+        $staleNote = null;
+        foreach ($messages as $m) {
+            if (str_contains((string) ($m['content'] ?? ''), '3 μέρες')) {
+                $staleNote = $m;
+            }
+        }
 
-        $this->assertSame('system', $last['role'], 'the note must be the trailing message');
-        $this->assertStringContainsString('3 μέρες', $last['content']);
+        $this->assertNotNull($staleNote, 'the stale note must be present');
+        $this->assertSame('system', $staleNote['role']);
         // ...and never inside the prompt prefix the provider caches.
         $this->assertStringNotContainsString('3 μέρες', $this->llm->calls[0]['system']);
     }
