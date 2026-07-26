@@ -160,12 +160,62 @@ class FakeUserServiceTest extends TestCase
     {
         // Test that minimum_users setting defaults to 0
         $minimumUsers = 0; // Default value
-        
+
         $realUsers = 5;
         $fakeUsersNeeded = max(0, $minimumUsers - $realUsers);
-        
+
         // With default 0, no fake users should be needed
         $this->assertEquals(0, $fakeUsersNeeded);
+    }
+
+    /**
+     * A bot in a live conversation must not be a rotation candidate, while an
+     * idle bot stays eligible. Read-only: it inspects the candidate list rather
+     * than deactivating, so it never touches other fake users in the database.
+     */
+    public function testRotationSparesBotsInLiveConversations(): void
+    {
+        $pdo = \RadioChatBox\Database::getPDO();
+        $service = new \RadioChatBox\FakeUserService();
+
+        $suffix = substr(bin2hex(random_bytes(5)), 0, 8);
+        $busy = 'busybot_' . $suffix;   // active bot, message just now -> spared
+        $idle = 'idlebot_' . $suffix;   // active bot, no recent chat -> eligible
+        $peer = 'peer_' . $suffix;
+
+        $insert = $pdo->prepare(
+            "INSERT INTO fake_users (nickname, age, sex, location, is_active, bot_enabled)
+             VALUES (?, 27, 'female', 'GR', TRUE, TRUE) RETURNING id"
+        );
+
+        try {
+            $insert->execute([$busy]);
+            $busyId = (int) $insert->fetchColumn();
+            $insert->execute([$idle]);
+            $idleId = (int) $insert->fetchColumn();
+
+            // The busy bot has a live thread and a message exchanged just now.
+            $pdo->prepare("INSERT INTO bot_threads (fake_user_id, peer_username) VALUES (?, ?)")
+                ->execute([$busyId, $peer]);
+            $pdo->prepare(
+                "INSERT INTO private_messages (from_username, to_username, message, created_at)
+                 VALUES (?, ?, 'geia ti kaneis', NOW())"
+            )->execute([$peer, $busy]);
+
+            // Large count so every eligible active fake user is returned.
+            $method = new \ReflectionMethod($service, 'rotationDeactivationCandidates');
+            $method->setAccessible(true);
+            $candidates = $method->invoke($service, 1000);
+            $nicknames = array_column($candidates, 'nickname');
+
+            $this->assertNotContains($busy, $nicknames, 'a bot mid-conversation must be spared');
+            $this->assertContains($idle, $nicknames, 'an idle bot stays eligible for rotation');
+        } finally {
+            $pdo->prepare("DELETE FROM private_messages WHERE from_username = ? OR to_username = ?")
+                ->execute([$peer, $busy]);
+            $pdo->prepare("DELETE FROM bot_threads WHERE peer_username = ?")->execute([$peer]);
+            $pdo->prepare("DELETE FROM fake_users WHERE nickname IN (?, ?)")->execute([$busy, $idle]);
+        }
     }
 }
 

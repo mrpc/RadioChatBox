@@ -10,6 +10,15 @@ use Redis;
  */
 class FakeUserService
 {
+    /**
+     * How recently a bot must have exchanged a message to count as being in a
+     * live conversation and be spared from the random rotation. A bot that is
+     * actively chatting must not be pulled offline mid-conversation — that both
+     * looks broken to the user and, because the guard requires an active fake
+     * user, silently stops the bot from ever replying.
+     */
+    private const ACTIVE_CONVERSATION_WINDOW_MINUTES = 15;
+
     private PDO $pdo;
     private Redis $redis;
     private string $redisPrefix;
@@ -574,20 +583,50 @@ class FakeUserService
     {
         if ($count <= 0) return;
 
+        foreach ($this->rotationDeactivationCandidates($count) as $user) {
+            $this->setFakeUserActive($user['id'], false);
+        }
+    }
+
+    /**
+     * Pick which active fake users the rotation may deactivate.
+     *
+     * A bot in the middle of a live conversation is spared: a thread that has
+     * not ended or been blocked, with a message exchanged within the window.
+     * Deactivating it would strand the peer mid-chat and stop the bot replying
+     * (the reply guard requires an active fake user). Read-only, so it can be
+     * exercised without mutating anything.
+     *
+     * @return list<array{id:int,nickname:string}>
+     */
+    private function rotationDeactivationCandidates(int $count): array
+    {
         $stmt = $this->pdo->prepare("
-            SELECT id, nickname
-            FROM fake_users
-            WHERE is_active = TRUE
+            SELECT f.id, f.nickname
+            FROM fake_users f
+            WHERE f.is_active = TRUE
+              AND NOT (
+                  f.bot_enabled = TRUE
+                  AND EXISTS (
+                      SELECT 1
+                      FROM bot_threads t
+                      JOIN private_messages pm
+                        ON (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
+                        OR (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
+                      WHERE t.fake_user_id = f.id
+                        AND t.farewell_sent_at IS NULL
+                        AND t.blocked_at IS NULL
+                        AND pm.created_at > NOW() - make_interval(mins => :window)
+                  )
+              )
             ORDER BY RANDOM()
             LIMIT :limit
         ");
+        $stmt->bindValue(':window', self::ACTIVE_CONVERSATION_WINDOW_MINUTES, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $count, PDO::PARAM_INT);
         $stmt->execute();
-        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($users as $user) {
-            $this->setFakeUserActive($user['id'], false);
-        }
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**
