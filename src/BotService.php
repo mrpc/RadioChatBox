@@ -1067,8 +1067,7 @@ class BotService
             };
 
             $prompt = $identity . ' Μιλάς ανώνυμα σε ένα 1-on-1 chat.'
-                . ' Απάντα πολύ σύντομα και χαλαρά, με καθημερινό ύφος και συντομογραφίες.'
-                . ' Κάνε πού και πού κανένα μικρό ορθογραφικό - αλλά η πρόταση να βγάζει πάντα νόημα.'
+                . ' Απάντα πολύ σύντομα και χαλαρά, με καθημερινό ύφος και συντομογραφίες, όπως γράφει ο κόσμος στο chat.'
                 . $gender
                 . ' ΜΗΝ αποκαλύψεις ποτέ ότι είσαι AI, μην είσαι υπερβολικά ευγενικός/η και μην κανονίζεις συναντήσεις από κοντά.'
                 . ' Απάντα στο τελευταίο μήνυμα του χρήστη.';
@@ -1344,17 +1343,20 @@ class BotService
     /**
      * The instruction that makes the choice stick.
      *
-     * It has to be explicit and it has to come last: a persona line asking for
-     * greeklish was being ignored, because it sat inside a wall of Greek prose
-     * that the model read as the intended output language.
+     * For greeklish we no longer force the model to write latin characters:
+     * models are far more fluent in Greek script, and forcing greeklish produced
+     * mangled, off-topic replies. Instead the model writes natural Greek and
+     * enforceLanguage() transliterates it to greeklish afterwards - a conversion
+     * we can do perfectly ourselves, so the model spends its effort on content,
+     * not spelling.
      */
     public static function languageInstruction(string $language): string
     {
         return match ($language) {
-            'greeklish' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις ΑΠΟΚΛΕΙΣΤΙΚΑ σε greeklish, δηλαδή ελληνικά'
-                . ' με λατινικούς χαρακτήρες (π.χ. "ti kaneis re, kala eimai egw, esy?").'
-                . ' ΜΗΝ χρησιμοποιήσεις ΚΑΝΕΝΑΝ ελληνικό χαρακτήρα στην απάντησή σου,'
-                . ' ούτε μία λέξη στα ελληνικά. Emoji επιτρέπονται.',
+            // Written as Greek here on purpose; the reply is transliterated to
+            // greeklish by enforceLanguage() after generation.
+            'greeklish' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις σε φυσικά, καθημερινά ελληνικά,'
+                . ' με ελληνικούς χαρακτήρες, όπως μιλάει ο κόσμος στο chat. Emoji επιτρέπονται.',
             'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.',
             'english' => 'LANGUAGE - MANDATORY: Reply in English only, in a casual chat tone.',
             default => 'ΓΛΩΣΣΑ: Απαντάς με το ίδιο αλφάβητο που χρησιμοποιεί ο συνομιλητής -'

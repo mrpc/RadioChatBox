@@ -258,11 +258,14 @@ class BotServiceTest extends TestCase
         );
     }
 
-    public function testTyposMustStillReadAsGreek(): void
+    public function testGeneratedPersonaAsksForACasualChatStyle(): void
     {
+        // We no longer instruct deliberate typos - they tipped replies into
+        // nonsense - but the style must still read as everyday chat writing.
         $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
 
-        $this->assertStringContainsString('να βγάζει πάντα νόημα', $prompt);
+        $this->assertStringContainsString('καθημερινό ύφος', $prompt);
+        $this->assertStringNotContainsString('ορθογραφικό', $prompt);
     }
 
     // ------------------------------------------------------------------
@@ -432,10 +435,12 @@ class BotServiceTest extends TestCase
             $this->assertNotSame('', trim(BotService::languageInstruction($language)), $language);
         }
 
-        // The greeklish one has to be unmistakable: a polite hint was ignored.
+        // Greeklish bots are told to write natural Greek; enforceLanguage()
+        // transliterates afterwards, which is why the instruction now asks for
+        // Greek characters rather than latin ones.
         $greeklish = BotService::languageInstruction('greeklish');
         $this->assertStringContainsString('ΥΠΟΧΡΕΩΤΙΚΟ', $greeklish);
-        $this->assertStringContainsString('λατινικούς χαρακτήρες', $greeklish);
+        $this->assertStringContainsString('ελληνικούς χαρακτήρες', $greeklish);
     }
 
     public function testTheLanguageInstructionIsTheLastThingInThePrompt(): void

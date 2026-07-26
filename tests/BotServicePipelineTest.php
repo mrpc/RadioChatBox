@@ -1050,9 +1050,11 @@ class BotServicePipelineTest extends TestCase
         $this->bot->processReplyJob($this->replyPayload(0));
 
         $prompt = $this->llm->calls[0]['system'];
-        $this->assertStringContainsString('greeklish', $prompt);
-        // Last position: an instruction buried in Greek prose was being ignored.
+        // The bot is told to write natural Greek; the greeklish outcome is
+        // produced by transliterating the reply (asserted below), not by forcing
+        // the model to type latin characters.
         $this->assertStringContainsString('ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ', $prompt);
+        $this->assertStringContainsString('ελληνικούς χαρακτήρες', $prompt);
 
         $delivered = $this->claimAll();
         $this->assertSame('kala eimai re, esy;', $delivered[0]['payload']['message']);

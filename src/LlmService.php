@@ -74,11 +74,12 @@ class LlmService
             : (int) ($config['timeout'] ?? 20);
 
         // 1.3 is DeepSeek's suggestion for casual chat, but with reasoning off it
-        // garbles Greek (wrong grammatical gender, mangled words), so default a
-        // little lower.
+        // garbles Greek (wrong grammatical gender, mangled words, off-topic
+        // tangents), so default lower — 0.8 keeps replies casual without the
+        // randomness that produces nonsense.
         $this->temperature = isset($overrides['temperature']) && $overrides['temperature'] !== ''
             ? (float) $overrides['temperature']
-            : 1.0;
+            : 0.8;
 
         $this->maxTokens = isset($overrides['max_tokens']) && (int) $overrides['max_tokens'] > 0
             ? max(16, (int) $overrides['max_tokens'])
