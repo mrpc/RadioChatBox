@@ -225,11 +225,12 @@ class PhotoService
     /**
      * Get all attachments (for admin)
      */
-    public function getAllAttachments(int $limit = 100, int $offset = 0): array
+    public function getAllAttachments(int $limit = 100, int $offset = 0, bool $includeDeleted = false): array
     {
+        $where = $includeDeleted ? '' : 'WHERE is_deleted = FALSE';
         $stmt = $this->pdo->prepare("
-            SELECT * FROM attachments 
-            WHERE is_deleted = FALSE
+            SELECT * FROM attachments
+            {$where}
             ORDER BY uploaded_at DESC
             LIMIT :limit OFFSET :offset
         ");
@@ -242,50 +243,66 @@ class PhotoService
     /**
      * Get total count of attachments (for admin pagination)
      */
-    public function getTotalAttachmentsCount(): int
+    public function getTotalAttachmentsCount(bool $includeDeleted = false): int
     {
-        $stmt = $this->pdo->query("
-            SELECT COUNT(*) FROM attachments 
-            WHERE is_deleted = FALSE
-        ");
+        $where = $includeDeleted ? '' : 'WHERE is_deleted = FALSE';
+        $stmt = $this->pdo->query("SELECT COUNT(*) FROM attachments {$where}");
         return (int)$stmt->fetchColumn();
     }
 
     /**
-     * Delete expired photos (>48 hours)
+     * Expire photos older than the retention window: mark them deleted but KEEP
+     * the file on disk, so an admin can still review them (a "trash") until the
+     * bin is emptied. Permanent removal is a deliberate manual step (emptyTrash).
      */
     public function cleanupExpiredPhotos(): int
     {
-        // Get expired photos
-        $stmt = $this->pdo->query("
-            SELECT attachment_id, file_path FROM attachments 
+        $stmt = $this->pdo->prepare("
+            UPDATE attachments SET is_deleted = TRUE
             WHERE expires_at < NOW() AND is_deleted = FALSE
+            RETURNING attachment_id
         ");
-        $expired = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+        $stmt->execute();
+        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($ids as $id) {
+            $this->redis->del("attachment:{$id}");
+        }
+
+        $count = count($ids);
+        if ($count > 0) {
+            error_log("Cleanup: soft-deleted {$count} expired photos (files kept until the trash is emptied)");
+        }
+
+        return $count;
+    }
+
+    /**
+     * Empty the trash: permanently remove every soft-deleted photo — unlink its
+     * file and drop its row. This is the only place a photo file is deleted.
+     */
+    public function emptyTrash(): int
+    {
+        $stmt = $this->pdo->query("
+            SELECT attachment_id, file_path FROM attachments WHERE is_deleted = TRUE
+        ");
+        $trashed = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $del = $this->pdo->prepare("DELETE FROM attachments WHERE attachment_id = :id");
+
         $count = 0;
-        foreach ($expired as $photo) {
-            // Delete physical file
+        foreach ($trashed as $photo) {
             $fullPath = __DIR__ . '/../public' . $photo['file_path'];
-            if (file_exists($fullPath)) {
-                unlink($fullPath);
+            if (is_file($fullPath)) {
+                @unlink($fullPath);
             }
-            
-            // Mark as deleted in database
-            $stmt = $this->pdo->prepare("
-                UPDATE attachments SET is_deleted = TRUE 
-                WHERE attachment_id = :id
-            ");
-            $stmt->execute(['id' => $photo['attachment_id']]);
-            
-            // Invalidate cache
+            $del->execute(['id' => $photo['attachment_id']]);
             $this->redis->del("attachment:{$photo['attachment_id']}");
-            
             $count++;
         }
 
         if ($count > 0) {
-            error_log("Cleanup: Deleted {$count} expired photos");
+            error_log("Emptied photo trash: permanently removed {$count} photos");
         }
 
         return $count;

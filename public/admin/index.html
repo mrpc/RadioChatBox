@@ -2209,9 +2209,16 @@
             <div id="photos-tab" class="tab-content">
                 <div class="section">
                     <h2>Uploaded Photos</h2>
-                    <p style="color: #6b7280; margin-bottom: 20px;">
-                        Photos are automatically deleted after 48 hours. Click on username to view all photos by that user.
+                    <p style="color: #6b7280; margin-bottom: 15px;">
+                        Photos move to the trash after 48 hours (still viewable) and are removed for good only when you empty it. Click a username to view all photos by that user.
                     </p>
+                    <div style="display:flex; gap:14px; align-items:center; margin-bottom:15px; flex-wrap:wrap;">
+                        <label style="display:inline-flex; align-items:center; gap:6px; color:#4b5563; font-size:13px;">
+                            <input type="checkbox" id="photos-show-deleted" style="width:auto;" onchange="loadPhotos(1)">
+                            Show deleted (trash)
+                        </label>
+                        <button class="btn btn-danger" onclick="emptyPhotoTrash()" title="Permanently delete every photo in the trash (files and records)">🗑️ Empty trash</button>
+                    </div>
                     <div id="photos-table"></div>
                 </div>
             </div>
@@ -8125,6 +8132,25 @@
             }
         }
 
+        // Permanently remove every photo in the trash (files + records).
+        async function emptyPhotoTrash() {
+            if (!confirm('Permanently delete every photo in the trash? This removes the files and cannot be undone.')) return;
+            try {
+                const response = await fetch('/api/admin/photos.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ action: 'empty_trash' })
+                });
+                const data = await response.json();
+                if (!data.success) { alert('Error: ' + (data.error || 'Failed to empty trash')); return; }
+                alert(`Removed ${data.removed} photo(s) from the trash.`);
+                loadPhotos(1);
+            } catch (e) {
+                console.error('Failed to empty trash:', e);
+                alert('Failed to empty trash');
+            }
+        }
+
         // Photos Management
         function openPhotoLightbox(src, filename) {
             const box = document.getElementById('photo-lightbox');
@@ -8151,7 +8177,8 @@
 
         async function loadPhotos(page = 1) {
             try {
-                const response = await fetch(`/api/admin/photos.php?action=list&page=${page}&limit=20`, {
+                const includeDeleted = document.getElementById('photos-show-deleted')?.checked ? 1 : 0;
+                const response = await fetch(`/api/admin/photos.php?action=list&page=${page}&limit=20&include_deleted=${includeDeleted}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8182,11 +8209,11 @@
                             </thead>
                             <tbody>
                                 ${photos.map(photo => `
-                                    <tr>
+                                    <tr${photo.is_deleted ? ' style="opacity:0.6;"' : ''}>
                                         <td>
-                                            <img src="${photo.file_path}" onclick="openPhotoLightbox('${photo.file_path.replace(/'/g, "\\'")}', '${(photo.filename || 'photo').replace(/'/g, "\\'")}')" style="max-width: 80px; max-height: 60px; border-radius: 4px; cursor: zoom-in;" alt="Preview" title="Click to enlarge">
+                                            <img src="${photo.file_path}" onclick="openPhotoLightbox('${photo.file_path.replace(/'/g, "\\'")}', '${(photo.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<span style=\\'color:#9ca3af;font-size:11px;\\'>file gone</span>');" style="max-width: 80px; max-height: 60px; border-radius: 4px; cursor: zoom-in;" alt="Preview" title="Click to enlarge">
                                         </td>
-                                        <td><code>${photo.filename}</code></td>
+                                        <td><code>${photo.filename}</code>${photo.is_deleted ? ' <span style="background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 6px;font-size:11px;">deleted</span>' : ''}</td>
                                         <td>
                                             <a href="#" onclick="loadPhotosByUser('${photo.uploaded_by}'); return false;" style="color: #3b82f6;">
                                                 ${photo.uploaded_by}

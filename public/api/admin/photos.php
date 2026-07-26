@@ -32,9 +32,10 @@ try {
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
             $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 200) : 50;
             $offset = ($page - 1) * $limit;
-            
-            $photos = $photoService->getAllAttachments($limit, $offset);
-            $total = $photoService->getTotalAttachmentsCount();
+            $includeDeleted = !empty($_GET['include_deleted']);
+
+            $photos = $photoService->getAllAttachments($limit, $offset, $includeDeleted);
+            $total = $photoService->getTotalAttachmentsCount($includeDeleted);
             $totalPages = ceil($total / $limit);
             
             echo json_encode([
@@ -64,6 +65,19 @@ try {
                 'count' => count($photos)
             ]);
             
+        } else {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid action']);
+        }
+
+    } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $action = $input['action'] ?? '';
+
+        if ($action === 'empty_trash') {
+            // Permanently remove every soft-deleted photo (file + row).
+            $removed = $photoService->emptyTrash();
+            echo json_encode(['success' => true, 'removed' => $removed]);
         } else {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid action']);
