@@ -743,14 +743,16 @@ class BotService
         }
 
         // Re-check right before writing: the admin may have taken over while
-        // the bot was "typing".
-        $guard = $this->guard($fakeUserId, $peer, $epoch);
+        // the bot was "typing". But do NOT require the fake user to still be
+        // active — if the rotation pulled it offline during the typing delay,
+        // the reply is already written and dropping it is the worse outcome.
+        $guard = $this->guard($fakeUserId, $peer, $epoch, requireActive: false);
         if ($guard !== null) {
             return $guard;
         }
 
         /** @var array<string,mixed> $fakeUser */
-        $fakeUser = $this->getBotUserById($fakeUserId);
+        $fakeUser = $this->getBotUserById($fakeUserId, requireActive: false);
         $fakeNickname = (string) $fakeUser['nickname'];
 
         $toSessionId = $this->resolvePeerSessionId($peer, (string) ($payload['peer_session_id'] ?? ''));
@@ -1776,13 +1778,13 @@ class BotService
      * Shared pre-flight checks for both job stages. Returns a reason string
      * when the job should be dropped, or null when it may proceed.
      */
-    private function guard(int $fakeUserId, string $peer, int $epoch): ?string
+    private function guard(int $fakeUserId, string $peer, int $epoch, bool $requireActive = true): ?string
     {
         if (!$this->isEnabled()) {
             return 'skipped: bot replies disabled globally';
         }
 
-        if ($this->getBotUserById($fakeUserId) === null) {
+        if ($this->getBotUserById($fakeUserId, $requireActive) === null) {
             return 'skipped: fake user inactive or bot disabled';
         }
 
@@ -2170,15 +2172,24 @@ class BotService
     /**
      * @return array<string,mixed>|null
      */
-    private function getBotUserById(int $id): ?array
+    /**
+     * @param bool $requireActive When false, an inactive fake user is still
+     *   returned. Delivering an already-composed reply must not be blocked just
+     *   because the rotation pulled the bot offline during the typing delay -
+     *   dropping a written message is worse than sending one from a bot that has
+     *   momentarily gone "offline". The bot must still be enabled either way.
+     */
+    private function getBotUserById(int $id, bool $requireActive = true): ?array
     {
+        $activeClause = $requireActive ? 'AND is_active = TRUE ' : '';
+
         $stmt = $this->pdo->prepare('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
                    bot_reply_language, bot_ignore_chance
             FROM fake_users
-            WHERE id = ? AND is_active = TRUE AND bot_enabled = TRUE
+            WHERE id = ? ' . $activeClause . 'AND bot_enabled = TRUE
         ');
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);

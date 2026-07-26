@@ -681,6 +681,20 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame(0, (int) $stmt->fetchColumn());
     }
 
+    public function testAComposedReplyStillDeliversAfterTheBotIsRotatedOffline(): void
+    {
+        // The rotation pulled the bot offline during the typing delay. The reply
+        // is already written, so it must still be delivered, not dropped.
+        $this->setBotColumn('is_active', false);
+
+        $result = $this->bot->processDeliverJob($this->deliverPayload('kalispera'));
+        $this->assertStringContainsString('delivered reply', $result);
+
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM private_messages WHERE from_username = ? AND to_username = ?');
+        $stmt->execute([$this->nick, $this->peer]);
+        $this->assertSame(1, (int) $stmt->fetchColumn());
+    }
+
     public function testDeliveryIsDroppedWhenSupersededByANewerMessage(): void
     {
         $this->incoming('older');
