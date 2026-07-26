@@ -45,7 +45,7 @@ command="${1:-help}"
 
 case "$command" in
     bot)
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bot-worker.php "$@"
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php worker.php "$@"
         ;;
 
     daemon)
@@ -65,23 +65,19 @@ case "$command" in
         ;;
 
     migrate)
-        # Applies every file in database/migrations in order. They are written to
-        # be idempotent, so already-applied ones are no-ops; each runs in its own
-        # transaction, so a failure never leaves half a migration behind.
-        status=0
-        for file in database/migrations/*.sql; do
-            printf '%-46s ' "$(basename "$file")"
-            output=$("${COMPOSE[@]}" exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" \
-                -v ON_ERROR_STOP=1 --single-transaction -q < "$file" 2>&1)
-            if [[ $? -eq 0 ]]; then
-                echo "OK"
-            else
-                echo "FAILED"
-                echo "$output" | grep -i "^ERROR" | head -3 | sed 's/^/    /'
-                status=1
-            fi
-        done
-        exit $status
+        # Runs RadioChatBox's migrations through PramnosFramework's tracked runner
+        # (records applied state in the `schemaversion` table). Scoped to
+        # app/migrations so only RadioChatBox migrations run — never the framework's
+        # own (which would collide; see docs/pramnos-migration/05-schema-convergence.md).
+        # The underlying SQL is idempotent, so the first run against an existing
+        # database is a safe no-op that simply baselines schemaversion.
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache \
+            php bin/rcb migrate --path=app/migrations "$@"
+        ;;
+
+    migrate:status|migrate:rollback)
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache \
+            php bin/rcb "$command" "$@"
         ;;
 
     logs)
