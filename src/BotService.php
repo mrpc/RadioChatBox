@@ -167,7 +167,7 @@ class BotService
      * strike threshold is reached — some people just don't put up with it and
      * block on the spot.
      */
-    public const DEFAULT_IMMEDIATE_BLOCK_CHANCE = 10;
+    public const DEFAULT_IMMEDIATE_BLOCK_CHANCE = 30;
 
     /**
      * What the bot says on its way out, before blocking.
