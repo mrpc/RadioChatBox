@@ -880,6 +880,52 @@ class BotService
     }
 
     /**
+     * Force the bot to pick a stuck conversation back up.
+     *
+     * Clears the states that stop it replying — ignored, ended (farewell), taken
+     * over, and a spent message budget — then queues a fresh reply to the latest
+     * message straight away. An abuse block is deliberately left in place.
+     */
+    public function forceReply(string $fakeNickname, string $peer): bool
+    {
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+        if ($fakeUserId === null) {
+            return false;
+        }
+
+        $this->getOrCreateThread($fakeUserId, $peer);
+
+        $stmt = $this->pdo->prepare('
+            UPDATE bot_threads
+            SET is_taken_over = FALSE,
+                taken_over_at = NULL,
+                taken_over_by = NULL,
+                is_ignored = FALSE,
+                ignore_decided_at = NULL,
+                farewell_sent_at = NULL,
+                messages_sent = 0,
+                last_error = NULL,
+                updated_at = NOW()
+            WHERE fake_user_id = :fake_user_id AND peer_username = :peer
+        ');
+        $stmt->execute(['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+
+        // Newer epoch so any stale queued job is a no-op and this one is the live
+        // reply.
+        $epoch = $this->bumpEpoch($fakeUserId, $peer);
+
+        $this->queue->push(self::JOB_REPLY, [
+            'fake_user_id' => $fakeUserId,
+            'fake_nickname' => $fakeNickname,
+            'peer_username' => $peer,
+            'peer_session_id' => (string) ($this->resolvePeerSessionId($peer, '') ?? ''),
+            'epoch' => $epoch,
+        ], 0);
+
+        return true;
+    }
+
+    /**
      * Every conversation a bot is (or was) in, for the admin overview.
      *
      * @return list<array<string,mixed>>

@@ -85,12 +85,13 @@ try {
         'take' => $bot->takeOverThread($fakeUser, $peer, (string) ($currentUser['username'] ?? '')),
         'release' => $bot->releaseThread($fakeUser, $peer, false),
         'reset' => $bot->releaseThread($fakeUser, $peer, true),
+        'force' => $bot->forceReply($fakeUser, $peer),
         default => null,
     };
 
     if ($ok === null) {
         http_response_code(400);
-        echo json_encode(['error' => 'Unknown action (expected take, release or reset)']);
+        echo json_encode(['error' => 'Unknown action (expected take, release, reset or force)']);
         exit;
     }
 

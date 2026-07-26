@@ -695,6 +695,27 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame(1, (int) $stmt->fetchColumn());
     }
 
+    public function testForceReplyClearsStuckStatesAndQueuesAReply(): void
+    {
+        // A thread stuck every way it can be: ignored, ended, taken over, spent.
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads
+                (fake_user_id, peer_username, is_ignored, ignore_decided_at, farewell_sent_at, is_taken_over, messages_sent)
+             VALUES (?, ?, TRUE, NOW(), NOW(), TRUE, 99)'
+        )->execute([$this->fakeUserId, $this->peer]);
+
+        $this->assertTrue($this->bot->forceReply($this->nick, $this->peer));
+
+        $thread = $this->threadRow();
+        $this->assertFalse((bool) $thread['is_ignored']);
+        $this->assertNull($thread['farewell_sent_at']);
+        $this->assertFalse((bool) $thread['is_taken_over']);
+        $this->assertSame(0, (int) $thread['messages_sent']);
+
+        $jobs = $this->claimAll();
+        $this->assertNotEmpty(array_filter($jobs, fn ($j) => $j['type'] === BotService::JOB_REPLY));
+    }
+
     public function testDeliveryIsDroppedWhenSupersededByANewerMessage(): void
     {
         $this->incoming('older');
