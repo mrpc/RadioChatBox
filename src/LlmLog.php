@@ -230,7 +230,7 @@ class LlmLog
 
         $stmt = $this->pdo->prepare(
             'SELECT id, created_at, fake_nickname, peer_username, purpose, provider, model, reasoning,
-                    max_tokens, http_status, finish_reason, reply, usage, duration_ms, error,
+                    max_tokens, http_status, finish_reason, messages, reply, usage, duration_ms, error,
                     cost, currency
              FROM bot_llm_log' . $clause . '
              ORDER BY created_at DESC, id DESC

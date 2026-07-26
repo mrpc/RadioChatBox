@@ -6045,18 +6045,28 @@
             return `
                 <table>
                     <thead>
-                        <tr><th>When</th><th>Thread</th><th>Purpose</th><th>Tokens</th><th>Cost</th><th>Result</th><th></th></tr>
+                        <tr><th>When</th><th>Thread</th><th>Purpose</th><th>Message → Reply</th><th>Tokens</th><th>Cost</th><th>Result</th><th></th></tr>
                     </thead>
                     <tbody>
                         ${entries.map(e => {
                             const u = e.usage || {};
                             const reasoning = u.completion_tokens_details?.reasoning_tokens || 0;
                             const failed = e.error || (e.finish_reason && e.finish_reason !== 'stop');
+                            // The last thing the peer said (what this call was answering) and the bot's reply.
+                            const msgs = Array.isArray(e.messages) ? e.messages : [];
+                            const lastUser = [...msgs].reverse().find(m => m && m.role === 'user');
+                            const inbound = lastUser ? String(lastUser.content || '') : '';
+                            const reply = e.reply ? String(e.reply) : '';
+                            const clip = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
                             return `
                                 <tr>
                                     <td>${new Date(e.created_at).toLocaleString()}</td>
                                     <td>${escapeHtml(e.fake_nickname || '-')} → ${escapeHtml(e.peer_username || '-')}</td>
                                     <td>${escapeHtml(e.purpose || 'reply')}${e.provider ? `<br><span style="font-size:11px;color:#6b7280;">${escapeHtml(e.provider)}</span>` : ''}</td>
+                                    <td style="max-width: 340px;">
+                                        ${inbound ? `<div style="color:#6b7280;" title="${escapeHtml(inbound)}">👤 ${escapeHtml(clip(inbound, 120))}</div>` : ''}
+                                        ${reply ? `<div title="${escapeHtml(reply)}">🤖 ${escapeHtml(clip(reply, 120))}</div>` : (inbound ? '' : '<span style="color:#9ca3af;">—</span>')}
+                                    </td>
                                     <td title="prompt ${u.prompt_tokens || '?'} / completion ${u.completion_tokens || '?'}">
                                         ${u.total_tokens || '?'}${reasoning ? ` <span style="color:#b45309;">(+${reasoning} reasoning)</span>` : ''}
                                         ${u.prompt_cache_hit_tokens ? `<br><span style="font-size:11px;color:#10b981;">cache ${u.prompt_cache_hit_tokens}</span>` : ''}
