@@ -39,6 +39,15 @@ if [ "$PHP_MAJOR" -lt 8 ] || { [ "$PHP_MAJOR" -eq 8 ] && [ "$PHP_MINOR" -lt 3 ];
     exit 1
 fi
 
+# Check required PHP extensions.
+# pdo_pgsql, redis, gd: RadioChatBox itself.
+# mbstring: required by PramnosFramework core.
+# pgsql: native PostgreSQL ext used by PramnosFramework's Database layer
+#        (distinct from pdo_pgsql). Install e.g. `apt-get install php8.3-mbstring php8.3-pgsql`.
+for ext in pdo_pgsql redis gd mbstring pgsql; do
+    php -m | grep -qi "^${ext}$" || { echo "❌ PHP extension '${ext}' is required but not loaded. Install it and retry."; exit 1; }
+done
+
 echo "✅ All prerequisites found"
 echo "   PHP: $PHP_VERSION"
 echo ""

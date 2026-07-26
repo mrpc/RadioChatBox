@@ -10,6 +10,11 @@ services:
     volumes:
       - ./:/var/www/html
       - ./apache/site.conf:/etc/apache2/sites-available/000-default.conf
+      # Dev/test: resolve the Composer path-repo symlink
+      # (vendor/mrpc/pramnosframework -> ../../../PramnosFramework => /var/www/PramnosFramework).
+      # Production framework packaging is a separate, deferred decision
+      # (see docs/pramnos-migration/00-overview-and-bc-strategy.md).
+      - ../PramnosFramework:/var/www/PramnosFramework:ro
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379

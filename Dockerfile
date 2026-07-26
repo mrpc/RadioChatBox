@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libwebp-dev \
     libfreetype6-dev \
+    libonig-dev \
     git \
     unzip \
     && rm -rf /var/lib/apt/lists/*
@@ -15,7 +16,10 @@ RUN apt-get update && apt-get install -y \
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo pdo_pgsql gd
+# - pdo_pgsql: RadioChatBox's current data layer
+# - pgsql: native PostgreSQL ext required by PramnosFramework's Database layer
+# - mbstring: required by PramnosFramework core
+RUN docker-php-ext-install pdo pdo_pgsql gd mbstring pgsql
 
 # Configure PHP settings for file uploads and timezone
 RUN echo "upload_max_filesize = 50M" > /usr/local/etc/php/conf.d/uploads.ini \
@@ -44,8 +48,17 @@ WORKDIR /var/www/html
 # Copy composer files
 COPY composer.json composer.lock* ./
 
-# Install PHP dependencies (if any)
-RUN if [ -f composer.lock ]; then composer install --no-dev --optimize-autoloader; fi
+# Install PHP dependencies (if any).
+# NOTE: the PramnosFramework path repository (../PramnosFramework) lives outside
+# the build context, so it is not resolvable at image-build time. In dev/test the
+# project's vendor/ (with the framework symlink) is bind-mounted over this layer
+# and ../PramnosFramework is mounted at /var/www/PramnosFramework (docker-compose.yml),
+# so this build-time install is best-effort. Production framework packaging is a
+# deferred decision — see docs/pramnos-migration/00-overview-and-bc-strategy.md.
+RUN if [ -f composer.lock ]; then \
+        composer install --no-dev --optimize-autoloader \
+        || echo "composer install skipped at build time (framework path repo not in build context)"; \
+    fi
 
 # Copy application files
 COPY . .

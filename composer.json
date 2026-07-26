@@ -43,6 +43,11 @@
         "test": "phpunit",
         "test-coverage": "phpunit --coverage-html coverage"
     },
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        }
+    },
     "minimum-stability": "stable",
     "prefer-stable": true
 }
