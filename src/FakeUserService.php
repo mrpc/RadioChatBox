@@ -380,6 +380,143 @@ class FakeUserService
     }
 
     /**
+     * The portable fields of a fake user — everything that defines it, minus the
+     * runtime state (id, created_at, is_active). This is the shape used for
+     * JSON export/import.
+     */
+    private const PORTABLE_COLUMNS = [
+        'nickname', 'age', 'sex', 'location',
+        'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_max_messages',
+        'bot_typing_seconds_per_word', 'bot_farewell_messages',
+        'bot_llm_provider', 'bot_llm_model', 'bot_reply_language', 'bot_ignore_chance',
+    ];
+
+    /**
+     * Every fake user as a portable config (profile + bot settings), ready to be
+     * serialised to JSON. Runtime state (id, created_at, is_active) is left out
+     * so the file describes what a bot IS, not what it is doing right now.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function exportFakeUsers(): array
+    {
+        $out = [];
+
+        foreach ($this->getAllFakeUsers() as $user) {
+            $row = [];
+            foreach (self::PORTABLE_COLUMNS as $column) {
+                $row[$column] = $user[$column] ?? null;
+            }
+
+            // Clean types so the JSON reads naturally and round-trips cleanly.
+            $row['bot_enabled'] = (bool) $row['bot_enabled'];
+            foreach (['age', 'bot_max_messages', 'bot_ignore_chance'] as $intCol) {
+                $row[$intCol] = $row[$intCol] === null ? null : (int) $row[$intCol];
+            }
+            $row['bot_typing_seconds_per_word'] = $row['bot_typing_seconds_per_word'] === null
+                ? null
+                : (float) $row['bot_typing_seconds_per_word'];
+
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Import fake users from a list of portable configs. Purely additive: a
+     * nickname that already exists (as a fake user OR a real account) is skipped,
+     * never overwritten, and nothing is ever deleted. Each row is independent, so
+     * one bad entry cannot abort the rest.
+     *
+     * @param array<int,mixed> $rows
+     * @return array{imported:list<string>,skipped:list<string>,invalid:list<array{nickname:?string,reason:string}>}
+     */
+    public function importFakeUsers(array $rows): array
+    {
+        $imported = [];
+        $skipped = [];
+        $invalid = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                $invalid[] = ['nickname' => null, 'reason' => 'Entry is not an object'];
+                continue;
+            }
+
+            $nickname = trim((string) ($row['nickname'] ?? ''));
+            if (mb_strlen($nickname) < 3 || mb_strlen($nickname) > 50) {
+                $invalid[] = ['nickname' => $nickname === '' ? null : $nickname, 'reason' => 'Nickname must be between 3 and 50 characters'];
+                continue;
+            }
+
+            // No overwrites: an existing nickname is left exactly as it is.
+            if ($this->nicknameTaken($nickname, 0)) {
+                $skipped[] = $nickname;
+                continue;
+            }
+
+            try {
+                [$age, $sex, $location] = $this->normalizeProfileForImport($row);
+            } catch (\InvalidArgumentException $e) {
+                $invalid[] = ['nickname' => $nickname, 'reason' => $e->getMessage()];
+                continue;
+            }
+
+            try {
+                $this->pdo->beginTransaction();
+                $created = $this->addFakeUser($nickname, $age, $sex, $location);
+                // updateBotSettings only reads its own bot_* keys and normalises
+                // them (clamping, provider/language validation), so the rest of
+                // the row is ignored safely.
+                $this->updateBotSettings((int) $created['id'], $row);
+                $this->pdo->commit();
+                $imported[] = $nickname;
+            } catch (\Throwable $e) {
+                if ($this->pdo->inTransaction()) {
+                    $this->pdo->rollBack();
+                }
+                // A race that slipped past nicknameTaken, or a constraint the
+                // row still violated: skip it rather than fail the whole import.
+                $skipped[] = $nickname;
+            }
+        }
+
+        return ['imported' => $imported, 'skipped' => $skipped, 'invalid' => $invalid];
+    }
+
+    /**
+     * Validate and normalise the profile fields of an import row, reusing the
+     * same rules as updateFakeUser. Throws on values the database would reject.
+     *
+     * @param array<string,mixed> $row
+     * @return array{0:?int,1:?string,2:?string} [age, sex, location]
+     */
+    private function normalizeProfileForImport(array $row): array
+    {
+        $age = $row['age'] ?? null;
+        if ($age === '' || $age === null) {
+            $age = null;
+        } else {
+            $age = (int) $age;
+            if ($age < 18 || $age > 99) {
+                throw new \InvalidArgumentException('Age must be between 18 and 99');
+            }
+        }
+
+        $sex = $row['sex'] ?? null;
+        $sex = ($sex === '' || $sex === null) ? null : (string) $sex;
+        if ($sex !== null && !in_array($sex, ['male', 'female', 'other'], true)) {
+            throw new \InvalidArgumentException('Sex must be male, female or other');
+        }
+
+        $location = $row['location'] ?? null;
+        $location = ($location === '' || $location === null) ? null : mb_substr((string) $location, 0, 100);
+
+        return [$age, $sex, $location];
+    }
+
+    /**
      * Delete a fake user
      */
     public function deleteFakeUser(int $id): bool

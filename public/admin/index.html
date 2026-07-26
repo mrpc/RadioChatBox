@@ -1709,6 +1709,11 @@
                 <div class="section">
                     <h2>Fake Users List</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Toggle to activate/deactivate fake users. Active fake users appear in the user list.</p>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="exportFakeUsers()" title="Download all fake users and their bot settings as a JSON file">⬇️ Export JSON</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('fake-users-import-file').click()" title="Import fake users from a JSON file. Existing nicknames are skipped — nothing is overwritten or deleted.">⬆️ Import JSON</button>
+                        <input type="file" id="fake-users-import-file" accept="application/json,.json" style="display: none;" onchange="importFakeUsers(this)">
+                    </div>
                     <div id="fake-users-table"></div>
                 </div>
 
@@ -5463,6 +5468,79 @@
                 }
             } catch (error) {
                 console.error('Failed to load fake users:', error);
+            }
+        }
+
+        // Download every fake user (profile + bot settings) as a JSON file.
+        async function exportFakeUsers() {
+            try {
+                const response = await fetch('/api/admin/export-fake-users.php', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    alert('Error: ' + (data.error || 'Export failed'));
+                    return;
+                }
+
+                const payload = JSON.stringify({ fake_users: data.fake_users }, null, 2);
+                const blob = new Blob([payload], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const stamp = new Date().toISOString().slice(0, 10);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `fake-users-${stamp}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Failed to export fake users:', error);
+                alert('Failed to export fake users');
+            }
+        }
+
+        // Import fake users from a chosen JSON file. Additive only: existing
+        // nicknames are skipped server-side, nothing is overwritten or deleted.
+        async function importFakeUsers(fileInput) {
+            const file = fileInput.files && fileInput.files[0];
+            fileInput.value = ''; // allow re-importing the same file later
+            if (!file) return;
+
+            let parsed;
+            try {
+                parsed = JSON.parse(await file.text());
+            } catch (e) {
+                alert('That file is not valid JSON.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/import-fake-users.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify(parsed)
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    alert('Error: ' + (data.error || 'Import failed'));
+                    return;
+                }
+
+                let summary = `Imported ${data.imported}, skipped ${data.skipped} (already existed)`;
+                if (data.invalid) summary += `, ${data.invalid} invalid`;
+                if (data.skipped_nicknames && data.skipped_nicknames.length) {
+                    summary += `\n\nSkipped: ${data.skipped_nicknames.join(', ')}`;
+                }
+                if (data.invalid_rows && data.invalid_rows.length) {
+                    summary += `\n\nInvalid: ` + data.invalid_rows
+                        .map(r => `${r.nickname || '(no nickname)'} — ${r.reason}`).join('; ');
+                }
+                alert(summary);
+                loadFakeUsers();
+            } catch (error) {
+                console.error('Failed to import fake users:', error);
+                alert('Failed to import fake users');
             }
         }
 

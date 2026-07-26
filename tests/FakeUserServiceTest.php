@@ -168,6 +168,93 @@ class FakeUserServiceTest extends TestCase
         $this->assertEquals(0, $fakeUsersNeeded);
     }
 
+    public function testExportOmitsRuntimeStateAndKeepsBotSettings(): void
+    {
+        $pdo = \RadioChatBox\Database::getPDO();
+        $service = new \RadioChatBox\FakeUserService();
+        $nick = 'exp_' . substr(bin2hex(random_bytes(5)), 0, 8);
+
+        try {
+            $created = $service->addFakeUser($nick, 29, 'female', 'GR');
+            $service->updateBotSettings((int) $created['id'], [
+                'bot_enabled' => true,
+                'bot_persona' => 'content creator',
+                'bot_reply_language' => 'greeklish',
+                'bot_ignore_chance' => 40,
+            ]);
+
+            $row = null;
+            foreach ($service->exportFakeUsers() as $entry) {
+                if ($entry['nickname'] === $nick) {
+                    $row = $entry;
+                    break;
+                }
+            }
+
+            $this->assertNotNull($row, 'the exported list must contain the fake user');
+            // Runtime state is excluded.
+            $this->assertArrayNotHasKey('id', $row);
+            $this->assertArrayNotHasKey('created_at', $row);
+            $this->assertArrayNotHasKey('is_active', $row);
+            // Profile + bot settings are kept, with clean types.
+            $this->assertSame(29, $row['age']);
+            $this->assertTrue($row['bot_enabled']);
+            $this->assertSame('content creator', $row['bot_persona']);
+            $this->assertSame('greeklish', $row['bot_reply_language']);
+            $this->assertSame(40, $row['bot_ignore_chance']);
+        } finally {
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$nick]);
+        }
+    }
+
+    public function testImportIsAdditiveAndNeverOverwrites(): void
+    {
+        $pdo = \RadioChatBox\Database::getPDO();
+        $service = new \RadioChatBox\FakeUserService();
+        $suffix = substr(bin2hex(random_bytes(5)), 0, 8);
+        $existing = 'imp_exist_' . $suffix;
+        $fresh = 'imp_new_' . $suffix;
+
+        try {
+            // A pre-existing bot with a persona we can check was NOT overwritten.
+            $created = $service->addFakeUser($existing, 25, 'female', 'GR');
+            $service->updateBotSettings((int) $created['id'], ['bot_persona' => 'ORIGINAL']);
+
+            $result = $service->importFakeUsers([
+                // Same nickname, different persona -> must be skipped, not overwritten.
+                ['nickname' => $existing, 'age' => 40, 'bot_persona' => 'HIJACKED'],
+                // Brand new, fully configured -> imported.
+                ['nickname' => $fresh, 'age' => 31, 'sex' => 'male', 'location' => 'GR',
+                 'bot_enabled' => true, 'bot_persona' => 'new bot', 'bot_ignore_chance' => 15],
+                // Invalid nickname -> reported invalid, not inserted.
+                ['nickname' => 'ab'],
+                // Invalid age -> reported invalid.
+                ['nickname' => 'imp_bad_' . $suffix, 'age' => 5],
+            ]);
+
+            $this->assertSame([$fresh], $result['imported']);
+            $this->assertSame([$existing], $result['skipped']);
+            $this->assertCount(2, $result['invalid']);
+
+            // The existing bot is untouched.
+            $unchanged = $service->getFakeUserByNickname($existing);
+            $this->assertSame('ORIGINAL', $unchanged['bot_persona']);
+            $this->assertSame(25, (int) $unchanged['age']);
+
+            // The new bot exists with its settings applied.
+            $imported = $service->getFakeUserByNickname($fresh);
+            $this->assertNotNull($imported);
+            $this->assertTrue((bool) $imported['bot_enabled']);
+            $this->assertSame('new bot', $imported['bot_persona']);
+            $this->assertSame(15, (int) $imported['bot_ignore_chance']);
+
+            // Nothing was created for the invalid rows.
+            $this->assertNull($service->getFakeUserByNickname('imp_bad_' . $suffix));
+        } finally {
+            $pdo->prepare("DELETE FROM fake_users WHERE nickname LIKE ?")->execute(['imp_%_' . $suffix]);
+        }
+    }
+
     /**
      * A bot in a live conversation must not be a rotation candidate, while an
      * idle bot stays eligible. Read-only: it inspects the candidate list rather
