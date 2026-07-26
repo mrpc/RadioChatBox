@@ -2217,11 +2217,11 @@
             </div>
 
             <!-- Photo lightbox -->
-            <div id="photo-lightbox" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; flex-direction:column; gap:14px;" onclick="if(event.target===this)closePhotoLightbox()">
-                <img id="photo-lightbox-img" src="" alt="" style="max-width:92vw; max-height:82vh; border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,0.5);">
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <a id="photo-lightbox-download" href="#" download class="btn" style="background:#10b981; color:#fff;">⬇️ Download</a>
-                    <button class="btn btn-outline" style="color:#fff; border-color:#fff;" onclick="closePhotoLightbox()">Close</button>
+            <div id="photo-lightbox" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.88); box-sizing:border-box; padding:24px; align-items:center; justify-content:center; flex-direction:column; gap:18px;" onclick="if(event.target===this)closePhotoLightbox()">
+                <img id="photo-lightbox-img" src="" alt="" style="max-width:90vw; max-height:78vh; object-fit:contain; border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,0.5);">
+                <div style="display:flex; gap:12px; align-items:center;">
+                    <a id="photo-lightbox-download" href="#" download style="display:inline-flex; align-items:center; gap:6px; background:#10b981; color:#fff; text-decoration:none; padding:9px 18px; border-radius:8px; font-weight:600; font-size:14px;">⬇️ Download</a>
+                    <button onclick="closePhotoLightbox()" style="background:transparent; color:#fff; border:1px solid rgba(255,255,255,0.6); padding:9px 18px; border-radius:8px; font-size:14px; cursor:pointer;">✕ Close</button>
                 </div>
             </div>
 
