@@ -170,8 +170,8 @@ try {
         // spam. We still notify for fake users a human has to answer: bot
         // disabled on this one, or auto-replies switched off globally.
         if ($isFakeUser) {
-            $botWillHandle = $fakeUserBotEnabled
-                && (new \RadioChatBox\SettingsService())->get('bot_replies_enabled', 'false') === 'true';
+            $botService = new \RadioChatBox\BotService();
+            $botWillHandle = $botService->willAutoReply(['bot_enabled' => $fakeUserBotEnabled]);
 
             if (!$botWillHandle) {
                 try {
@@ -205,7 +205,7 @@ try {
             // call happens in worker.php), and it is a no-op unless the
             // feature is enabled for this fake user. BotService swallows its
             // own errors so the user's message is never affected.
-            (new \RadioChatBox\BotService())->onIncomingMessage(
+            $botService->onIncomingMessage(
                 $toUsername,
                 $fromUsername,
                 $fromSessionId,

@@ -1606,6 +1606,19 @@ class BotService
     }
 
     /**
+     * Whether an AI bot will answer DMs to this fake user on its own - true only
+     * when the fake user has its bot enabled AND replies are on globally. Callers
+     * use it to skip work a bot makes unnecessary, e.g. alerting an admin about a
+     * DM the bot is about to handle.
+     *
+     * @param array<string,mixed> $fakeUser Row with at least bot_enabled
+     */
+    public function willAutoReply(array $fakeUser): bool
+    {
+        return !empty($fakeUser['bot_enabled']) && $this->isEnabled();
+    }
+
+    /**
      * Shared pre-flight checks for both job stages. Returns a reason string
      * when the job should be dropped, or null when it may proceed.
      */

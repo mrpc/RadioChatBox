@@ -43,6 +43,15 @@ class LlmServiceTest extends TestCase
         $this->assertSame(LlmService::DEFAULT_MAX_TOKENS, (new LlmService())->getMaxTokens());
     }
 
+    public function testTemperatureDefaultsToACalmerValue(): void
+    {
+        // 1.0 produced off-topic, garbled Greek; 0.8 keeps replies casual but
+        // coherent. An explicit override still wins.
+        $this->assertSame(0.8, (new LlmService())->getTemperature());
+        $this->assertSame(0.5, (new LlmService(['temperature' => '0.5']))->getTemperature());
+        $this->assertSame(0.8, (new LlmService(['temperature' => '']))->getTemperature());
+    }
+
     public function testReasoningIsOffByDefault(): void
     {
         $this->assertFalse((new LlmService())->isReasoningEnabled());
@@ -212,6 +221,30 @@ class LlmServiceTest extends TestCase
         $secondPage = $log->page(2, 2, ['fake_nickname' => 'llmtest_bot']);
         $this->assertCount(2, $firstPage['entries']);
         $this->assertCount(1, $secondPage['entries']);
+    }
+
+    public function testTheListIncludesTheConversationMessages(): void
+    {
+        // The calls table shows the peer's message and the reply inline, so the
+        // list rows must carry the messages column, not only the reply.
+        $log = new LlmLog();
+        $messages = [
+            ['role' => 'system', 'content' => 'you are a bot'],
+            ['role' => 'user', 'content' => 'geia ti kaneis'],
+        ];
+        $log->record([
+            'fake_nickname' => 'llmtest_bot',
+            'peer_username' => 'llmtest_peer',
+            'model' => 'm',
+            'finish_reason' => 'stop',
+            'messages' => $messages,
+            'reply' => 'kala esy',
+        ]);
+
+        $entry = $log->page(1, 0, ['fake_nickname' => 'llmtest_bot'])['entries'][0];
+
+        $this->assertArrayHasKey('messages', $entry);
+        $this->assertSame($messages, json_decode($entry['messages'], true));
     }
 
     public function testASingleCallCanBeFetchedWithItsPrompt(): void

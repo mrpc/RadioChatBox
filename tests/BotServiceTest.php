@@ -32,6 +32,16 @@ class BotServiceTest extends TestCase
         $this->assertStringContainsString('μην κανονίζεις συναντήσεις από κοντά', $prompt);
     }
 
+    public function testTheContextTellsBotsThereAreNoProfilesOrInAppLinks(): void
+    {
+        // Bots were inventing a "link on my profile"; the platform has no such
+        // thing, so the default context must say so and it must reach the prompt.
+        $this->assertStringContainsString('δεν υπάρχουν προφίλ', BotService::DEFAULT_CONTEXT_PROMPT);
+
+        $prompt = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+        $this->assertStringContainsString('δεν υπάρχουν προφίλ', $prompt);
+    }
+
     public function testBuildSystemPromptUsesMasculineArticle(): void
     {
         $prompt = BotService::buildSystemPrompt([

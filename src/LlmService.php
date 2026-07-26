@@ -116,6 +116,11 @@ class LlmService
         return $this->maxTokens;
     }
 
+    public function getTemperature(): float
+    {
+        return $this->temperature;
+    }
+
     /**
      * Build a client from the admin settings (with env fallbacks).
      *

@@ -143,6 +143,18 @@ class BotServicePipelineTest extends TestCase
         $stmt->execute();
     }
 
+    /** This bot's row from listThreads(), or null if it is not listed. */
+    private function threadInList(): ?array
+    {
+        foreach ($this->bot->listThreads() as $thread) {
+            if ($thread['nickname'] === $this->nick && $thread['peer_username'] === $this->peer) {
+                return $thread;
+            }
+        }
+
+        return null;
+    }
+
     // ------------------------------------------------------------------
     // Model list (regression: deepseek-chat was rejected by the API)
     // ------------------------------------------------------------------
@@ -209,6 +221,41 @@ class BotServicePipelineTest extends TestCase
 
         $this->assertFalse($this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession));
         $this->assertSame(0, $this->queue->size());
+    }
+
+    public function testWillAutoReplyNeedsBotEnabledAndGlobalReplies(): void
+    {
+        // Drives the "skip the admin DM notification, the bot has it" decision.
+        $this->settings->values['bot_replies_enabled'] = 'true';
+        $this->assertTrue($this->bot->willAutoReply(['bot_enabled' => true]));
+        $this->assertFalse($this->bot->willAutoReply(['bot_enabled' => false]));
+
+        $this->settings->values['bot_replies_enabled'] = 'false';
+        $this->assertFalse($this->bot->willAutoReply(['bot_enabled' => true]));
+    }
+
+    public function testListThreadsReportsWhetherTheFakeUserIsActive(): void
+    {
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession);
+
+        // Active by default, so the conversation is a healthy "replying" one.
+        $this->assertTrue($this->threadInList()['is_active']);
+
+        // Deactivated (e.g. rotated out): the panel must show it cannot reply.
+        $this->setBotColumn('is_active', false);
+        $this->assertFalse($this->threadInList()['is_active']);
+    }
+
+    public function testGetThreadStateReportsWhetherTheFakeUserIsActive(): void
+    {
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession);
+
+        $this->assertTrue($this->bot->getThreadState($this->nick, $this->peer)['is_active']);
+
+        $this->setBotColumn('is_active', false);
+        $this->assertFalse($this->bot->getThreadState($this->nick, $this->peer)['is_active']);
     }
 
     public function testNothingIsScheduledForAnInactiveFakeUser(): void
