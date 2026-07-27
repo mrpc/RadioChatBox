@@ -3,6 +3,7 @@
 namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
+use RadioChatBox\Http\Validate;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\BotService;
@@ -83,26 +84,27 @@ final class AdminFakeUsersController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $nickname = $input['nickname'] ?? '';
+            // nickname: 3-50 chars (length); age: optional, 18-99 (numeric even
+            // as a form string, thanks to the framework Validator numeric fix).
+            $error = Validate::check($input, [
+                'nickname' => 'required|min:3|max:50',
+                'age'      => 'nullable|integer|min:18|max:99',
+            ], [
+                'nickname.required' => 'Nickname is required',
+                'nickname.min'      => 'Nickname must be at least 3 characters',
+                'nickname.max'      => 'Nickname must be max 50 characters',
+                'age.integer'       => 'Age must be between 18 and 99',
+                'age.min'           => 'Age must be between 18 and 99',
+                'age.max'           => 'Age must be between 18 and 99',
+            ]);
+            if ($error) {
+                return $error;
+            }
+
+            $nickname = (string) $input['nickname'];
             $age      = isset($input['age']) && $input['age'] !== '' ? (int) $input['age'] : null;
             $sex      = $input['sex'] ?? null;
             $location = $input['location'] ?? null;
-
-            if (empty($nickname)) {
-                throw new InvalidArgumentException('Nickname is required');
-            }
-
-            if (strlen($nickname) < 3) {
-                throw new InvalidArgumentException('Nickname must be at least 3 characters');
-            }
-
-            if (strlen($nickname) > 50) {
-                throw new InvalidArgumentException('Nickname must be max 50 characters');
-            }
-
-            if ($age !== null && ($age < 18 || $age > 99)) {
-                throw new InvalidArgumentException('Age must be between 18 and 99');
-            }
 
             $fakeUser = (new FakeUserService())->addFakeUser($nickname, $age, $sex, $location);
 

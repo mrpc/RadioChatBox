@@ -4,6 +4,7 @@ namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
 use PDO;
+use RadioChatBox\Http\Validate;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -193,16 +194,23 @@ final class AdminImpersonationController
         try {
             $input = $_POST;
 
-            $impersonateAs = $input['impersonate_as'] ?? '';
-            $toUsername    = $input['to_username'] ?? '';
+            $error = Validate::check($input, [
+                'impersonate_as' => 'required',
+                'to_username'    => 'required',
+            ], [
+                'impersonate_as.required' => 'Impersonate username and recipient are required',
+                'to_username.required'    => 'Impersonate username and recipient are required',
+            ]);
+            if ($error) {
+                return $error;
+            }
+
+            $impersonateAs = $input['impersonate_as'];
+            $toUsername    = $input['to_username'];
             $message       = $input['message'] ?? '';
             $attachmentId  = $input['attachment_id'] ?? null;
 
-            if (empty($impersonateAs) || empty($toUsername)) {
-                return Response::json(['error' => 'Impersonate username and recipient are required'], 400);
-            }
-
-            // Message is optional if there's an attachment
+            // Message is optional if there's an attachment (cross-field rule).
             if (empty($message) && empty($attachmentId)) {
                 return Response::json(['error' => 'Either message or attachment is required'], 400);
             }
