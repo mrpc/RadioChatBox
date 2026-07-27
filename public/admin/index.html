@@ -5533,7 +5533,7 @@
 
         async function loadFakeUsers() {
             try {
-                const response = await fetch('/api/admin/list-fake-users.php', {
+                const response = await fetch('/api/admin/list-fake-users', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
