@@ -28,6 +28,11 @@ Read in order:
    incompatible table-name collisions (`settings`/`users`/`sessions`/`messages`) that the
    framework's `hasTable()`-guarded migrations would **silently skip**, the framework tables that
    are safe to add, and a safe convergence sequence. **Governs Phase 2.**
+7. **[06 — Redis behind capabilities](06-redis-behind-capabilities.md)** — Phase 8: remove every
+   direct Redis dependency from the app. Redis is a *driver*, not a thing the app talks to. Splits
+   the app's Redis usage into **three distinct infrastructures** — Cache, Event bus (pub/sub) and
+   Queue — each with pluggable drivers (Redis / Database / Pusher / Kafka). Full BC; driver chosen
+   by config. **Governs Phase 8** (after Phase 7 DB convergence).
 
 ## TL;DR
 
