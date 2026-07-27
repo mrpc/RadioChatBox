@@ -1,12 +1,12 @@
 <?php
 
-namespace RadioChatBox\Tests\Http;
+namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Database;
 use RadioChatBox\SettingsService;
-use RadioChatBox\Http\Controllers\SendController;
+use RadioChatBox\Controllers\SendController;
 
 /**
  * Golden-contract test for the migrated POST /api/send endpoint (replaced

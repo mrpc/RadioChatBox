@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Tests\Http;
+namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Application\Container;
@@ -8,7 +8,7 @@ use Pramnos\Http\MiddlewareInterface;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Router;
-use RadioChatBox\Http\Controllers\StatusController;
+use RadioChatBox\Controllers\StatusController;
 
 /**
  * Functional proof of the Phase 6 HTTP path: a request runs through the Router,

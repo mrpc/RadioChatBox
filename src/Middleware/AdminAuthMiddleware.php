@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Http\Middleware;
+namespace RadioChatBox\Middleware;
 
 use Pramnos\Http\MiddlewareInterface;
 use Pramnos\Http\Request;

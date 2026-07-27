@@ -1,10 +1,10 @@
 <?php
 
-namespace RadioChatBox\Tests\Http;
+namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
-use RadioChatBox\Http\Controllers\ActiveUsersController;
+use RadioChatBox\Controllers\ActiveUsersController;
 
 /**
  * Golden-contract test for the migrated GET /api/active-users endpoint.

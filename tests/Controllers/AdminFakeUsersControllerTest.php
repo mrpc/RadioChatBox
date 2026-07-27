@@ -1,12 +1,12 @@
 <?php
 
-namespace RadioChatBox\Tests\Http;
+namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
-use RadioChatBox\Http\Controllers\AdminFakeUsersController;
-use RadioChatBox\Http\Middleware\AdminAuthMiddleware;
+use RadioChatBox\Controllers\AdminFakeUsersController;
+use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
  * Covers the migrated admin endpoint GET /api/admin/list-fake-users and its auth

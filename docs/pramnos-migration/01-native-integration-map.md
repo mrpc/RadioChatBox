@@ -193,7 +193,7 @@ the container so existing muscle-memory/docs keep working. Fixes the current bro
 
 ### 5.2 Migrations (Adopt, baselined)
 Each `database/migrations/NNN_*.sql` → a `Pramnos\Database\Migration` subclass in
-`app/migrations/YYYY_MM_DD_HHmmss_slug.php`:
+`app/Migrations/YYYY_MM_DD_HHmmss_slug.php`:
 ```php
 class AddReplyToMessages extends \Pramnos\Database\Migration {
     protected $description = 'Add reply_to to messages';

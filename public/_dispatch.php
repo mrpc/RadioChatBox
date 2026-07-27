@@ -3,7 +3,7 @@
 /**
  * RadioChatBox API front controller (migration Phase 6).
  *
- * Dispatches attribute-routed controllers in src/Http/Controllers through
+ * Dispatches attribute-routed controllers in src/Controllers through
  * PramnosFramework's Router + native middleware pipeline. Apache serves any
  * /api/* request that is NOT an existing file here via FallbackResource
  * (apache/site.conf), so migrated endpoints use clean paths while the remaining
@@ -41,7 +41,7 @@ if (!radiochatbox_boot_pramnos()) {
 
 $container = new Container();
 $router    = new Router($container);
-$router->loadFromDirectory(ROOT . '/src/Http/Controllers', 'RadioChatBox\\Http\\Controllers');
+$router->loadFromDirectory(ROOT . '/src/Controllers', 'RadioChatBox\\Controllers');
 
 // CORS parity with the legacy CorsHandler: reflect the request Origin against the
 // configured allow-list, credentials on, GET/POST/OPTIONS + Content-Type.

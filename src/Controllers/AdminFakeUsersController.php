@@ -1,11 +1,11 @@
 <?php
 
-namespace RadioChatBox\Http\Controllers;
+namespace RadioChatBox\Controllers;
 
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\FakeUserService;
-use RadioChatBox\Http\Middleware\AdminAuthMiddleware;
+use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
  * Admin: GET /api/admin/list-fake-users — the full fake-user list.

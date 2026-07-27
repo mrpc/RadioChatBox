@@ -6,7 +6,7 @@
  * The suite runs against a real PostgreSQL database, so its schema has to exist
  * and be current or tests fail with cryptic "relation/column does not exist"
  * errors. We build/verify it through PramnosFramework's tracked migration
- * runner (the single CreateSchema baseline migration in app/migrations), the
+ * runner (the single CreateSchema baseline migration in app/Migrations), the
  * same path `radiochatbox migrate` uses.
  *
  * The runner records applied migrations in `schemaversion`, so this is a no-op
@@ -26,7 +26,7 @@ if (($_ENV['APP_ENV'] ?? getenv('APP_ENV')) !== 'testing') {
 $root = dirname(__DIR__);
 $output = (string) shell_exec(
     escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/bin/rcb')
-    . ' migrate --path=app/migrations 2>&1'
+    . ' migrate 2>&1'
 );
 
 fwrite(STDERR, "[tests] migrate:\n" . trim($output) . "\n");

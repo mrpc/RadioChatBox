@@ -86,9 +86,9 @@ See `DEPLOYMENT.md` for complete setup guide.
 ### Database Changes
 The schema is managed by PramnosFramework's tracked migration runner. There is no
 `database/init.sql`; the full schema lives in one baseline migration
-(`app/migrations/*_create_schema.php`).
+(`app/Migrations/*_create_schema.php`).
 1. Scaffold: `./radiochatbox migrate` wraps `bin/rcb`; create new migrations with
-   `php bin/rcb create:migration "describe change"` (writes to `app/migrations/`).
+   `php bin/rcb create:migration "describe change"` (writes to `app/Migrations/`).
 2. Implement `up()`/`down()` with the schema builder (`$this->schema()->table(...)`)
    or raw SQL (`$this->DB()->statement(...)`).
 3. Apply: `./radiochatbox migrate` (records applied state in `schemaversion`).
@@ -150,7 +150,7 @@ $redis->subscribe(['chat:updates', 'chat:user_updates'], function($redis, $chann
 - `src/MessageFilter.php` - XSS/spam filtering (static methods)
 - `src/PhotoService.php` - Photo uploads with auto-expiration (48h)
 - `src/SettingsService.php` - Runtime config from database
-- `app/migrations/*_create_schema.php` - Complete schema (schema builder + raw SQL), applied via the migration runner
+- `app/Migrations/*_create_schema.php` - Complete schema (schema builder + raw SQL), applied via the migration runner
 
 ## Testing Approach
 

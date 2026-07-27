@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Http\Controllers;
+namespace RadioChatBox\Controllers;
 
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;

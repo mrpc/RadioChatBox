@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
  * Guards the single baseline schema migration (the SQL squash).
  *
  * RadioChatBox's schema is created by one PramnosFramework migration
- * (app/migrations/*_create_schema.php) instead of the former database/init.sql
+ * (app/Migrations/*_create_schema.php) instead of the former database/init.sql
  * plus 22 incremental SQL files. These checks make sure that consolidation stays
  * intact: exactly one migration exists, it implements up() using the schema
  * builder and raw SQL, and the legacy init.sql / raw migration files are gone
@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  */
 class MigrationBaselineTest extends TestCase
 {
-    private const MIG_DIR  = __DIR__ . '/../app/migrations';
+    private const MIG_DIR  = __DIR__ . '/../app/Migrations';
     private const DB_DIR   = __DIR__ . '/../database';
 
     /**

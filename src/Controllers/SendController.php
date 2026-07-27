@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Http\Controllers;
+namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
 use Pramnos\Http\Response;

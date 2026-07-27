@@ -75,7 +75,7 @@ PDO.
 ## Phase 2 — Console + tracked migrations (framework is clearly better) — ✅ IMPLEMENTED
 
 > **As built** (commit `feat: Phase 2 — tracked migrations`): scoping is done with
-> **`bin/rcb migrate --path=app/migrations`**, not `migration_cutoff`. Because RadioChatBox's SQL
+> **`bin/rcb migrate` (default path `app/Migrations`)**, not `migration_cutoff`. Because RadioChatBox's SQL
 > is already idempotent, the first run on an existing DB is a safe no-op that just records the 22
 > migrations in `schemaversion`; a fresh DB builds the schema. `--path` excludes every framework
 > migration (verified: no framework tables created, app tables untouched, 2nd run = nothing
@@ -94,8 +94,8 @@ PDO.
 > time. Keep `app.php` `features` empty (as it already is) and only run the **app** migrations plus
 > the **add-only** framework tables. See [`05-schema-convergence.md`](05-schema-convergence.md) §5.
 
-**Files (new).** `app/migrations/YYYY_MM_DD_HHmmss_<slug>.php` (×25), optional
-`app/migrations/sql/*.sql` (verbatim bodies), console-app subclass registering custom commands.
+**Files (new).** `app/Migrations/YYYY_MM_DD_HHmmss_<slug>.php` (×25), optional
+`app/Migrations/sql/*.sql` (verbatim bodies), console-app subclass registering custom commands.
 **Files (changed).** `radiochatbox` → forwards `migrate`/`stats`/`daemon` to `pramnos`;
 `deploy.sh` (migrations step → `pramnos migrate`); `docker-compose.yml` (drop initdb migration
 mount once the runner owns it). **Legacy SQL** in `database/migrations/*.sql` is retained for
@@ -270,7 +270,7 @@ unchanged.
 > **Harness built + first endpoint migrated** (`feat: Phase 6 — HTTP front controller`). Since no
 > external client consumes the API, endpoints move **in place** (no `/v2` namespace). A root-level
 > front controller `public/_dispatch.php` boots the framework, discovers attribute-routed
-> controllers in `src/Http/Controllers`, applies the native middleware pipeline
+> controllers in `src/Controllers`, applies the native middleware pipeline
 > (`JsonResponseMiddleware`), and dispatches. Apache wires it with the **strangler** pattern —
 > `FallbackResource /_dispatch.php` on `<Directory public/api>` — so any `/api/*` path that is **not**
 > an existing file goes through the router while the ~70 legacy `/api/*.php` files keep being served
@@ -293,7 +293,7 @@ until each is moved.
 **Prerequisite.** [`02`](02-framework-improvements.md) §4 (Router instance-method dispatch) must
 land first, or use closures/static actions.
 
-**Files (new).** a front controller/dispatcher; `src/Http/Controllers/*` (framework controllers);
+**Files (new).** a front controller/dispatcher; `src/Controllers/*` (framework controllers);
 `app/app.php` `middleware` section. **Files (retired incrementally).** individual
 `public/api/*.php` as each is migrated.
 
