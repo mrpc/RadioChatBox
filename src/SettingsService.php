@@ -2,12 +2,12 @@
 
 namespace RadioChatBox;
 
-use PDO;
 use Redis;
+use Pramnos\Database\Database as PramnosDatabase;
 
 class SettingsService
 {
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private Redis $redis;
     private string $prefix;
     private const SETTINGS_CACHE_KEY = 'settings:all';
@@ -145,7 +145,7 @@ class SettingsService
 
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
         $this->prefix = Database::getRedisPrefix();
     }
@@ -179,10 +179,13 @@ class SettingsService
         }
 
         // Load from database
-        $stmt = $this->pdo->query('SELECT setting_key, setting_value FROM settings');
+        $rows = $this->db->queryBuilder()
+            ->from('settings')
+            ->select(['setting_key', 'setting_value'])
+            ->getAll();
         $settings = [];
-        
-        while ($row = $stmt->fetch()) {
+
+        foreach ($rows as $row) {
             $settings[$row['setting_key']] = $row['setting_value'];
         }
 
@@ -227,24 +230,23 @@ class SettingsService
      */
     public function set(string $key, mixed $value): bool
     {
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO settings (setting_key, setting_value, updated_at) 
-             VALUES (:key, :value, NOW()) 
-             ON CONFLICT (setting_key) 
-             DO UPDATE SET setting_value = :value, updated_at = NOW()'
+        $qb = $this->db->queryBuilder()->from('settings');
+        $result = $qb->upsert(
+            [
+                'setting_key'   => $key,
+                'setting_value' => (string) $value,
+                'updated_at'    => $qb->raw('NOW()'),
+            ],
+            ['setting_key'],
+            ['setting_value', 'updated_at']
         );
 
-        $result = $stmt->execute([
-            'key' => $key,
-            'value' => (string)$value
-        ]);
-
-        if ($result) {
+        if ($result !== false) {
             // Invalidate cache
             $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
         }
 
-        return $result;
+        return $result !== false;
     }
 
     /**
@@ -268,16 +270,9 @@ class SettingsService
         $ignored = [];
         $rejected = [];
 
-        $this->pdo->beginTransaction();
+        $this->db->startTransaction();
 
         try {
-            $stmt = $this->pdo->prepare(
-                'INSERT INTO settings (setting_key, setting_value, updated_at)
-                 VALUES (:key, :value, NOW())
-                 ON CONFLICT (setting_key)
-                 DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()'
-            );
-
             foreach ($data as $key => $value) {
                 if (!in_array($key, self::ADMIN_EDITABLE, true)) {
                     $ignored[] = (string) $key;
@@ -307,13 +302,29 @@ class SettingsService
                     $value = $this->clampNumeric($key, $value);
                 }
 
-                $stmt->execute(['key' => $key, 'value' => (string) $value]);
+                $qb = $this->db->queryBuilder()->from('settings');
+                $ok = $qb->upsert(
+                    [
+                        'setting_key'   => $key,
+                        'setting_value' => (string) $value,
+                        'updated_at'    => $qb->raw('NOW()'),
+                    ],
+                    ['setting_key'],
+                    ['setting_value', 'updated_at']
+                );
+                // The framework returns false on a DB error instead of throwing,
+                // so guard explicitly to keep the batch all-or-nothing.
+                if ($ok === false) {
+                    throw new \RuntimeException(
+                        'Failed to save setting "' . $key . '": ' . $this->db->getError()
+                    );
+                }
                 $saved[] = (string) $key;
             }
 
-            $this->pdo->commit();
+            $this->db->commitTransaction();
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            $this->db->rollbackTransaction();
             throw $e;
         }
 
@@ -378,32 +389,38 @@ class SettingsService
      */
     public function setMultiple(array $settings): bool
     {
-        $this->pdo->beginTransaction();
+        $this->db->startTransaction();
 
         try {
             foreach ($settings as $key => $value) {
-                $stmt = $this->pdo->prepare(
-                    'INSERT INTO settings (setting_key, setting_value, updated_at) 
-                     VALUES (:key, :value, NOW()) 
-                     ON CONFLICT (setting_key) 
-                     DO UPDATE SET setting_value = :value, updated_at = NOW()'
+                $qb = $this->db->queryBuilder()->from('settings');
+                $ok = $qb->upsert(
+                    [
+                        'setting_key'   => $key,
+                        'setting_value' => (string) $value,
+                        'updated_at'    => $qb->raw('NOW()'),
+                    ],
+                    ['setting_key'],
+                    ['setting_value', 'updated_at']
                 );
-
-                $stmt->execute([
-                    'key' => $key,
-                    'value' => (string)$value
-                ]);
+                // The framework returns false on a DB error instead of throwing,
+                // so guard explicitly to keep the batch all-or-nothing.
+                if ($ok === false) {
+                    throw new \RuntimeException(
+                        'Failed to save setting "' . $key . '": ' . $this->db->getError()
+                    );
+                }
             }
 
-            $this->pdo->commit();
-            
+            $this->db->commitTransaction();
+
             // Invalidate cache
             $cacheKey = $this->prefixKey(self::SETTINGS_CACHE_KEY);
             $this->redis->del($cacheKey);
 
             return true;
         } catch (\Exception $e) {
-            $this->pdo->rollBack();
+            $this->db->rollbackTransaction();
             throw $e;
         }
     }

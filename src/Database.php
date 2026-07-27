@@ -4,11 +4,56 @@ namespace RadioChatBox;
 
 use Redis;
 use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 class Database
 {
     private static ?PDO $pdo = null;
     private static ?Redis $redis = null;
+    private static ?PramnosDatabase $db = null;
+
+    /**
+     * The framework database layer, connected and ready.
+     *
+     * This is the Phase-7 convergence seam: services that have moved off the raw
+     * \PDO handle obtain their connection here instead of via {@see getPDO()}, so
+     * queries run through PramnosFramework's QueryBuilder / prepared-statement
+     * engine while still pointing at the very same PostgreSQL database.
+     *
+     * The connection is sourced from the SAME `.env`-derived configuration as
+     * {@see getPDO()} (via app/settings/settings.php → framework Settings), and
+     * the session timezone is set identically, so timestamps and NOW() behave
+     * exactly as they did under PDO. The instance is a per-process singleton,
+     * mirroring getPDO()'s persistent connection.
+     */
+    public static function getDb(): PramnosDatabase
+    {
+        if (self::$db === null) {
+            // Load framework Settings from the same config Config already parses.
+            // Safe no-op if already booted (idempotent); throws only if the
+            // framework genuinely cannot load in this environment.
+            require_once __DIR__ . '/../bootstrap/pramnos.php';
+            if (!radiochatbox_boot_pramnos()) {
+                throw new \RuntimeException(
+                    'PramnosFramework is unavailable; cannot obtain the framework database.'
+                );
+            }
+
+            $db = PramnosDatabase::getInstance();
+            if (!$db->connected) {
+                $db->connect();
+            }
+
+            // Match the legacy PDO session timezone (see getPDO()) so that NOW()
+            // and timestamp rendering are byte-identical after the convergence.
+            $timezone = getenv('TZ') ?: 'Europe/Athens';
+            $db->statement("SET timezone = '" . str_replace("'", "''", $timezone) . "'");
+
+            self::$db = $db;
+        }
+
+        return self::$db;
+    }
 
     public static function getPDO(): PDO
     {
@@ -132,7 +177,16 @@ class Database
     {
         self::$redis = $redis;
     }
-    
+
+    /**
+     * Inject a framework database instance for testing.
+     * @param PramnosDatabase|null $db Mock/real framework database instance
+     */
+    public static function setDb(?PramnosDatabase $db): void
+    {
+        self::$db = $db;
+    }
+
     /**
      * Reset singleton instances (for testing)
      */
@@ -140,5 +194,6 @@ class Database
     {
         self::$pdo = null;
         self::$redis = null;
+        self::$db = null;
     }
 }
