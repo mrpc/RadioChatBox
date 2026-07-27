@@ -3238,7 +3238,7 @@
                     return;
                 }
                 
-                adminStreamEventSource = new EventSource(`/api/admin/stream.php?session_token=${encodeURIComponent(adminSessionToken)}`);
+                adminStreamEventSource = new EventSource(`/api/admin/stream?session_token=${encodeURIComponent(adminSessionToken)}`);
 
                 adminStreamEventSource.addEventListener('open', () => {
                     console.log('Admin SSE stream connected');
@@ -10980,7 +10980,7 @@
             notificationsStream = abortController;
 
             try {
-                const response = await fetch('/api/admin/stream.php', {
+                const response = await fetch('/api/admin/stream', {
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
                         'Accept': 'text/event-stream'
