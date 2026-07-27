@@ -1416,7 +1416,7 @@ class RadioChatBox {
     
     async loadCurrentProfile(displayNameInput, ageInput, sexInput, locationInput) {
         try {
-            const response = await fetch(`${this.apiUrl}/api/user-profile.php?username=${encodeURIComponent(this.username)}`);
+            const response = await fetch(`${this.apiUrl}/api/user-profile?username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (data.success && data.profile) {
