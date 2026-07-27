@@ -94,7 +94,7 @@ class LlmLog
 
             $stmt->execute();
         } catch (\Throwable $e) {
-            error_log('LlmLog::record failed: ' . $e->getMessage());
+            Log::write('LlmLog::record failed: ' . $e->getMessage());
         }
     }
 

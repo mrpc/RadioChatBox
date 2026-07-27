@@ -250,7 +250,7 @@ class Scheduler
         } catch (\Throwable $e) {
             $status = 'failed';
             $error = $e->getMessage();
-            error_log("Scheduler: task {$name} failed: " . $error);
+            Log::write("Scheduler: task {$name} failed: " . $error);
         }
 
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
@@ -341,7 +341,7 @@ class Scheduler
                 'failed' => $status === 'ok' ? 0 : 1,
             ]);
         } catch (\Throwable $e) {
-            error_log('Scheduler::record failed: ' . $e->getMessage());
+            Log::write('Scheduler::record failed: ' . $e->getMessage());
         }
     }
 }

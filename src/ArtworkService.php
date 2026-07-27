@@ -457,7 +457,7 @@ class ArtworkService
                 'thumb' => is_file($thumbDisk) ? $this->webBase . '/' . $this->thumbName($file) : $this->webBase . '/' . $file,
             ];
         } catch (\Throwable $e) {
-            error_log('ArtworkService::saveUploadedImage failed: ' . $e->getMessage());
+            Log::write('ArtworkService::saveUploadedImage failed: ' . $e->getMessage());
             return ['full' => null, 'thumb' => null];
         }
     }

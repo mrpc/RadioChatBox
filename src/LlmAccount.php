@@ -133,7 +133,7 @@ class LlmAccount
         try {
             $response = $this->adminClient()->get($path);
         } catch (\Throwable $e) {
-            error_log('LlmAccount::providerCosts failed: ' . $e->getMessage());
+            Log::write('LlmAccount::providerCosts failed: ' . $e->getMessage());
 
             return null;
         }
@@ -220,7 +220,7 @@ class LlmAccount
         try {
             $response = $this->llm->get((string) $this->providerConfig['balance_path']);
         } catch (\Throwable $e) {
-            error_log('LlmAccount::balance failed: ' . $e->getMessage());
+            Log::write('LlmAccount::balance failed: ' . $e->getMessage());
 
             return null;
         }
@@ -281,7 +281,7 @@ class LlmAccount
         try {
             $response = $this->llm->get((string) $this->providerConfig['models_path']);
         } catch (\Throwable $e) {
-            error_log('LlmAccount::models failed: ' . $e->getMessage());
+            Log::write('LlmAccount::models failed: ' . $e->getMessage());
 
             return $fallback;
         }
@@ -342,7 +342,7 @@ class LlmAccount
                 'topped_up' => $balance['topped_up'],
             ]);
         } catch (\Throwable $e) {
-            error_log('LlmAccount::snapshot failed: ' . $e->getMessage());
+            Log::write('LlmAccount::snapshot failed: ' . $e->getMessage());
 
             return null;
         }
@@ -406,7 +406,7 @@ class LlmAccount
             $stmt->execute();
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
-            error_log('LlmAccount::realSpend failed: ' . $e->getMessage());
+            Log::write('LlmAccount::realSpend failed: ' . $e->getMessage());
 
             return null;
         }

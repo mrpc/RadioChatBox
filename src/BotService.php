@@ -575,7 +575,7 @@ class BotService
 
             return true;
         } catch (\Throwable $e) {
-            error_log('BotService::onIncomingMessage failed: ' . $e->getMessage());
+            Log::write('BotService::onIncomingMessage failed: ' . $e->getMessage());
 
             return false;
         }
@@ -711,7 +711,7 @@ class BotService
         // with a casual denial instead, and the incident is recorded so it shows up
         // in Bot Activity rather than passing silently.
         if (self::revealsBotIdentity($reply)) {
-            error_log(sprintf(
+            Log::write(sprintf(
                 'BotService: discarded a reply that revealed the bot (%s -> %s): %s',
                 $fakeUser['nickname'],
                 $peer,
@@ -1444,7 +1444,7 @@ class BotService
             'peer' => $peer,
         ]);
 
-        error_log(sprintf(
+        Log::write(sprintf(
             'BotService: %s blocked %s after %d abusive message(s)%s',
             $nickname,
             $peer,
@@ -2021,7 +2021,7 @@ class BotService
 
             return trim((string) $filtered['filtered']);
         } catch (\Throwable $e) {
-            error_log('BotService: message filter failed, sending unfiltered: ' . $e->getMessage());
+            Log::write('BotService: message filter failed, sending unfiltered: ' . $e->getMessage());
 
             return $text;
         }
@@ -2336,7 +2336,7 @@ class BotService
         } catch (\Throwable $e) {
             // A failed summary must not cost the user their reply: keep the
             // messages in the history instead.
-            error_log('BotService: summary failed, continuing without it: ' . $e->getMessage());
+            Log::write('BotService: summary failed, continuing without it: ' . $e->getMessage());
 
             return ['summary' => $summary, 'pending' => count($dropped)];
         }
@@ -2409,7 +2409,7 @@ class BotService
 
             $canon = self::sanitizeReply($result['text'], 1500);
         } catch (\Throwable $e) {
-            error_log('BotService: self-facts update failed, continuing: ' . $e->getMessage());
+            Log::write('BotService: self-facts update failed, continuing: ' . $e->getMessage());
 
             return;
         }
@@ -2482,7 +2482,7 @@ class BotService
                 $facts['seconds_since_last_message'] = (int) $gap;
             }
         } catch (\Throwable $e) {
-            error_log('BotService: could not load peer facts: ' . $e->getMessage());
+            Log::write('BotService: could not load peer facts: ' . $e->getMessage());
         }
 
         return $facts;
@@ -2629,7 +2629,7 @@ class BotService
             ');
             $stmt->execute([mb_substr($message, 0, 500), $fakeUserId, $peer]);
         } catch (\Throwable $e) {
-            error_log('BotService: failed to record thread error: ' . $e->getMessage());
+            Log::write('BotService: failed to record thread error: ' . $e->getMessage());
         }
     }
 

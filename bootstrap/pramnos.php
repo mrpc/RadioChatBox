@@ -35,6 +35,26 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
             return $booted;
         }
 
+        // Route framework logs to <ROOT>/logs and choose the output mode. This is
+        // independent of mbstring/Settings, so logging works even when the rest of
+        // the framework bootstrap is a no-op. Default "both": files (for the
+        // LogViewer) + STDERR (for `docker logs`); PRAMNOS_LOG_MODE can override.
+        if (!defined('LOG_PATH')) {
+            define('LOG_PATH', dirname(__DIR__));
+        }
+        // Framework components expect the DS path-separator constant (normally
+        // defined during a full Application boot, which this bridge skips).
+        if (!defined('DS')) {
+            define('DS', DIRECTORY_SEPARATOR);
+        }
+        // Logger runs in FILE mode here: RadioChatBox\Log already emits to STDERR
+        // via error_log(), so the Logger only needs to add the LogViewer-readable
+        // file. PRAMNOS_LOG_MODE can still override for special deployments.
+        if (class_exists(\Pramnos\Logs\Logger::class)) {
+            $mode = getenv('PRAMNOS_LOG_MODE');
+            \Pramnos\Logs\Logger::setOutputMode($mode !== false && $mode !== '' ? $mode : \Pramnos\Logs\Logger::OUTPUT_FILE);
+        }
+
         // The framework core requires mbstring; bail out cleanly if it is absent
         // (e.g. a host/CLI that has not been provisioned yet — see Dockerfile).
         if (!extension_loaded('mbstring')) {

@@ -42,7 +42,7 @@ class PhotoService
         if (!is_dir($this->uploadDir)) {
             @mkdir($this->uploadDir, 0755, true);
             if (!is_dir($this->uploadDir)) {
-                error_log("Failed to create upload directory: {$this->uploadDir}");
+                Log::write("Failed to create upload directory: {$this->uploadDir}");
             }
         }
     }
@@ -258,7 +258,7 @@ class PhotoService
 
         $count = count($ids);
         if ($count > 0) {
-            error_log("Cleanup: soft-deleted {$count} expired photos (files kept until the trash is emptied)");
+            Log::write("Cleanup: soft-deleted {$count} expired photos (files kept until the trash is emptied)");
         }
 
         return $count;
@@ -289,7 +289,7 @@ class PhotoService
         }
 
         if ($count > 0) {
-            error_log("Emptied photo trash: permanently removed {$count} photos");
+            Log::write("Emptied photo trash: permanently removed {$count} photos");
         }
 
         return $count;

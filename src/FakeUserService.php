@@ -636,7 +636,7 @@ class FakeUserService
             }
         } catch (\Exception $e) {
             // If radio service fails, fall back to minimum_users
-            error_log("Failed to get radio listeners for fake user balancing: " . $e->getMessage());
+            Log::write("Failed to get radio listeners for fake user balancing: " . $e->getMessage());
         }
         
         // If radio listeners not available, fall back to minimum_users setting.

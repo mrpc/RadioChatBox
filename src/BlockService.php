@@ -59,7 +59,7 @@ class BlockService
             $id = $stmt->fetchColumn();
             return $id !== false ? (int)$id : null;
         } catch (\PDOException $e) {
-            error_log('BlockService::resolveUserId failed: ' . $e->getMessage());
+            Log::write('BlockService::resolveUserId failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -115,7 +115,7 @@ class BlockService
             $this->invalidate($blockerUsername, $blockedUsername);
             return true;
         } catch (\PDOException $e) {
-            error_log('BlockService::blockUser failed: ' . $e->getMessage());
+            Log::write('BlockService::blockUser failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -145,7 +145,7 @@ class BlockService
             $this->invalidate($blockerUsername, $blockedUsername);
             return true;
         } catch (\PDOException $e) {
-            error_log('BlockService::unblockUser failed: ' . $e->getMessage());
+            Log::write('BlockService::unblockUser failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -176,7 +176,7 @@ class BlockService
             $stmt->execute(['u' => $username]);
             $related = $stmt->fetchAll(PDO::FETCH_COLUMN);
         } catch (\PDOException $e) {
-            error_log('BlockService::getRelatedUsernames failed: ' . $e->getMessage());
+            Log::write('BlockService::getRelatedUsernames failed: ' . $e->getMessage());
             return [];
         }
 
@@ -213,7 +213,7 @@ class BlockService
             $stmt->execute(['u' => $blockerUsername]);
             return $stmt->fetchAll(PDO::FETCH_COLUMN);
         } catch (\PDOException $e) {
-            error_log('BlockService::getBlockedUsers failed: ' . $e->getMessage());
+            Log::write('BlockService::getBlockedUsers failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -234,7 +234,7 @@ class BlockService
             $stmt->execute(['blocker' => $blockerUsername, 'blocked' => $blockedUsername]);
             return $stmt->fetchColumn() !== false;
         } catch (\PDOException $e) {
-            error_log('BlockService::hasBlocked failed: ' . $e->getMessage());
+            Log::write('BlockService::hasBlocked failed: ' . $e->getMessage());
             return false;
         }
     }

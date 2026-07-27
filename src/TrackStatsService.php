@@ -121,7 +121,7 @@ class TrackStatsService
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
-            error_log('TrackStatsService::recordPlay failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::recordPlay failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -138,7 +138,7 @@ class TrackStatsService
             $stmt->execute(['name' => mb_substr($name, 0, 300)]);
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::upsertArtist failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::upsertArtist failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -170,7 +170,7 @@ class TrackStatsService
             ]);
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::upsertAlbum failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::upsertAlbum failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -181,7 +181,7 @@ class TrackStatsService
             $this->pdo->prepare('UPDATE tracks SET enriched_at = NOW() WHERE id = :id')
                 ->execute(['id' => $trackId]);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::markEnriched failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::markEnriched failed: ' . $e->getMessage());
         }
     }
 
@@ -242,7 +242,7 @@ class TrackStatsService
                     'id' => $artistId,
                 ]);
             } catch (\PDOException $e) {
-                error_log('enrichTrack artist update failed: ' . $e->getMessage());
+                Log::write('enrichTrack artist update failed: ' . $e->getMessage());
             }
         }
 
@@ -278,7 +278,7 @@ class TrackStatsService
                 'id' => $trackId,
             ]);
         } catch (\PDOException $e) {
-            error_log('enrichTrack track update failed: ' . $e->getMessage());
+            Log::write('enrichTrack track update failed: ' . $e->getMessage());
             $this->markEnriched($trackId);
             return false;
         }
@@ -304,7 +304,7 @@ class TrackStatsService
             $stmt->execute([$trackId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::enrichIfPending failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::enrichIfPending failed: ' . $e->getMessage());
 
             return false;
         }
@@ -327,7 +327,7 @@ class TrackStatsService
             $stmt->execute();
             $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::enrichPending failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::enrichPending failed: ' . $e->getMessage());
             return 0;
         }
 
@@ -361,7 +361,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getLog failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getLog failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -398,7 +398,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTopTracks failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTopTracks failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -434,7 +434,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTopArtists failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTopArtists failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -465,7 +465,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTopGenres failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTopGenres failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -497,7 +497,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTopAlbums failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTopAlbums failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -545,7 +545,7 @@ class TrackStatsService
             }
             return true;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::updateTrackMeta failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::updateTrackMeta failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -579,7 +579,7 @@ class TrackStatsService
                 ->execute($params);
             return true;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::updateArtistMeta failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::updateArtistMeta failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -607,7 +607,7 @@ class TrackStatsService
                 ->execute($params);
             return true;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::updateAlbumMeta failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::updateAlbumMeta failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -671,7 +671,7 @@ class TrackStatsService
                 ->execute($params);
             return true;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::enrichAlbum failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::enrichAlbum failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -697,7 +697,7 @@ class TrackStatsService
                 $this->pdo->prepare('UPDATE artists SET image_file = :f, updated_at = NOW() WHERE id = :id')
                     ->execute(['f' => $file, 'id' => $row['id']]);
             } catch (\PDOException $e) {
-                error_log('TrackStatsService::ensureArtistImage failed: ' . $e->getMessage());
+                Log::write('TrackStatsService::ensureArtistImage failed: ' . $e->getMessage());
             }
         }
         return $file;
@@ -714,7 +714,7 @@ class TrackStatsService
             $stmt->execute(['name' => $name]);
             return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getArtistRowByName failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getArtistRowByName failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -736,7 +736,7 @@ class TrackStatsService
             }
             return $row;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getArtistSummary failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getArtistSummary failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -759,7 +759,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getArtistTracks failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getArtistTracks failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -783,7 +783,7 @@ class TrackStatsService
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             return $row ?: null;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTrackById failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTrackById failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -809,7 +809,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTrackPlays failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTrackPlays failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -836,7 +836,7 @@ class TrackStatsService
                 $totals['unique_tracks'] = (int)$row['unique_tracks'];
             }
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getSummary totals failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getSummary totals failed: ' . $e->getMessage());
         }
 
         $perDay = [];
@@ -849,7 +849,7 @@ class TrackStatsService
             $stmt->execute(['from' => $from, 'to' => $to]);
             $perDay = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getSummary perDay failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getSummary perDay failed: ' . $e->getMessage());
         }
 
         // The currently/most-recently played track (for a "now playing" link).
@@ -862,7 +862,7 @@ class TrackStatsService
             );
             $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getSummary current failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getSummary current failed: ' . $e->getMessage());
         }
 
         return [
@@ -910,7 +910,7 @@ class TrackStatsService
                 'cover' => $row['cover_file'] ?: ($row['album_cover'] ?: ($row['artist_image'] ?: null)),
             ];
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getCurrentTrackMeta failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getCurrentTrackMeta failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -928,7 +928,7 @@ class TrackStatsService
             );
             return $stmt->fetchAll(PDO::FETCH_COLUMN);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getGenreList failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getGenreList failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -954,7 +954,7 @@ class TrackStatsService
             );
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getAllArtists failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getAllArtists failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -977,7 +977,7 @@ class TrackStatsService
             $stmt->execute(['artist' => $artist]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getAlbumsByArtist failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getAlbumsByArtist failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -1007,7 +1007,7 @@ class TrackStatsService
 
             return $count;
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::bulkSetGenreByArtist failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::bulkSetGenreByArtist failed: ' . $e->getMessage());
             return 0;
         }
     }
@@ -1032,7 +1032,7 @@ class TrackStatsService
             $stmt->execute(array_merge([$g], $ids));
             return $stmt->rowCount();
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::bulkSetGenreForTracks failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::bulkSetGenreForTracks failed: ' . $e->getMessage());
             return 0;
         }
     }
@@ -1054,7 +1054,7 @@ class TrackStatsService
             $stmt->execute(['to' => $toVal, 'from' => $from]);
             return $stmt->rowCount();
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::bulkReassignGenre failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::bulkReassignGenre failed: ' . $e->getMessage());
             return 0;
         }
     }
@@ -1082,7 +1082,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::searchTracks failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::searchTracks failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -1109,7 +1109,7 @@ class TrackStatsService
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getTracksByGenre failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getTracksByGenre failed: ' . $e->getMessage());
             return [];
         }
     }
@@ -1141,7 +1141,7 @@ class TrackStatsService
 
             return ['album' => $album, 'tracks' => $t->fetchAll(PDO::FETCH_ASSOC)];
         } catch (\PDOException $e) {
-            error_log('TrackStatsService::getAlbumDetail failed: ' . $e->getMessage());
+            Log::write('TrackStatsService::getAlbumDetail failed: ' . $e->getMessage());
             return null;
         }
     }

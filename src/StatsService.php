@@ -50,13 +50,13 @@ class StatsService
             $exists = $stmt->fetchColumn();
 
             if (!$exists) {
-                error_log('Statistics tables not found, creating automatically...');
+                Log::write('Statistics tables not found, creating automatically...');
                 $this->createStatsTables();
             }
 
             $this->tablesChecked = true;
         } catch (\Exception $e) {
-            error_log('Failed to check/create stats tables: ' . $e->getMessage());
+            Log::write('Failed to check/create stats tables: ' . $e->getMessage());
             throw new RuntimeException('Statistics tables not available');
         }
     }
@@ -178,7 +178,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            error_log("Failed to aggregate hourly stats: " . $e->getMessage());
+            Log::write("Failed to aggregate hourly stats: " . $e->getMessage());
             return false;
         }
     }
@@ -203,7 +203,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            error_log("Failed to aggregate daily stats: " . $e->getMessage());
+            Log::write("Failed to aggregate daily stats: " . $e->getMessage());
             return false;
         }
     }
@@ -228,7 +228,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            error_log("Failed to aggregate weekly stats: " . $e->getMessage());
+            Log::write("Failed to aggregate weekly stats: " . $e->getMessage());
             return false;
         }
     }
@@ -253,7 +253,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            error_log("Failed to aggregate monthly stats: " . $e->getMessage());
+            Log::write("Failed to aggregate monthly stats: " . $e->getMessage());
             return false;
         }
     }
@@ -278,7 +278,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            error_log("Failed to aggregate yearly stats: " . $e->getMessage());
+            Log::write("Failed to aggregate yearly stats: " . $e->getMessage());
             return false;
         }
     }
@@ -698,7 +698,7 @@ class StatsService
                 );
             }
         } catch (\Exception $e) {
-            error_log("StatsService: Error querying real-time messages: " . $e->getMessage());
+            Log::write("StatsService: Error querying real-time messages: " . $e->getMessage());
         }
         
         // Count registered and guest users active today from sessions
@@ -724,7 +724,7 @@ class StatsService
                 (int)($realTimeUsers['guest_users'] ?? 0)
             );
         } catch (\Exception $e) {
-            error_log("StatsService: Error querying real-time users: " . $e->getMessage());
+            Log::write("StatsService: Error querying real-time users: " . $e->getMessage());
         }
 
         $summary = [

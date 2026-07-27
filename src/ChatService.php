@@ -248,7 +248,7 @@ class ChatService
             // Return in chronological order (oldest first) to match getHistory() behavior
             return array_reverse($messages);
         } catch (\PDOException $e) {
-            error_log("Failed to load history from DB: " . $e->getMessage());
+            Log::write("Failed to load history from DB: " . $e->getMessage());
             return [];
         }
     }
@@ -306,7 +306,7 @@ class ChatService
             // Return in chronological order (oldest first)
             return array_reverse($messages);
         } catch (\PDOException $e) {
-            error_log("Failed to load paginated history: " . $e->getMessage());
+            Log::write("Failed to load paginated history: " . $e->getMessage());
             return [];
         }
     }
@@ -354,7 +354,7 @@ class ChatService
             }
         } catch (\PDOException $e) {
             // Use defaults if unable to fetch from database
-            error_log("Failed to get rate limit settings: " . $e->getMessage());
+            Log::write("Failed to get rate limit settings: " . $e->getMessage());
         }
 
         $key = self::RATE_LIMIT_PREFIX . $ipAddress;
@@ -404,13 +404,13 @@ class ChatService
                 // Clear violation counter
                 $this->redis->del($this->prefixKey($key));
                 
-                error_log("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})");
+                Log::write("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})");
             } else {
                 $remaining = $threshold - $violations;
-                error_log("Violation tracked for {$ipAddress}: {$violationType} (violations: {$violations}, {$remaining} more until auto-ban)");
+                Log::write("Violation tracked for {$ipAddress}: {$violationType} (violations: {$violations}, {$remaining} more until auto-ban)");
             }
         } catch (\Exception $e) {
-            error_log("Failed to track violation: " . $e->getMessage());
+            Log::write("Failed to track violation: " . $e->getMessage());
         }
     }
     
@@ -445,12 +445,12 @@ class ChatService
             ]);
 
             if (!$result) {
-                error_log("Failed to store message in database - execute returned false. Errors: " . json_encode($stmt->errorInfo()));
+                Log::write("Failed to store message in database - execute returned false. Errors: " . json_encode($stmt->errorInfo()));
             }
         } catch (\PDOException $e) {
             // Log error with full details but don't fail the request
-            error_log("Failed to store message in database (PDOException): " . $e->getMessage() . " | Code: " . $e->getCode());
-            error_log("Message ID: " . ($messageData['id'] ?? 'null'));
+            Log::write("Failed to store message in database (PDOException): " . $e->getMessage() . " | Code: " . $e->getCode());
+            Log::write("Message ID: " . ($messageData['id'] ?? 'null'));
         }
     }
     
@@ -507,9 +507,9 @@ class ChatService
                 return $replyData;
             }
         } catch (\PDOException $e) {
-            error_log("Failed to get reply message data: " . $e->getMessage());
+            Log::write("Failed to get reply message data: " . $e->getMessage());
         } catch (\Exception $e) {
-            error_log("Redis error in getReplyMessageData: " . $e->getMessage());
+            Log::write("Redis error in getReplyMessageData: " . $e->getMessage());
         }
 
         return null;
@@ -549,7 +549,7 @@ class ChatService
 
             return $userData;
         } catch (\PDOException $e) {
-            error_log("Failed to get user data for username: " . $e->getMessage());
+            Log::write("Failed to get user data for username: " . $e->getMessage());
             return ['user_id' => null, 'display_name' => null];
         }
     }
@@ -616,7 +616,7 @@ class ChatService
             
             return $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
         } catch (\PDOException $e) {
-            error_log("Failed to check session authentication: " . $e->getMessage());
+            Log::write("Failed to check session authentication: " . $e->getMessage());
             return false;
         }
     }
@@ -689,7 +689,7 @@ class ChatService
         // Check if session is banned (from being kicked)
         $sessionBanKey = 'banned_session:' . $sessionId;
         if ($this->redis->exists($sessionBanKey)) {
-            error_log("Registration blocked: session {$sessionId} is banned (kicked user)");
+            Log::write("Registration blocked: session {$sessionId} is banned (kicked user)");
             return false;
         }
         
@@ -708,7 +708,7 @@ class ChatService
         if ($registeredUser !== false) {
             // This is a registered username - verify session is authenticated as this user
             if (!$this->isSessionAuthenticatedAsUser($username, $sessionId)) {
-                error_log("Registration blocked: username '{$username}' is a registered account and session {$sessionId} is not authenticated as this user");
+                Log::write("Registration blocked: username '{$username}' is a registered account and session {$sessionId} is not authenticated as this user");
                 return false;
             }
             // Authenticated users are allowed to have multiple sessions (different devices)
@@ -722,7 +722,7 @@ class ChatService
             $userWithDisplayName = $stmt->fetch(\PDO::FETCH_ASSOC);
             
             if ($userWithDisplayName !== false) {
-                error_log("Registration blocked: username '{$username}' conflicts with a registered user's display name");
+                Log::write("Registration blocked: username '{$username}' conflicts with a registered user's display name");
                 return false;
             }
             
@@ -735,7 +735,7 @@ class ChatService
             
             if ($fakeUser !== false) {
                 // Guests cannot use fake user nicknames
-                error_log("Registration blocked: username '{$username}' is a fake user nickname");
+                Log::write("Registration blocked: username '{$username}' is a fake user nickname");
                 return false;
             }
             // For non-registered usernames, enforce one session per username
@@ -747,7 +747,7 @@ class ChatService
             
             if ($existingUser && $existingUser['session_id'] !== $sessionId) {
                 // Username is taken by another active session
-                error_log("Registration blocked: username '{$username}' is already taken by another user");
+                Log::write("Registration blocked: username '{$username}' is already taken by another user");
                 return false;
             }
         }
@@ -817,7 +817,7 @@ class ChatService
             
             return true;
         } catch (\PDOException $e) {
-            error_log("Failed to register user: " . $e->getMessage());
+            Log::write("Failed to register user: " . $e->getMessage());
             return false;
         }
     }
@@ -843,7 +843,7 @@ class ChatService
             
             return $result;
         } catch (\PDOException $e) {
-            error_log("Failed to logout user: " . $e->getMessage());
+            Log::write("Failed to logout user: " . $e->getMessage());
             return false;
         }
     }
@@ -876,7 +876,7 @@ class ChatService
 
             return $result;
         } catch (\PDOException $e) {
-            error_log("Failed to update heartbeat: " . $e->getMessage());
+            Log::write("Failed to update heartbeat: " . $e->getMessage());
             return false;
         }
     }
@@ -902,7 +902,7 @@ class ChatService
             // Actually publish the update
             $this->publishUserUpdate();
         } catch (\Exception $e) {
-            error_log("Failed to throttle user update: " . $e->getMessage());
+            Log::write("Failed to throttle user update: " . $e->getMessage());
         }
     }
 
@@ -927,7 +927,7 @@ class ChatService
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             return $result ?: null;
         } catch (\PDOException $e) {
-            error_log("Failed to get session info: " . $e->getMessage());
+            Log::write("Failed to get session info: " . $e->getMessage());
             return null;
         }
     }
@@ -959,7 +959,7 @@ class ChatService
             
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log("Failed to get active users: " . $e->getMessage());
+            Log::write("Failed to get active users: " . $e->getMessage());
             return [];
         }
     }
@@ -975,7 +975,7 @@ class ChatService
             $stmt = $this->pdo->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
-            error_log("Failed to get active user count: " . $e->getMessage());
+            Log::write("Failed to get active user count: " . $e->getMessage());
             return 0;
         }
     }
@@ -1034,7 +1034,7 @@ class ChatService
         try {
             $this->redis->del($this->prefixKey('chat:all_users'));
         } catch (\Exception $e) {
-            error_log("Failed to invalidate user list cache: " . $e->getMessage());
+            Log::write("Failed to invalidate user list cache: " . $e->getMessage());
         }
     }
 
@@ -1075,7 +1075,7 @@ class ChatService
             
             return true;
         } catch (\PDOException $e) {
-            error_log("Failed to remove user: " . $e->getMessage());
+            Log::write("Failed to remove user: " . $e->getMessage());
             return false;
         }
     }
@@ -1103,9 +1103,9 @@ class ChatService
             // Run the cleanup
             $this->pdo->exec("SELECT cleanup_inactive_sessions()");
         } catch (\PDOException $e) {
-            error_log("Failed to cleanup inactive sessions: " . $e->getMessage());
+            Log::write("Failed to cleanup inactive sessions: " . $e->getMessage());
         } catch (\Exception $e) {
-            error_log("Failed to check cleanup rate limit: " . $e->getMessage());
+            Log::write("Failed to check cleanup rate limit: " . $e->getMessage());
         }
     }
 
@@ -1136,7 +1136,7 @@ class ChatService
             
             return in_array($ipAddress, $bannedIPs, true);
         } catch (\PDOException $e) {
-            error_log("Failed to check IP ban: " . $e->getMessage());
+            Log::write("Failed to check IP ban: " . $e->getMessage());
             return false;
         }
     }
@@ -1165,7 +1165,7 @@ class ChatService
             
             return in_array(strtolower($nickname), $bannedNicknames, true);
         } catch (\PDOException $e) {
-            error_log("Failed to check nickname ban: " . $e->getMessage());
+            Log::write("Failed to check nickname ban: " . $e->getMessage());
             return false;
         }
     }
@@ -1248,7 +1248,7 @@ class ChatService
             
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log("Failed to get all messages: " . $e->getMessage());
+            Log::write("Failed to get all messages: " . $e->getMessage());
             return [];
         }
     }
@@ -1270,7 +1270,7 @@ class ChatService
             }
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
-            error_log("Failed to get messages count: " . $e->getMessage());
+            Log::write("Failed to get messages count: " . $e->getMessage());
             return 0;
         }
     }
@@ -1284,7 +1284,7 @@ class ChatService
             $stmt = $this->pdo->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
         } catch (\PDOException $e) {
-            error_log("Failed to get active users count: " . $e->getMessage());
+            Log::write("Failed to get active users count: " . $e->getMessage());
             return 0;
         }
     }
@@ -1320,7 +1320,7 @@ class ChatService
             
             return $result;
         } catch (\PDOException $e) {
-            error_log("Failed to ban IP: " . $e->getMessage());
+            Log::write("Failed to ban IP: " . $e->getMessage());
             return false;
         }
     }
@@ -1341,7 +1341,7 @@ class ChatService
             
             return $result;
         } catch (\PDOException $e) {
-            error_log("Failed to unban IP: " . $e->getMessage());
+            Log::write("Failed to unban IP: " . $e->getMessage());
             return false;
         }
     }
@@ -1377,7 +1377,7 @@ class ChatService
             
             return $result;
         } catch (\PDOException $e) {
-            error_log("Failed to ban nickname: " . $e->getMessage());
+            Log::write("Failed to ban nickname: " . $e->getMessage());
             return false;
         }
     }
@@ -1398,7 +1398,7 @@ class ChatService
             
             return $result;
         } catch (\PDOException $e) {
-            error_log("Failed to unban nickname: " . $e->getMessage());
+            Log::write("Failed to unban nickname: " . $e->getMessage());
             return false;
         }
     }
@@ -1416,7 +1416,7 @@ class ChatService
             );
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log("Failed to get banned IPs: " . $e->getMessage());
+            Log::write("Failed to get banned IPs: " . $e->getMessage());
             return [];
         }
     }
@@ -1434,7 +1434,7 @@ class ChatService
             );
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
-            error_log("Failed to get banned nicknames: " . $e->getMessage());
+            Log::write("Failed to get banned nicknames: " . $e->getMessage());
             return [];
         }
     }
@@ -1461,7 +1461,7 @@ class ChatService
 
             $this->redis->publish(self::USER_UPDATE_CHANNEL, $updateData);
         } catch (\Exception $e) {
-            error_log("Failed to publish user update: " . $e->getMessage());
+            Log::write("Failed to publish user update: " . $e->getMessage());
         }
     }
     
@@ -1477,7 +1477,7 @@ class ChatService
             
             return $result ? $result['setting_value'] : $default;
         } catch (\PDOException $e) {
-            error_log("Failed to get setting: " . $e->getMessage());
+            Log::write("Failed to get setting: " . $e->getMessage());
             return $default;
         }
     }
@@ -1503,7 +1503,7 @@ class ChatService
             
             return $settings;
         } catch (\PDOException $e) {
-            error_log("Failed to get settings: " . $e->getMessage());
+            Log::write("Failed to get settings: " . $e->getMessage());
             return [];
         }
     }

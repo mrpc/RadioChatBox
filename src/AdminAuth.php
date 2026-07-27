@@ -35,7 +35,7 @@ class AdminAuth
         // Rate limiting: Check for failed attempts
         $ipAddress = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         if (!self::checkRateLimit($ipAddress)) {
-            error_log("Admin auth rate limit exceeded for IP: {$ipAddress}");
+            Log::write("Admin auth rate limit exceeded for IP: {$ipAddress}");
             return false;
         }
         
@@ -52,7 +52,7 @@ class AdminAuth
             $isValid = self::authenticateDatabase($username, $password);
         } else {
             // Legacy password-only format - no longer supported
-            error_log("Admin auth failed: Legacy password-only authentication is deprecated");
+            Log::write("Admin auth failed: Legacy password-only authentication is deprecated");
             $isValid = false;
         }
         
@@ -88,7 +88,7 @@ class AdminAuth
             return false;
             
         } catch (\Exception $e) {
-            error_log("AdminAuth::authenticateDatabase error: " . $e->getMessage());
+            Log::write("AdminAuth::authenticateDatabase error: " . $e->getMessage());
             return false;
         }
     }
@@ -115,7 +115,7 @@ class AdminAuth
             $redis->setex($prefix . "admin_session:{$username}", 86400, $sessionData);
             
         } catch (\Exception $e) {
-            error_log("AdminAuth::setCurrentUser error: " . $e->getMessage());
+            Log::write("AdminAuth::setCurrentUser error: " . $e->getMessage());
         }
     }
     
@@ -184,13 +184,13 @@ class AdminAuth
                     }
                 }
             } catch (\Exception $e) {
-                error_log("AdminAuth::getCurrentUser database lookup error: " . $e->getMessage());
+                Log::write("AdminAuth::getCurrentUser database lookup error: " . $e->getMessage());
             }
             
             return null;
             
         } catch (\Exception $e) {
-            error_log("AdminAuth::getCurrentUser error: " . $e->getMessage());
+            Log::write("AdminAuth::getCurrentUser error: " . $e->getMessage());
             return null;
         }
     }
@@ -243,7 +243,7 @@ class AdminAuth
             return $attempts < 5;
         } catch (\Exception $e) {
             // If Redis fails, allow the attempt but log it
-            error_log("Admin auth rate limit check failed: " . $e->getMessage());
+            Log::write("Admin auth rate limit check failed: " . $e->getMessage());
             return true;
         }
     }
@@ -261,7 +261,7 @@ class AdminAuth
             $redis->incr($key);
             $redis->expire($key, 900); // 15 minutes
         } catch (\Exception $e) {
-            error_log("Failed to record admin auth attempt: " . $e->getMessage());
+            Log::write("Failed to record admin auth attempt: " . $e->getMessage());
         }
     }
     
@@ -276,7 +276,7 @@ class AdminAuth
             $key = $prefix . "admin_auth_attempts:{$ipAddress}";
             $redis->del($key);
         } catch (\Exception $e) {
-            error_log("Failed to clear admin auth attempts: " . $e->getMessage());
+            Log::write("Failed to clear admin auth attempts: " . $e->getMessage());
         }
     }
     

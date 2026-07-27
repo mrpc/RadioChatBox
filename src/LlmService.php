@@ -363,7 +363,7 @@ class LlmService
                 throw $e;
             }
 
-            error_log('LlmService: retrying without the parameter the API rejected: ' . $e->getMessage());
+            Log::write('LlmService: retrying without the parameter the API rejected: ' . $e->getMessage());
 
             return $this->post('/chat/completions', $retry);
         }

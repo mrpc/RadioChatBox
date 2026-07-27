@@ -37,12 +37,12 @@ class CleanupService
             // Invalidate cache if any bans were removed
             if ($count > 0) {
                 $this->redis->del($this->prefix . 'banned_ips');
-                error_log("Cleanup: Removed {$count} expired IP bans");
+                Log::write("Cleanup: Removed {$count} expired IP bans");
             }
             
             return $count;
         } catch (\PDOException $e) {
-            error_log("Failed to cleanup expired bans: " . $e->getMessage());
+            Log::write("Failed to cleanup expired bans: " . $e->getMessage());
             return 0;
         }
     }
@@ -61,12 +61,12 @@ class CleanupService
             $count = $stmt->rowCount();
             
             if ($count > 0) {
-                error_log("Cleanup: Removed {$count} stale sessions");
+                Log::write("Cleanup: Removed {$count} stale sessions");
             }
             
             return $count;
         } catch (\PDOException $e) {
-            error_log("Failed to cleanup stale sessions: " . $e->getMessage());
+            Log::write("Failed to cleanup stale sessions: " . $e->getMessage());
             return 0;
         }
     }
@@ -90,12 +90,12 @@ class CleanupService
             $count = $stmt->rowCount();
             
             if ($count > 0) {
-                error_log("Cleanup: Purged {$count} old deleted messages (>{$daysOld} days)");
+                Log::write("Cleanup: Purged {$count} old deleted messages (>{$daysOld} days)");
             }
             
             return $count;
         } catch (\PDOException $e) {
-            error_log("Failed to purge deleted messages: " . $e->getMessage());
+            Log::write("Failed to purge deleted messages: " . $e->getMessage());
             return 0;
         }
     }
@@ -132,12 +132,12 @@ class CleanupService
                 $stmt->bindValue(':days', $daysOld, PDO::PARAM_INT);
                 $stmt->execute();
                 
-                error_log("Cleanup: Archived {$archived} old messages (>{$daysOld} days)");
+                Log::write("Cleanup: Archived {$archived} old messages (>{$daysOld} days)");
             }
             
             return $archived;
         } catch (\PDOException $e) {
-            error_log("Failed to archive old messages: " . $e->getMessage());
+            Log::write("Failed to archive old messages: " . $e->getMessage());
             return 0;
         }
     }
@@ -170,11 +170,11 @@ class CleanupService
             $stmt->execute();
             $count = $stmt->rowCount();
             if ($count > 0) {
-                error_log("Cleanup: Removed {$count} expired DM blocks");
+                Log::write("Cleanup: Removed {$count} expired DM blocks");
             }
             return $count;
         } catch (\PDOException $e) {
-            error_log("Failed to cleanup expired DM blocks: " . $e->getMessage());
+            Log::write("Failed to cleanup expired DM blocks: " . $e->getMessage());
             return 0;
         }
     }
@@ -188,7 +188,7 @@ class CleanupService
             $photoService = new \RadioChatBox\PhotoService();
             return $photoService->cleanupExpiredPhotos();
         } catch (\Exception $e) {
-            error_log("Failed to cleanup expired photos: " . $e->getMessage());
+            Log::write("Failed to cleanup expired photos: " . $e->getMessage());
             return 0;
         }
     }

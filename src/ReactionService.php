@@ -160,7 +160,7 @@ class ReactionService
                 $counts[$row['message_id']][$row['emoji']] = (int)$row['cnt'];
             }
         } catch (\PDOException $e) {
-            error_log('ReactionService::attachToMessages counts failed: ' . $e->getMessage());
+            Log::write('ReactionService::attachToMessages counts failed: ' . $e->getMessage());
         }
 
         // Current user's own reactions.
@@ -178,7 +178,7 @@ class ReactionService
                     $mine[$row['message_id']][$row['emoji']] = true;
                 }
             } catch (\PDOException $e) {
-                error_log('ReactionService::attachToMessages mine failed: ' . $e->getMessage());
+                Log::write('ReactionService::attachToMessages mine failed: ' . $e->getMessage());
             }
         }
 
@@ -224,7 +224,7 @@ class ReactionService
             $stmt->execute(['m' => $messageId]);
             return $stmt->fetchColumn() !== false;
         } catch (\PDOException $e) {
-            error_log('ReactionService::messageExists failed: ' . $e->getMessage());
+            Log::write('ReactionService::messageExists failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -248,7 +248,7 @@ class ReactionService
             ]);
             $this->redis->publish($this->prefix . self::PUBSUB_CHANNEL, $payload);
         } catch (\Exception $e) {
-            error_log('ReactionService::publishUpdate failed: ' . $e->getMessage());
+            Log::write('ReactionService::publishUpdate failed: ' . $e->getMessage());
         }
     }
 }

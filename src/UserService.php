@@ -117,7 +117,7 @@ class UserService
             if ($e->getCode() === '23505') { // Unique violation
                 return ['success' => false, 'error' => 'Username already exists'];
             }
-            error_log("UserService::createUser error: " . $e->getMessage());
+            Log::write("UserService::createUser error: " . $e->getMessage());
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -192,7 +192,7 @@ class UserService
             ];
             
         } catch (\PDOException $e) {
-            error_log("UserService::updateUser error: " . $e->getMessage());
+            Log::write("UserService::updateUser error: " . $e->getMessage());
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -226,7 +226,7 @@ class UserService
             return ['success' => true];
             
         } catch (\PDOException $e) {
-            error_log("UserService::deleteUser error: " . $e->getMessage());
+            Log::write("UserService::deleteUser error: " . $e->getMessage());
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -253,7 +253,7 @@ class UserService
                 }
             }
         } catch (\Exception $e) {
-            error_log("UserService::getAllUsers Redis error: " . $e->getMessage());
+            Log::write("UserService::getAllUsers Redis error: " . $e->getMessage());
             // Continue to database query if Redis fails
         }
         
@@ -284,13 +284,13 @@ class UserService
                 $prefix = Database::getRedisPrefix();
                 $this->redis->setex($prefix . $cacheKey, 300, json_encode($users));
             } catch (\Exception $e) {
-                error_log("UserService::getAllUsers cache set error: " . $e->getMessage());
+                Log::write("UserService::getAllUsers cache set error: " . $e->getMessage());
             }
             
             return $users;
             
         } catch (\PDOException $e) {
-            error_log("UserService::getAllUsers error: " . $e->getMessage());
+            Log::write("UserService::getAllUsers error: " . $e->getMessage());
             return [];
         }
     }
@@ -315,7 +315,7 @@ class UserService
             return $user ? $this->sanitizeUser($user) : null;
             
         } catch (\PDOException $e) {
-            error_log("UserService::getUserById error: " . $e->getMessage());
+            Log::write("UserService::getUserById error: " . $e->getMessage());
             return null;
         }
     }
@@ -340,7 +340,7 @@ class UserService
             return $user ? $this->sanitizeUser($user) : null;
             
         } catch (\PDOException $e) {
-            error_log("UserService::getUserByUsername error: " . $e->getMessage());
+            Log::write("UserService::getUserByUsername error: " . $e->getMessage());
             return null;
         }
     }
@@ -384,7 +384,7 @@ class UserService
             return $this->sanitizeUser($user);
             
         } catch (\PDOException $e) {
-            error_log("UserService::authenticate error: " . $e->getMessage());
+            Log::write("UserService::authenticate error: " . $e->getMessage());
             return null;
         }
     }
@@ -439,7 +439,7 @@ class UserService
             $stmt = $this->db->prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = :id");
             $stmt->execute(['id' => $userId]);
         } catch (\PDOException $e) {
-            error_log("UserService::updateLastLogin error: " . $e->getMessage());
+            Log::write("UserService::updateLastLogin error: " . $e->getMessage());
         }
     }
     
@@ -476,7 +476,7 @@ class UserService
             // Note: Individual user_data:{username} caches will expire naturally in 5 minutes
             // or can be cleared per-user if we know which user was updated
         } catch (\Exception $e) {
-            error_log("UserService::clearUsersCache error: " . $e->getMessage());
+            Log::write("UserService::clearUsersCache error: " . $e->getMessage());
         }
     }
     
@@ -491,7 +491,7 @@ class UserService
             $prefix = Database::getRedisPrefix();
             $this->redis->del($prefix . "admin_session:{$username}");
         } catch (\Exception $e) {
-            error_log("UserService::clearUserSession error: " . $e->getMessage());
+            Log::write("UserService::clearUserSession error: " . $e->getMessage());
         }
     }
 
@@ -510,7 +510,7 @@ class UserService
             // Clear new user_data cache (includes both user_id and display_name)
             $this->redis->del($prefix . "user_data:{$username}");
         } catch (\Exception $e) {
-            error_log("UserService::clearUserDataCache error: " . $e->getMessage());
+            Log::write("UserService::clearUserDataCache error: " . $e->getMessage());
         }
     }
 

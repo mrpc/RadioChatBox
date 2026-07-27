@@ -333,7 +333,7 @@ class MessageFilter
             
             return $patterns;
         } catch (\Exception $e) {
-            error_log("Error fetching URL whitelist: " . $e->getMessage());
+            Log::write("Error fetching URL whitelist: " . $e->getMessage());
             $patterns = [];
             return $patterns;
         }
@@ -413,7 +413,7 @@ class MessageFilter
                 'message' => $message
             ];
         } catch (\Exception $e) {
-            error_log("Error checking URL blacklist: " . $e->getMessage());
+            Log::write("Error checking URL blacklist: " . $e->getMessage());
             return [
                 'found' => false,
                 'message' => $message
@@ -461,17 +461,17 @@ class MessageFilter
                     // Invalidate cache
                     $redis->del(Database::getRedisPrefix() . 'banned_ips');
                     
-                    error_log("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})");
+                    Log::write("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})");
                 }
                 
                 // Clear violation counter
                 $redis->del($key);
             } else {
                 $remaining = 3 - $violations;
-                error_log("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)");
+                Log::write("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)");
             }
         } catch (\Exception $e) {
-            error_log("Failed to track spam violation: " . $e->getMessage());
+            Log::write("Failed to track spam violation: " . $e->getMessage());
         }
     }
     
