@@ -114,6 +114,56 @@ class MessageFilterTest extends TestCase
         $this->assertStringNotContainsString('https://example.com', $result['filtered']);
     }
 
+    /**
+     * Three spam-URL violations from the same IP must auto-ban it by inserting a
+     * banned_ips row. This pins the converted auto-ban path — the ban-existence
+     * check (queryBuilder()->exists()) and the INSERT (queryBuilder()->insert())
+     * that replaced the raw PDO statements. Uses a random blacklist pattern and
+     * cleans up the shared DB/Redis state it touches.
+     */
+    public function testThreeSpamUrlViolationsAutoBanTheIp(): void
+    {
+        // The auto-ban emits a log line; allow that output under the strict-output
+        // suite (the regex permits, but does not require, any output).
+        $this->expectOutputRegex('/.*/s');
+
+        $pdo    = Database::getPDO();
+        $redis  = Database::getRedis();
+        $prefix = Database::getRedisPrefix();
+        $ip     = '203.0.113.77';
+        $pattern = 'spamdomain-' . bin2hex(random_bytes(4)) . '.example';
+
+        // Seed a blacklist pattern; clear the pattern cache, the violation
+        // counter and any prior ban so the run is deterministic.
+        $pdo->prepare('INSERT INTO url_blacklist (pattern) VALUES (?)')->execute([$pattern]);
+        $redis->del($prefix . 'url_blacklist_patterns');
+        $redis->del($prefix . "violations:spam_url:{$ip}");
+        $pdo->prepare('DELETE FROM banned_ips WHERE ip_address = ?')->execute([$ip]);
+
+        try {
+            $message = "check https://{$pattern}/path please";
+            for ($i = 0; $i < 3; $i++) {
+                MessageFilter::filterPrivateMessage($message, $ip);
+            }
+
+            $stmt = $pdo->prepare(
+                'SELECT reason, banned_by FROM banned_ips
+                 WHERE ip_address = ? AND (banned_until IS NULL OR banned_until > NOW())'
+            );
+            $stmt->execute([$ip]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            $this->assertNotFalse($row, 'the IP must be auto-banned after 3 violations');
+            $this->assertSame('system', $row['banned_by']);
+            $this->assertStringContainsString('spam', strtolower((string) $row['reason']));
+        } finally {
+            $pdo->prepare('DELETE FROM banned_ips WHERE ip_address = ?')->execute([$ip]);
+            $pdo->prepare('DELETE FROM url_blacklist WHERE pattern = ?')->execute([$pattern]);
+            $redis->del($prefix . 'url_blacklist_patterns');
+            $redis->del($prefix . "violations:spam_url:{$ip}");
+        }
+    }
+
     // ---------------------------------------------------------------------
     // GIF URL preservation
     //

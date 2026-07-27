@@ -2,7 +2,6 @@
 
 namespace RadioChatBox;
 
-use PDO;
 
 class MessageFilter
 {
@@ -323,10 +322,11 @@ class MessageFilter
                 $patterns = json_decode($cachedData, true);
             } else {
                 // Cache miss - fetch from database
-                $db = Database::getPDO();
-                $stmt = $db->query("SELECT pattern FROM url_whitelist ORDER BY pattern");
-                $patterns = $stmt->fetchAll(PDO::FETCH_COLUMN);
-                
+                $patterns = Database::getDb()->queryBuilder()
+                    ->from('url_whitelist')
+                    ->orderBy('pattern')
+                    ->pluck('pattern');
+
                 // Store in Redis cache
                 $redis->setex($cacheKey, $cacheTTL, json_encode($patterns));
             }
@@ -381,10 +381,10 @@ class MessageFilter
                 $blacklist = json_decode($cachedData, true);
             } else {
                 // Cache miss - fetch from database
-                $db = Database::getPDO();
-                $stmt = $db->query("SELECT pattern FROM url_blacklist");
-                $blacklist = $stmt->fetchAll(PDO::FETCH_COLUMN);
-                
+                $blacklist = Database::getDb()->queryBuilder()
+                    ->from('url_blacklist')
+                    ->pluck('pattern');
+
                 // Store in Redis cache
                 $redis->setex($cacheKey, $cacheTTL, json_encode($blacklist));
             }
@@ -440,24 +440,27 @@ class MessageFilter
             
             // Auto-ban after 3 spam URL attempts
             if ($violations >= 3) {
-                $db = Database::getPDO();
-                
+                $db = Database::getDb();
+
                 // Check if already banned
-                $stmt = $db->prepare("SELECT COUNT(*) FROM banned_ips WHERE ip_address = ? AND (banned_until IS NULL OR banned_until > NOW())");
-                $stmt->execute([$ipAddress]);
-                $alreadyBanned = $stmt->fetchColumn() > 0;
-                
+                $alreadyBanned = $db->queryBuilder()
+                    ->from('banned_ips')
+                    ->where('ip_address', '=', $ipAddress)
+                    ->whereRaw('(banned_until IS NULL OR banned_until > NOW())')
+                    ->exists();
+
                 if (!$alreadyBanned) {
                     // Auto-ban for 24 hours
                     $bannedUntil = date('Y-m-d H:i:s', time() + (24 * 3600));
                     $reason = "Automatic ban: Repeated spam URL attempts ({$violations} times)";
-                    
-                    $stmt = $db->prepare("
-                        INSERT INTO banned_ips (ip_address, reason, banned_by, banned_until)
-                        VALUES (?, ?, 'system', ?)
-                    ");
-                    $stmt->execute([$ipAddress, $reason, $bannedUntil]);
-                    
+
+                    $db->queryBuilder()->from('banned_ips')->insert([
+                        'ip_address'   => $ipAddress,
+                        'reason'       => $reason,
+                        'banned_by'    => 'system',
+                        'banned_until' => $bannedUntil,
+                    ]);
+
                     // Invalidate cache
                     $redis->del(Database::getRedisPrefix() . 'banned_ips');
                     
