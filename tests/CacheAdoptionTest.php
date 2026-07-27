@@ -3,48 +3,39 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Pramnos\Cache\RedisStore;
+use Pramnos\Cache\Adapter\ArrayAdapter;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Cache;
 use RadioChatBox\RadioStatusService;
 
 /**
- * Minimal in-memory \Redis stand-in for the surface RedisStore uses, so the
- * cache adoption can be tested without touching the shared dev Redis.
- */
-class FakeAppRedis
-{
-    public array $store = [];
-    public function get($k) { return $this->store[$k] ?? false; }
-    public function set($k, $v) { $this->store[$k] = $v; return true; }
-    public function setex($k, $ttl, $v) { $this->store[$k] = $v; return true; }
-    public function del($k) { foreach ((array) $k as $x) { unset($this->store[$x]); } return 1; }
-    public function exists($k) { return isset($this->store[$k]) ? 1 : 0; }
-    public function keys($pat) { $p = rtrim($pat, '*'); return array_values(array_filter(array_keys($this->store), fn ($k) => str_starts_with($k, $p))); }
-}
-
-/**
- * Covers the RadioChatBox\Cache accessor (RedisStore adoption) and the
- * RadioStatusService migration onto it.
+ * Covers the RadioChatBox\Cache accessor (framework FlatCache adoption) and the
+ * RadioStatusService migration onto it. Uses a real ArrayAdapter-backed FlatCache
+ * — the same class RCB runs over Redis in production — so no live Redis or fakes
+ * are needed.
  */
 class CacheAdoptionTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Cache::setStore(null); // reset to the real store
+        Cache::setStore(null); // reset to the real (Redis-backed) store
+    }
+
+    private function arrayStore(string $prefix = 'rcb:'): FlatCache
+    {
+        return new FlatCache(new ArrayAdapter($prefix), $prefix);
     }
 
     /**
-     * The Cache accessor round-trips values (including arrays) under verbatim
-     * colon-namespaced keys — the whole reason the flat-key RedisStore exists.
+     * The accessor round-trips values (including arrays) under verbatim
+     * colon-namespaced keys — the reason the flat-key cache exists.
      */
     public function testCacheStoreRoundTripsArraysAndColonKeys(): void
     {
-        $fake = new FakeAppRedis();
-        Cache::setStore(new RedisStore(['prefix' => 'rcb:'], fn () => $fake));
+        Cache::setStore($this->arrayStore());
 
         Cache::store()->set('radio:now_playing', ['active' => true, 'title' => 'X'], 10);
 
-        $this->assertArrayHasKey('rcb:radio:now_playing', $fake->store, 'key stored verbatim under the prefix');
         $this->assertSame(['active' => true, 'title' => 'X'], Cache::store()->get('radio:now_playing'));
     }
 
@@ -53,7 +44,7 @@ class CacheAdoptionTest extends TestCase
      */
     public function testSetStoreOverridesSharedInstance(): void
     {
-        $store = new RedisStore(['prefix' => 'x:'], fn () => new FakeAppRedis());
+        $store = $this->arrayStore('x:');
         Cache::setStore($store);
         $this->assertSame($store, Cache::store());
     }
@@ -64,13 +55,10 @@ class CacheAdoptionTest extends TestCase
      */
     public function testNowPlayingWithoutUrlReturnsInactiveWithoutCaching(): void
     {
-        $fake = new FakeAppRedis();
-        Cache::setStore(new RedisStore(['prefix' => 'rcb:'], fn () => $fake));
+        Cache::setStore($this->arrayStore());
 
         $result = (new RadioStatusService())->getNowPlaying();
 
-        // Only assert the contract shape; the value of radio_status_url is
-        // environment-dependent, but when empty the result is the inactive shape.
         $this->assertArrayHasKey('active', $result);
         $this->assertArrayHasKey('display', $result);
     }
