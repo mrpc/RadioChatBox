@@ -217,7 +217,19 @@ updated (no double-runs — `withoutOverlapping()` + the existing per-task last-
 
 ---
 
-## Phase 5 — Cross-cutting infrastructure (framework is better; low risk)
+## Phase 5 — Cross-cutting infrastructure (framework is better; low risk) — 🟡 STARTED
+
+> **Progress.** 5d (Health) done: a `RadioChatBox\Health\RedisConnectivityCheck` is registered into
+> the framework `HealthRegistry` (in `bin/rcb`), so `bin/rcb health:check` now reports **redis**
+> (PONG) alongside the built-in database/disk/memory checks — verified, overall OK, with a unit
+> test (mocked Redis, ok + down paths). The ultra-minimal `public/api/health.php` is intentionally
+> left untouched (it must stay dependency-free to report health even if the app can't boot).
+>
+> **Deferred — interleave with Phase 6.** 5a (Cache→PSR-16/Redis), 5b (Logs→PSR-3), 5c
+> (Media/Storage for artwork), 5e (Validation) mostly realise their value inside framework
+> controllers; adopting them wholesale now — behind the ~70 file-per-endpoint scripts and ~25
+> services — is churn/risk. They land per endpoint/service as Phase 6 migrates each. (5c artwork is
+> the one standalone win that can be picked up independently when touching the upload path.)
 
 **Goal.** Replace hand-rolled infra with framework equivalents behind existing seams.
 
