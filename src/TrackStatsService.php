@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * Records and queries the radio's track play history.
@@ -14,13 +14,13 @@ use PDO;
  */
 class TrackStatsService
 {
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private \Redis $redis;
     private string $prefix;
 
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
         $this->prefix = Database::getRedisPrefix();
     }
@@ -64,16 +64,15 @@ class TrackStatsService
         // pointer (which can be lost/flushed), so it prevents duplicate rows for
         // the same consecutive track regardless of Redis state.
         try {
-            $stmt = $this->pdo->query(
+            $lastDisplay = $this->db->query(
                 'SELECT t.display FROM track_plays tp
                  JOIN tracks t ON tp.track_id = t.id
                  ORDER BY tp.played_at DESC LIMIT 1'
-            );
-            $lastDisplay = $stmt->fetchColumn();
+            )->fetchColumn();
             if ($lastDisplay !== false && $lastDisplay === $display) {
                 return null; // same as the previous recorded play
             }
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             // Non-fatal: fall through to record.
         }
 
@@ -87,10 +86,11 @@ class TrackStatsService
         $artistId = $artist !== '' ? $this->upsertArtist($artist) : null;
 
         try {
-            $this->pdo->beginTransaction();
+            $this->db->startTransaction();
 
-            // Upsert the unique track and bump its counters.
-            $stmt = $this->pdo->prepare(
+            // Upsert the unique track and bump its counters (verbatim — the
+            // COALESCE/EXCLUDED merge in DO UPDATE is kept as-is).
+            $trackId = (int) $this->db->preparedQuery(
                 'INSERT INTO tracks (artist, title, display, artist_id, first_played_at, last_played_at, play_count)
                  VALUES (:artist, :title, :display, :artist_id, NOW(), NOW(), 1)
                  ON CONFLICT (display) DO UPDATE SET
@@ -99,27 +99,26 @@ class TrackStatsService
                      artist = COALESCE(EXCLUDED.artist, tracks.artist),
                      title = COALESCE(EXCLUDED.title, tracks.title),
                      artist_id = COALESCE(tracks.artist_id, EXCLUDED.artist_id)
-                 RETURNING id'
-            );
-            $stmt->execute([
-                'artist' => $artist !== '' ? $artist : null,
-                'title' => $title !== '' ? $title : null,
-                'display' => mb_substr($display, 0, 500),
-                'artist_id' => $artistId,
-            ]);
-            $trackId = (int)$stmt->fetchColumn();
+                 RETURNING id',
+                [
+                    'artist' => $artist !== '' ? $artist : null,
+                    'title' => $title !== '' ? $title : null,
+                    'display' => mb_substr($display, 0, 500),
+                    'artist_id' => $artistId,
+                ]
+            )->fetchColumn();
 
             // Record the individual play.
-            $play = $this->pdo->prepare(
-                'INSERT INTO track_plays (track_id, listeners) VALUES (:track_id, :listeners)'
-            );
-            $play->execute(['track_id' => $trackId, 'listeners' => $listeners]);
+            $this->db->queryBuilder()->from('track_plays')->insert([
+                'track_id'  => $trackId,
+                'listeners' => $listeners,
+            ]);
 
-            $this->pdo->commit();
+            $this->db->commitTransaction();
             return $trackId;
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->db->inTransaction()) {
+                $this->db->rollbackTransaction();
             }
             Log::write('TrackStatsService::recordPlay failed: ' . $e->getMessage());
             return null;
@@ -130,14 +129,13 @@ class TrackStatsService
     private function upsertArtist(string $name): ?int
     {
         try {
-            $stmt = $this->pdo->prepare(
+            return (int) $this->db->preparedQuery(
                 'INSERT INTO artists (name) VALUES (:name)
                  ON CONFLICT (name) DO UPDATE SET updated_at = NOW()
-                 RETURNING id'
-            );
-            $stmt->execute(['name' => mb_substr($name, 0, 300)]);
-            return (int)$stmt->fetchColumn();
-        } catch (\PDOException $e) {
+                 RETURNING id',
+                ['name' => mb_substr($name, 0, 300)]
+            )->fetchColumn();
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::upsertArtist failed: ' . $e->getMessage());
             return null;
         }
@@ -147,7 +145,7 @@ class TrackStatsService
     private function upsertAlbum(string $title, ?int $artistId, array $meta): ?int
     {
         try {
-            $stmt = $this->pdo->prepare(
+            return (int) $this->db->preparedQuery(
                 'INSERT INTO albums (title, artist_id, cover_file, release_date, genre, source, external_id)
                  VALUES (:title, :artist_id, :cover, :rd, :genre, :src, :eid)
                  ON CONFLICT (title, artist_id) DO UPDATE SET
@@ -157,19 +155,18 @@ class TrackStatsService
                      source = COALESCE(EXCLUDED.source, albums.source),
                      external_id = COALESCE(EXCLUDED.external_id, albums.external_id),
                      updated_at = NOW()
-                 RETURNING id'
-            );
-            $stmt->execute([
-                'title' => mb_substr($title, 0, 400),
-                'artist_id' => $artistId,
-                'cover' => $meta['cover'] ?? null,
-                'rd' => $meta['release_date'] ?? null,
-                'genre' => $meta['genre'] ?? null,
-                'src' => $meta['source'] ?? null,
-                'eid' => $meta['album_external_id'] ?? null,
-            ]);
-            return (int)$stmt->fetchColumn();
-        } catch (\PDOException $e) {
+                 RETURNING id',
+                [
+                    'title' => mb_substr($title, 0, 400),
+                    'artist_id' => $artistId,
+                    'cover' => $meta['cover'] ?? null,
+                    'rd' => $meta['release_date'] ?? null,
+                    'genre' => $meta['genre'] ?? null,
+                    'src' => $meta['source'] ?? null,
+                    'eid' => $meta['album_external_id'] ?? null,
+                ]
+            )->fetchColumn();
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::upsertAlbum failed: ' . $e->getMessage());
             return null;
         }
@@ -178,9 +175,9 @@ class TrackStatsService
     private function markEnriched(int $trackId): void
     {
         try {
-            $this->pdo->prepare('UPDATE tracks SET enriched_at = NOW() WHERE id = :id')
-                ->execute(['id' => $trackId]);
-        } catch (\PDOException $e) {
+            $qb = $this->db->queryBuilder()->from('tracks');
+            $qb->where('id', '=', $trackId)->update(['enriched_at' => $qb->raw('NOW()')]);
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::markEnriched failed: ' . $e->getMessage());
         }
     }
@@ -228,20 +225,21 @@ class TrackStatsService
         // Enrich the artist row (image + external ids).
         if ($artistId) {
             try {
-                $this->pdo->prepare(
+                $this->db->preparedQuery(
                     'UPDATE artists SET
                         image_file = COALESCE(:img, image_file),
                         source = COALESCE(:src, source),
                         external_id = COALESCE(:eid, external_id),
                         updated_at = NOW()
-                     WHERE id = :id'
-                )->execute([
-                    'img' => $meta['artist_image'] ?? null,
-                    'src' => $meta['source'] ?? null,
-                    'eid' => $meta['artist_external_id'] ?? null,
-                    'id' => $artistId,
-                ]);
-            } catch (\PDOException $e) {
+                     WHERE id = :id',
+                    [
+                        'img' => $meta['artist_image'] ?? null,
+                        'src' => $meta['source'] ?? null,
+                        'eid' => $meta['artist_external_id'] ?? null,
+                        'id' => $artistId,
+                    ]
+                );
+            } catch (\Throwable $e) {
                 Log::write('enrichTrack artist update failed: ' . $e->getMessage());
             }
         }
@@ -254,7 +252,7 @@ class TrackStatsService
 
         // Track row.
         try {
-            $this->pdo->prepare(
+            $this->db->preparedQuery(
                 'UPDATE tracks SET
                     artist_id = COALESCE(artist_id, :aid),
                     album_id = COALESCE(:album_id, album_id),
@@ -265,19 +263,20 @@ class TrackStatsService
                     external_id = COALESCE(:eid, external_id),
                     external_url = COALESCE(:url, external_url),
                     enriched_at = NOW()
-                 WHERE id = :id'
-            )->execute([
-                'aid' => $artistId,
-                'album_id' => $albumId,
-                'genre' => $meta['genre'] ?? null,
-                'cover' => $meta['cover'] ?? null,
-                'rd' => $meta['release_date'] ?? null,
-                'src' => $meta['source'] ?? null,
-                'eid' => $meta['track_external_id'] ?? null,
-                'url' => $meta['track_url'] ?? null,
-                'id' => $trackId,
-            ]);
-        } catch (\PDOException $e) {
+                 WHERE id = :id',
+                [
+                    'aid' => $artistId,
+                    'album_id' => $albumId,
+                    'genre' => $meta['genre'] ?? null,
+                    'cover' => $meta['cover'] ?? null,
+                    'rd' => $meta['release_date'] ?? null,
+                    'src' => $meta['source'] ?? null,
+                    'eid' => $meta['track_external_id'] ?? null,
+                    'url' => $meta['track_url'] ?? null,
+                    'id' => $trackId,
+                ]
+            );
+        } catch (\Throwable $e) {
             Log::write('enrichTrack track update failed: ' . $e->getMessage());
             $this->markEnriched($trackId);
             return false;
@@ -300,16 +299,15 @@ class TrackStatsService
     public function enrichIfPending(int $trackId): bool
     {
         try {
-            $stmt = $this->pdo->prepare('SELECT enriched_at FROM tracks WHERE id = ?');
-            $stmt->execute([$trackId]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            $result = $this->db->preparedQuery('SELECT enriched_at FROM tracks WHERE id = ?', [$trackId]);
+            $row = $result ? $result->fetch() : null;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::enrichIfPending failed: ' . $e->getMessage());
 
             return false;
         }
 
-        if ($row === false || $row['enriched_at'] !== null) {
+        if ($row === null || $row['enriched_at'] !== null) {
             return false;
         }
 
@@ -319,14 +317,13 @@ class TrackStatsService
     public function enrichPending(int $limit = 5): int
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT id FROM tracks WHERE enriched_at IS NULL
-                 ORDER BY last_played_at DESC LIMIT :limit'
-            );
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (\PDOException $e) {
+            $ids = $this->db->queryBuilder()
+                ->from('tracks')
+                ->whereRaw('enriched_at IS NULL')
+                ->orderBy('last_played_at', 'desc')
+                ->limit($limit)
+                ->pluck('id');
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::enrichPending failed: ' . $e->getMessage());
             return 0;
         }
@@ -348,19 +345,17 @@ class TrackStatsService
     public function getLog(string $date, int $limit = 1000): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT tp.id, t.id AS track_id, t.artist, t.title, t.display, tp.listeners, tp.played_at
                  FROM track_plays tp
                  JOIN tracks t ON tp.track_id = t.id
                  WHERE tp.played_at::date = :date
                  ORDER BY tp.played_at DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['date' => $date, 'limit' => $limit]
             );
-            $stmt->bindValue(':date', $date);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getLog failed: ' . $e->getMessage());
             return [];
         }
@@ -374,7 +369,7 @@ class TrackStatsService
     public function getTopTracks(string $from, string $to, int $limit = 50): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.id AS track_id,
                         t.display,
                         t.artist,
@@ -390,14 +385,11 @@ class TrackStatsService
                    AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
                  GROUP BY t.id, t.display, t.artist, t.title
                  ORDER BY plays DESC, last_played DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
-            $stmt->bindValue(':from', $from);
-            $stmt->bindValue(':to', $to);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTopTracks failed: ' . $e->getMessage());
             return [];
         }
@@ -411,7 +403,7 @@ class TrackStatsService
     public function getTopArtists(string $from, string $to, int $limit = 50): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.artist,
                         MAX(ar.image_file)     AS image_file,
                         COUNT(*)               AS plays,
@@ -426,14 +418,11 @@ class TrackStatsService
                    AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
                  GROUP BY t.artist
                  ORDER BY plays DESC, last_played DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
-            $stmt->bindValue(':from', $from);
-            $stmt->bindValue(':to', $to);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTopArtists failed: ' . $e->getMessage());
             return [];
         }
@@ -443,7 +432,7 @@ class TrackStatsService
     public function getTopGenres(string $from, string $to, int $limit = 50): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.genre,
                         COUNT(*)             AS plays,
                         COUNT(DISTINCT t.id) AS tracks,
@@ -457,14 +446,11 @@ class TrackStatsService
                    AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
                  GROUP BY t.genre
                  ORDER BY plays DESC, last_played DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
-            $stmt->bindValue(':from', $from);
-            $stmt->bindValue(':to', $to);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTopGenres failed: ' . $e->getMessage());
             return [];
         }
@@ -474,7 +460,7 @@ class TrackStatsService
     public function getTopAlbums(string $from, string $to, int $limit = 50): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT al.id AS album_id, al.title, al.cover_file, al.release_date,
                         ar.name AS artist_name,
                         COUNT(*)             AS plays,
@@ -489,14 +475,11 @@ class TrackStatsService
                    AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
                  GROUP BY al.id, al.title, al.cover_file, al.release_date, ar.name
                  ORDER BY plays DESC, last_played DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
-            $stmt->bindValue(':from', $from);
-            $stmt->bindValue(':to', $to);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTopAlbums failed: ' . $e->getMessage());
             return [];
         }
@@ -519,32 +502,30 @@ class TrackStatsService
                 $albumTitle = trim((string)$data['album_title']);
                 if ($albumTitle !== '') {
                     $albumId = $this->upsertAlbum($albumTitle, $track['artist_id'] ?? null, []);
-                    $this->pdo->prepare('UPDATE tracks SET album_id = :aid WHERE id = :id')
-                        ->execute(['aid' => $albumId, 'id' => $trackId]);
+                    $this->db->queryBuilder()->from('tracks')
+                        ->where('id', '=', $trackId)
+                        ->update(['album_id' => $albumId]);
                 }
             }
 
-            $sets = [];
-            $params = ['id' => $trackId];
+            $updateData = [];
             foreach (['genre', 'release_date', 'external_url'] as $col) {
                 if (array_key_exists($col, $data)) {
                     $val = trim((string)$data[$col]);
-                    $sets[] = "$col = :$col";
-                    $params[$col] = $val === '' ? null : $val;
+                    $updateData[$col] = $val === '' ? null : $val;
                 }
             }
             if (array_key_exists('excluded_from_stats', $data)) {
-                $sets[] = 'excluded_from_stats = :excl';
-                // Bind as 'true'/'false' text: PDO turns a PHP false into '' which
-                // PostgreSQL rejects for a boolean column.
-                $params['excl'] = !empty($data['excluded_from_stats']) ? 'true' : 'false';
+                // The framework binds a PHP bool as the native boolean.
+                $updateData['excluded_from_stats'] = !empty($data['excluded_from_stats']);
             }
-            if ($sets) {
-                $this->pdo->prepare('UPDATE tracks SET ' . implode(', ', $sets) . ' WHERE id = :id')
-                    ->execute($params);
+            if ($updateData) {
+                $this->db->queryBuilder()->from('tracks')
+                    ->where('id', '=', $trackId)
+                    ->update($updateData);
             }
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::updateTrackMeta failed: ' . $e->getMessage());
             return false;
         }
@@ -557,28 +538,24 @@ class TrackStatsService
     public function updateArtistMeta(int $artistId, array $data): bool
     {
         try {
-            $sets = [];
-            $params = ['id' => $artistId];
+            $updateData = [];
             foreach (['genre', 'external_url'] as $col) {
                 if (array_key_exists($col, $data)) {
                     $val = trim((string)$data[$col]);
-                    $sets[] = "$col = :$col";
-                    $params[$col] = $val === '' ? null : $val;
+                    $updateData[$col] = $val === '' ? null : $val;
                 }
             }
             if (array_key_exists('excluded_from_stats', $data)) {
-                $sets[] = 'excluded_from_stats = :excl';
-                // 'true'/'false' text — PDO binds PHP false as '' which PG rejects.
-                $params['excl'] = !empty($data['excluded_from_stats']) ? 'true' : 'false';
+                $updateData['excluded_from_stats'] = !empty($data['excluded_from_stats']);
             }
-            if (!$sets) {
+            if (!$updateData) {
                 return true;
             }
-            $sets[] = 'updated_at = NOW()';
-            $this->pdo->prepare('UPDATE artists SET ' . implode(', ', $sets) . ' WHERE id = :id')
-                ->execute($params);
+            $qb = $this->db->queryBuilder()->from('artists');
+            $updateData['updated_at'] = $qb->raw('NOW()');
+            $qb->where('id', '=', $artistId)->update($updateData);
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::updateArtistMeta failed: ' . $e->getMessage());
             return false;
         }
@@ -590,23 +567,21 @@ class TrackStatsService
     public function updateAlbumMeta(int $albumId, array $data): bool
     {
         try {
-            $sets = [];
-            $params = ['id' => $albumId];
+            $updateData = [];
             foreach (['genre', 'release_date', 'external_url'] as $col) {
                 if (array_key_exists($col, $data)) {
                     $val = trim((string)$data[$col]);
-                    $sets[] = "$col = :$col";
-                    $params[$col] = $val === '' ? null : $val;
+                    $updateData[$col] = $val === '' ? null : $val;
                 }
             }
-            if (!$sets) {
+            if (!$updateData) {
                 return true;
             }
-            $sets[] = 'updated_at = NOW()';
-            $this->pdo->prepare('UPDATE albums SET ' . implode(', ', $sets) . ' WHERE id = :id')
-                ->execute($params);
+            $qb = $this->db->queryBuilder()->from('albums');
+            $updateData['updated_at'] = $qb->raw('NOW()');
+            $qb->where('id', '=', $albumId)->update($updateData);
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::updateAlbumMeta failed: ' . $e->getMessage());
             return false;
         }
@@ -620,14 +595,14 @@ class TrackStatsService
     public function enrichAlbum(int $albumId): bool
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT al.id, al.title, al.cover_file, al.release_date, al.genre,
                         al.external_url, al.external_id, ar.name AS artist_name
                  FROM albums al LEFT JOIN artists ar ON al.artist_id = ar.id
-                 WHERE al.id = :id'
+                 WHERE al.id = :id',
+                ['id' => $albumId]
             );
-            $stmt->execute(['id' => $albumId]);
-            $al = $stmt->fetch(PDO::FETCH_ASSOC);
+            $al = $result ? $result->fetch() : null;
             if (!$al) {
                 return false;
             }
@@ -639,38 +614,31 @@ class TrackStatsService
             );
 
             // Fill only what's missing; downloaded cover always refreshed if we got one.
-            $sets = [];
-            $params = ['id' => $albumId];
+            $updateData = [];
             if (!empty($meta['cover'])) {
-                $sets[] = 'cover_file = :cover';
-                $params['cover'] = $meta['cover'];
+                $updateData['cover_file'] = $meta['cover'];
             }
             if (empty($al['genre']) && !empty($meta['genre'])) {
-                $sets[] = 'genre = :genre';
-                $params['genre'] = $meta['genre'];
+                $updateData['genre'] = $meta['genre'];
             }
             if (empty($al['release_date']) && !empty($meta['release_date'])) {
-                $sets[] = 'release_date = :rd';
-                $params['rd'] = $meta['release_date'];
+                $updateData['release_date'] = $meta['release_date'];
             }
             if (empty($al['external_url']) && !empty($meta['external_url'])) {
-                $sets[] = 'external_url = :url';
-                $params['url'] = $meta['external_url'];
+                $updateData['external_url'] = $meta['external_url'];
             }
             if (empty($al['external_id']) && !empty($meta['external_id'])) {
-                $sets[] = 'external_id = :eid';
-                $params['eid'] = $meta['external_id'];
-                $sets[] = 'source = :src';
-                $params['src'] = $meta['source'] ?? 'deezer';
+                $updateData['external_id'] = $meta['external_id'];
+                $updateData['source'] = $meta['source'] ?? 'deezer';
             }
-            if (!$sets) {
+            if (!$updateData) {
                 return true;
             }
-            $sets[] = 'updated_at = NOW()';
-            $this->pdo->prepare('UPDATE albums SET ' . implode(', ', $sets) . ' WHERE id = :id')
-                ->execute($params);
+            $qb = $this->db->queryBuilder()->from('albums');
+            $updateData['updated_at'] = $qb->raw('NOW()');
+            $qb->where('id', '=', $albumId)->update($updateData);
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::enrichAlbum failed: ' . $e->getMessage());
             return false;
         }
@@ -694,9 +662,10 @@ class TrackStatsService
         $file = $img['artist_image'] ?? null;
         if ($file) {
             try {
-                $this->pdo->prepare('UPDATE artists SET image_file = :f, updated_at = NOW() WHERE id = :id')
-                    ->execute(['f' => $file, 'id' => $row['id']]);
-            } catch (\PDOException $e) {
+                $qb = $this->db->queryBuilder()->from('artists');
+                $qb->where('id', '=', $row['id'])
+                    ->update(['image_file' => $file, 'updated_at' => $qb->raw('NOW()')]);
+            } catch (\Throwable $e) {
                 Log::write('TrackStatsService::ensureArtistImage failed: ' . $e->getMessage());
             }
         }
@@ -707,13 +676,13 @@ class TrackStatsService
     public function getArtistRowByName(string $name): ?array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT id, name, genre, external_url, image_file, excluded_from_stats
-                 FROM artists WHERE name = :name'
+                 FROM artists WHERE name = :name',
+                ['name' => $name]
             );
-            $stmt->execute(['name' => $name]);
-            return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        } catch (\PDOException $e) {
+            return ($result && $result->numRows > 0) ? $result->fields : null;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getArtistRowByName failed: ' . $e->getMessage());
             return null;
         }
@@ -723,19 +692,19 @@ class TrackStatsService
     public function getArtistSummary(string $artist): ?array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT COUNT(*) AS plays, COUNT(DISTINCT t.id) AS tracks,
                         MIN(tp.played_at) AS first_played, MAX(tp.played_at) AS last_played
                  FROM track_plays tp JOIN tracks t ON tp.track_id = t.id
-                 WHERE t.artist = :artist'
+                 WHERE t.artist = :artist',
+                ['artist' => $artist]
             );
-            $stmt->execute(['artist' => $artist]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = $result ? $result->fetch() : null;
             if (!$row || (int)$row['plays'] === 0) {
                 return null;
             }
             return $row;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getArtistSummary failed: ' . $e->getMessage());
             return null;
         }
@@ -745,20 +714,18 @@ class TrackStatsService
     public function getArtistTracks(string $artist, int $limit = 200): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.id AS track_id, t.display, t.title, t.genre,
                         COUNT(*) AS plays, MAX(tp.played_at) AS last_played
                  FROM track_plays tp JOIN tracks t ON tp.track_id = t.id
                  WHERE t.artist = :artist
                  GROUP BY t.id, t.display, t.title, t.genre
                  ORDER BY plays DESC, last_played DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['artist' => $artist, 'limit' => $limit]
             );
-            $stmt->bindValue(':artist', $artist);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getArtistTracks failed: ' . $e->getMessage());
             return [];
         }
@@ -768,7 +735,7 @@ class TrackStatsService
     public function getTrackById(int $trackId): ?array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.id, t.artist, t.title, t.display, t.first_played_at, t.last_played_at,
                         t.play_count, t.artist_id, t.album_id, t.genre, t.cover_file, t.release_date,
                         t.external_url, t.excluded_from_stats, t.enriched_at,
@@ -777,12 +744,11 @@ class TrackStatsService
                  FROM tracks t
                  LEFT JOIN albums al ON t.album_id = al.id
                  LEFT JOIN artists ar ON t.artist_id = ar.id
-                 WHERE t.id = :id'
+                 WHERE t.id = :id',
+                ['id' => $trackId]
             );
-            $stmt->execute(['id' => $trackId]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            return $row ?: null;
-        } catch (\PDOException $e) {
+            return ($result && $result->numRows > 0) ? $result->fields : null;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTrackById failed: ' . $e->getMessage());
             return null;
         }
@@ -797,18 +763,15 @@ class TrackStatsService
     public function getTrackPlays(int $trackId, int $limit = 500): array
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT id, listeners, played_at
-                 FROM track_plays
-                 WHERE track_id = :id
-                 ORDER BY played_at DESC
-                 LIMIT :limit'
-            );
-            $stmt->bindValue(':id', $trackId, PDO::PARAM_INT);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            $result = $this->db->queryBuilder()
+                ->from('track_plays')
+                ->select(['id', 'listeners', 'played_at'])
+                ->where('track_id', '=', $trackId)
+                ->orderBy('played_at', 'desc')
+                ->limit($limit)
+                ->getAll();
+            return $result;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTrackPlays failed: ' . $e->getMessage());
             return [];
         }
@@ -825,43 +788,43 @@ class TrackStatsService
 
         $totals = ['total_plays' => 0, 'unique_tracks' => 0];
         try {
-            $stmt = $this->pdo->prepare(
+            $r = $this->db->preparedQuery(
                 'SELECT COUNT(*) AS total_plays, COUNT(DISTINCT track_id) AS unique_tracks
-                 FROM track_plays WHERE played_at >= :from AND played_at < :to'
+                 FROM track_plays WHERE played_at >= :from AND played_at < :to',
+                ['from' => $from, 'to' => $to]
             );
-            $stmt->execute(['from' => $from, 'to' => $to]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = $r ? $r->fetch() : null;
             if ($row) {
                 $totals['total_plays'] = (int)$row['total_plays'];
                 $totals['unique_tracks'] = (int)$row['unique_tracks'];
             }
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getSummary totals failed: ' . $e->getMessage());
         }
 
         $perDay = [];
         try {
-            $stmt = $this->pdo->prepare(
+            $r = $this->db->preparedQuery(
                 'SELECT played_at::date AS day, COUNT(*) AS plays
                  FROM track_plays WHERE played_at >= :from AND played_at < :to
-                 GROUP BY day ORDER BY day'
+                 GROUP BY day ORDER BY day',
+                ['from' => $from, 'to' => $to]
             );
-            $stmt->execute(['from' => $from, 'to' => $to]);
-            $perDay = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            $perDay = $r ? $r->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getSummary perDay failed: ' . $e->getMessage());
         }
 
         // The currently/most-recently played track (for a "now playing" link).
         $current = null;
         try {
-            $stmt = $this->pdo->query(
+            $r = $this->db->query(
                 'SELECT t.id, t.display FROM track_plays tp
                  JOIN tracks t ON tp.track_id = t.id
                  ORDER BY tp.played_at DESC LIMIT 1'
             );
-            $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        } catch (\PDOException $e) {
+            $current = ($r && $r->numRows > 0) ? $r->fields : null;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getSummary current failed: ' . $e->getMessage());
         }
 
@@ -885,7 +848,7 @@ class TrackStatsService
     public function getCurrentTrackMeta(string $display): ?array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.artist, t.genre, t.release_date, t.cover_file,
                         al.title AS album_title, al.release_date AS album_release_date, al.cover_file AS album_cover,
                         ar.image_file AS artist_image
@@ -893,10 +856,10 @@ class TrackStatsService
                  LEFT JOIN albums al ON t.album_id = al.id
                  LEFT JOIN artists ar ON t.artist_id = ar.id
                  WHERE t.display = :d
-                 LIMIT 1'
+                 LIMIT 1',
+                ['d' => $display]
             );
-            $stmt->execute(['d' => $display]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = ($result && $result->numRows > 0) ? $result->fields : null;
             if (!$row) {
                 return null;
             }
@@ -909,7 +872,7 @@ class TrackStatsService
                 'genre' => $row['genre'] ?: null,
                 'cover' => $row['cover_file'] ?: ($row['album_cover'] ?: ($row['artist_image'] ?: null)),
             ];
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getCurrentTrackMeta failed: ' . $e->getMessage());
             return null;
         }
@@ -919,15 +882,15 @@ class TrackStatsService
     public function getGenreList(): array
     {
         try {
-            $stmt = $this->pdo->query(
+            $rows = $this->db->query(
                 "SELECT DISTINCT genre FROM (
                      SELECT genre FROM tracks WHERE genre IS NOT NULL AND genre <> ''
                      UNION
                      SELECT genre FROM albums WHERE genre IS NOT NULL AND genre <> ''
                  ) g ORDER BY genre ASC"
-            );
-            return $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (\PDOException $e) {
+            )->fetchAll();
+            return array_column($rows, 'genre');
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getGenreList failed: ' . $e->getMessage());
             return [];
         }
@@ -940,7 +903,7 @@ class TrackStatsService
             // Derived from tracks.artist so it includes every artist that has
             // played (even legacy tracks not yet linked to an artists row),
             // matching the Top Artists list. Image comes from the linked row.
-            $stmt = $this->pdo->query(
+            return $this->db->query(
                 'SELECT t.artist AS name,
                         MAX(ar.image_file)   AS image_file,
                         COUNT(DISTINCT t.id) AS tracks,
@@ -951,9 +914,8 @@ class TrackStatsService
                  WHERE t.artist IS NOT NULL AND t.artist <> \'\'
                  GROUP BY t.artist
                  ORDER BY LOWER(t.artist) ASC'
-            );
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            )->fetchAll();
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getAllArtists failed: ' . $e->getMessage());
             return [];
         }
@@ -963,7 +925,7 @@ class TrackStatsService
     public function getAlbumsByArtist(string $artist): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT al.id AS album_id, al.title, al.cover_file, al.release_date,
                         COUNT(tp.id) AS plays, COUNT(DISTINCT t.id) AS tracks
                  FROM albums al
@@ -972,11 +934,11 @@ class TrackStatsService
                  LEFT JOIN track_plays tp ON tp.track_id = t.id
                  WHERE ar.name = :artist
                  GROUP BY al.id, al.title, al.cover_file, al.release_date
-                 ORDER BY plays DESC, al.title ASC'
+                 ORDER BY plays DESC, al.title ASC',
+                ['artist' => $artist]
             );
-            $stmt->execute(['artist' => $artist]);
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getAlbumsByArtist failed: ' . $e->getMessage());
             return [];
         }
@@ -995,18 +957,19 @@ class TrackStatsService
         $g = trim($genre);
         $g = $g === '' ? null : mb_substr($g, 0, 200);
         try {
-            $stmt = $this->pdo->prepare(
-                'UPDATE tracks SET genre = :g WHERE LOWER(artist) = LOWER(:a)'
-            );
-            $stmt->execute(['g' => $g, 'a' => $artist]);
-            $count = $stmt->rowCount();
+            $result = $this->db->queryBuilder()
+                ->from('tracks')
+                ->whereRaw('LOWER(artist) = LOWER(%s)', [$artist])
+                ->update(['genre' => $g]);
+            $count = $result ? $result->getAffectedRows() : 0;
 
             // Keep the artist row's genre in sync.
-            $this->pdo->prepare('UPDATE artists SET genre = :g, updated_at = NOW() WHERE LOWER(name) = LOWER(:a)')
-                ->execute(['g' => $g, 'a' => $artist]);
+            $qb = $this->db->queryBuilder()->from('artists');
+            $qb->whereRaw('LOWER(name) = LOWER(%s)', [$artist])
+                ->update(['genre' => $g, 'updated_at' => $qb->raw('NOW()')]);
 
             return $count;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::bulkSetGenreByArtist failed: ' . $e->getMessage());
             return 0;
         }
@@ -1028,10 +991,12 @@ class TrackStatsService
         $g = $g === '' ? null : mb_substr($g, 0, 200);
         try {
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $stmt = $this->pdo->prepare("UPDATE tracks SET genre = ? WHERE id IN ($placeholders)");
-            $stmt->execute(array_merge([$g], $ids));
-            return $stmt->rowCount();
-        } catch (\PDOException $e) {
+            $result = $this->db->preparedQuery(
+                "UPDATE tracks SET genre = ? WHERE id IN ($placeholders)",
+                array_merge([$g], $ids)
+            );
+            return $result ? $result->getAffectedRows() : 0;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::bulkSetGenreForTracks failed: ' . $e->getMessage());
             return 0;
         }
@@ -1050,10 +1015,12 @@ class TrackStatsService
         $to = trim($to);
         $toVal = $to === '' ? null : mb_substr($to, 0, 200);
         try {
-            $stmt = $this->pdo->prepare('UPDATE tracks SET genre = :to WHERE genre = :from');
-            $stmt->execute(['to' => $toVal, 'from' => $from]);
-            return $stmt->rowCount();
-        } catch (\PDOException $e) {
+            $result = $this->db->queryBuilder()
+                ->from('tracks')
+                ->where('genre', '=', $from)
+                ->update(['genre' => $toVal]);
+            return $result ? $result->getAffectedRows() : 0;
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::bulkReassignGenre failed: ' . $e->getMessage());
             return 0;
         }
@@ -1067,7 +1034,7 @@ class TrackStatsService
             return [];
         }
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.id AS track_id, t.display, t.artist, t.genre,
                         COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
                  FROM tracks t
@@ -1075,13 +1042,11 @@ class TrackStatsService
                  WHERE t.display ILIKE :q OR t.artist ILIKE :q OR t.title ILIKE :q
                  GROUP BY t.id, t.display, t.artist, t.genre
                  ORDER BY plays DESC, MAX(tp.played_at) DESC NULLS LAST
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['q' => '%' . $query . '%', 'limit' => $limit]
             );
-            $stmt->bindValue(':q', '%' . $query . '%');
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::searchTracks failed: ' . $e->getMessage());
             return [];
         }
@@ -1091,7 +1056,7 @@ class TrackStatsService
     public function getTracksByGenre(string $genre, int $limit = 500): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT t.id AS track_id, t.display, t.artist, t.genre,
                         COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
                  FROM tracks t
@@ -1102,13 +1067,11 @@ class TrackStatsService
                    AND (ar.excluded_from_stats IS NULL OR ar.excluded_from_stats = FALSE)
                  GROUP BY t.id, t.display, t.artist, t.genre
                  ORDER BY plays DESC, t.display ASC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['genre' => $genre, 'limit' => $limit]
             );
-            $stmt->bindValue(':genre', $genre);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getTracksByGenre failed: ' . $e->getMessage());
             return [];
         }
@@ -1118,29 +1081,29 @@ class TrackStatsService
     public function getAlbumDetail(int $albumId): ?array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $albumResult = $this->db->preparedQuery(
                 'SELECT al.id, al.title, al.cover_file, al.release_date, al.genre, al.external_url,
                         ar.name AS artist_name
                  FROM albums al LEFT JOIN artists ar ON al.artist_id = ar.id
-                 WHERE al.id = :id'
+                 WHERE al.id = :id',
+                ['id' => $albumId]
             );
-            $stmt->execute(['id' => $albumId]);
-            $album = $stmt->fetch(PDO::FETCH_ASSOC);
+            $album = ($albumResult && $albumResult->numRows > 0) ? $albumResult->fields : null;
             if (!$album) {
                 return null;
             }
 
-            $t = $this->pdo->prepare(
+            $tracks = $this->db->preparedQuery(
                 'SELECT t.id AS track_id, t.display, t.genre, COUNT(tp.id) AS plays, MAX(tp.played_at) AS last_played
                  FROM tracks t LEFT JOIN track_plays tp ON tp.track_id = t.id
                  WHERE t.album_id = :id
                  GROUP BY t.id, t.display, t.genre
-                 ORDER BY plays DESC, t.display ASC'
+                 ORDER BY plays DESC, t.display ASC',
+                ['id' => $albumId]
             );
-            $t->execute(['id' => $albumId]);
 
-            return ['album' => $album, 'tracks' => $t->fetchAll(PDO::FETCH_ASSOC)];
-        } catch (\PDOException $e) {
+            return ['album' => $album, 'tracks' => $tracks ? $tracks->fetchAll() : []];
+        } catch (\Throwable $e) {
             Log::write('TrackStatsService::getAlbumDetail failed: ' . $e->getMessage());
             return null;
         }
