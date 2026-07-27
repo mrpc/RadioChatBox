@@ -17,9 +17,7 @@ use PDO;
  */
 class BlockService
 {
-    private \Redis $redis;
     private PDO $pdo;
-    private string $prefix;
 
     /** Cache TTL for a user's related-set, in seconds. */
     private const CACHE_TTL = 300;
@@ -34,24 +32,19 @@ class BlockService
 
     public function __construct()
     {
-        $this->redis = Database::getRedis();
         $this->pdo = Database::getPDO();
-        $this->prefix = Database::getRedisPrefix();
     }
 
     private function relatedCacheKey(string $username): string
     {
-        return $this->prefix . 'dm_blocks:related:' . strtolower($username);
+        // Bare key — RadioChatBox\Cache (FlatCache) applies the Redis prefix.
+        return 'dm_blocks:related:' . strtolower($username);
     }
 
     private function invalidate(string ...$usernames): void
     {
         foreach ($usernames as $username) {
-            try {
-                $this->redis->del($this->relatedCacheKey($username));
-            } catch (\Exception $e) {
-                // Non-fatal: cache will simply be recomputed on next read.
-            }
+            Cache::store()->delete($this->relatedCacheKey($username));
         }
     }
 
@@ -167,13 +160,9 @@ class BlockService
     {
         $cacheKey = $this->relatedCacheKey($username);
 
-        try {
-            $cached = $this->redis->get($cacheKey);
-            if ($cached !== false) {
-                return json_decode($cached, true) ?: [];
-            }
-        } catch (\Exception $e) {
-            // Fall through to DB.
+        $cached = Cache::store()->get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
         }
 
         try {
@@ -191,11 +180,7 @@ class BlockService
             return [];
         }
 
-        try {
-            $this->redis->setex($cacheKey, self::CACHE_TTL, json_encode($related));
-        } catch (\Exception $e) {
-            // Non-fatal.
-        }
+        Cache::store()->set($cacheKey, $related, self::CACHE_TTL);
 
         return $related;
     }
