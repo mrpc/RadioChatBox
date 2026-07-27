@@ -680,7 +680,7 @@ class RadioChatBox {
                 this._nowPlayingMeta = data.nowPlaying.meta || null;
                 this.updatePinTrackButton();
                 // Fetch the cover art (only when the track actually changes).
-                this.updateNowPlayingCover(data.nowPlaying.artist || '', data.nowPlaying.title || data.nowPlaying.display || '');
+                this.updateNowPlayingCover(data.nowPlaying.artist || '', data.nowPlaying.title || data.nowPlaying.display || '', data.nowPlaying.feed_cover || null);
 
                 // Check if user is admin (also check stored role if userRole not set yet)
                 const userRole = this.userRole || this.getStorage('userRole');
@@ -706,43 +706,55 @@ class RadioChatBox {
     }
 
     /** Fetch + show the cover art for the current track (cached; only on change). */
-    async updateNowPlayingCover(artist, title) {
+    async updateNowPlayingCover(artist, title, feedCover = null) {
         const img = document.getElementById('now-playing-cover');
         if (!img) return;
         const key = `${artist}|${title}`;
         if (key === this._coverKey) return; // already handled this track
         this._coverKey = key;
+
+        let full = null;
+        let thumb = null;
         try {
             const params = new URLSearchParams({ artist, title });
             const resp = await fetch(`${this.apiUrl}/api/artwork.php?${params.toString()}`);
             const data = await resp.json();
             // Prefer the album cover; fall back to the artist image when there
             // is no cover.
-            const full = data && data.success ? (data.cover || data.artist_image) : null;
-            const thumb = data && data.success ? (data.cover_thumb || data.artist_image_thumb || full) : null;
-            if (full && key === this._coverKey) {
-                // Small display uses the thumbnail; the lightbox uses the full image.
-                img.src = thumb || full;
-                img.dataset.full = full;
-                img.style.display = 'block';
-                if (!img._lightboxBound) {
-                    img.addEventListener('click', () => {
-                        const full = img.dataset.full;
-                        if (!full) return;
-                        this._galleryPhotos = [{ url: full, from: this.currentTrack || '' }];
-                        this.openLightbox(0);
-                    });
-                    img.addEventListener('mouseenter', () => this.showNowPlayingCard(img));
-                    img.addEventListener('mouseleave', () => this.scheduleHideNowPlayingCard());
-                    img._lightboxBound = true;
-                }
-                // A cover replaces the mic logo.
-                const mic = document.getElementById('mic-logo');
-                if (mic) mic.style.display = 'none';
-            } else if (key === this._coverKey) {
-                this.hideNowPlayingCover();
-            }
+            full = data && data.success ? (data.cover || data.artist_image) : null;
+            thumb = data && data.success ? (data.cover_thumb || data.artist_image_thumb || full) : null;
         } catch (e) {
+            // Network/lookup error — fall through to the stream-provided cover.
+        }
+
+        // Fall back to the cover art the radio stream itself provides when local
+        // artwork is unavailable (a Deezer/iTunes miss, or the image could not be
+        // stored locally). Keeps a cover showing whenever the feed carries one.
+        if (!full && feedCover) {
+            full = feedCover;
+            thumb = feedCover;
+        }
+
+        if (full && key === this._coverKey) {
+            // Small display uses the thumbnail; the lightbox uses the full image.
+            img.src = thumb || full;
+            img.dataset.full = full;
+            img.style.display = 'block';
+            if (!img._lightboxBound) {
+                img.addEventListener('click', () => {
+                    const clickFull = img.dataset.full;
+                    if (!clickFull) return;
+                    this._galleryPhotos = [{ url: clickFull, from: this.currentTrack || '' }];
+                    this.openLightbox(0);
+                });
+                img.addEventListener('mouseenter', () => this.showNowPlayingCard(img));
+                img.addEventListener('mouseleave', () => this.scheduleHideNowPlayingCard());
+                img._lightboxBound = true;
+            }
+            // A cover replaces the mic logo.
+            const mic = document.getElementById('mic-logo');
+            if (mic) mic.style.display = 'none';
+        } else if (key === this._coverKey) {
             this.hideNowPlayingCover();
         }
     }
