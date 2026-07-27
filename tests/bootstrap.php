@@ -26,7 +26,7 @@ if (($_ENV['APP_ENV'] ?? getenv('APP_ENV')) !== 'testing') {
 $root = dirname(__DIR__);
 $output = (string) shell_exec(
     escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/bin/rcb')
-    . ' migrate 2>&1'
+    . ' migrate --path=app/Migrations 2>&1'
 );
 
 fwrite(STDERR, "[tests] migrate:\n" . trim($output) . "\n");

@@ -75,7 +75,7 @@ PDO.
 ## Phase 2 — Console + tracked migrations (framework is clearly better) — ✅ IMPLEMENTED
 
 > **As built** (commit `feat: Phase 2 — tracked migrations`): scoping is done with
-> **`bin/rcb migrate` (default path `app/Migrations`)**, not `migration_cutoff`. Because RadioChatBox's SQL
+> **`bin/rcb migrate --path=app/Migrations` (pins to RCB's own migrations; the default also scans bundled framework migrations)**, not `migration_cutoff`. Because RadioChatBox's SQL
 > is already idempotent, the first run on an existing DB is a safe no-op that just records the 22
 > migrations in `schemaversion`; a fresh DB builds the schema. `--path` excludes every framework
 > migration (verified: no framework tables created, app tables untouched, 2nd run = nothing
