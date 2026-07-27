@@ -3,12 +3,12 @@
 namespace RadioChatBox;
 
 use Redis;
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 class ChatService
 {
     private \Redis $redis;
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private string $prefix;
     private const MESSAGES_KEY = 'chat:messages';
     private const PUBSUB_CHANNEL = 'chat:updates';
@@ -19,7 +19,7 @@ class ChatService
     public function __construct()
     {
         $this->redis = Database::getRedis();
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->prefix = Database::getRedisPrefix();
     }
     
@@ -186,7 +186,7 @@ class ChatService
     private function loadHistoryFromDB(int $limit = 50): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to, m.pinned_track,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
@@ -196,11 +196,10 @@ class ChatService
                  LEFT JOIN users ru ON r.user_id = ru.id
                  WHERE m.is_deleted = false
                  ORDER BY m.created_at DESC
-                 LIMIT :limit'
+                 LIMIT :limit',
+                ['limit' => $limit]
             );
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $rows = $result ? $result->fetchAll() : [];
 
             // Convert to the same format as Redis messages
             $messages = array_map(function($row) {
@@ -247,7 +246,7 @@ class ChatService
             
             // Return in chronological order (oldest first) to match getHistory() behavior
             return array_reverse($messages);
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to load history from DB: " . $e->getMessage());
             return [];
         }
@@ -260,7 +259,7 @@ class ChatService
     public function getHistoryWithOffset(int $limit = 50, int $offset = 0): array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to, m.pinned_track,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
@@ -270,12 +269,10 @@ class ChatService
                  LEFT JOIN users ru ON r.user_id = ru.id
                  WHERE m.is_deleted = false
                  ORDER BY m.created_at DESC
-                 LIMIT :limit OFFSET :offset'
+                 LIMIT :limit OFFSET :offset',
+                ['limit' => min($limit, 100), 'offset' => $offset]
             );
-            $stmt->bindValue(':limit', min($limit, 100), PDO::PARAM_INT);
-            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $rows = $result ? $result->fetchAll() : [];
 
             // Convert to the same format as Redis messages
             $messages = array_map(function($row) {
@@ -305,7 +302,7 @@ class ChatService
 
             // Return in chronological order (oldest first)
             return array_reverse($messages);
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to load paginated history: " . $e->getMessage());
             return [];
         }
@@ -332,12 +329,16 @@ class ChatService
                 $rateLimitWindow = $cached['window'] ?? 60;
             } else {
                 // PERFORMANCE OPTIMIZATION: Fetch both settings in ONE query instead of two
-                $stmt = $this->pdo->prepare(
+                $result = $this->db->query(
                     "SELECT setting_key, setting_value FROM settings
                      WHERE setting_key IN ('rate_limit_messages', 'rate_limit_window')"
                 );
-                $stmt->execute();
-                $results = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+                $rows = $result ? $result->fetchAll() : [];
+                $results = [];
+                foreach ($rows as $r) {
+                    $vals = array_values($r);
+                    $results[$vals[0]] = $vals[1];
+                }
 
                 $rateLimitMessages = isset($results['rate_limit_messages'])
                     ? (int)$results['rate_limit_messages']
@@ -352,7 +353,7 @@ class ChatService
                     'window' => $rateLimitWindow,
                 ], 300);
             }
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             // Use defaults if unable to fetch from database
             Log::write("Failed to get rate limit settings: " . $e->getMessage());
         }
@@ -427,27 +428,26 @@ class ChatService
             $userId = $messageData['user_id'] ?? null;
             $displayName = $messageData['display_name'] ?? null;
 
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to, pinned_track)
-                 VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to, :pinned_track)'
+                 VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to, :pinned_track)',
+                [
+                    'message_id' => $messageData['id'],
+                    'username' => $messageData['username'],
+                    'user_id' => $userId,
+                    'display_name' => $displayName,
+                    'message' => $messageData['message'],
+                    'ip_address' => $messageData['ip'],
+                    'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
+                    'reply_to' => $messageData['reply_to'] ?? null,
+                    'pinned_track' => $messageData['pinned_track'] ?? null,
+                ]
             );
 
-            $result = $stmt->execute([
-                'message_id' => $messageData['id'],
-                'username' => $messageData['username'],
-                'user_id' => $userId,
-                'display_name' => $displayName,
-                'message' => $messageData['message'],
-                'ip_address' => $messageData['ip'],
-                'created_at' => date('Y-m-d H:i:s', $messageData['timestamp']),
-                'reply_to' => $messageData['reply_to'] ?? null,
-                'pinned_track' => $messageData['pinned_track'] ?? null,
-            ]);
-
             if (!$result) {
-                Log::write("Failed to store message in database - execute returned false. Errors: " . json_encode($stmt->errorInfo()));
+                Log::write("Failed to store message in database - execute returned false. Errors: " . json_encode($this->db->getError()));
             }
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             // Log error with full details but don't fail the request
             Log::write("Failed to store message in database (PDOException): " . $e->getMessage() . " | Code: " . $e->getCode());
             Log::write("Message ID: " . ($messageData['id'] ?? 'null'));
@@ -478,15 +478,15 @@ class ChatService
             }
 
             // Fallback to database
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT m.username, m.message, u.display_name
                  FROM messages m
                  LEFT JOIN users u ON m.user_id = u.id
                  WHERE m.message_id = :message_id AND m.is_deleted = false
-                 LIMIT 1'
+                 LIMIT 1',
+                ['message_id' => $messageId]
             );
-            $stmt->execute(['message_id' => $messageId]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
             if ($row) {
                 $replyData = [
@@ -506,7 +506,7 @@ class ChatService
 
                 return $replyData;
             }
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get reply message data: " . $e->getMessage());
         } catch (\Exception $e) {
             Log::write("Redis error in getReplyMessageData: " . $e->getMessage());
@@ -533,11 +533,11 @@ class ChatService
             }
 
             // Fetch from database (single query for both fields)
-            $stmt = $this->pdo->prepare(
-                'SELECT id, display_name FROM users WHERE username = :username AND is_active = true LIMIT 1'
+            $result = $this->db->preparedQuery(
+                'SELECT id, display_name FROM users WHERE username = :username AND is_active = true LIMIT 1',
+                ['username' => $username]
             );
-            $stmt->execute(['username' => $username]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
             $userData = [
                 'user_id' => $row ? $row['id'] : null,
@@ -548,7 +548,7 @@ class ChatService
             $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($userData));
 
             return $userData;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get user data for username: " . $e->getMessage());
             return ['user_id' => null, 'display_name' => null];
         }
@@ -603,19 +603,19 @@ class ChatService
     {
         try {
             // Check if this session has a user_id matching the registered username
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'SELECT s.user_id, u.username 
                  FROM sessions s 
                  INNER JOIN users u ON s.user_id = u.id 
-                 WHERE s.session_id = :session_id AND u.username = :username'
+                 WHERE s.session_id = :session_id AND u.username = :username',
+                [
+                    'session_id' => $sessionId,
+                    'username' => $username
+                ]
             );
-            $stmt->execute([
-                'session_id' => $sessionId,
-                'username' => $username
-            ]);
-            
-            return $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
-        } catch (\PDOException $e) {
+
+            return ($result && $result->numRows > 0);
+        } catch (\Throwable $e) {
             Log::write("Failed to check session authentication: " . $e->getMessage());
             return false;
         }
@@ -632,14 +632,14 @@ class ChatService
         $this->cleanupInactiveSessions();
         
         // Check if this is a registered username
-        $stmt = $this->pdo->prepare(
-            'SELECT id, username FROM users WHERE username = :username'
+        $result = $this->db->preparedQuery(
+            'SELECT id, username FROM users WHERE username = :username',
+            ['username' => $nickname]
         );
-        $stmt->execute(['username' => $nickname]);
-        $registeredUser = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+        $registeredUser = ($result && $result->numRows > 0) ? $result->fields : null;
+
         // If it's a registered username, only allow if the session is authenticated as that user
-        if ($registeredUser !== false) {
+        if ($registeredUser !== null) {
             // Check if this session is authenticated as this user
             if (empty($sessionId)) {
                 return false; // No session provided, cannot authenticate
@@ -649,23 +649,23 @@ class ChatService
         }
         
         // Check if this is a fake user nickname (guests cannot use fake user nicknames)
-        $stmt = $this->pdo->prepare(
-            'SELECT id, nickname FROM fake_users WHERE nickname = :nickname'
+        $result = $this->db->preparedQuery(
+            'SELECT id, nickname FROM fake_users WHERE nickname = :nickname',
+            ['nickname' => $nickname]
         );
-        $stmt->execute(['nickname' => $nickname]);
-        $fakeUser = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+        $fakeUser = ($result && $result->numRows > 0) ? $result->fields : null;
+
         // If it's a fake user nickname, deny it for guests
-        if ($fakeUser !== false) {
+        if ($fakeUser !== null) {
             return false;
         }
-        
+
         // For non-registered nicknames, check if taken by another session
-        $stmt = $this->pdo->prepare(
-            'SELECT session_id FROM sessions WHERE LOWER(username) = LOWER(:username)'
+        $result = $this->db->preparedQuery(
+            'SELECT session_id FROM sessions WHERE LOWER(username) = LOWER(:username)',
+            ['username' => $nickname]
         );
-        $stmt->execute(['username' => $nickname]);
-        $existingSession = $stmt->fetchColumn();
+        $existingSession = $result ? $result->fetchColumn() : false;
         
         // Available if no one has it, or if the same session already has it
         return $existingSession === false || $existingSession === $sessionId;
@@ -699,13 +699,13 @@ class ChatService
         }
         
         // Check if username matches a registered user account
-        $stmt = $this->pdo->prepare(
-            'SELECT id, username FROM users WHERE username = :username'
+        $result = $this->db->preparedQuery(
+            'SELECT id, username FROM users WHERE username = :username',
+            ['username' => $username]
         );
-        $stmt->execute(['username' => $username]);
-        $registeredUser = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
-        if ($registeredUser !== false) {
+        $registeredUser = ($result && $result->numRows > 0) ? $result->fields : null;
+
+        if ($registeredUser !== null) {
             // This is a registered username - verify session is authenticated as this user
             if (!$this->isSessionAuthenticatedAsUser($username, $sessionId)) {
                 Log::write("Registration blocked: username '{$username}' is a registered account and session {$sessionId} is not authenticated as this user");
@@ -715,36 +715,36 @@ class ChatService
             // Continue to registration below
         } else {
             // Check if username conflicts with any user's display name
-            $stmt = $this->pdo->prepare(
-                'SELECT id, username FROM users WHERE display_name = :username'
+            $result = $this->db->preparedQuery(
+                'SELECT id, username FROM users WHERE display_name = :username',
+                ['username' => $username]
             );
-            $stmt->execute(['username' => $username]);
-            $userWithDisplayName = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            if ($userWithDisplayName !== false) {
+            $userWithDisplayName = ($result && $result->numRows > 0) ? $result->fields : null;
+
+            if ($userWithDisplayName !== null) {
                 Log::write("Registration blocked: username '{$username}' conflicts with a registered user's display name");
                 return false;
             }
             
             // Check if username matches a fake user nickname
-            $stmt = $this->pdo->prepare(
-                'SELECT id, nickname FROM fake_users WHERE nickname = :username'
+            $result = $this->db->preparedQuery(
+                'SELECT id, nickname FROM fake_users WHERE nickname = :username',
+                ['username' => $username]
             );
-            $stmt->execute(['username' => $username]);
-            $fakeUser = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            if ($fakeUser !== false) {
+            $fakeUser = ($result && $result->numRows > 0) ? $result->fields : null;
+
+            if ($fakeUser !== null) {
                 // Guests cannot use fake user nicknames
                 Log::write("Registration blocked: username '{$username}' is a fake user nickname");
                 return false;
             }
             // For non-registered usernames, enforce one session per username
-            $stmt = $this->pdo->prepare(
-                'SELECT session_id FROM sessions WHERE username = :username'
+            $result = $this->db->preparedQuery(
+                'SELECT session_id FROM sessions WHERE username = :username',
+                ['username' => $username]
             );
-            $stmt->execute(['username' => $username]);
-            $existingUser = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+            $existingUser = ($result && $result->numRows > 0) ? $result->fields : null;
+
             if ($existingUser && $existingUser['session_id'] !== $sessionId) {
                 // Username is taken by another active session
                 Log::write("Registration blocked: username '{$username}' is already taken by another user");
@@ -755,55 +755,52 @@ class ChatService
         try {
             // Insert or update active session
             // Note: ON CONFLICT now uses (username, session_id) to allow multiple sessions for authenticated users
-            $stmt = $this->pdo->prepare(
+            $this->db->preparedQuery(
                 'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
                  ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
                      user_id = :user_id,
-                     last_heartbeat = NOW()'
+                     last_heartbeat = NOW()',
+                [
+                    'username' => $username,
+                    'session_id' => $sessionId,
+                    'ip_address' => $ipAddress,
+                    'user_id' => $registeredUser !== null ? $registeredUser['id'] : null,
+                ]
             );
-            
-            $stmt->execute([
-                'username' => $username,
-                'session_id' => $sessionId,
-                'ip_address' => $ipAddress,
-                'user_id' => $registeredUser !== false ? $registeredUser['id'] : null,
-            ]);
-            
+
             // Track IP address in user_activity even if no message is sent yet
-            $stmt = $this->pdo->prepare(
+            $this->db->preparedQuery(
                 'INSERT INTO user_activity (username, ip_address, first_seen, last_seen, message_count, user_id)
                  VALUES (:username, :ip_address, NOW(), NOW(), 0, :user_id)
                  ON CONFLICT (username) DO UPDATE SET
                      ip_address = :ip_address,
-                     last_seen = NOW()'
+                     last_seen = NOW()',
+                [
+                    'username' => $username,
+                    'ip_address' => $ipAddress,
+                    'user_id' => $registeredUser !== null ? $registeredUser['id'] : null,
+                ]
             );
-            
-            $stmt->execute([
-                'username' => $username,
-                'ip_address' => $ipAddress,
-                'user_id' => $registeredUser !== false ? $registeredUser['id'] : null,
-            ]);
-            
+
             // Store user profile if any profile data provided
             if ($age !== null || $location !== null || $sex !== null) {
-                $stmt = $this->pdo->prepare(
+                $this->db->preparedQuery(
                     'INSERT INTO user_profiles (username, session_id, age, location, sex)
                      VALUES (:username, :session_id, :age, :location, :sex)
                      ON CONFLICT (username, session_id) DO UPDATE SET
                          age = :age,
                          location = :location,
-                         sex = :sex'
+                         sex = :sex',
+                    [
+                        'username' => $username,
+                        'session_id' => $sessionId,
+                        'age' => $age,
+                        'location' => $location,
+                        'sex' => $sex,
+                    ]
                 );
-                
-                $stmt->execute([
-                    'username' => $username,
-                    'session_id' => $sessionId,
-                    'age' => $age,
-                    'location' => $location,
-                    'sex' => $sex,
-                ]);
             }
             
             // Also cache in Redis for faster access
@@ -816,7 +813,7 @@ class ChatService
             $this->publishUserUpdate();
             
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to register user: " . $e->getMessage());
             return false;
         }
@@ -829,20 +826,19 @@ class ChatService
     {
         try {
             // Delete session from database
-            $stmt = $this->pdo->prepare(
-                'DELETE FROM sessions WHERE session_id = :session_id'
+            $result = $this->db->preparedQuery(
+                'DELETE FROM sessions WHERE session_id = :session_id',
+                ['session_id' => $sessionId]
             );
-            
-            $result = $stmt->execute(['session_id' => $sessionId]);
-            
+
             // Remove from Redis cache
             $this->redis->hDel(self::ACTIVE_USERS_KEY, $sessionId);
-            
+
             // Publish user update after logout
             $this->publishUserUpdate();
-            
-            return $result;
-        } catch (\PDOException $e) {
+
+            return $result !== false;
+        } catch (\Throwable $e) {
             Log::write("Failed to logout user: " . $e->getMessage());
             return false;
         }
@@ -859,23 +855,22 @@ class ChatService
             // Clean up inactive sessions first (this might change the user list)
             $this->cleanupInactiveSessions();
 
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'UPDATE sessions
                  SET last_heartbeat = NOW()
-                 WHERE username = :username AND session_id = :session_id'
+                 WHERE username = :username AND session_id = :session_id',
+                [
+                    'username' => $username,
+                    'session_id' => $sessionId,
+                ]
             );
-
-            $result = $stmt->execute([
-                'username' => $username,
-                'session_id' => $sessionId,
-            ]);
 
             // PERFORMANCE OPTIMIZATION: Only publish user updates every 10 seconds
             // Heartbeats happen frequently (every 10-30s per user), no need to spam SSE
             $this->publishUserUpdateThrottled();
 
-            return $result;
-        } catch (\PDOException $e) {
+            return $result !== false;
+        } catch (\Throwable $e) {
             Log::write("Failed to update heartbeat: " . $e->getMessage());
             return false;
         }
@@ -912,21 +907,20 @@ class ChatService
     public function getSessionInfo(string $username, string $sessionId): ?array
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $stmt = $this->db->preparedQuery(
                 'SELECT s.username, s.session_id, s.user_id, s.ip_address, s.last_heartbeat, u.role as user_role
                  FROM sessions s
                  LEFT JOIN users u ON s.user_id = u.id
-                 WHERE s.username = :username AND s.session_id = :session_id'
+                 WHERE s.username = :username AND s.session_id = :session_id',
+                [
+                    'username' => $username,
+                    'session_id' => $sessionId,
+                ]
             );
-            
-            $stmt->execute([
-                'username' => $username,
-                'session_id' => $sessionId,
-            ]);
-            
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            $result = ($stmt && $stmt->numRows > 0) ? $stmt->fields : null;
             return $result ?: null;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get session info: " . $e->getMessage());
             return null;
         }
@@ -942,7 +936,7 @@ class ChatService
         try {
             // Use DISTINCT ON to get only one row per username (PostgreSQL specific)
             // This ensures users logged in from multiple devices/browsers only appear once
-            $stmt = $this->pdo->query(
+            $stmt = $this->db->query(
                 'SELECT DISTINCT ON (a.username)
                     a.username, 
                     a.joined_at, 
@@ -956,9 +950,9 @@ class ChatService
                  LEFT JOIN users u ON a.user_id = u.id
                  ORDER BY a.username, a.joined_at ASC'
             );
-            
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+
+            return $stmt->fetchAll();
+        } catch (\Throwable $e) {
             Log::write("Failed to get active users: " . $e->getMessage());
             return [];
         }
@@ -972,9 +966,9 @@ class ChatService
         $this->cleanupInactiveSessions();
         
         try {
-            $stmt = $this->pdo->query('SELECT COUNT(*) FROM sessions');
+            $stmt = $this->db->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get active user count: " . $e->getMessage());
             return 0;
         }
@@ -1058,23 +1052,22 @@ class ChatService
     public function removeUser(string $username, string $sessionId): bool
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $this->db->preparedQuery(
                 'DELETE FROM sessions 
-                 WHERE username = :username AND session_id = :session_id'
+                 WHERE username = :username AND session_id = :session_id',
+                [
+                    'username' => $username,
+                    'session_id' => $sessionId,
+                ]
             );
-            
-            $stmt->execute([
-                'username' => $username,
-                'session_id' => $sessionId,
-            ]);
-            
+
             $this->redis->hDel(self::ACTIVE_USERS_KEY, $username);
             
             // Publish user update to SSE subscribers
             $this->publishUserUpdate();
             
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to remove user: " . $e->getMessage());
             return false;
         }
@@ -1101,8 +1094,8 @@ class ChatService
             $this->redis->setex($rateLimitKey, 30, time());
 
             // Run the cleanup
-            $this->pdo->exec("SELECT cleanup_inactive_sessions()");
-        } catch (\PDOException $e) {
+            $this->db->statement("SELECT cleanup_inactive_sessions()");
+        } catch (\Throwable $e) {
             Log::write("Failed to cleanup inactive sessions: " . $e->getMessage());
         } catch (\Exception $e) {
             Log::write("Failed to check cleanup rate limit: " . $e->getMessage());
@@ -1124,18 +1117,19 @@ class ChatService
                 $bannedIPs = json_decode($cached, true);
             } else {
                 // Cache miss - fetch from database
-                $stmt = $this->pdo->query(
+                $result = $this->db->query(
                     'SELECT ip_address FROM banned_ips 
                      WHERE banned_until IS NULL OR banned_until > NOW()'
                 );
-                $bannedIPs = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                $rows = $result ? $result->fetchAll() : [];
+                $bannedIPs = array_map(fn($r) => reset($r), $rows);
                 
                 // Cache for 5 minutes
                 $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($bannedIPs));
             }
             
             return in_array($ipAddress, $bannedIPs, true);
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to check IP ban: " . $e->getMessage());
             return false;
         }
@@ -1156,15 +1150,16 @@ class ChatService
                 $bannedNicknames = json_decode($cached, true);
             } else {
                 // Cache miss - fetch from database
-                $stmt = $this->pdo->query('SELECT LOWER(nickname) FROM banned_nicknames');
-                $bannedNicknames = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                $result = $this->db->query('SELECT LOWER(nickname) FROM banned_nicknames');
+                $rows = $result ? $result->fetchAll() : [];
+                $bannedNicknames = array_map(fn($r) => reset($r), $rows);
                 
                 // Cache for 5 minutes
                 $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($bannedNicknames));
             }
             
             return in_array(strtolower($nickname), $bannedNicknames, true);
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to check nickname ban: " . $e->getMessage());
             return false;
         }
@@ -1182,18 +1177,16 @@ class ChatService
             // Determine which messages to fetch
             if (!$includePrivate || $type === 'public') {
                 // Only public messages (non-deleted)
-                $stmt = $this->pdo->prepare(
+                $sql =
                     'SELECT message_id, username, message, ip_address, created_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username
                      FROM messages 
                      WHERE is_deleted = FALSE
                      ORDER BY created_at DESC 
-                     LIMIT :limit OFFSET :offset'
-                );
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                     LIMIT :limit OFFSET :offset';
+                $params = ['limit' => $limit, 'offset' => $offset];
             } elseif ($type === 'private') {
                 // Only private messages
-                $stmt = $this->pdo->prepare(
+                $sql =
                     'SELECT 
                         id::text as message_id, 
                         from_username as username, 
@@ -1206,13 +1199,11 @@ class ChatService
                         to_username
                      FROM private_messages
                      ORDER BY created_at DESC
-                     LIMIT :limit OFFSET :offset'
-                );
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                     LIMIT :limit OFFSET :offset';
+                $params = ['limit' => $limit, 'offset' => $offset];
             } else {
                 // Both public and private messages
-                $stmt = $this->pdo->prepare(
+                $sql =
                     '(SELECT 
                         message_id, 
                         username, 
@@ -1238,16 +1229,14 @@ class ChatService
                         to_username
                      FROM private_messages)
                     ORDER BY created_at DESC
-                    LIMIT :limit OFFSET :offset'
-                );
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                    LIMIT :limit OFFSET :offset';
+                $params = ['limit' => $limit, 'offset' => $offset];
             }
-            
-            $stmt->execute();
-            
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+
+            $result = $this->db->preparedQuery($sql, $params);
+
+            return $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
             Log::write("Failed to get all messages: " . $e->getMessage());
             return [];
         }
@@ -1260,16 +1249,16 @@ class ChatService
     {
         try {
             if (!$includePrivate || $type === 'public') {
-                $stmt = $this->pdo->query('SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE');
+                $stmt = $this->db->query('SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE');
             } elseif ($type === 'private') {
-                $stmt = $this->pdo->query('SELECT COUNT(*) FROM private_messages');
+                $stmt = $this->db->query('SELECT COUNT(*) FROM private_messages');
             } else {
-                $stmt = $this->pdo->query(
+                $stmt = $this->db->query(
                     'SELECT (SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE) + (SELECT COUNT(*) FROM private_messages) AS total'
                 );
             }
             return (int)$stmt->fetchColumn();
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get messages count: " . $e->getMessage());
             return 0;
         }
@@ -1281,9 +1270,9 @@ class ChatService
     public function getTotalActiveUsersCount(): int
     {
         try {
-            $stmt = $this->pdo->query('SELECT COUNT(*) FROM sessions');
+            $stmt = $this->db->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get active users count: " . $e->getMessage());
             return 0;
         }
@@ -1297,29 +1286,28 @@ class ChatService
         try {
             $bannedUntil = $durationDays ? date('Y-m-d H:i:s', strtotime("+{$durationDays} days")) : null;
             
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'INSERT INTO banned_ips (ip_address, reason, banned_by, banned_until)
                  VALUES (:ip, :reason, :banned_by, :banned_until)
                  ON CONFLICT (ip_address) DO UPDATE SET
                      reason = :reason,
                      banned_until = :banned_until,
-                     banned_by = :banned_by'
+                     banned_by = :banned_by',
+                [
+                    'ip' => $ipAddress,
+                    'reason' => $reason,
+                    'banned_by' => $bannedBy,
+                    'banned_until' => $bannedUntil,
+                ]
             );
-            
-            $result = $stmt->execute([
-                'ip' => $ipAddress,
-                'reason' => $reason,
-                'banned_by' => $bannedBy,
-                'banned_until' => $bannedUntil,
-            ]);
-            
+
             // Invalidate Redis cache
             if ($result) {
                 $this->redis->del($this->prefixKey('banned_ips'));
             }
-            
-            return $result;
-        } catch (\PDOException $e) {
+
+            return $result !== false;
+        } catch (\Throwable $e) {
             Log::write("Failed to ban IP: " . $e->getMessage());
             return false;
         }
@@ -1331,16 +1319,15 @@ class ChatService
     public function unbanIP(string $ipAddress): bool
     {
         try {
-            $stmt = $this->pdo->prepare('DELETE FROM banned_ips WHERE ip_address = :ip');
-            $result = $stmt->execute(['ip' => $ipAddress]);
-            
+            $result = $this->db->preparedQuery('DELETE FROM banned_ips WHERE ip_address = :ip', ['ip' => $ipAddress]);
+
             // Invalidate Redis cache
             if ($result) {
                 $this->redis->del($this->prefixKey('banned_ips'));
             }
-            
-            return $result;
-        } catch (\PDOException $e) {
+
+            return $result !== false;
+        } catch (\Throwable $e) {
             Log::write("Failed to unban IP: " . $e->getMessage());
             return false;
         }
@@ -1352,31 +1339,29 @@ class ChatService
     public function banNickname(string $nickname, string $reason = '', string $bannedBy = 'admin'): bool
     {
         try {
-            $stmt = $this->pdo->prepare(
+            $result = $this->db->preparedQuery(
                 'INSERT INTO banned_nicknames (nickname, reason, banned_by)
                  VALUES (:nickname, :reason, :banned_by)
                  ON CONFLICT (nickname) DO UPDATE SET
                      reason = :reason,
-                     banned_by = :banned_by'
+                     banned_by = :banned_by',
+                [
+                    'nickname' => $nickname,
+                    'reason' => $reason,
+                    'banned_by' => $bannedBy,
+                ]
             );
-            
-            $result = $stmt->execute([
-                'nickname' => $nickname,
-                'reason' => $reason,
-                'banned_by' => $bannedBy,
-            ]);
-            
+
             // Remove from active sessions if currently online
-            $this->pdo->prepare('DELETE FROM sessions WHERE LOWER(username) = LOWER(:nickname)')
-                      ->execute(['nickname' => $nickname]);
-            
+            $this->db->preparedQuery('DELETE FROM sessions WHERE LOWER(username) = LOWER(:nickname)', ['nickname' => $nickname]);
+
             // Invalidate Redis cache
             if ($result) {
                 $this->redis->del($this->prefixKey('banned_nicknames'));
             }
-            
-            return $result;
-        } catch (\PDOException $e) {
+
+            return $result !== false;
+        } catch (\Throwable $e) {
             Log::write("Failed to ban nickname: " . $e->getMessage());
             return false;
         }
@@ -1388,16 +1373,15 @@ class ChatService
     public function unbanNickname(string $nickname): bool
     {
         try {
-            $stmt = $this->pdo->prepare('DELETE FROM banned_nicknames WHERE LOWER(nickname) = LOWER(:nickname)');
-            $result = $stmt->execute(['nickname' => $nickname]);
-            
+            $result = $this->db->preparedQuery('DELETE FROM banned_nicknames WHERE LOWER(nickname) = LOWER(:nickname)', ['nickname' => $nickname]);
+
             // Invalidate Redis cache
             if ($result) {
                 $this->redis->del($this->prefixKey('banned_nicknames'));
             }
-            
-            return $result;
-        } catch (\PDOException $e) {
+
+            return $result !== false;
+        } catch (\Throwable $e) {
             Log::write("Failed to unban nickname: " . $e->getMessage());
             return false;
         }
@@ -1409,13 +1393,13 @@ class ChatService
     public function getBannedIPs(): array
     {
         try {
-            $stmt = $this->pdo->query(
+            $stmt = $this->db->query(
                 'SELECT ip_address, reason, banned_at, banned_until, banned_by
                  FROM banned_ips 
                  ORDER BY banned_at DESC'
             );
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $stmt->fetchAll();
+        } catch (\Throwable $e) {
             Log::write("Failed to get banned IPs: " . $e->getMessage());
             return [];
         }
@@ -1427,13 +1411,13 @@ class ChatService
     public function getBannedNicknames(): array
     {
         try {
-            $stmt = $this->pdo->query(
+            $stmt = $this->db->query(
                 'SELECT nickname, reason, banned_at, banned_by
                  FROM banned_nicknames 
                  ORDER BY banned_at DESC'
             );
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException $e) {
+            return $stmt->fetchAll();
+        } catch (\Throwable $e) {
             Log::write("Failed to get banned nicknames: " . $e->getMessage());
             return [];
         }
@@ -1471,12 +1455,11 @@ class ChatService
     public function getSetting(string $key, $default = null)
     {
         try {
-            $stmt = $this->pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
-            $stmt->execute([$key]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            
+            $queryResult = $this->db->preparedQuery("SELECT setting_value FROM settings WHERE setting_key = ?", [$key]);
+            $result = ($queryResult && $queryResult->numRows > 0) ? $queryResult->fields : null;
+
             return $result ? $result['setting_value'] : $default;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get setting: " . $e->getMessage());
             return $default;
         }
@@ -1489,20 +1472,19 @@ class ChatService
     {
         try {
             if (empty($keys)) {
-                $stmt = $this->pdo->query("SELECT setting_key, setting_value FROM settings");
+                $result = $this->db->query("SELECT setting_key, setting_value FROM settings");
             } else {
                 $placeholders = str_repeat('?,', count($keys) - 1) . '?';
-                $stmt = $this->pdo->prepare("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ($placeholders)");
-                $stmt->execute($keys);
+                $result = $this->db->preparedQuery("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ($placeholders)", $keys);
             }
-            
+
             $settings = [];
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            foreach (($result ? $result->fetchAll() : []) as $row) {
                 $settings[$row['setting_key']] = $row['setting_value'];
             }
-            
+
             return $settings;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to get settings: " . $e->getMessage());
             return [];
         }

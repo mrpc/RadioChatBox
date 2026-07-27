@@ -4,41 +4,52 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\ChatService;
-use Mockery;
+use RadioChatBox\Database;
 
 class ProfileRegistrationTest extends TestCase
 {
+    /** Prior require_profile value, restored in tearDown (shared DB). */
+    private ?string $previousRequireProfile = null;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $pdo = Database::getPDO();
+        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt->execute(['require_profile']);
+        $value = $stmt->fetchColumn();
+        $this->previousRequireProfile = $value === false ? null : (string) $value;
+    }
+
     protected function tearDown(): void
     {
-        Mockery::close();
+        $pdo = Database::getPDO();
+        if ($this->previousRequireProfile === null) {
+            $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['require_profile']);
+        } else {
+            $pdo->prepare(
+                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+            )->execute(['require_profile', $this->previousRequireProfile]);
+        }
         parent::tearDown();
     }
 
     /**
-     * Test that profile is required when setting is enabled
+     * ChatService::getSetting reads a value from the settings table. With
+     * require_profile set to 'true', getSetting must return that string. This
+     * replaced a \PDO-mock version when ChatService moved onto the framework DB
+     * layer (Phase 7) — it now exercises the real read path.
      */
     public function testProfileRequiredWhenSettingEnabled()
     {
-        $mockPdo = Mockery::mock(\PDO::class);
-        
-        // Mock getSetting to return 'true' for require_profile
-        $stmt = Mockery::mock(\PDOStatement::class);
-        $stmt->shouldReceive('execute')->once()->with(['require_profile']);
-        $stmt->shouldReceive('fetch')->once()->andReturn(['setting_value' => 'true']);
-        
-        $mockPdo->shouldReceive('prepare')
-            ->with("SELECT setting_value FROM settings WHERE setting_key = ?")
-            ->andReturn($stmt);
-        
-        $chatService = new ChatService();
-        $reflection = new \ReflectionClass($chatService);
-        
-        $pdoProperty = $reflection->getProperty('pdo');
-        $pdoProperty->setAccessible(true);
-        $pdoProperty->setValue($chatService, $mockPdo);
-        
-        $result = $chatService->getSetting('require_profile');
-        
+        Database::getPDO()->prepare(
+            'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+             ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+        )->execute(['require_profile', 'true']);
+
+        $result = (new ChatService())->getSetting('require_profile');
+
         $this->assertEquals('true', $result);
     }
 
