@@ -10,7 +10,7 @@ namespace RadioChatBox;
  */
 class UserService
 {
-    private \PDO $db;
+    private \Pramnos\Database\Database $db;
     private \Redis $redis;
     
     // Role hierarchy (higher number = more privileges)
@@ -51,7 +51,7 @@ class UserService
     
     public function __construct()
     {
-        $this->db = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
     }
     
@@ -88,36 +88,47 @@ class UserService
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
         
         try {
-            $stmt = $this->db->prepare("
-                INSERT INTO users (username, password_hash, role, email, created_by, display_name)
-                VALUES (:username, :password_hash, :role, :email, :created_by, :display_name)
-                RETURNING id, username, role, email, display_name, created_at
-            ");
-            
-            $stmt->execute([
-                'username' => $username,
-                'password_hash' => $passwordHash,
-                'role' => $role,
-                'email' => $email,
-                'created_by' => $createdBy,
-                'display_name' => $displayName
-            ]);
-            
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+            $result = $this->db->queryBuilder()
+                ->from('users')
+                ->returning('id', 'username', 'role', 'email', 'display_name', 'created_at')
+                ->insert([
+                    'username'      => $username,
+                    'password_hash' => $passwordHash,
+                    'role'          => $role,
+                    'email'         => $email,
+                    'created_by'    => $createdBy,
+                    'display_name'  => $displayName,
+                ]);
+
+            // The framework returns false on a DB error instead of throwing, so
+            // inspect the driver error text: PostgreSQL reports a unique violation
+            // (SQLSTATE 23505) as "duplicate key value violates unique constraint".
+            if ($result === false) {
+                Log::write("UserService::createUser error: "
+                    . (string) ($this->db->getError()['message'] ?? 'insert failed'));
+                return ['success' => false, 'error' => 'Database error'];
+            }
+
+            $user = $result->fetch();
+
             // Clear users cache
             $this->clearUsersCache();
-            
+
             return [
                 'success' => true,
                 'user' => $this->sanitizeUser($user)
             ];
-            
-        } catch (\PDOException $e) {
-            if ($e->getCode() === '23505') { // Unique violation
+
+        } catch (\Throwable $e) {
+            // The framework throws on SQL errors (rather than returning false).
+            // PostgreSQL reports a unique violation (SQLSTATE 23505) as
+            // "duplicate key value violates unique constraint".
+            $msg = $e->getMessage();
+            if (stripos($msg, 'duplicate key') !== false
+                || stripos($msg, 'unique constraint') !== false) {
                 return ['success' => false, 'error' => 'Username already exists'];
             }
-            Log::write("UserService::createUser error: " . $e->getMessage());
+            Log::write("UserService::createUser error: " . $msg);
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -132,53 +143,49 @@ class UserService
     public function updateUser(int $userId, array $updates): array
     {
         $allowedFields = ['password', 'email', 'role', 'is_active', 'display_name'];
-        $setFields = [];
-        $params = ['id' => $userId];
-        
+        $updateData = [];
+
         foreach ($updates as $field => $value) {
             if (!in_array($field, $allowedFields)) {
                 continue;
             }
-            
+
             if ($field === 'password') {
                 if (strlen($value) < 8) {
                     return ['success' => false, 'error' => 'Password must be at least 8 characters'];
                 }
-                $setFields[] = "password_hash = :password_hash";
-                $params['password_hash'] = password_hash($value, PASSWORD_DEFAULT);
+                $updateData['password_hash'] = password_hash($value, PASSWORD_DEFAULT);
             } elseif ($field === 'role') {
                 if (!in_array($value, ['root', 'administrator', 'moderator', 'simple_user'])) {
                     return ['success' => false, 'error' => 'Invalid role'];
                 }
-                $setFields[] = "role = :role";
-                $params['role'] = $value;
+                $updateData['role'] = $value;
             } elseif ($field === 'is_active') {
-                $setFields[] = "is_active = :is_active";
-                $params['is_active'] = (bool)$value;
+                $updateData['is_active'] = (bool)$value;
             } elseif ($field === 'email') {
-                $setFields[] = "email = :email";
-                $params['email'] = $value;
+                $updateData['email'] = $value;
             } elseif ($field === 'display_name') {
-                $setFields[] = "display_name = :display_name";
-                $params['display_name'] = $value;
+                $updateData['display_name'] = $value;
             }
         }
-        
-        if (empty($setFields)) {
+
+        if (empty($updateData)) {
             return ['success' => false, 'error' => 'No valid fields to update'];
         }
-        
+
         try {
-            $sql = "UPDATE users SET " . implode(', ', $setFields) . " WHERE id = :id RETURNING id, username, role, email, display_name, is_active, updated_at";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+            $result = $this->db->queryBuilder()
+                ->from('users')
+                ->where('id', '=', $userId)
+                ->returning('id', 'username', 'role', 'email', 'display_name', 'is_active', 'updated_at')
+                ->update($updateData);
+
+            $user = ($result && $result->numRows > 0) ? $result->fields : null;
+
             if (!$user) {
                 return ['success' => false, 'error' => 'User not found'];
             }
-            
+
             // Clear user cache
             $this->clearUsersCache();
             $this->clearUserSession($user['username']);
@@ -190,8 +197,8 @@ class UserService
                 'success' => true,
                 'user' => $this->sanitizeUser($user)
             ];
-            
-        } catch (\PDOException $e) {
+
+        } catch (\Throwable $e) {
             Log::write("UserService::updateUser error: " . $e->getMessage());
             return ['success' => false, 'error' => 'Database error'];
         }
@@ -207,25 +214,28 @@ class UserService
     {
         try {
             // Get user info before deleting
-            $stmt = $this->db->prepare("SELECT username FROM users WHERE id = :id");
-            $stmt->execute(['id' => $userId]);
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            if (!$user) {
+            $username = $this->db->queryBuilder()
+                ->from('users')
+                ->where('id', '=', $userId)
+                ->value('username');
+
+            if ($username === null) {
                 return ['success' => false, 'error' => 'User not found'];
             }
-            
+
             // Delete user
-            $stmt = $this->db->prepare("DELETE FROM users WHERE id = :id");
-            $stmt->execute(['id' => $userId]);
-            
+            $this->db->queryBuilder()
+                ->from('users')
+                ->where('id', '=', $userId)
+                ->delete();
+
             // Clear caches
             $this->clearUsersCache();
-            $this->clearUserSession($user['username']);
-            
+            $this->clearUserSession($username);
+
             return ['success' => true];
-            
-        } catch (\PDOException $e) {
+
+        } catch (\Throwable $e) {
             Log::write("UserService::deleteUser error: " . $e->getMessage());
             return ['success' => false, 'error' => 'Database error'];
         }
@@ -258,25 +268,25 @@ class UserService
         }
         
         try {
-            $sql = "SELECT id, username, role, email, display_name, is_active, created_at, updated_at, last_login 
-                    FROM users";
-            
+            $qb = $this->db->queryBuilder()
+                ->from('users')
+                ->select(['id', 'username', 'role', 'email', 'display_name', 'is_active', 'created_at', 'updated_at', 'last_login']);
+
             if (!$includeInactive) {
-                $sql .= " WHERE is_active = TRUE";
+                $qb->whereRaw('is_active = TRUE');
             }
-            
-            $sql .= " ORDER BY 
-                CASE role 
+
+            $qb->orderByRaw(
+                "CASE role
                     WHEN 'root' THEN 1
                     WHEN 'administrator' THEN 2
                     WHEN 'moderator' THEN 3
                     WHEN 'simple_user' THEN 4
-                END,
-                username ASC";
-            
-            $stmt = $this->db->query($sql);
-            $users = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
+                END"
+            )->orderBy('username', 'asc');
+
+            $users = $qb->getAll();
+
             $users = array_map([$this, 'sanitizeUser'], $users);
             
             // Cache the results for 5 minutes
@@ -288,8 +298,8 @@ class UserService
             }
             
             return $users;
-            
-        } catch (\PDOException $e) {
+
+        } catch (\Throwable $e) {
             Log::write("UserService::getAllUsers error: " . $e->getMessage());
             return [];
         }
@@ -304,17 +314,16 @@ class UserService
     public function getUserById(int $userId): ?array
     {
         try {
-            $stmt = $this->db->prepare("
-                SELECT id, username, role, email, is_active, created_at, updated_at, last_login
-                FROM users
-                WHERE id = :id
-            ");
-            $stmt->execute(['id' => $userId]);
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+            $row = $this->db->queryBuilder()
+                ->from('users')
+                ->select(['id', 'username', 'role', 'email', 'is_active', 'created_at', 'updated_at', 'last_login'])
+                ->where('id', '=', $userId)
+                ->first();
+            $user = ($row && $row->numRows > 0) ? $row->fields : null;
+
             return $user ? $this->sanitizeUser($user) : null;
-            
-        } catch (\PDOException $e) {
+
+        } catch (\Throwable $e) {
             Log::write("UserService::getUserById error: " . $e->getMessage());
             return null;
         }
@@ -329,17 +338,16 @@ class UserService
     public function getUserByUsername(string $username): ?array
     {
         try {
-            $stmt = $this->db->prepare("
-                SELECT id, username, role, email, is_active, created_at, updated_at, last_login
-                FROM users
-                WHERE username = :username
-            ");
-            $stmt->execute(['username' => $username]);
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+            $row = $this->db->queryBuilder()
+                ->from('users')
+                ->select(['id', 'username', 'role', 'email', 'is_active', 'created_at', 'updated_at', 'last_login'])
+                ->where('username', '=', $username)
+                ->first();
+            $user = ($row && $row->numRows > 0) ? $row->fields : null;
+
             return $user ? $this->sanitizeUser($user) : null;
-            
-        } catch (\PDOException $e) {
+
+        } catch (\Throwable $e) {
             Log::write("UserService::getUserByUsername error: " . $e->getMessage());
             return null;
         }
@@ -356,14 +364,13 @@ class UserService
     {
         try {
             // Try both username and email
-            $stmt = $this->db->prepare("
-                SELECT id, username, password_hash, role, email, display_name, is_active
-                FROM users
-                WHERE username = :identifier OR email = :identifier
-            ");
-            $stmt->execute(['identifier' => $identifier]);
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+            $row = $this->db->queryBuilder()
+                ->from('users')
+                ->select(['id', 'username', 'password_hash', 'role', 'email', 'display_name', 'is_active'])
+                ->whereRaw('username = %s OR email = %s', [$identifier, $identifier])
+                ->first();
+            $user = ($row && $row->numRows > 0) ? $row->fields : null;
+
             if (!$user) {
                 return null;
             }
@@ -383,7 +390,7 @@ class UserService
             
             return $this->sanitizeUser($user);
             
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("UserService::authenticate error: " . $e->getMessage());
             return null;
         }
@@ -436,9 +443,9 @@ class UserService
     private function updateLastLogin(int $userId): void
     {
         try {
-            $stmt = $this->db->prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = :id");
-            $stmt->execute(['id' => $userId]);
-        } catch (\PDOException $e) {
+            $qb = $this->db->queryBuilder()->from('users');
+            $qb->where('id', '=', $userId)->update(['last_login' => $qb->raw('CURRENT_TIMESTAMP')]);
+        } catch (\Throwable $e) {
             Log::write("UserService::updateLastLogin error: " . $e->getMessage());
         }
     }
@@ -542,9 +549,11 @@ class UserService
      */
     public function getActiveRealUsers(): array
     {
-        // Fetch active users from the database
-        $stmt = $this->db->prepare("SELECT * FROM users WHERE is_fake = 0 AND is_active = 1");
-        $stmt->execute();
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        // Fetch active users from the database. Predicates kept verbatim (this
+        // method is currently unused; preserving its exact behaviour).
+        return $this->db->queryBuilder()
+            ->from('users')
+            ->whereRaw('is_fake = 0 AND is_active = 1')
+            ->getAll();
     }
 }

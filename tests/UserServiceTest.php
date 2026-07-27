@@ -5,218 +5,146 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\UserService;
 use RadioChatBox\Database;
-use Mockery;
 
 /**
- * Unit tests for UserService
+ * Integration tests for UserService against the real (shared) database.
+ *
+ * These were rewritten from PDO-mock unit tests when UserService moved onto the
+ * framework QueryBuilder in Phase 7: mocking the raw \PDO API no longer reflects
+ * how the service talks to the database, and real-DB tests additionally catch
+ * SQL/type issues the mocks hid (e.g. the boolean is_active handling below).
+ *
+ * Every test creates users with a unique random suffix and removes them in
+ * tearDown, so it never disturbs the real admin accounts in the shared database.
  */
 class UserServiceTest extends TestCase
 {
-    private $userService;
-    private $mockPdo;
-    private $mockRedis;
+    private UserService $userService;
+    /** @var string[] Usernames created during the test, deleted in tearDown. */
+    private array $created = [];
+    private string $suffix;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
-        // Mock PDO
-        $this->mockPdo = Mockery::mock(\PDO::class);
-        
-        // Mock Redis (use stdClass to avoid Redis extension requirement in tests)
-        $this->mockRedis = Mockery::mock('Redis');
-        
-        // Inject mocks into Database singleton
-        Database::setPDO($this->mockPdo);
-        Database::setRedis($this->mockRedis);
-        
         $this->userService = new UserService();
+        $this->suffix = substr(bin2hex(random_bytes(4)), 0, 8);
     }
 
     protected function tearDown(): void
     {
-        // Reset Database singletons
-        Database::reset();
-        Mockery::close();
+        $pdo = Database::getPDO();
+        foreach (array_unique($this->created) as $username) {
+            $pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$username]);
+        }
         parent::tearDown();
+    }
+
+    /** A username unique to this test run; registered for cleanup. */
+    private function uniqueUsername(string $base = 'utest'): string
+    {
+        $username = $base . '_' . $this->suffix . '_' . count($this->created);
+        $this->created[] = $username;
+        return $username;
     }
 
     // ========================================================================
     // CREATE USER TESTS
     // ========================================================================
 
-    public function testCreateUserSuccess()
+    /**
+     * A valid create inserts the row and returns the sanitized user (no password
+     * hash), with the username and role echoed back from the RETURNING clause.
+     */
+    public function testCreateUserSuccess(): void
     {
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->withArgs(function($args) {
-                // Verify all parameters except password_hash (which is dynamic)
-                return $args['username'] === 'testuser'
-                    && isset($args['password_hash'])
-                    && str_starts_with($args['password_hash'], '$2y$')
-                    && $args['role'] === 'administrator'
-                    && $args['email'] === 'test@example.com'
-                    && $args['created_by'] === 1;
-            })
-            ->andReturn(true);
-        
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->with(\PDO::FETCH_ASSOC)
-            ->andReturn([
-                'id' => 2,
-                'username' => 'testuser',
-                'role' => 'administrator',
-                'email' => 'test@example.com',
-                'created_at' => '2025-11-12 10:00:00'
-            ]);
-
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
-        
-        // Mock Redis cache clear (matches any key ending with these patterns)
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/users:list:active$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/users:list:all$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:all_users$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:messages$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:messages:hash$/'))
-            ->andReturn(1);
+        $username = $this->uniqueUsername();
 
         $result = $this->userService->createUser(
-            'testuser',
+            $username,
             'password123',
             'administrator',
-            'test@example.com',
+            $username . '@example.com',
             1
         );
 
         $this->assertTrue($result['success']);
-        $this->assertEquals('testuser', $result['user']['username']);
+        $this->assertEquals($username, $result['user']['username']);
         $this->assertEquals('administrator', $result['user']['role']);
         $this->assertArrayNotHasKey('password_hash', $result['user']);
     }
 
-    public function testCreateUserWithShortUsername()
+    /** A username shorter than 3 characters is rejected before any DB write. */
+    public function testCreateUserWithShortUsername(): void
     {
         $result = $this->userService->createUser('ab', 'password123', 'administrator');
-        
+
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('3-50 characters', $result['error']);
     }
 
-    public function testCreateUserWithShortPassword()
+    /** A password shorter than 8 characters is rejected before any DB write. */
+    public function testCreateUserWithShortPassword(): void
     {
-        $result = $this->userService->createUser('testuser', 'pass', 'administrator');
-        
+        $result = $this->userService->createUser($this->uniqueUsername(), 'pass', 'administrator');
+
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('at least 8 characters', $result['error']);
     }
 
-    public function testCreateUserWithInvalidRole()
+    /** An unknown role is rejected before any DB write. */
+    public function testCreateUserWithInvalidRole(): void
     {
-        $result = $this->userService->createUser('testuser', 'password123', 'invalid_role');
-        
+        $result = $this->userService->createUser($this->uniqueUsername(), 'password123', 'invalid_role');
+
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('Invalid role', $result['error']);
     }
 
-    public function testCreateUserDatabaseError()
+    /**
+     * Creating a second user with an existing username hits the unique constraint
+     * (users_username_key). The framework returns false + a driver error string
+     * rather than throwing, and createUser must translate the "duplicate key"
+     * text into the friendly "Username already exists" message.
+     */
+    public function testCreateUserDuplicateUsernameFails(): void
     {
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->andThrow(new \PDOException('Connection error'));
+        $username = $this->uniqueUsername();
 
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
+        $first = $this->userService->createUser($username, 'password123', 'moderator', $username . '@a.example');
+        $this->assertTrue($first['success']);
 
-        // The failure is logged before it is turned into a generic error.
-        $this->expectOutputRegex('/UserService::createUser error: Connection error/');
-
-        $result = $this->userService->createUser('testuser', 'password123', 'moderator');
-
-        $this->assertFalse($result['success']);
-        $this->assertStringContainsString('Database error', $result['error']);
+        $second = $this->userService->createUser($username, 'password123', 'moderator', $username . '@b.example');
+        $this->assertFalse($second['success']);
+        $this->assertSame('Username already exists', $second['error']);
     }
 
     // ========================================================================
     // UPDATE USER TESTS
     // ========================================================================
 
-    public function testUpdateUserSuccess()
+    /** Updating allowed fields persists and returns the new values. */
+    public function testUpdateUserSuccess(): void
     {
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->andReturn(true);
-        
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->with(\PDO::FETCH_ASSOC)
-            ->andReturn([
-                'id' => 2,
-                'username' => 'testuser',
-                'role' => 'moderator',
-                'email' => 'newemail@example.com',
-                'is_active' => true,
-                'updated_at' => '2025-11-12 11:00:00'
-            ]);
+        $username = $this->uniqueUsername();
+        $created = $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
+        $id = (int) $created['user']['id'];
 
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
-        
-        // Mock Redis cache clear (matches any key ending with these patterns)
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/users:list:active$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/users:list:all$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:all_users$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:messages$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:messages:hash$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_session:testuser$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/display_name:testuser$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/user_data:testuser$/'))
-            ->andReturn(1);
-
-        $result = $this->userService->updateUser(2, [
+        $result = $this->userService->updateUser($id, [
             'email' => 'newemail@example.com',
-            'role' => 'moderator'
+            'role'  => 'moderator',
         ]);
 
         $this->assertTrue($result['success']);
         $this->assertEquals('moderator', $result['user']['role']);
+        $this->assertEquals('newemail@example.com', $result['user']['email']);
     }
 
-    public function testUpdateUserWithNoFields()
+    /** An update with no recognised fields is a no-op error. */
+    public function testUpdateUserWithNoFields(): void
     {
-        $result = $this->userService->updateUser(2, []);
-        
+        $result = $this->userService->updateUser(999999, []);
+
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('No valid fields', $result['error']);
     }
@@ -225,68 +153,23 @@ class UserServiceTest extends TestCase
     // DELETE USER TESTS
     // ========================================================================
 
-    public function testDeleteUserSuccess()
+    /** Deleting an existing user succeeds and the row is gone afterwards. */
+    public function testDeleteUserSuccess(): void
     {
-        $mockStmt1 = Mockery::mock(\PDOStatement::class);
-        $mockStmt1->shouldReceive('execute')
-            ->once()
-            ->with(['id' => 2])
-            ->andReturn(true);
-        $mockStmt1->shouldReceive('fetch')
-            ->once()
-            ->with(\PDO::FETCH_ASSOC)
-            ->andReturn(['username' => 'testuser']);
+        $username = $this->uniqueUsername();
+        $created = $this->userService->createUser($username, 'password123', 'moderator', $username . '@example.com');
+        $id = (int) $created['user']['id'];
 
-        $mockStmt2 = Mockery::mock(\PDOStatement::class);
-        $mockStmt2->shouldReceive('execute')
-            ->once()
-            ->with(['id' => 2])
-            ->andReturn(true);
-
-        $this->mockPdo->shouldReceive('prepare')
-            ->twice()
-            ->andReturn($mockStmt1, $mockStmt2);
-        
-        // Mock Redis cache clear (matches any key ending with these patterns)
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/users:list:active$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/users:list:all$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:all_users$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:messages$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/chat:messages:hash$/'))
-            ->andReturn(1);
-        $this->mockRedis->shouldReceive('del')
-            ->with(Mockery::pattern('/admin_session:testuser$/'))
-            ->andReturn(1);
-
-        $result = $this->userService->deleteUser(2);
+        $result = $this->userService->deleteUser($id);
 
         $this->assertTrue($result['success']);
+        $this->assertNull($this->userService->getUserById($id), 'the user must be gone after delete');
     }
 
-    public function testDeleteUserNotFound()
+    /** Deleting a non-existent id reports "not found" rather than succeeding. */
+    public function testDeleteUserNotFound(): void
     {
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->andReturn(true);
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->andReturn(false);
-
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
-
-        $result = $this->userService->deleteUser(999);
+        $result = $this->userService->deleteUser(999999);
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('not found', $result['error']);
@@ -296,196 +179,109 @@ class UserServiceTest extends TestCase
     // GET USER TESTS
     // ========================================================================
 
-    public function testGetUserByIdSuccess()
+    /** getUserById returns the sanitized row for an existing user. */
+    public function testGetUserByIdSuccess(): void
     {
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->with(['id' => 1])
-            ->andReturn(true);
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->with(\PDO::FETCH_ASSOC)
-            ->andReturn([
-                'id' => 1,
-                'username' => 'admin',
-                'role' => 'root',
-                'email' => 'admin@example.com',
-                'is_active' => true,
-                'created_at' => '2025-11-12 10:00:00',
-                'updated_at' => '2025-11-12 10:00:00',
-                'last_login' => '2025-11-12 11:00:00'
-            ]);
+        $username = $this->uniqueUsername();
+        $created = $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
+        $id = (int) $created['user']['id'];
 
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
-
-        $user = $this->userService->getUserById(1);
+        $user = $this->userService->getUserById($id);
 
         $this->assertIsArray($user);
-        $this->assertEquals('admin', $user['username']);
-        $this->assertEquals('root', $user['role']);
+        $this->assertEquals($username, $user['username']);
+        $this->assertEquals('administrator', $user['role']);
+        $this->assertArrayNotHasKey('password_hash', $user);
     }
 
-    public function testGetUserByUsernameSuccess()
+    /** getUserByUsername returns the sanitized row for an existing user. */
+    public function testGetUserByUsernameSuccess(): void
     {
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->with(['username' => 'testuser'])
-            ->andReturn(true);
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->with(\PDO::FETCH_ASSOC)
-            ->andReturn([
-                'id' => 2,
-                'username' => 'testuser',
-                'role' => 'administrator',
-                'email' => null,
-                'is_active' => true,
-                'created_at' => '2025-11-12 10:00:00',
-                'updated_at' => '2025-11-12 10:00:00',
-                'last_login' => null
-            ]);
+        $username = $this->uniqueUsername();
+        $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
 
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
-
-        $user = $this->userService->getUserByUsername('testuser');
+        $user = $this->userService->getUserByUsername($username);
 
         $this->assertIsArray($user);
-        $this->assertEquals('testuser', $user['username']);
+        $this->assertEquals($username, $user['username']);
     }
 
     // ========================================================================
     // AUTHENTICATION TESTS
     // ========================================================================
 
-    public function testAuthenticateSuccess()
+    /** Correct credentials authenticate and return the user without its hash. */
+    public function testAuthenticateSuccess(): void
     {
-        $passwordHash = password_hash('password123', PASSWORD_DEFAULT);
-        
-        $mockStmt1 = Mockery::mock(\PDOStatement::class);
-        $mockStmt1->shouldReceive('execute')
-            ->once()
-            ->with(['identifier' => 'testuser'])
-            ->andReturn(true);
-        $mockStmt1->shouldReceive('fetch')
-            ->once()
-            ->with(\PDO::FETCH_ASSOC)
-            ->andReturn([
-                'id' => 2,
-                'username' => 'testuser',
-                'password_hash' => $passwordHash,
-                'role' => 'administrator',
-                'email' => 'test@example.com',
-                'display_name' => null,
-                'is_active' => true
-            ]);
+        $username = $this->uniqueUsername();
+        $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
 
-        $mockStmt2 = Mockery::mock(\PDOStatement::class);
-        $mockStmt2->shouldReceive('execute')
-            ->once()
-            ->andReturn(true);
-
-        $this->mockPdo->shouldReceive('prepare')
-            ->twice()
-            ->andReturn($mockStmt1, $mockStmt2);
-
-        $user = $this->userService->authenticate('testuser', 'password123');
+        $user = $this->userService->authenticate($username, 'password123');
 
         $this->assertIsArray($user);
-        $this->assertEquals('testuser', $user['username']);
+        $this->assertEquals($username, $user['username']);
         $this->assertEquals('administrator', $user['role']);
         $this->assertArrayNotHasKey('password_hash', $user);
     }
 
-    public function testAuthenticateWrongPassword()
+    /** A wrong password does not authenticate. */
+    public function testAuthenticateWrongPassword(): void
     {
-        $passwordHash = password_hash('password123', PASSWORD_DEFAULT);
-        
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->andReturn(true);
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->andReturn([
-                'id' => 2,
-                'username' => 'testuser',
-                'password_hash' => $passwordHash,
-                'role' => 'administrator',
-                'email' => 'test@example.com',
-                'display_name' => null,
-                'is_active' => true
-            ]);
+        $username = $this->uniqueUsername();
+        $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
 
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
-
-        $user = $this->userService->authenticate('testuser', 'wrongpassword');
-
-        $this->assertNull($user);
+        $this->assertNull($this->userService->authenticate($username, 'wrongpassword'));
     }
 
-    public function testAuthenticateInactiveUser()
+    /**
+     * An INACTIVE user must not authenticate even with the right password.
+     *
+     * Regression test for the boolean-column handling: under raw PDO+pgsql
+     * is_active came back as the string 'f' (which is truthy, so the
+     * "!is_active" guard never fired and disabled users could still log in).
+     * The framework Result casts the column to a real bool, so the guard now
+     * correctly rejects them. This pins that behaviour.
+     */
+    public function testAuthenticateInactiveUserIsRejected(): void
     {
-        $passwordHash = password_hash('password123', PASSWORD_DEFAULT);
-        
-        $mockStmt = Mockery::mock(\PDOStatement::class);
-        $mockStmt->shouldReceive('execute')
-            ->once()
-            ->andReturn(true);
-        $mockStmt->shouldReceive('fetch')
-            ->once()
-            ->andReturn([
-                'id' => 2,
-                'username' => 'testuser',
-                'password_hash' => $passwordHash,
-                'role' => 'administrator',
-                'email' => 'test@example.com',
-                'display_name' => null,
-                'is_active' => false
-            ]);
+        $username = $this->uniqueUsername();
+        $created = $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
+        $id = (int) $created['user']['id'];
 
-        $this->mockPdo->shouldReceive('prepare')
-            ->once()
-            ->andReturn($mockStmt);
+        $this->userService->updateUser($id, ['is_active' => false]);
 
-        $user = $this->userService->authenticate('testuser', 'password123');
-
-        $this->assertNull($user);
+        $this->assertNull(
+            $this->userService->authenticate($username, 'password123'),
+            'a deactivated user must not be able to log in'
+        );
     }
 
     // ========================================================================
     // PERMISSION TESTS
     // ========================================================================
 
-    public function testHasPermissionRoot()
+    public function testHasPermissionRoot(): void
     {
         $this->assertTrue($this->userService->hasPermission('root', 'view_private_messages'));
         $this->assertTrue($this->userService->hasPermission('root', 'manage_users'));
         $this->assertTrue($this->userService->hasPermission('root', 'create_root_users'));
     }
 
-    public function testHasPermissionAdministrator()
+    public function testHasPermissionAdministrator(): void
     {
         $this->assertTrue($this->userService->hasPermission('administrator', 'view_private_messages'));
         $this->assertTrue($this->userService->hasPermission('administrator', 'manage_users'));
         $this->assertFalse($this->userService->hasPermission('administrator', 'create_root_users'));
     }
 
-    public function testHasPermissionModerator()
+    public function testHasPermissionModerator(): void
     {
         $this->assertFalse($this->userService->hasPermission('moderator', 'view_private_messages'));
         $this->assertFalse($this->userService->hasPermission('moderator', 'manage_users'));
         $this->assertTrue($this->userService->hasPermission('moderator', 'view_messages'));
     }
 
-    public function testHasPermissionSimpleUser()
+    public function testHasPermissionSimpleUser(): void
     {
         $this->assertFalse($this->userService->hasPermission('simple_user', 'view_messages'));
         $this->assertFalse($this->userService->hasPermission('simple_user', 'manage_users'));
@@ -495,28 +291,28 @@ class UserServiceTest extends TestCase
     // ROLE MANAGEMENT TESTS
     // ========================================================================
 
-    public function testCanManageUserRoot()
+    public function testCanManageUserRoot(): void
     {
         $this->assertTrue($this->userService->canManageUser('root', 'root'));
         $this->assertTrue($this->userService->canManageUser('root', 'administrator'));
         $this->assertTrue($this->userService->canManageUser('root', 'moderator'));
     }
 
-    public function testCanManageUserAdministrator()
+    public function testCanManageUserAdministrator(): void
     {
         $this->assertFalse($this->userService->canManageUser('administrator', 'root'));
         $this->assertTrue($this->userService->canManageUser('administrator', 'administrator'));
         $this->assertTrue($this->userService->canManageUser('administrator', 'moderator'));
     }
 
-    public function testCanManageUserModerator()
+    public function testCanManageUserModerator(): void
     {
         $this->assertFalse($this->userService->canManageUser('moderator', 'root'));
         $this->assertFalse($this->userService->canManageUser('moderator', 'administrator'));
         $this->assertFalse($this->userService->canManageUser('moderator', 'moderator'));
     }
 
-    public function testGetRoleLevel()
+    public function testGetRoleLevel(): void
     {
         $this->assertEquals(3, $this->userService->getRoleLevel('root'));
         $this->assertEquals(2, $this->userService->getRoleLevel('administrator'));
@@ -524,10 +320,10 @@ class UserServiceTest extends TestCase
         $this->assertEquals(0, $this->userService->getRoleLevel('simple_user'));
     }
 
-    public function testGetAvailableRoles()
+    public function testGetAvailableRoles(): void
     {
         $roles = $this->userService->getAvailableRoles();
-        
+
         $this->assertIsArray($roles);
         $this->assertContains('root', $roles);
         $this->assertContains('administrator', $roles);
