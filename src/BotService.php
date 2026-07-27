@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 use Redis;
 
 /**
@@ -382,7 +382,7 @@ class BotService
         . ' πες μια σύντομη δικαιολογία και ένα χαλαρό αντίο. Μία-δύο κουβέντες μόνο.'
         . ' ΜΗΝ κάνεις καμία ερώτηση και ΜΗΝ υποσχεθείς συγκεκριμένη ώρα που θα επιστρέψεις.';
 
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private Redis $redis;
     private string $prefix;
     private SettingsService $settings;
@@ -394,7 +394,7 @@ class BotService
         ?JobQueue $queue = null,
         ?LlmService $llm = null
     ) {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
         $this->prefix = Database::getRedisPrefix();
         $this->settings = $settings ?? new SettingsService();
@@ -854,19 +854,17 @@ class BotService
         $fromSessionId = 'fake_' . md5($fakeNickname);
 
         // Display name snapshot for the recipient (bots have no users row).
-        $stmt = $this->pdo->prepare('SELECT display_name FROM users WHERE username = ?');
-        $stmt->execute([$peer]);
-        $toDisplayName = $stmt->fetchColumn();
+        $result = $this->db->preparedQuery('SELECT display_name FROM users WHERE username = ?', [$peer]);
+        $toDisplayName = $result ? $result->fetchColumn() : false;
         $toDisplayName = $toDisplayName === false ? null : $toDisplayName;
 
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             INSERT INTO private_messages
                 (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, created_at)
             VALUES (?, ?, NULL, ?, ?, ?, ?, NOW())
             RETURNING id, created_at
-        ');
-        $stmt->execute([$fakeNickname, $fromSessionId, $peer, $toSessionId, $toDisplayName, $text]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        ', [$fakeNickname, $fromSessionId, $peer, $toSessionId, $toDisplayName, $text]);
+        $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
         $messageData = [
             'id' => $row['id'],
@@ -882,7 +880,7 @@ class BotService
 
         $this->redis->publish($this->prefix . 'chat:private_messages', (string) json_encode($messageData));
 
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             UPDATE bot_threads
             SET messages_sent = messages_sent + CASE WHEN :final THEN 1 ELSE 0 END,
                 last_reply_at = NOW(),
@@ -890,12 +888,12 @@ class BotService
                 farewell_sent_at = CASE WHEN :farewell THEN NOW() ELSE farewell_sent_at END,
                 updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
-        ');
-        $stmt->bindValue(':final', $isFinal, PDO::PARAM_BOOL);
-        $stmt->bindValue(':farewell', $isFarewell, PDO::PARAM_BOOL);
-        $stmt->bindValue(':fake_user_id', $fakeUserId, PDO::PARAM_INT);
-        $stmt->bindValue(':peer', $peer);
-        $stmt->execute();
+        ', [
+            'final' => $isFinal,
+            'farewell' => $isFarewell,
+            'fake_user_id' => $fakeUserId,
+            'peer' => $peer,
+        ]);
 
         return $isFarewell
             ? "delivered farewell from {$fakeNickname} to {$peer}"
@@ -920,15 +918,14 @@ class BotService
         $this->getOrCreateThread($fakeUserId, $peer);
         $this->bumpEpoch($fakeUserId, $peer);
 
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             UPDATE bot_threads
             SET is_taken_over = TRUE,
                 taken_over_at = COALESCE(taken_over_at, NOW()),
                 taken_over_by = :admin,
                 updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
-        ');
-        $stmt->execute([
+        ', [
             'admin' => $adminUsername !== '' ? $adminUsername : null,
             'fake_user_id' => $fakeUserId,
             'peer' => $peer,
@@ -951,7 +948,7 @@ class BotService
 
         $this->getOrCreateThread($fakeUserId, $peer);
 
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             UPDATE bot_threads
             SET is_taken_over = FALSE,
                 taken_over_at = NULL,
@@ -962,11 +959,11 @@ class BotService
                 summary_upto_id = CASE WHEN :reset THEN NULL ELSE summary_upto_id END,
                 updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
-        ');
-        $stmt->bindValue(':reset', $resetBudget, PDO::PARAM_BOOL);
-        $stmt->bindValue(':fake_user_id', $fakeUserId, PDO::PARAM_INT);
-        $stmt->bindValue(':peer', $peer);
-        $stmt->execute();
+        ', [
+            'reset' => $resetBudget,
+            'fake_user_id' => $fakeUserId,
+            'peer' => $peer,
+        ]);
 
         return true;
     }
@@ -987,7 +984,7 @@ class BotService
 
         $this->getOrCreateThread($fakeUserId, $peer);
 
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             UPDATE bot_threads
             SET is_taken_over = FALSE,
                 taken_over_at = NULL,
@@ -999,8 +996,7 @@ class BotService
                 last_error = NULL,
                 updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
-        ');
-        $stmt->execute(['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+        ', ['fake_user_id' => $fakeUserId, 'peer' => $peer]);
 
         // Newer epoch so any stale queued job is a no-op and this one is the live
         // reply.
@@ -1024,7 +1020,7 @@ class BotService
      */
     public function listThreads(int $limit = 100): array
     {
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT f.nickname,
                    f.bot_enabled,
                    f.is_active,
@@ -1053,11 +1049,9 @@ class BotService
             JOIN fake_users f ON f.id = t.fake_user_id
             ORDER BY COALESCE(t.last_reply_at, t.created_at) DESC
             LIMIT :limit
-        ');
-        $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
-        $stmt->execute();
+        ', ['limit' => max(1, min(500, $limit))]);
 
-        $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $threads = $result ? $result->fetchAll() : [];
         $globalMax = (int) $this->settings->get('bot_max_messages_per_thread', 4);
 
         foreach ($threads as &$thread) {
@@ -1083,24 +1077,24 @@ class BotService
      */
     public function threadMessages(string $fakeNickname, string $peer, int $limit = 200): array
     {
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT id, from_username, message, attachment_id, created_at
             FROM private_messages
             WHERE (from_username = :fake AND to_username = :peer)
                OR (from_username = :peer2 AND to_username = :fake2)
             ORDER BY created_at ASC, id ASC
             LIMIT :limit
-        ');
-        $stmt->bindValue(':fake', $fakeNickname);
-        $stmt->bindValue(':fake2', $fakeNickname);
-        $stmt->bindValue(':peer', $peer);
-        $stmt->bindValue(':peer2', $peer);
-        $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
-        $stmt->execute();
+        ', [
+            'fake' => $fakeNickname,
+            'fake2' => $fakeNickname,
+            'peer' => $peer,
+            'peer2' => $peer,
+            'limit' => max(1, min(500, $limit)),
+        ]);
 
         return array_map(
             static fn (array $row): array => $row + ['is_bot' => $row['from_username'] === $fakeNickname],
-            $stmt->fetchAll(PDO::FETCH_ASSOC)
+            $result ? $result->fetchAll() : []
         );
     }
 
@@ -1122,27 +1116,26 @@ class BotService
         }
 
         // Which peers to clear the epoch for, before the rows disappear.
-        $stmt = $this->pdo->prepare('SELECT peer_username FROM bot_threads WHERE fake_user_id = ?');
-        $stmt->execute([$fakeUserId]);
-        $peers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $result = $this->db->preparedQuery('SELECT peer_username FROM bot_threads WHERE fake_user_id = ?', [$fakeUserId]);
+        $rows = $result ? $result->fetchAll() : [];
+        $peers = array_map(static fn ($r) => reset($r), $rows);
 
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT DISTINCT CASE WHEN from_username = :nick THEN to_username ELSE from_username END
             FROM private_messages
             WHERE from_username = :nick2 OR to_username = :nick3
-        ');
-        $stmt->execute(['nick' => $fakeNickname, 'nick2' => $fakeNickname, 'nick3' => $fakeNickname]);
-        $peers = array_unique(array_merge($peers, $stmt->fetchAll(PDO::FETCH_COLUMN)));
+        ', ['nick' => $fakeNickname, 'nick2' => $fakeNickname, 'nick3' => $fakeNickname]);
+        $rows = $result ? $result->fetchAll() : [];
+        $peers = array_unique(array_merge($peers, array_map(static fn ($r) => reset($r), $rows)));
 
-        $stmt = $this->pdo->prepare(
-            'DELETE FROM private_messages WHERE from_username = ? OR to_username = ?'
+        $result = $this->db->preparedQuery(
+            'DELETE FROM private_messages WHERE from_username = ? OR to_username = ?',
+            [$fakeNickname, $fakeNickname]
         );
-        $stmt->execute([$fakeNickname, $fakeNickname]);
-        $messages = $stmt->rowCount();
+        $messages = $result ? $result->getAffectedRows() : 0;
 
-        $stmt = $this->pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id = ?');
-        $stmt->execute([$fakeUserId]);
-        $threads = $stmt->rowCount();
+        $result = $this->db->preparedQuery('DELETE FROM bot_threads WHERE fake_user_id = ?', [$fakeUserId]);
+        $threads = $result ? $result->getAffectedRows() : 0;
 
         $epochs = 0;
         foreach ($peers as $peer) {
@@ -1161,7 +1154,7 @@ class BotService
      */
     public function getThreadState(string $fakeNickname, string $peer): ?array
     {
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT f.nickname,
                    f.bot_enabled,
                    f.is_active,
@@ -1181,11 +1174,10 @@ class BotService
             FROM fake_users f
             LEFT JOIN bot_threads t ON t.fake_user_id = f.id AND t.peer_username = :peer
             WHERE f.nickname = :nickname
-        ');
-        $stmt->execute(['peer' => $peer, 'nickname' => $fakeNickname]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        ', ['peer' => $peer, 'nickname' => $fakeNickname]);
+        $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
-        if ($row === false) {
+        if ($row === null) {
             return null;
         }
 
@@ -1405,16 +1397,16 @@ class BotService
 
         $strikes = (int) $thread['insult_count'] + 1;
 
-        $stmt = $this->pdo->prepare(
+        $this->db->preparedQuery(
             'UPDATE bot_threads
              SET insult_count = :strikes, last_insult_at = NOW(), updated_at = NOW()
-             WHERE fake_user_id = :fake_user_id AND peer_username = :peer'
+             WHERE fake_user_id = :fake_user_id AND peer_username = :peer',
+            [
+                'strikes' => $strikes,
+                'fake_user_id' => (int) $fakeUser['id'],
+                'peer' => $peer,
+            ]
         );
-        $stmt->execute([
-            'strikes' => $strikes,
-            'fake_user_id' => (int) $fakeUser['id'],
-            'peer' => $peer,
-        ]);
 
         // Usually a first insult slides (answered normally) until the threshold,
         // but there is a chance the bot has none of it and blocks on the spot.
@@ -1431,18 +1423,18 @@ class BotService
         // stick rather than expire like a guest's - same as an impersonated block.
         $blocked = (new BlockService())->blockUser($nickname, $peer, true);
 
-        $stmt = $this->pdo->prepare(
+        $this->db->preparedQuery(
             'UPDATE bot_threads
              SET blocked_at = NOW(),
                  last_error = :reason,
                  updated_at = NOW()
-             WHERE fake_user_id = :fake_user_id AND peer_username = :peer'
+             WHERE fake_user_id = :fake_user_id AND peer_username = :peer',
+            [
+                'reason' => sprintf('Blocked %s after %d abusive message(s)', $peer, $strikes),
+                'fake_user_id' => (int) $fakeUser['id'],
+                'peer' => $peer,
+            ]
         );
-        $stmt->execute([
-            'reason' => sprintf('Blocked %s after %d abusive message(s)', $peer, $strikes),
-            'fake_user_id' => (int) $fakeUser['id'],
-            'peer' => $peer,
-        ]);
 
         Log::write(sprintf(
             'BotService: %s blocked %s after %d abusive message(s)%s',
@@ -1494,15 +1486,16 @@ class BotService
 
         // Record the outcome either way, so a burst of messages before the first
         // reply does not roll the dice again and again.
-        $stmt = $this->pdo->prepare(
+        $this->db->preparedQuery(
             'UPDATE bot_threads
              SET is_ignored = :ignored, ignore_decided_at = NOW(), updated_at = NOW()
-             WHERE fake_user_id = :fake_user_id AND peer_username = :peer'
+             WHERE fake_user_id = :fake_user_id AND peer_username = :peer',
+            [
+                'ignored' => $ignore,
+                'fake_user_id' => (int) $fakeUser['id'],
+                'peer' => $peer,
+            ]
         );
-        $stmt->bindValue(':ignored', $ignore, PDO::PARAM_BOOL);
-        $stmt->bindValue(':fake_user_id', (int) $fakeUser['id'], PDO::PARAM_INT);
-        $stmt->bindValue(':peer', $peer);
-        $stmt->execute();
 
         return $ignore;
     }
@@ -1578,7 +1571,7 @@ class BotService
      */
     private function countActiveChats(int $fakeUserId, string $excludePeer): int
     {
-        $stmt = $this->pdo->prepare(
+        $result = $this->db->preparedQuery(
             "SELECT COUNT(*)
              FROM bot_threads
              WHERE fake_user_id = :fid
@@ -1587,14 +1580,15 @@ class BotService
                AND blocked_at IS NULL
                AND is_ignored = FALSE
                AND last_reply_at IS NOT NULL
-               AND last_reply_at > NOW() - make_interval(mins => :window)"
+               AND last_reply_at > NOW() - make_interval(mins => :window)",
+            [
+                'fid' => $fakeUserId,
+                'peer' => $excludePeer,
+                'window' => self::ACTIVE_CHAT_WINDOW_MINUTES,
+            ]
         );
-        $stmt->bindValue(':fid', $fakeUserId, PDO::PARAM_INT);
-        $stmt->bindValue(':peer', $excludePeer);
-        $stmt->bindValue(':window', self::ACTIVE_CHAT_WINDOW_MINUTES, PDO::PARAM_INT);
-        $stmt->execute();
 
-        return (int) $stmt->fetchColumn();
+        return (int) ($result ? $result->fetchColumn() : 0);
     }
 
     /**
@@ -1607,14 +1601,14 @@ class BotService
             return false;
         }
 
-        $stmt = $this->pdo->prepare(
+        $result = $this->db->preparedQuery(
             'SELECT 1 FROM private_messages
              WHERE from_username = :fake AND to_username = :peer
-             LIMIT 1'
+             LIMIT 1',
+            ['fake' => $fakeNickname, 'peer' => $peer]
         );
-        $stmt->execute(['fake' => $fakeNickname, 'peer' => $peer]);
 
-        return $stmt->fetchColumn() !== false;
+        return $result && $result->fetchColumn() !== false;
     }
 
     /**
@@ -2146,15 +2140,14 @@ class BotService
      */
     private function latestInboundMessage(string $fakeNickname, string $peer): string
     {
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT message
             FROM private_messages
             WHERE from_username = :peer AND to_username = :fake
             ORDER BY created_at DESC, id DESC
             LIMIT 1
-        ');
-        $stmt->execute(['peer' => $peer, 'fake' => $fakeNickname]);
-        $message = $stmt->fetchColumn();
+        ', ['peer' => $peer, 'fake' => $fakeNickname]);
+        $message = $result ? $result->fetchColumn() : false;
 
         return $message === false ? '' : (string) $message;
     }
@@ -2168,22 +2161,22 @@ class BotService
     {
         $limit = max(2, min(100, $limit));
 
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT from_username, message, attachment_id
             FROM private_messages
             WHERE (from_username = :fake AND to_username = :peer)
                OR (from_username = :peer2 AND to_username = :fake2)
             ORDER BY created_at DESC, id DESC
             LIMIT :limit
-        ');
-        $stmt->bindValue(':fake', $fakeNickname);
-        $stmt->bindValue(':fake2', $fakeNickname);
-        $stmt->bindValue(':peer', $peer);
-        $stmt->bindValue(':peer2', $peer);
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->execute();
+        ', [
+            'fake' => $fakeNickname,
+            'fake2' => $fakeNickname,
+            'peer' => $peer,
+            'peer2' => $peer,
+            'limit' => $limit,
+        ]);
 
-        $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
+        $rows = array_reverse($result ? $result->fetchAll() : []);
 
         $history = [];
         foreach ($rows as $row) {
@@ -2253,7 +2246,7 @@ class BotService
 
         // Oldest message still inside the window: everything below it is history
         // the bot would otherwise lose.
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT MIN(id) FROM (
                 SELECT id
                 FROM private_messages
@@ -2262,21 +2255,21 @@ class BotService
                 ORDER BY created_at DESC, id DESC
                 LIMIT :limit
             ) window_rows
-        ');
-        $stmt->bindValue(':fake', $fakeNickname);
-        $stmt->bindValue(':fake2', $fakeNickname);
-        $stmt->bindValue(':peer', $peer);
-        $stmt->bindValue(':peer2', $peer);
-        $stmt->bindValue(':limit', $historyLimit, PDO::PARAM_INT);
-        $stmt->execute();
-        $windowStartId = (int) $stmt->fetchColumn();
+        ', [
+            'fake' => $fakeNickname,
+            'fake2' => $fakeNickname,
+            'peer' => $peer,
+            'peer2' => $peer,
+            'limit' => $historyLimit,
+        ]);
+        $windowStartId = (int) ($result ? $result->fetchColumn() : 0);
 
         if ($windowStartId <= 0) {
             return ['summary' => $summary, 'pending' => 0];
         }
 
         // Messages that dropped out and are not in the summary yet.
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT id, from_username, message
             FROM private_messages
             WHERE ((from_username = :fake AND to_username = :peer)
@@ -2284,8 +2277,7 @@ class BotService
               AND id < :window_start
               AND id > :covered
             ORDER BY id ASC
-        ');
-        $stmt->execute([
+        ', [
             'fake' => $fakeNickname,
             'fake2' => $fakeNickname,
             'peer' => $peer,
@@ -2293,7 +2285,7 @@ class BotService
             'window_start' => $windowStartId,
             'covered' => $coveredUpto,
         ]);
-        $dropped = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $dropped = $result ? $result->fetchAll() : [];
 
         if (empty($dropped)) {
             return ['summary' => $summary, 'pending' => 0];
@@ -2347,12 +2339,11 @@ class BotService
 
         $lastDroppedId = (int) $dropped[count($dropped) - 1]['id'];
 
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             UPDATE bot_threads
             SET summary = :summary, summary_upto_id = :upto, summary_updated_at = NOW(), updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
-        ');
-        $stmt->execute([
+        ', [
             'summary' => $newSummary,
             'upto' => $lastDroppedId,
             'fake_user_id' => (int) $fakeUser['id'],
@@ -2418,8 +2409,7 @@ class BotService
             return;
         }
 
-        $stmt = $this->pdo->prepare('UPDATE fake_users SET bot_self_facts = :facts WHERE id = :id');
-        $stmt->execute(['facts' => $canon, 'id' => (int) $fakeUser['id']]);
+        $this->db->preparedQuery('UPDATE fake_users SET bot_self_facts = :facts WHERE id = :id', ['facts' => $canon, 'id' => (int) $fakeUser['id']]);
     }
 
     /**
@@ -2436,30 +2426,28 @@ class BotService
         $facts = ['username' => $peer];
 
         try {
-            $stmt = $this->pdo->prepare('
+            $result = $this->db->preparedQuery('
                 SELECT age, sex, location
                 FROM user_profiles
                 WHERE username = ?
                 ORDER BY created_at DESC
                 LIMIT 1
-            ');
-            $stmt->execute([$peer]);
-            $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+            ', [$peer]);
+            $profile = ($result && $result->numRows > 0) ? $result->fields : null;
 
-            if ($profile !== false) {
+            if ($profile !== null) {
                 $facts += array_filter($profile, static fn ($v) => $v !== null && trim((string) $v) !== '');
             }
 
-            $stmt = $this->pdo->prepare('SELECT display_name FROM users WHERE username = ?');
-            $stmt->execute([$peer]);
-            $displayName = $stmt->fetchColumn();
+            $result = $this->db->preparedQuery('SELECT display_name FROM users WHERE username = ?', [$peer]);
+            $displayName = $result ? $result->fetchColumn() : false;
             if (is_string($displayName) && trim($displayName) !== '') {
                 $facts['username'] = $displayName;
             }
 
             // Gap between the peer's newest message and the one before the bot
             // last spoke, i.e. how long the conversation was idle.
-            $stmt = $this->pdo->prepare('
+            $result = $this->db->preparedQuery('
                 SELECT EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at)))::int AS gap
                 FROM (
                     SELECT created_at
@@ -2469,14 +2457,13 @@ class BotService
                     ORDER BY created_at DESC
                     LIMIT 2
                 ) recent
-            ');
-            $stmt->execute([
+            ', [
                 'peer' => $peer,
                 'fake' => $fakeNickname,
                 'fake2' => $fakeNickname,
                 'peer2' => $peer,
             ]);
-            $gap = $stmt->fetchColumn();
+            $gap = $result ? $result->fetchColumn() : false;
 
             if ($gap !== false && $gap !== null) {
                 $facts['seconds_since_last_message'] = (int) $gap;
@@ -2494,14 +2481,13 @@ class BotService
      */
     private function resolvePeerSessionId(string $peer, string $fallback): ?string
     {
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT session_id FROM sessions
             WHERE username = ?
             ORDER BY last_heartbeat DESC
             LIMIT 1
-        ');
-        $stmt->execute([$peer]);
-        $sessionId = $stmt->fetchColumn();
+        ', [$peer]);
+        $sessionId = $result ? $result->fetchColumn() : false;
 
         if (is_string($sessionId) && $sessionId !== '') {
             return $sessionId;
@@ -2517,18 +2503,17 @@ class BotService
      */
     private function getBotUser(string $nickname): ?array
     {
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
                    bot_reply_language, bot_ignore_chance, bot_self_facts
             FROM fake_users
             WHERE nickname = ? AND is_active = TRUE AND bot_enabled = TRUE
-        ');
-        $stmt->execute([$nickname]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        ', [$nickname]);
+        $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
-        return $row === false ? null : $row;
+        return $row === null ? null : $row;
     }
 
     /**
@@ -2545,25 +2530,23 @@ class BotService
     {
         $activeClause = $requireActive ? 'AND is_active = TRUE ' : '';
 
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
                    bot_reply_language, bot_ignore_chance, bot_self_facts
             FROM fake_users
             WHERE id = ? ' . $activeClause . 'AND bot_enabled = TRUE
-        ');
-        $stmt->execute([$id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        ', [$id]);
+        $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
-        return $row === false ? null : $row;
+        return $row === null ? null : $row;
     }
 
     private function getFakeUserId(string $nickname): ?int
     {
-        $stmt = $this->pdo->prepare('SELECT id FROM fake_users WHERE nickname = ?');
-        $stmt->execute([$nickname]);
-        $id = $stmt->fetchColumn();
+        $result = $this->db->preparedQuery('SELECT id FROM fake_users WHERE nickname = ?', [$nickname]);
+        $id = $result ? $result->fetchColumn() : false;
 
         return $id === false ? null : (int) $id;
     }
@@ -2578,24 +2561,22 @@ class BotService
      */
     private function getOrCreateThread(int $fakeUserId, string $peer): array
     {
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             INSERT INTO bot_threads (fake_user_id, peer_username)
             VALUES (?, ?)
             ON CONFLICT (fake_user_id, peer_username) DO NOTHING
-        ');
-        $stmt->execute([$fakeUserId, $peer]);
+        ', [$fakeUserId, $peer]);
 
-        $stmt = $this->pdo->prepare('
+        $result = $this->db->preparedQuery('
             SELECT id, messages_sent, is_taken_over, taken_over_at, taken_over_by,
                    farewell_sent_at, last_reply_at, last_error, summary, summary_upto_id,
                    is_ignored, ignore_decided_at, insult_count, blocked_at
             FROM bot_threads
             WHERE fake_user_id = ? AND peer_username = ?
-        ');
-        $stmt->execute([$fakeUserId, $peer]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        ', [$fakeUserId, $peer]);
+        $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
-        if ($row === false) {
+        if ($row === null) {
             // Should not happen, but keep callers working with sane defaults.
             return [
                 'id' => null,
@@ -2622,12 +2603,11 @@ class BotService
     private function recordThreadError(int $fakeUserId, string $peer, string $message): void
     {
         try {
-            $stmt = $this->pdo->prepare('
+            $this->db->preparedQuery('
                 UPDATE bot_threads
                 SET last_error = ?, updated_at = NOW()
                 WHERE fake_user_id = ? AND peer_username = ?
-            ');
-            $stmt->execute([mb_substr($message, 0, 500), $fakeUserId, $peer]);
+            ', [mb_substr($message, 0, 500), $fakeUserId, $peer]);
         } catch (\Throwable $e) {
             Log::write('BotService: failed to record thread error: ' . $e->getMessage());
         }
