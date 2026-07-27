@@ -43,7 +43,7 @@ User sends message → POST /api/send.php
 **IMPORTANT**: When adding new settings:
 - **DO NOT create migration files** to insert default values
 - **DO use code-level defaults** in `public/api/settings.php` using `??` operator
-- **DO NOT pre-populate** settings in `database/init.sql` unless critical
+- **DO NOT pre-populate** settings in the schema migration unless critical
 - Settings only get written to database when admin saves them via admin panel
 - Example:
   ```php
@@ -84,9 +84,15 @@ docker exec radiochatbox_apache composer test-coverage  # With HTML coverage
 See `DEPLOYMENT.md` for complete setup guide.
 
 ### Database Changes
-1. Add migration SQL to `database/migrations/` (numbered: `001_description.sql`)
-2. Run: `docker exec radiochatbox_postgres psql -U radiochatbox -d radiochatbox -f /docker-entrypoint-initdb.d/migrations/001_description.sql`
-3. Document in schema comments - see `database/init.sql` for pattern
+The schema is managed by PramnosFramework's tracked migration runner. There is no
+`database/init.sql`; the full schema lives in one baseline migration
+(`app/migrations/*_create_schema.php`).
+1. Scaffold: `./radiochatbox migrate` wraps `bin/rcb`; create new migrations with
+   `php bin/rcb create:migration "describe change"` (writes to `app/migrations/`).
+2. Implement `up()`/`down()` with the schema builder (`$this->schema()->table(...)`)
+   or raw SQL (`$this->DB()->statement(...)`).
+3. Apply: `./radiochatbox migrate` (records applied state in `schemaversion`).
+   See `docs/pramnos-migration/` for the framework-integration details.
 
 ## Critical Patterns & Conventions
 
@@ -144,7 +150,7 @@ $redis->subscribe(['chat:updates', 'chat:user_updates'], function($redis, $chann
 - `src/MessageFilter.php` - XSS/spam filtering (static methods)
 - `src/PhotoService.php` - Photo uploads with auto-expiration (48h)
 - `src/SettingsService.php` - Runtime config from database
-- `database/init.sql` - Complete schema with indexes, views, functions
+- `app/migrations/*_create_schema.php` - Complete schema (schema builder + raw SQL), applied via the migration runner
 
 ## Testing Approach
 
@@ -163,7 +169,7 @@ $redis->subscribe(['chat:updates', 'chat:user_updates'], function($redis, $chann
 5. Document in `docs/openapi.yaml`
 
 ### Adding New Settings
-1. Insert default in `database/init.sql` settings table
+1. Insert default in the CreateSchema migration seed section (or prefer code-level `??` defaults)
 2. Access via `SettingsService::get('key', 'default')` or `ChatService::getSetting()`
 3. Add admin UI form field in `public/admin.html`
 4. Update `public/api/admin/update-settings.php` to handle new setting
