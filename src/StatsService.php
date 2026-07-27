@@ -2,9 +2,9 @@
 
 namespace RadioChatBox;
 
-use PDO;
 use Redis;
 use RuntimeException;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * StatsService - Handles collection and retrieval of statistics
@@ -16,14 +16,14 @@ use RuntimeException;
  */
 class StatsService
 {
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private Redis $redis;
     private RadioStatusService $radioStatus;
     private bool $tablesChecked = false;
 
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
         $this->radioStatus = new RadioStatusService();
     }
@@ -40,14 +40,13 @@ class StatsService
 
         try {
             // Quick check if main table exists
-            $stmt = $this->pdo->query(
+            $exists = $this->db->query(
                 "SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_name = 'stats_snapshots'
                 )"
-            );
-            $exists = $stmt->fetchColumn();
+            )->fetchColumn();
 
             if (!$exists) {
                 Log::write('Statistics tables not found, creating automatically...');
@@ -111,35 +110,27 @@ class StatsService
         $this->ensureTablesExist();
         
         // Count concurrent users (unique usernames in sessions)
-        $stmt = $this->pdo->query("
-            SELECT COUNT(DISTINCT username) as count
-            FROM sessions
-            WHERE last_heartbeat > NOW() - INTERVAL '5 minutes'
-        ");
-        $concurrentUsers = (int)$stmt->fetch(PDO::FETCH_ASSOC)['count'];
+        $concurrentUsers = (int) $this->db->queryBuilder()
+            ->from('sessions')
+            ->select(['COUNT(DISTINCT username) AS count'])
+            ->whereRaw("last_heartbeat > NOW() - INTERVAL '5 minutes'")
+            ->first()->fields['count'];
 
         // Count total active sessions (including multiple tabs)
-        $stmt = $this->pdo->query("
-            SELECT COUNT(*) as count
-            FROM sessions
-            WHERE last_heartbeat > NOW() - INTERVAL '5 minutes'
-        ");
-        $activeSessions = (int)$stmt->fetch(PDO::FETCH_ASSOC)['count'];
+        $activeSessions = $this->db->queryBuilder()
+            ->from('sessions')
+            ->whereRaw("last_heartbeat > NOW() - INTERVAL '5 minutes'")
+            ->count();
 
         // Get radio listeners from RadioStatusService
         $radioData = $this->radioStatus->getNowPlaying();
         $radioListeners = $radioData['listeners'] ?? 0;
 
         // Insert snapshot
-        $stmt = $this->pdo->prepare("
-            INSERT INTO stats_snapshots (concurrent_users, radio_listeners, active_sessions)
-            VALUES (:concurrent_users, :radio_listeners, :active_sessions)
-        ");
-        
-        $stmt->execute([
+        $this->db->queryBuilder()->from('stats_snapshots')->insert([
             'concurrent_users' => $concurrentUsers,
-            'radio_listeners' => $radioListeners,
-            'active_sessions' => $activeSessions
+            'radio_listeners'  => $radioListeners,
+            'active_sessions'  => $activeSessions,
         ]);
 
         $snapshot = [
@@ -170,8 +161,7 @@ class StatsService
         }
 
         try {
-            $stmt = $this->pdo->prepare("SELECT aggregate_hourly_stats(:hour)");
-            $stmt->execute(['hour' => $hourTimestamp]);
+            $this->db->preparedQuery("SELECT aggregate_hourly_stats(:hour)", ['hour' => $hourTimestamp]);
             
             // Invalidate cache
             $this->redis->del('stats:hourly:latest');
@@ -196,8 +186,7 @@ class StatsService
         }
 
         try {
-            $stmt = $this->pdo->prepare("SELECT aggregate_daily_stats(:date)");
-            $stmt->execute(['date' => $date]);
+            $this->db->preparedQuery("SELECT aggregate_daily_stats(:date)", ['date' => $date]);
             
             $this->redis->del('stats:daily:latest');
             
@@ -221,8 +210,7 @@ class StatsService
         }
 
         try {
-            $stmt = $this->pdo->prepare("SELECT aggregate_weekly_stats(:date)");
-            $stmt->execute(['date' => $date]);
+            $this->db->preparedQuery("SELECT aggregate_weekly_stats(:date)", ['date' => $date]);
             
             $this->redis->del('stats:weekly:latest');
             
@@ -246,8 +234,7 @@ class StatsService
         }
 
         try {
-            $stmt = $this->pdo->prepare("SELECT aggregate_monthly_stats(:date)");
-            $stmt->execute(['date' => $date]);
+            $this->db->preparedQuery("SELECT aggregate_monthly_stats(:date)", ['date' => $date]);
             
             $this->redis->del('stats:monthly:latest');
             
@@ -271,8 +258,7 @@ class StatsService
         }
 
         try {
-            $stmt = $this->pdo->prepare("SELECT aggregate_yearly_stats(:year)");
-            $stmt->execute(['year' => $year]);
+            $this->db->preparedQuery("SELECT aggregate_yearly_stats(:year)", ['year' => $year]);
             
             $this->redis->del('stats:yearly:latest');
             
@@ -299,32 +285,14 @@ class StatsService
             return json_decode($cached, true);
         }
 
-        $query = "SELECT * FROM stats_hourly WHERE 1=1";
-        $params = [];
-
+        $qb = $this->db->queryBuilder()->from('stats_hourly');
         if ($startDate !== null) {
-            $query .= " AND stat_hour >= :start_date";
-            $params['start_date'] = $startDate;
+            $qb->where('stat_hour', '>=', $startDate);
         }
-
         if ($endDate !== null) {
-            $query .= " AND stat_hour <= :end_date";
-            $params['end_date'] = $endDate;
+            $qb->where('stat_hour', '<=', $endDate);
         }
-
-        $query .= " ORDER BY stat_hour DESC LIMIT :limit";
-        $params['limit'] = $limit;
-
-        $stmt = $this->pdo->prepare($query);
-        
-        // Bind limit as integer
-        foreach ($params as $key => $value) {
-            $type = ($key === 'limit') ? PDO::PARAM_INT : PDO::PARAM_STR;
-            $stmt->bindValue(":{$key}", $value, $type);
-        }
-        
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = $qb->orderBy('stat_hour', 'desc')->limit($limit)->getAll();
 
         // Cache for 10 minutes
         $this->redis->setex($cacheKey, 600, json_encode($results));
@@ -348,31 +316,14 @@ class StatsService
             return json_decode($cached, true);
         }
 
-        $query = "SELECT * FROM stats_daily WHERE 1=1";
-        $params = [];
-
+        $qb = $this->db->queryBuilder()->from('stats_daily');
         if ($startDate !== null) {
-            $query .= " AND stat_date >= :start_date";
-            $params['start_date'] = $startDate;
+            $qb->where('stat_date', '>=', $startDate);
         }
-
         if ($endDate !== null) {
-            $query .= " AND stat_date <= :end_date";
-            $params['end_date'] = $endDate;
+            $qb->where('stat_date', '<=', $endDate);
         }
-
-        $query .= " ORDER BY stat_date DESC LIMIT :limit";
-        $params['limit'] = $limit;
-
-        $stmt = $this->pdo->prepare($query);
-        
-        foreach ($params as $key => $value) {
-            $type = ($key === 'limit') ? PDO::PARAM_INT : PDO::PARAM_STR;
-            $stmt->bindValue(":{$key}", $value, $type);
-        }
-        
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = $qb->orderBy('stat_date', 'desc')->limit($limit)->getAll();
 
         // Cache for 1 hour
         $this->redis->setex($cacheKey, 3600, json_encode($results));
@@ -396,26 +347,11 @@ class StatsService
             return json_decode($cached, true);
         }
 
-        $query = "SELECT * FROM stats_weekly WHERE 1=1";
-        $params = [];
-
+        $qb = $this->db->queryBuilder()->from('stats_weekly');
         if ($year !== null) {
-            $query .= " AND stat_year = :year";
-            $params['year'] = $year;
+            $qb->where('stat_year', '=', $year);
         }
-
-        $query .= " ORDER BY stat_year DESC, stat_week DESC LIMIT :limit";
-        $params['limit'] = $limit;
-
-        $stmt = $this->pdo->prepare($query);
-        
-        foreach ($params as $key => $value) {
-            $type = ($key === 'limit' || $key === 'year') ? PDO::PARAM_INT : PDO::PARAM_STR;
-            $stmt->bindValue(":{$key}", $value, $type);
-        }
-        
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = $qb->orderBy('stat_year', 'desc')->orderBy('stat_week', 'desc')->limit($limit)->getAll();
 
         // Include current week if not already in results
         $currentWeekData = $this->computeCurrentWeekStats();
@@ -477,26 +413,11 @@ class StatsService
             return json_decode($cached, true);
         }
 
-        $query = "SELECT * FROM stats_monthly WHERE 1=1";
-        $params = [];
-
+        $qb = $this->db->queryBuilder()->from('stats_monthly');
         if ($year !== null) {
-            $query .= " AND stat_year = :year";
-            $params['year'] = $year;
+            $qb->where('stat_year', '=', $year);
         }
-
-        $query .= " ORDER BY stat_year DESC, stat_month DESC LIMIT :limit";
-        $params['limit'] = $limit;
-
-        $stmt = $this->pdo->prepare($query);
-        
-        foreach ($params as $key => $value) {
-            $type = ($key === 'limit' || $key === 'year') ? PDO::PARAM_INT : PDO::PARAM_STR;
-            $stmt->bindValue(":{$key}", $value, $type);
-        }
-        
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = $qb->orderBy('stat_year', 'desc')->orderBy('stat_month', 'desc')->limit($limit)->getAll();
 
         // Include current month if not already in results
         $currentMonthData = $this->computeCurrentMonthStats();
@@ -554,15 +475,11 @@ class StatsService
             return json_decode($cached, true);
         }
 
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM stats_yearly
-            ORDER BY stat_year DESC
-            LIMIT :limit
-        ");
-        
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = $this->db->queryBuilder()
+            ->from('stats_yearly')
+            ->orderBy('stat_year', 'desc')
+            ->limit($limit)
+            ->getAll();
 
         // Include current year if not already in results
         $currentYearData = $this->computeCurrentYearStats();
@@ -680,15 +597,13 @@ class StatsService
         
         try {
             // Count total public messages today
-            $stmt = $this->pdo->prepare("
-                SELECT COUNT(*) as count 
-                FROM messages 
-                WHERE created_at >= :today_start 
-                AND created_at <= :today_end 
-                AND is_deleted = FALSE
-            ");
-            $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
-            $realTimeMessages = $stmt->fetch(PDO::FETCH_ASSOC);
+            $realTimeMessages = $this->db->queryBuilder()
+                ->from('messages')
+                ->select(['COUNT(*) AS count'])
+                ->where('created_at', '>=', $todayStart)
+                ->where('created_at', '<=', $todayEnd)
+                ->whereRaw('is_deleted = FALSE')
+                ->first()->fields;
             
             if ($realTimeMessages && isset($realTimeMessages['count'])) {
                 // Use real-time count if higher than aggregated stats (handles new messages before cron)
@@ -703,16 +618,16 @@ class StatsService
         
         // Count registered and guest users active today from sessions
         try {
-            $stmt = $this->pdo->prepare("
-                SELECT 
+            $result = $this->db->preparedQuery(
+                "SELECT
                     COUNT(DISTINCT CASE WHEN user_id IS NOT NULL THEN username END) as registered_users,
                     COUNT(DISTINCT CASE WHEN user_id IS NULL THEN username END) as guest_users
-                FROM sessions 
-                WHERE last_heartbeat >= :today_start 
-                AND last_heartbeat <= :today_end
-            ");
-            $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
-            $realTimeUsers = $stmt->fetch(PDO::FETCH_ASSOC);
+                FROM sessions
+                WHERE last_heartbeat >= :today_start
+                AND last_heartbeat <= :today_end",
+                ['today_start' => $todayStart, 'today_end' => $todayEnd]
+            );
+            $realTimeUsers = $result ? $result->fetch() : null;
             
             // Use real-time counts if higher than aggregated stats
             $todayStats['registered_users'] = max(
@@ -756,8 +671,8 @@ class StatsService
 
         // Always compute from hourly stats for current day (don't trust pre-aggregated data)
         // since today is still in progress and pre-aggregated data may be stale
-        $stmt = $this->pdo->prepare("
-            SELECT
+        $result = $this->db->preparedQuery(
+            "SELECT
                 MAX(active_users) as active_users,
                 MAX(guest_users) as guest_users,
                 MAX(registered_users) as registered_users,
@@ -769,10 +684,10 @@ class StatsService
                 MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
                 MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
             FROM stats_hourly
-            WHERE stat_hour >= :today_start AND stat_hour <= :today_end
-        ");
-        $stmt->execute(['today_start' => $todayStart, 'today_end' => $todayEnd]);
-        $hourlyData = $stmt->fetch(PDO::FETCH_ASSOC);
+            WHERE stat_hour >= :today_start AND stat_hour <= :today_end",
+            ['today_start' => $todayStart, 'today_end' => $todayEnd]
+        );
+        $hourlyData = $result ? $result->fetch() : null;
 
         if ($hourlyData && ($hourlyData['active_users'] !== null || $hourlyData['total_messages'] !== null)) {
             return [
@@ -807,8 +722,8 @@ class StatsService
         $todayEndTime = $today . ' 23:59:59';
         
         // Compute from hourly stats for accuracy (don't rely on potentially stale daily aggregates)
-        $stmt = $this->pdo->prepare("
-            SELECT
+        $result = $this->db->preparedQuery(
+            "SELECT
                 MAX(active_users) as active_users,
                 MAX(guest_users) as guest_users,
                 MAX(registered_users) as registered_users,
@@ -820,10 +735,10 @@ class StatsService
                 MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
                 MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
             FROM stats_hourly
-            WHERE stat_hour >= :week_start AND stat_hour <= :today_end
-        ");
-        $stmt->execute(['week_start' => $weekStartTime, 'today_end' => $todayEndTime]);
-        $weekData = $stmt->fetch(PDO::FETCH_ASSOC);
+            WHERE stat_hour >= :week_start AND stat_hour <= :today_end",
+            ['week_start' => $weekStartTime, 'today_end' => $todayEndTime]
+        );
+        $weekData = $result ? $result->fetch() : null;
 
         if ($weekData && ($weekData['active_users'] !== null || $weekData['total_messages'] !== null)) {
             return [
@@ -860,8 +775,8 @@ class StatsService
         $todayEndTime = $today . ' 23:59:59';
         
         // Compute from hourly stats for accuracy (don't rely on potentially stale daily aggregates)
-        $stmt = $this->pdo->prepare("
-            SELECT
+        $result = $this->db->preparedQuery(
+            "SELECT
                 MAX(active_users) as active_users,
                 MAX(guest_users) as guest_users,
                 MAX(registered_users) as registered_users,
@@ -873,10 +788,10 @@ class StatsService
                 MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
                 MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
             FROM stats_hourly
-            WHERE stat_hour >= :month_start AND stat_hour <= :today_end
-        ");
-        $stmt->execute(['month_start' => $monthStartTime, 'today_end' => $todayEndTime]);
-        $monthData = $stmt->fetch(PDO::FETCH_ASSOC);
+            WHERE stat_hour >= :month_start AND stat_hour <= :today_end",
+            ['month_start' => $monthStartTime, 'today_end' => $todayEndTime]
+        );
+        $monthData = $result ? $result->fetch() : null;
 
         if ($monthData && ($monthData['active_users'] !== null || $monthData['total_messages'] !== null)) {
             $thisYear = (int)date('Y');
@@ -914,8 +829,8 @@ class StatsService
         $todayEndTime = $today . ' 23:59:59';
         
         // Compute from hourly stats for accuracy (don't rely on potentially stale daily aggregates)
-        $stmt = $this->pdo->prepare("
-            SELECT
+        $result = $this->db->preparedQuery(
+            "SELECT
                 MAX(active_users) as active_users,
                 MAX(guest_users) as guest_users,
                 MAX(registered_users) as registered_users,
@@ -927,10 +842,10 @@ class StatsService
                 MAX(radio_listeners_peak)::INTEGER as radio_listeners_peak,
                 MAX(peak_concurrent_users)::INTEGER as peak_concurrent_users
             FROM stats_hourly
-            WHERE stat_hour >= :year_start AND stat_hour <= :today_end
-        ");
-        $stmt->execute(['year_start' => $yearStartTime, 'today_end' => $todayEndTime]);
-        $yearData = $stmt->fetch(PDO::FETCH_ASSOC);
+            WHERE stat_hour >= :year_start AND stat_hour <= :today_end",
+            ['year_start' => $yearStartTime, 'today_end' => $todayEndTime]
+        );
+        $yearData = $result ? $result->fetch() : null;
 
         if ($yearData && ($yearData['active_users'] !== null || $yearData['total_messages'] !== null)) {
             $thisYear = (int)date('Y');
@@ -960,16 +875,13 @@ class StatsService
      */
     public function cleanupOldSnapshots(): int
     {
-        $stmt = $this->pdo->query("SELECT cleanup_old_snapshots()");
-        
-        // Count deleted rows
-        $stmt = $this->pdo->query("
-            SELECT COUNT(*) as deleted 
-            FROM stats_snapshots 
-            WHERE snapshot_time < NOW() - INTERVAL '30 days'
-        ");
-        
-        return (int)$stmt->fetch(PDO::FETCH_ASSOC)['deleted'];
+        $this->db->statement("SELECT cleanup_old_snapshots()");
+
+        // Count remaining rows still older than the retention window.
+        return $this->db->queryBuilder()
+            ->from('stats_snapshots')
+            ->whereRaw("snapshot_time < NOW() - INTERVAL '30 days'")
+            ->count();
     }
 
     /**
@@ -1036,11 +948,10 @@ class StatsService
      */
     private function getLatestSnapshot(): ?array
     {
-        $stmt = $this->pdo->query("
-            SELECT * FROM stats_snapshots 
-            ORDER BY snapshot_time DESC 
-            LIMIT 1
-        ");
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $row = $this->db->queryBuilder()
+            ->from('stats_snapshots')
+            ->orderBy('snapshot_time', 'desc')
+            ->first();
+        return ($row && $row->numRows > 0) ? $row->fields : null;
     }
 }
