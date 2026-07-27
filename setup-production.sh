@@ -164,34 +164,18 @@ EOF
             echo "⚠️  Database contains $TABLE_COUNT tables."
             read -p "Re-import schema? This will DROP existing tables! (y/n): " REIMPORT
             if [ "$REIMPORT" = "y" ] || [ "$REIMPORT" = "Y" ]; then
-                echo "Dropping existing tables and re-importing schema..."
-                # Copy SQL file to /tmp so postgres user can access it
-                TMP_SQL="/tmp/radiochatbox_init_$$.sql"
-                cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
-                chmod 644 "$TMP_SQL"
-                
-                # Import as database owner using password authentication
-                PGPASSWORD="$DB_PASSWORD" psql -h localhost -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
-                
-                # Clean up temp file
-                rm -f "$TMP_SQL"
-                echo "✅ Schema re-imported"
+                echo "Existing tables found. The schema is managed by migrations now:"
+                echo "  baseline this database once, then run: php bin/rcb migrate --path=app/migrations"
+                echo "  (see docs/pramnos-migration/). Skipping destructive re-import."
             else
                 echo "Skipping schema import."
             fi
         else
-            echo "Database is empty. Importing schema..."
-            # Copy SQL file to /tmp so postgres user can access it
-            TMP_SQL="/tmp/radiochatbox_init_$$.sql"
-            cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
-            chmod 644 "$TMP_SQL"
-            
-            # Import as database owner using password authentication
-            PGPASSWORD="$DB_PASSWORD" psql -h localhost -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
-            
-            # Clean up temp file
-            rm -f "$TMP_SQL"
-            echo "✅ Schema imported"
+            echo "Database is empty. Building schema via migrations..."
+            # Needs composer dependencies; ensure they are installed first.
+            ( cd "$PROJECT_DIR" && composer install --no-dev --optimize-autoloader -q \
+              && php bin/rcb migrate --path=app/migrations )
+            echo "✅ Schema migrated"
         fi
     else
         echo "Creating database and user..."
@@ -216,17 +200,10 @@ GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
 EOF
         fi
         
-        echo "Importing database schema..."
-        # Copy SQL file to /tmp so postgres user can access it
-        TMP_SQL="/tmp/radiochatbox_init_$$.sql"
-        cp "$PROJECT_DIR/database/init.sql" "$TMP_SQL"
-        chmod 644 "$TMP_SQL"
-        
-        # Import schema as the database owner using password authentication
-        PGPASSWORD="$DB_PASSWORD" psql -h localhost -U $DB_USER -d "$DB_NAME" -f "$TMP_SQL"
-        
-        # Clean up temp file
-        rm -f "$TMP_SQL"
+        echo "Building database schema via migrations..."
+        # Needs composer dependencies; ensure they are installed first.
+        ( cd "$PROJECT_DIR" && composer install --no-dev --optimize-autoloader -q \
+          && php bin/rcb migrate --path=app/migrations )
         
         echo "✅ Database configured"
     fi

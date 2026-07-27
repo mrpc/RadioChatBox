@@ -66,16 +66,13 @@ class StatsService
      */
     private function createStatsTables(): void
     {
-        $migrationFile = __DIR__ . '/../database/migrations/006_add_statistics_tables.sql';
-        
-        if (!file_exists($migrationFile)) {
-            throw new RuntimeException('Statistics migration file not found');
-        }
-
-        $sql = file_get_contents($migrationFile);
-        $this->pdo->exec($sql);
-        
-        error_log('Statistics tables created successfully');
+        // The database schema — statistics tables included — is created by the
+        // CreateSchema migration (run via `radiochatbox migrate`). This lazy
+        // fallback no longer ships raw SQL; missing tables mean migrations have
+        // not been applied.
+        throw new RuntimeException(
+            'Statistics tables are missing — run database migrations (radiochatbox migrate).'
+        );
     }
 
     /**

@@ -75,28 +75,13 @@ log "Pulling latest code from repository..."
 git fetch origin
 git reset --hard origin/main || error "Failed to pull latest code"
 
-# Check for migrations (skipped by default)
+# Run database migrations via the tracked runner (skipped by default).
+# The runner records applied migrations in schemaversion, so this is safe to run
+# repeatedly. On an existing pre-squash database, baseline it once first (see
+# docs/pramnos-migration/) so the CreateSchema baseline is marked applied.
 if [ "$RUN_MIGRATIONS" = "true" ]; then
-    log "Checking for database migrations..."
-    if [ -d "database/migrations" ] && [ "$(ls -A database/migrations 2>/dev/null)" ]; then
-        log "Running database migrations..."
-        for migration in database/migrations/*.sql; do
-            if [ -f "$migration" ]; then
-                log "  Applying: $(basename $migration)"
-                # Copy to /tmp so postgres user can access it
-                TMP_MIGRATION="/tmp/migration_$(basename $migration)_$$"
-                cp "$migration" "$TMP_MIGRATION"
-                chmod 644 "$TMP_MIGRATION"
-
-                sudo -u postgres psql -d "$DB_NAME" -f "$TMP_MIGRATION" || warning "Migration $(basename $migration) failed or already applied"
-
-                # Clean up
-                rm -f "$TMP_MIGRATION"
-            fi
-        done
-    else
-        log "No migrations found"
-    fi
+    log "Running database migrations (bin/rcb migrate)..."
+    php bin/rcb migrate --path=app/migrations || warning "Migrations failed"
 else
     log "Skipping database migrations (RUN_MIGRATIONS=false)"
 fi

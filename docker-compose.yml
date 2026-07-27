@@ -52,8 +52,9 @@ services:
       - PGTZ=Europe/Athens
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
+      # Schema is built by the tracked migration runner (a fresh DB is empty until
+      # `./radiochatbox migrate` runs — the test bootstrap and app do this). The
+      # former init.sql / migrations init-mounts were removed with the SQL squash.
     networks:
       - radiochatbox
 
