@@ -7,13 +7,10 @@
 namespace RadioChatBox;
 
 use PDO;
-use Redis;
 
 class PhotoService
 {
     private PDO $pdo;
-    private Redis $redis;
-    private string $prefix;
     private string $uploadDir;
     private int $maxFileSize; // bytes
     private array $allowedMimeTypes = [
@@ -35,8 +32,6 @@ class PhotoService
     public function __construct()
     {
         $this->pdo = Database::getPDO();
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
         $this->uploadDir = __DIR__ . '/../public/uploads/photos';
         
         // Get max size from settings (default 5MB)
@@ -50,14 +45,6 @@ class PhotoService
                 error_log("Failed to create upload directory: {$this->uploadDir}");
             }
         }
-    }
-
-    /**
-     * Prefix a Redis key with instance identifier
-     */
-    private function prefixKey(string $key): string
-    {
-        return $this->prefix . $key;
     }
 
     /**
@@ -151,7 +138,7 @@ class PhotoService
         ]);
 
         // Invalidate user cache
-        $this->redis->del($this->prefixKey("user_attachments:{$username}"));
+        Cache::store()->delete("user_attachments:{$username}");
 
         return [
             'attachment_id' => $attachmentId,
@@ -169,12 +156,12 @@ class PhotoService
      */
     public function getAttachment(string $attachmentId): ?array
     {
-        $cacheKey = $this->prefixKey("attachment:{$attachmentId}");
-        
-        // Try cache first
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cacheKey = "attachment:{$attachmentId}";
+
+        // Try cache first (FlatCache applies the prefix + serialisation).
+        $cached = Cache::store()->get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
         }
         
         // Query database
@@ -187,7 +174,7 @@ class PhotoService
         
         if ($result) {
             // Cache the result
-            $this->redis->setex($cacheKey, self::CACHE_TTL_ATTACHMENT, json_encode($result));
+            Cache::store()->set($cacheKey, $result, self::CACHE_TTL_ATTACHMENT);
             return $result;
         }
         
@@ -199,12 +186,12 @@ class PhotoService
      */
     public function getAttachmentsByUser(string $username): array
     {
-        $cacheKey = $this->prefixKey("user_attachments:{$username}");
-        
-        // Try cache first
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cacheKey = "user_attachments:{$username}";
+
+        // Try cache first.
+        $cached = Cache::store()->get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
         }
         
         // Query database
@@ -217,7 +204,7 @@ class PhotoService
         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Cache the result
-        $this->redis->setex($cacheKey, self::CACHE_TTL_USER_ATTACHMENTS, json_encode($result));
+        Cache::store()->set($cacheKey, $result, self::CACHE_TTL_USER_ATTACHMENTS);
         
         return $result;
     }
@@ -266,7 +253,7 @@ class PhotoService
         $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         foreach ($ids as $id) {
-            $this->redis->del("attachment:{$id}");
+            Cache::store()->delete("attachment:{$id}");
         }
 
         $count = count($ids);
@@ -297,7 +284,7 @@ class PhotoService
                 @unlink($fullPath);
             }
             $del->execute(['id' => $photo['attachment_id']]);
-            $this->redis->del("attachment:{$photo['attachment_id']}");
+            Cache::store()->delete("attachment:{$photo['attachment_id']}");
             $count++;
         }
 
@@ -438,11 +425,11 @@ class PhotoService
      */
     private function getSetting(string $key, $default)
     {
-        $cacheKey = $this->prefixKey("setting:{$key}");
-        
-        // Try cache first
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
+        $cacheKey = "setting:{$key}";
+
+        // Try cache first.
+        $cached = Cache::store()->get($cacheKey);
+        if ($cached !== null) {
             return $cached;
         }
         
@@ -454,7 +441,7 @@ class PhotoService
         $value = $result !== false ? $result : $default;
         
         // Cache the result
-        $this->redis->setex($cacheKey, self::CACHE_TTL_SETTINGS, $value);
+        Cache::store()->set($cacheKey, $value, self::CACHE_TTL_SETTINGS);
         
         return $value;
     }
