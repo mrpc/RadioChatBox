@@ -2,8 +2,8 @@
 
 namespace RadioChatBox;
 
-use PDO;
 use Redis;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * Manages fake users that appear in the chat to make it look more active
@@ -23,13 +23,21 @@ class FakeUserService
      */
     private const ACTIVE_CONVERSATION_WINDOW_MINUTES = 180;
 
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private Redis $redis;
     private string $redisPrefix;
 
+    /** The fake-user columns returned by the read/RETURNING queries. */
+    private const SELECT_COLUMNS = [
+        'id', 'nickname', 'age', 'sex', 'location', 'is_active', 'created_at',
+        'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_max_messages',
+        'bot_typing_seconds_per_word', 'bot_farewell_messages',
+        'bot_llm_provider', 'bot_llm_model', 'bot_reply_language', 'bot_ignore_chance', 'bot_self_facts',
+    ];
+
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
         $this->redisPrefix = Database::getRedisPrefix();
     }
@@ -39,15 +47,11 @@ class FakeUserService
      */
     public function getAllFakeUsers(): array
     {
-        $stmt = $this->pdo->query("
-            SELECT id, nickname, age, sex, location, is_active, created_at,
-                   bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                   bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
-            FROM fake_users
-            ORDER BY created_at DESC
-        ");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $this->db->queryBuilder()
+            ->from('fake_users')
+            ->select(self::SELECT_COLUMNS)
+            ->orderBy('created_at', 'desc')
+            ->getAll();
     }
 
     /**
@@ -55,18 +59,13 @@ class FakeUserService
      */
     public function getFakeUserByNickname(string $nickname): ?array
     {
-        $stmt = $this->pdo->prepare("
-            SELECT id, nickname, age, sex, location, is_active, created_at,
-                   bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                   bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
-            FROM fake_users
-            WHERE nickname = ?
-        ");
-        $stmt->execute([$nickname]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->select(self::SELECT_COLUMNS)
+            ->where('nickname', '=', $nickname)
+            ->first();
 
-        return $row === false ? null : $row;
+        return ($row && $row->numRows > 0) ? $row->fields : null;
     }
 
     /**
@@ -83,25 +82,20 @@ class FakeUserService
      */
     public function updateBotSettings(int $id, array $options): ?array
     {
+        // The bot_* columns the admin panel may set. The framework binds each
+        // value by its PHP type (bool/int/null), so no explicit PDO type map is
+        // needed any more.
         $columns = [
-            'bot_enabled' => PDO::PARAM_BOOL,
-            'bot_persona' => PDO::PARAM_STR,
-            'bot_custom_prompt' => PDO::PARAM_STR,
-            'bot_self_facts' => PDO::PARAM_STR,
-            'bot_farewell_messages' => PDO::PARAM_STR,
-            'bot_max_messages' => PDO::PARAM_INT,
-            'bot_ignore_chance' => PDO::PARAM_INT,
-            'bot_typing_seconds_per_word' => PDO::PARAM_STR,
+            'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_self_facts',
+            'bot_farewell_messages', 'bot_max_messages', 'bot_ignore_chance',
+            'bot_typing_seconds_per_word',
             // Per-bot overrides, so bots can run on different LLMs side by side
-            'bot_llm_provider' => PDO::PARAM_STR,
-            'bot_llm_model' => PDO::PARAM_STR,
-            'bot_reply_language' => PDO::PARAM_STR,
+            'bot_llm_provider', 'bot_llm_model', 'bot_reply_language',
         ];
 
-        $sets = [];
-        $values = [];
+        $updateData = [];
 
-        foreach ($columns as $column => $type) {
+        foreach ($columns as $column) {
             if (!array_key_exists($column, $options)) {
                 continue;
             }
@@ -113,7 +107,6 @@ class FakeUserService
             } elseif ($value === '' || $value === null) {
                 // Empty means "fall back to the global setting".
                 $value = null;
-                $type = PDO::PARAM_NULL;
             } elseif ($column === 'bot_max_messages' || $column === 'bot_ignore_chance') {
                 $value = max(0, min(100, (int) $value));
             } elseif ($column === 'bot_typing_seconds_per_word') {
@@ -123,42 +116,27 @@ class FakeUserService
                 // treat it as "use the global setting".
                 if (!LlmProviders::isKnown((string) $value)) {
                     $value = null;
-                    $type = PDO::PARAM_NULL;
                 }
             } elseif ($column === 'bot_reply_language') {
                 if (!isset(BotService::LANGUAGES[(string) $value])) {
                     $value = null;
-                    $type = PDO::PARAM_NULL;
                 }
             }
 
-            $sets[] = "{$column} = :{$column}";
-            $values[$column] = [$value, $type];
+            $updateData[$column] = $value;
         }
 
-        if (empty($sets)) {
+        if (empty($updateData)) {
             return $this->getFakeUserById($id);
         }
 
-        $stmt = $this->pdo->prepare("
-            UPDATE fake_users
-            SET " . implode(', ', $sets) . "
-            WHERE id = :id
-            RETURNING id, nickname, age, sex, location, is_active, created_at,
-                      bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                      bot_typing_seconds_per_word, bot_farewell_messages,
-                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
-        ");
+        $result = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->where('id', '=', $id)
+            ->returning(self::SELECT_COLUMNS)
+            ->update($updateData);
 
-        foreach ($values as $column => [$value, $type]) {
-            $stmt->bindValue(":{$column}", $value, $type);
-        }
-        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
-
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $row === false ? null : $row;
+        return ($result && $result->numRows > 0) ? $result->fields : null;
     }
 
     /**
@@ -166,18 +144,13 @@ class FakeUserService
      */
     public function getFakeUserById(int $id): ?array
     {
-        $stmt = $this->pdo->prepare("
-            SELECT id, nickname, age, sex, location, is_active, created_at,
-                   bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                   bot_typing_seconds_per_word, bot_farewell_messages,
-                   bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
-            FROM fake_users
-            WHERE id = ?
-        ");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->select(self::SELECT_COLUMNS)
+            ->where('id', '=', $id)
+            ->first();
 
-        return $row === false ? null : $row;
+        return ($row && $row->numRows > 0) ? $row->fields : null;
     }
 
     /**
@@ -185,13 +158,12 @@ class FakeUserService
      */
     public function getActiveFakeUsers(): array
     {
-        $stmt = $this->pdo->query("
-            SELECT id, nickname, age, sex, location
-            FROM fake_users
-            WHERE is_active = TRUE
-            ORDER BY nickname
-        ");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $this->db->queryBuilder()
+            ->from('fake_users')
+            ->select(['id', 'nickname', 'age', 'sex', 'location'])
+            ->whereRaw('is_active = TRUE')
+            ->orderBy('nickname')
+            ->getAll();
     }
 
     /**
@@ -256,37 +228,33 @@ class FakeUserService
         $location = array_key_exists('location', $fields) ? $fields['location'] : $current['location'];
         $location = ($location === '' || $location === null) ? null : (string) $location;
 
-        $this->pdo->beginTransaction();
+        $this->db->startTransaction();
 
         try {
-            $stmt = $this->pdo->prepare("
-                UPDATE fake_users
-                SET nickname = :nickname, age = :age, sex = :sex, location = :location
-                WHERE id = :id
-                RETURNING id, nickname, age, sex, location, is_active, created_at,
-                          bot_enabled, bot_persona, bot_custom_prompt, bot_max_messages,
-                          bot_typing_seconds_per_word, bot_farewell_messages,
-                      bot_llm_provider, bot_llm_model, bot_reply_language, bot_ignore_chance, bot_self_facts
-            ");
-            $stmt->execute([
-                'nickname' => $newNickname ?? $current['nickname'],
-                'age' => $age,
-                'sex' => $sex,
-                'location' => $location,
-                'id' => $id,
-            ]);
-            $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+            $result = $this->db->queryBuilder()
+                ->from('fake_users')
+                ->where('id', '=', $id)
+                ->returning(self::SELECT_COLUMNS)
+                ->update([
+                    'nickname' => $newNickname ?? $current['nickname'],
+                    'age'      => $age,
+                    'sex'      => $sex,
+                    'location' => $location,
+                ]);
+            $updated = ($result && $result->numRows > 0) ? $result->fields : null;
 
             if ($newNickname !== null) {
                 $this->renameInConversations((string) $current['nickname'], $newNickname);
             }
 
-            $this->pdo->commit();
+            $this->db->commitTransaction();
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            $this->db->rollbackTransaction();
 
-            // Unique violation on nickname (race with another admin).
-            if ($e instanceof \PDOException && $e->getCode() === '23505') {
+            // Unique violation on nickname (race with another admin). The framework
+            // throws on SQL errors; PostgreSQL 23505 surfaces as "duplicate key".
+            if (stripos($e->getMessage(), 'duplicate key') !== false
+                || stripos($e->getMessage(), 'unique constraint') !== false) {
                 throw new \InvalidArgumentException('Nickname already exists');
             }
 
@@ -294,14 +262,14 @@ class FakeUserService
         }
 
         // Keep the visible user list in sync with the new profile.
-        if ($updated !== false && $updated['is_active']) {
+        if ($updated !== null && $updated['is_active']) {
             if ($newNickname !== null) {
                 $this->removeFakeUserFromRedis((string) $current['nickname']);
             }
             $this->addFakeUserToRedis($updated);
         }
 
-        return $updated === false ? null : $updated;
+        return $updated;
     }
 
     /**
@@ -309,15 +277,15 @@ class FakeUserService
      */
     private function nicknameTaken(string $nickname, int $excludeFakeUserId): bool
     {
-        $stmt = $this->pdo->prepare("
-            SELECT 1 FROM fake_users WHERE LOWER(nickname) = LOWER(?) AND id <> ?
-            UNION ALL
-            SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)
-            LIMIT 1
-        ");
-        $stmt->execute([$nickname, $excludeFakeUserId, $nickname]);
+        $result = $this->db->preparedQuery(
+            "SELECT 1 FROM fake_users WHERE LOWER(nickname) = LOWER(?) AND id <> ?
+             UNION ALL
+             SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)
+             LIMIT 1",
+            [$nickname, $excludeFakeUserId, $nickname]
+        );
 
-        return $stmt->fetchColumn() !== false;
+        return $result && $result->fetchColumn() !== false;
     }
 
     /**
@@ -329,38 +297,42 @@ class FakeUserService
         $oldSessionId = 'fake_' . md5($oldNickname);
         $newSessionId = 'fake_' . md5($newNickname);
 
-        $stmt = $this->pdo->prepare("
-            UPDATE private_messages
-            SET from_username = :new,
-                from_session_id = CASE WHEN from_session_id = :old_session THEN :new_session ELSE from_session_id END
-            WHERE from_username = :old
-        ");
-        $stmt->execute([
-            'new' => $newNickname,
-            'old' => $oldNickname,
-            'old_session' => $oldSessionId,
-            'new_session' => $newSessionId,
-        ]);
+        // The CASE-based session rewrite is kept verbatim (a conditional column
+        // update the builder cannot express cleanly).
+        $this->db->preparedQuery(
+            "UPDATE private_messages
+             SET from_username = :new,
+                 from_session_id = CASE WHEN from_session_id = :old_session THEN :new_session ELSE from_session_id END
+             WHERE from_username = :old",
+            [
+                'new' => $newNickname,
+                'old' => $oldNickname,
+                'old_session' => $oldSessionId,
+                'new_session' => $newSessionId,
+            ]
+        );
 
-        $stmt = $this->pdo->prepare("
-            UPDATE private_messages
-            SET to_username = :new,
-                to_session_id = CASE WHEN to_session_id = :old_session THEN :new_session ELSE to_session_id END
-            WHERE to_username = :old
-        ");
-        $stmt->execute([
-            'new' => $newNickname,
-            'old' => $oldNickname,
-            'old_session' => $oldSessionId,
-            'new_session' => $newSessionId,
-        ]);
+        $this->db->preparedQuery(
+            "UPDATE private_messages
+             SET to_username = :new,
+                 to_session_id = CASE WHEN to_session_id = :old_session THEN :new_session ELSE to_session_id END
+             WHERE to_username = :old",
+            [
+                'new' => $newNickname,
+                'old' => $oldNickname,
+                'old_session' => $oldSessionId,
+                'new_session' => $newSessionId,
+            ]
+        );
 
         // DM blocks are keyed by username too.
-        $stmt = $this->pdo->prepare('UPDATE dm_blocks SET blocker_username = ? WHERE blocker_username = ?');
-        $stmt->execute([$newNickname, $oldNickname]);
+        $this->db->queryBuilder()->from('dm_blocks')
+            ->where('blocker_username', '=', $oldNickname)
+            ->update(['blocker_username' => $newNickname]);
 
-        $stmt = $this->pdo->prepare('UPDATE dm_blocks SET blocked_username = ? WHERE blocked_username = ?');
-        $stmt->execute([$newNickname, $oldNickname]);
+        $this->db->queryBuilder()->from('dm_blocks')
+            ->where('blocked_username', '=', $oldNickname)
+            ->update(['blocked_username' => $newNickname]);
     }
 
     /**
@@ -368,20 +340,17 @@ class FakeUserService
      */
     public function addFakeUser(string $nickname, ?int $age = null, ?string $sex = null, ?string $location = null): array
     {
-        $stmt = $this->pdo->prepare("
-            INSERT INTO fake_users (nickname, age, sex, location)
-            VALUES (:nickname, :age, :sex, :location)
-            RETURNING id, nickname, age, sex, location, is_active, created_at
-        ");
-        
-        $stmt->execute([
-            'nickname' => $nickname,
-            'age' => $age,
-            'sex' => $sex,
-            'location' => $location
-        ]);
+        $result = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->returning(['id', 'nickname', 'age', 'sex', 'location', 'is_active', 'created_at'])
+            ->insert([
+                'nickname' => $nickname,
+                'age'      => $age,
+                'sex'      => $sex,
+                'location' => $location,
+            ]);
 
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? $result->fetch() : [];
     }
 
     /**
@@ -497,17 +466,17 @@ class FakeUserService
             }
 
             try {
-                $this->pdo->beginTransaction();
+                $this->db->startTransaction();
                 $created = $this->addFakeUser($nickname, $age, $sex, $location);
                 // updateBotSettings only reads its own bot_* keys and normalises
                 // them (clamping, provider/language validation), so the rest of
                 // the row is ignored safely.
                 $this->updateBotSettings((int) $created['id'], $row);
-                $this->pdo->commit();
+                $this->db->commitTransaction();
                 $imported[] = $nickname;
             } catch (\Throwable $e) {
-                if ($this->pdo->inTransaction()) {
-                    $this->pdo->rollBack();
+                if ($this->db->inTransaction()) {
+                    $this->db->rollbackTransaction();
                 }
                 // A race that slipped past the existence check, or a constraint
                 // the row still violated: skip it rather than fail the import.
@@ -557,9 +526,11 @@ class FakeUserService
         // First deactivate if active
         $this->setFakeUserActive($id, false);
 
-        $stmt = $this->pdo->prepare("DELETE FROM fake_users WHERE id = :id");
-        $stmt->execute(['id' => $id]);
-        return $stmt->rowCount() > 0;
+        $result = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->where('id', '=', $id)
+            ->delete();
+        return $result && $result->getAffectedRows() > 0;
     }
 
     /**
@@ -567,14 +538,11 @@ class FakeUserService
      */
     public function toggleFakeUser(int $id): array
     {
-        $stmt = $this->pdo->prepare("
-            UPDATE fake_users
-            SET is_active = NOT is_active
-            WHERE id = :id
-            RETURNING id, nickname, age, sex, location, is_active
-        ");
-        $stmt->execute(['id' => $id]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $qb = $this->db->queryBuilder()->from('fake_users');
+        $result = $qb->where('id', '=', $id)
+            ->returning(['id', 'nickname', 'age', 'sex', 'location', 'is_active'])
+            ->update(['is_active' => $qb->raw('NOT is_active')]);
+        $user = ($result && $result->numRows > 0) ? $result->fields : null;
 
         // Update Redis active users list
         if ($user) {
@@ -585,7 +553,7 @@ class FakeUserService
             }
         }
 
-        return $user;
+        return $user ?? [];
     }
 
     /**
@@ -593,16 +561,12 @@ class FakeUserService
      */
     public function setFakeUserActive(int $id, bool $active): bool
     {
-        $stmt = $this->pdo->prepare("
-            UPDATE fake_users
-            SET is_active = :active
-            WHERE id = :id
-            RETURNING nickname, age, sex, location, is_active
-        ");
-        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
-        $stmt->bindValue(':active', $active, PDO::PARAM_BOOL);
-        $stmt->execute();
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $result = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->where('id', '=', $id)
+            ->returning(['nickname', 'age', 'sex', 'location', 'is_active'])
+            ->update(['is_active' => $active]);
+        $user = ($result && $result->numRows > 0) ? $result->fields : null;
 
         if ($user) {
             if ($active) {
@@ -719,8 +683,10 @@ class FakeUserService
      */
     private function countActiveFakeUsers(): int
     {
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM fake_users WHERE is_active = TRUE");
-        return (int) $stmt->fetchColumn();
+        return $this->db->queryBuilder()
+            ->from('fake_users')
+            ->whereRaw('is_active = TRUE')
+            ->count();
     }
 
     /**
@@ -730,16 +696,13 @@ class FakeUserService
     {
         if ($count <= 0) return;
 
-        $stmt = $this->pdo->prepare("
-            SELECT id, nickname, age, sex, location
-            FROM fake_users
-            WHERE is_active = FALSE
-            ORDER BY RANDOM()
-            LIMIT :limit
-        ");
-        $stmt->bindValue(':limit', $count, PDO::PARAM_INT);
-        $stmt->execute();
-        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $users = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->select(['id', 'nickname', 'age', 'sex', 'location'])
+            ->whereRaw('is_active = FALSE')
+            ->orderByRaw('RANDOM()')
+            ->limit($count)
+            ->getAll();
 
         foreach ($users as $user) {
             $this->setFakeUserActive($user['id'], true);
@@ -771,32 +734,32 @@ class FakeUserService
      */
     private function rotationDeactivationCandidates(int $count): array
     {
-        $stmt = $this->pdo->prepare("
-            SELECT f.id, f.nickname
-            FROM fake_users f
-            WHERE f.is_active = TRUE
-              AND NOT (
-                  f.bot_enabled = TRUE
-                  AND EXISTS (
-                      SELECT 1
-                      FROM bot_threads t
-                      JOIN private_messages pm
-                        ON (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
-                        OR (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
-                      WHERE t.fake_user_id = f.id
-                        AND t.farewell_sent_at IS NULL
-                        AND t.blocked_at IS NULL
-                        AND pm.created_at > NOW() - make_interval(mins => :window)
-                  )
-              )
-            ORDER BY RANDOM()
-            LIMIT :limit
-        ");
-        $stmt->bindValue(':window', self::ACTIVE_CONVERSATION_WINDOW_MINUTES, PDO::PARAM_INT);
-        $stmt->bindValue(':limit', $count, PDO::PARAM_INT);
-        $stmt->execute();
+        // Kept verbatim: a correlated NOT EXISTS with a JOIN and make_interval
+        // that a builder rewrite would only obscure.
+        $result = $this->db->preparedQuery(
+            "SELECT f.id, f.nickname
+             FROM fake_users f
+             WHERE f.is_active = TRUE
+               AND NOT (
+                   f.bot_enabled = TRUE
+                   AND EXISTS (
+                       SELECT 1
+                       FROM bot_threads t
+                       JOIN private_messages pm
+                         ON (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
+                         OR (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
+                       WHERE t.fake_user_id = f.id
+                         AND t.farewell_sent_at IS NULL
+                         AND t.blocked_at IS NULL
+                         AND pm.created_at > NOW() - make_interval(mins => :window)
+                   )
+               )
+             ORDER BY RANDOM()
+             LIMIT :limit",
+            ['window' => self::ACTIVE_CONVERSATION_WINDOW_MINUTES, 'limit' => $count]
+        );
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $result ? $result->fetchAll() : [];
     }
 
     /**
@@ -805,11 +768,16 @@ class FakeUserService
     private function deactivateAllFakeUsers(): void
     {
         // Get all active fake users first
-        $stmt = $this->pdo->query("SELECT nickname FROM fake_users WHERE is_active = TRUE");
-        $nicknames = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $nicknames = $this->db->queryBuilder()
+            ->from('fake_users')
+            ->whereRaw('is_active = TRUE')
+            ->pluck('nickname');
 
         // Deactivate in database
-        $this->pdo->exec("UPDATE fake_users SET is_active = FALSE WHERE is_active = TRUE");
+        $this->db->queryBuilder()
+            ->from('fake_users')
+            ->whereRaw('is_active = TRUE')
+            ->update(['is_active' => false]);
 
         // Remove from Redis
         foreach ($nicknames as $nickname) {
