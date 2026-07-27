@@ -37,7 +37,6 @@ class LlmAccount
     private ?LlmService $adminLlm = null;
     /** @var array<string,mixed> */
     private array $providerConfig;
-    private ?\Redis $redis = null;
 
     /**
      * @param LlmService|null $llm      Client for the public endpoints
@@ -60,13 +59,6 @@ class LlmAccount
             ? LlmProviders::resolve($provider, $this->settings)
             : $this->llm->getProvider();
         $this->providerConfig = LlmProviders::config($this->provider);
-
-        try {
-            $this->redis = Database::getRedis();
-        } catch (\Throwable) {
-            // Caching is an optimisation; without Redis every call goes upstream.
-            $this->redis = null;
-        }
     }
 
     public function isConfigured(): bool
@@ -452,23 +444,11 @@ class LlmAccount
      */
     private function cacheGet(string $key): ?array
     {
-        if ($this->redis === null) {
-            return null;
-        }
+        // FlatCache serialises, so the array round-trips as-is; a miss (or Redis
+        // being unavailable) returns null and the caller falls back to source.
+        $value = Cache::store()->get($key);
 
-        try {
-            $raw = $this->redis->get(Database::getRedisPrefix() . $key);
-        } catch (\Throwable) {
-            return null;
-        }
-
-        if (!is_string($raw) || $raw === '') {
-            return null;
-        }
-
-        $decoded = json_decode($raw, true);
-
-        return is_array($decoded) ? $decoded : null;
+        return is_array($value) ? $value : null;
     }
 
     /**
@@ -476,14 +456,7 @@ class LlmAccount
      */
     private function cacheSet(string $key, array $value, int $ttl): void
     {
-        if ($this->redis === null) {
-            return;
-        }
-
-        try {
-            $this->redis->setex(Database::getRedisPrefix() . $key, $ttl, (string) json_encode($value));
-        } catch (\Throwable) {
-            // Not worth failing a request over.
-        }
+        // Caching is an optimisation; FlatCache no-ops gracefully without Redis.
+        Cache::store()->set($key, $value, $ttl);
     }
 }
