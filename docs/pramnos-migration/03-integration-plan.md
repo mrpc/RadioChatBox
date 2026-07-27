@@ -265,7 +265,26 @@ unchanged.
 
 ---
 
-## Phase 6 — HTTP layer & middleware (opt-in, endpoint-by-endpoint)
+## Phase 6 — HTTP layer & middleware (endpoint-by-endpoint) — 🟡 STARTED
+
+> **Harness built + first endpoint migrated** (`feat: Phase 6 — HTTP front controller`). Since no
+> external client consumes the API, endpoints move **in place** (no `/v2` namespace). A root-level
+> front controller `public/_dispatch.php` boots the framework, discovers attribute-routed
+> controllers in `src/Http/Controllers`, applies the native middleware pipeline
+> (`JsonResponseMiddleware`), and dispatches. Apache wires it with the **strangler** pattern —
+> `FallbackResource /_dispatch.php` on `<Directory public/api>` — so any `/api/*` path that is **not**
+> an existing file goes through the router while the ~70 legacy `/api/*.php` files keep being served
+> directly. First controller: `StatusController` → `GET /api/status` (verified end-to-end via Apache:
+> `{"status":"ok",...}`; `/api/health.php` still served directly). Depends on the framework
+> `Route::execute()` controller-dispatch fix (now merged & pushed).
+>
+> **Gotcha recorded:** the front controller must sit at the **document root**, not under `/api` — the
+> framework's `Request` derives the app base path from the dispatcher's directory, so an
+> `/api/_dispatch.php` stripped the `/api` segment and routes never matched.
+>
+> **Next:** migrate real read-only GETs (history, config, users) with golden-response tests, then
+> writes/admin, mapping hand-rolled CORS/auth/rate-limit onto the framework middleware; adopt the
+> deferred Phase 5 infra (cache/logs/validation) per controller. SSE (`stream.php`) migrates last.
 
 **Goal.** Introduce a front controller + Router (attribute routes) + the native middleware
 pipeline, migrating `public/api/*.php` one endpoint at a time. File-per-endpoint keeps serving
