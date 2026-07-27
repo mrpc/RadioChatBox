@@ -193,28 +193,47 @@ class StatsServiceComputeMethodsTest extends TestCase
 
     /**
      * Test that compute methods handle zero values correctly
+     *
+     * getSummary()['today'] aggregates EVERY stats_hourly row for the current
+     * date, so this test only produces a deterministic zero result if today's
+     * slice contains nothing but its own controlled zero row. Other tests in the
+     * shared dev database legitimately record snapshots for the current hour (e.g.
+     * the heartbeat endpoint writes active_users via StatsService::recordSnapshot),
+     * which would otherwise leak in and make today's active_users non-zero.
+     *
+     * We isolate within a transaction on the singleton PDO connection: clear
+     * today's rows, insert the controlled zero row, and let getSummary observe the
+     * transaction's own view — then roll back so no dev data is destroyed.
      */
     public function testComputeMethodsHandleZeroValues()
     {
         $today = date('Y-m-d');
-        
-        // Insert hourly data with all zeros
-        $sql = "INSERT INTO stats_hourly 
-                (stat_hour, active_users, guest_users, registered_users, 
-                 total_messages, private_messages, photo_uploads, new_registrations,
-                 radio_listeners_avg, radio_listeners_peak, peak_concurrent_users)
-                VALUES (:stat_hour, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-                ON CONFLICT (stat_hour) DO UPDATE SET active_users = EXCLUDED.active_users";
-        
-        $stmt = self::$pdo->prepare($sql);
-        $stmt->execute(['stat_hour' => $today . ' 12:00:00']);
-        
-        $summary = $this->statsService->getSummary();
-        
-        // Should return array with zero values, not null
-        $this->assertIsArray($summary['today']);
-        $this->assertEquals(0, $summary['today']['total_messages']);
-        $this->assertEquals(0, $summary['today']['active_users']);
+
+        self::$pdo->beginTransaction();
+        try {
+            // Own today's slice for the duration of the assertion (rolled back below).
+            self::$pdo->exec("DELETE FROM stats_hourly WHERE stat_hour::date = CURRENT_DATE");
+
+            // Insert hourly data with all zeros
+            $sql = "INSERT INTO stats_hourly
+                    (stat_hour, active_users, guest_users, registered_users,
+                     total_messages, private_messages, photo_uploads, new_registrations,
+                     radio_listeners_avg, radio_listeners_peak, peak_concurrent_users)
+                    VALUES (:stat_hour, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                    ON CONFLICT (stat_hour) DO UPDATE SET active_users = EXCLUDED.active_users";
+
+            $stmt = self::$pdo->prepare($sql);
+            $stmt->execute(['stat_hour' => $today . ' 12:00:00']);
+
+            $summary = $this->statsService->getSummary();
+
+            // Should return array with zero values, not null
+            $this->assertIsArray($summary['today']);
+            $this->assertEquals(0, $summary['today']['total_messages']);
+            $this->assertEquals(0, $summary['today']['active_users']);
+        } finally {
+            self::$pdo->rollBack();
+        }
     }
 
     /**
