@@ -323,13 +323,13 @@ class ChatService
         $rateLimitWindow = 60; // default
 
         try {
-            $cacheKey = 'settings:rate_limit';
-            $cached = $this->redis->get($this->prefixKey($cacheKey));
+            // Rate-limit *settings* are a recomputable cache (the per-IP counters
+            // below are state and stay on raw Redis).
+            $cached = Cache::store()->get('settings:rate_limit');
 
-            if ($cached !== false) {
-                $settings = json_decode($cached, true);
-                $rateLimitMessages = $settings['messages'] ?? 10;
-                $rateLimitWindow = $settings['window'] ?? 60;
+            if (is_array($cached)) {
+                $rateLimitMessages = $cached['messages'] ?? 10;
+                $rateLimitWindow = $cached['window'] ?? 60;
             } else {
                 // PERFORMANCE OPTIMIZATION: Fetch both settings in ONE query instead of two
                 $stmt = $this->pdo->prepare(
@@ -347,10 +347,10 @@ class ChatService
                     : 60;
 
                 // Cache for 5 minutes
-                $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode([
+                Cache::store()->set('settings:rate_limit', [
                     'messages' => $rateLimitMessages,
-                    'window' => $rateLimitWindow
-                ]));
+                    'window' => $rateLimitWindow,
+                ], 300);
             }
         } catch (\PDOException $e) {
             // Use defaults if unable to fetch from database
