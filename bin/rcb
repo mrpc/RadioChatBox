@@ -45,4 +45,7 @@ $application->database = $database;
 $application->settings = $settings;
 
 $console = new \Pramnos\Console\Application();
+// Register RadioChatBox's own console commands (the framework's daemon
+// orchestrator is abstract; each app registers its concrete subclass).
+$console->add(new \RadioChatBox\Console\RadioChatBoxDaemons());
 $console->run();
