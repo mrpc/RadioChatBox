@@ -200,7 +200,7 @@ class AdManager {
     async refreshAds() {
         try {
             // Fetch latest settings to get updated ad codes
-            const response = await fetch('/api/settings.php');
+            const response = await fetch('/api/settings');
             const data = await response.json();
 
             if (data.success && data.settings && data.settings.ads) {

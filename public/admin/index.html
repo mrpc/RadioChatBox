@@ -2852,7 +2852,7 @@
         let pageTitle = 'RadioChatBox';  // Store dynamic chat title from settings
 
         // Load page title, favicon, and logo early from public settings endpoint
-        fetch('/api/settings.php')
+        fetch('/api/settings')
             .then(res => res.json())
             .then(data => {
                 if (data.success && data.settings) {
@@ -5023,7 +5023,7 @@
             // Initialize GIF settings for impersonate
             try {
                 if (!cachedSettings) {
-                    const settingsRes = await fetch('/api/settings.php');
+                    const settingsRes = await fetch('/api/settings');
                     cachedSettings = await settingsRes.json();
                 }
                 if (cachedSettings && cachedSettings.success) {

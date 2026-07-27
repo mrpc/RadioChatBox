@@ -296,7 +296,7 @@ class RadioChatBox {
             if (savedUserId) {
                 // Authenticated user - verify session is still valid on server
                 try {
-                    const response = await fetch(`${this.apiUrl}/api/heartbeat.php`, {
+                    const response = await fetch(`${this.apiUrl}/api/heartbeat`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -434,7 +434,7 @@ class RadioChatBox {
     
     async loadSettings() {
         try {
-            const response = await fetch(`${this.apiUrl}/api/settings.php?t=${Date.now()}`, {
+            const response = await fetch(`${this.apiUrl}/api/settings?t=${Date.now()}`, {
                 cache: 'no-cache'
             });
             const data = await response.json();
@@ -967,7 +967,7 @@ class RadioChatBox {
     async checkAndRegisterNickname(nickname, age = null, location = null, sex = null) {
         try {
             // Check if nickname is available
-            const checkResponse = await fetch(`${this.apiUrl}/api/check-nickname.php`, {
+            const checkResponse = await fetch(`${this.apiUrl}/api/check-nickname`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ nickname, sessionId: this.sessionId })
@@ -1987,7 +1987,7 @@ class RadioChatBox {
         // Send heartbeat every 60 seconds
         this.heartbeatInterval = setInterval(async () => {
             try {
-                await fetch(`${this.apiUrl}/api/heartbeat.php`, {
+                await fetch(`${this.apiUrl}/api/heartbeat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
