@@ -13,8 +13,6 @@ namespace RadioChatBox;
  */
 class ArtworkService
 {
-    private \Redis $redis;
-    private string $prefix;
     private string $diskDir;
     private string $webBase = '/uploads/artwork';
 
@@ -25,8 +23,6 @@ class ArtworkService
 
     public function __construct()
     {
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
         $this->diskDir = __DIR__ . '/../public/uploads/artwork';
         if (!is_dir($this->diskDir)) {
             @mkdir($this->diskDir, 0755, true);
@@ -51,32 +47,29 @@ class ArtworkService
             return ['cover' => null, 'artist_image' => null, 'source' => null];
         }
 
-        $cacheKey = $this->prefix . 'artwork:' . md5(mb_strtolower($query));
+        $cacheKey = 'artwork:' . md5(mb_strtolower($query));
 
         // Positive cache
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            $data = json_decode($cached, true);
-            if (is_array($data)) {
-                // Verify the cover file still exists; if deleted, fall through.
-                if (empty($data['cover']) || $this->webPathExists($data['cover'])) {
-                    return $data + ['cover' => null, 'cover_thumb' => null, 'artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
-                }
-            } else {
-                // Negative cache marker
-                return ['cover' => null, 'cover_thumb' => null, 'artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
+        $cached = Cache::store()->get($cacheKey);
+        if (is_array($cached)) {
+            // Verify the cover file still exists; if deleted, fall through.
+            if (empty($cached['cover']) || $this->webPathExists($cached['cover'])) {
+                return $cached + ['cover' => null, 'cover_thumb' => null, 'artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
             }
+        } elseif ($cached !== null) {
+            // Negative cache marker
+            return ['cover' => null, 'cover_thumb' => null, 'artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
         }
 
         $result = $this->lookupAndStore($artist, $title, $query);
 
         if ($result['cover'] !== null || $result['artist_image'] !== null) {
-            $this->redis->setex($cacheKey, self::POSITIVE_TTL, json_encode($result));
+            Cache::store()->set($cacheKey, $result, self::POSITIVE_TTL);
         } elseif (($result['source'] ?? null) === null) {
             // Genuine no-match from every provider → cache negative briefly.
             // If a provider DID match but the image failed to download (e.g. the
             // uploads dir isn't writable), don't cache — so it retries once fixed.
-            $this->redis->setex($cacheKey, self::NEGATIVE_TTL, '0');
+            Cache::store()->set($cacheKey, 0, self::NEGATIVE_TTL);
         }
 
         return $result;
@@ -89,19 +82,16 @@ class ArtworkService
         if ($artist === '') {
             return ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
         }
-        $cacheKey = $this->prefix . 'artwork:artist:' . md5(mb_strtolower($artist));
+        $cacheKey = 'artwork:artist:' . md5(mb_strtolower($artist));
         if ($force) {
-            $this->redis->del($cacheKey);
+            Cache::store()->delete($cacheKey);
         }
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            $data = json_decode($cached, true);
-            if (is_array($data) && (empty($data['artist_image']) || $this->webPathExists($data['artist_image']))) {
-                return $data + ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
-            }
-            if (!is_array($data)) {
-                return ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
-            }
+        $cached = Cache::store()->get($cacheKey);
+        if (is_array($cached) && (empty($cached['artist_image']) || $this->webPathExists($cached['artist_image']))) {
+            return $cached + ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
+        }
+        if ($cached !== null && !is_array($cached)) {
+            return ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
         }
 
         $image = null;
@@ -117,9 +107,9 @@ class ArtworkService
 
         $result = ['artist_image' => $image, 'artist_image_thumb' => $thumb, 'source' => $source];
         if ($image === null) {
-            $this->redis->setex($cacheKey, self::NEGATIVE_TTL, '0');
+            Cache::store()->set($cacheKey, 0, self::NEGATIVE_TTL);
         } else {
-            $this->redis->setex($cacheKey, self::POSITIVE_TTL, json_encode($result));
+            Cache::store()->set($cacheKey, $result, self::POSITIVE_TTL);
         }
         return $result;
     }
