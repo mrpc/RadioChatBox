@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * Handles user-initiated DM blocking.
@@ -17,7 +17,7 @@ use PDO;
  */
 class BlockService
 {
-    private PDO $pdo;
+    private PramnosDatabase $db;
 
     /** Cache TTL for a user's related-set, in seconds. */
     private const CACHE_TTL = 300;
@@ -32,7 +32,7 @@ class BlockService
 
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
     }
 
     private function relatedCacheKey(string $username): string
@@ -54,11 +54,12 @@ class BlockService
     private function resolveUserId(string $username): ?int
     {
         try {
-            $stmt = $this->pdo->prepare('SELECT id FROM users WHERE username = :username');
-            $stmt->execute(['username' => $username]);
-            $id = $stmt->fetchColumn();
-            return $id !== false ? (int)$id : null;
-        } catch (\PDOException $e) {
+            $id = $this->db->queryBuilder()
+                ->from('users')
+                ->where('username', '=', $username)
+                ->value('id');
+            return $id === null ? null : (int)$id;
+        } catch (\Throwable $e) {
             Log::write('BlockService::resolveUserId failed: ' . $e->getMessage());
             return null;
         }
@@ -95,26 +96,28 @@ class BlockService
         try {
             // ON CONFLICT DO UPDATE so re-blocking refreshes the expiry window and
             // the stored user_id snapshots.
-            $stmt = $this->pdo->prepare(
-                'INSERT INTO dm_blocks (blocker_username, blocker_user_id, blocked_username, blocked_user_id, created_at, expires_at)
-                 VALUES (:blocker_username, :blocker_user_id, :blocked_username, :blocked_user_id, NOW(), :expires_at)
-                 ON CONFLICT (blocker_username, blocked_username) DO UPDATE SET
-                     blocker_user_id = EXCLUDED.blocker_user_id,
-                     blocked_user_id = EXCLUDED.blocked_user_id,
-                     created_at = NOW(),
-                     expires_at = EXCLUDED.expires_at'
+            $qb = $this->db->queryBuilder()->from('dm_blocks');
+            $qb->upsert(
+                [
+                    'blocker_username' => $blockerUsername,
+                    'blocker_user_id'  => $blockerUserId,
+                    'blocked_username' => $blockedUsername,
+                    'blocked_user_id'  => $this->resolveUserId($blockedUsername),
+                    'created_at'       => $qb->raw('NOW()'),
+                    'expires_at'       => $expiresAt,
+                ],
+                ['blocker_username', 'blocked_username'],
+                [
+                    'blocker_user_id' => $qb->raw('EXCLUDED.blocker_user_id'),
+                    'blocked_user_id' => $qb->raw('EXCLUDED.blocked_user_id'),
+                    'created_at'      => $qb->raw('NOW()'),
+                    'expires_at'      => $qb->raw('EXCLUDED.expires_at'),
+                ]
             );
-            $stmt->execute([
-                'blocker_username' => $blockerUsername,
-                'blocker_user_id' => $blockerUserId,
-                'blocked_username' => $blockedUsername,
-                'blocked_user_id' => $this->resolveUserId($blockedUsername),
-                'expires_at' => $expiresAt,
-            ]);
 
             $this->invalidate($blockerUsername, $blockedUsername);
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('BlockService::blockUser failed: ' . $e->getMessage());
             return false;
         }
@@ -133,18 +136,15 @@ class BlockService
         }
 
         try {
-            $stmt = $this->pdo->prepare(
-                'DELETE FROM dm_blocks
-                 WHERE blocker_username = :blocker_username AND blocked_username = :blocked_username'
-            );
-            $stmt->execute([
-                'blocker_username' => $blockerUsername,
-                'blocked_username' => $blockedUsername,
-            ]);
+            $this->db->queryBuilder()
+                ->from('dm_blocks')
+                ->where('blocker_username', '=', $blockerUsername)
+                ->where('blocked_username', '=', $blockedUsername)
+                ->delete();
 
             $this->invalidate($blockerUsername, $blockedUsername);
             return true;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('BlockService::unblockUser failed: ' . $e->getMessage());
             return false;
         }
@@ -166,16 +166,22 @@ class BlockService
         }
 
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT LOWER(blocked_username) AS other FROM dm_blocks
-                     WHERE LOWER(blocker_username) = LOWER(:u) AND (expires_at IS NULL OR expires_at > NOW())
-                 UNION
-                 SELECT LOWER(blocker_username) AS other FROM dm_blocks
-                     WHERE LOWER(blocked_username) = LOWER(:u) AND (expires_at IS NULL OR expires_at > NOW())'
-            );
-            $stmt->execute(['u' => $username]);
-            $related = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (\PDOException $e) {
+            // People this user blocked …
+            $outgoing = $this->db->queryBuilder()
+                ->from('dm_blocks')
+                ->select(['LOWER(blocked_username) AS other'])
+                ->whereRaw('LOWER(blocker_username) = LOWER(%s)', [$username])
+                ->whereRaw('(expires_at IS NULL OR expires_at > NOW())');
+            // … UNION people who blocked this user.
+            $incoming = $this->db->queryBuilder()
+                ->from('dm_blocks')
+                ->select(['LOWER(blocker_username) AS other'])
+                ->whereRaw('LOWER(blocked_username) = LOWER(%s)', [$username])
+                ->whereRaw('(expires_at IS NULL OR expires_at > NOW())');
+
+            $rows = $outgoing->union($incoming)->getAll();
+            $related = array_column($rows, 'other');
+        } catch (\Throwable $e) {
             Log::write('BlockService::getRelatedUsernames failed: ' . $e->getMessage());
             return [];
         }
@@ -205,14 +211,13 @@ class BlockService
     public function getBlockedUsers(string $blockerUsername): array
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT blocked_username FROM dm_blocks
-                 WHERE LOWER(blocker_username) = LOWER(:u) AND (expires_at IS NULL OR expires_at > NOW())
-                 ORDER BY created_at DESC'
-            );
-            $stmt->execute(['u' => $blockerUsername]);
-            return $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (\PDOException $e) {
+            return $this->db->queryBuilder()
+                ->from('dm_blocks')
+                ->whereRaw('LOWER(blocker_username) = LOWER(%s)', [$blockerUsername])
+                ->whereRaw('(expires_at IS NULL OR expires_at > NOW())')
+                ->orderBy('created_at', 'desc')
+                ->pluck('blocked_username');
+        } catch (\Throwable $e) {
             Log::write('BlockService::getBlockedUsers failed: ' . $e->getMessage());
             return [];
         }
@@ -225,15 +230,13 @@ class BlockService
     public function hasBlocked(string $blockerUsername, string $blockedUsername): bool
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT 1 FROM dm_blocks
-                 WHERE LOWER(blocker_username) = LOWER(:blocker) AND LOWER(blocked_username) = LOWER(:blocked)
-                   AND (expires_at IS NULL OR expires_at > NOW())
-                 LIMIT 1'
-            );
-            $stmt->execute(['blocker' => $blockerUsername, 'blocked' => $blockedUsername]);
-            return $stmt->fetchColumn() !== false;
-        } catch (\PDOException $e) {
+            return $this->db->queryBuilder()
+                ->from('dm_blocks')
+                ->whereRaw('LOWER(blocker_username) = LOWER(%s)', [$blockerUsername])
+                ->whereRaw('LOWER(blocked_username) = LOWER(%s)', [$blockedUsername])
+                ->whereRaw('(expires_at IS NULL OR expires_at > NOW())')
+                ->exists();
+        } catch (\Throwable $e) {
             Log::write('BlockService::hasBlocked failed: ' . $e->getMessage());
             return false;
         }
