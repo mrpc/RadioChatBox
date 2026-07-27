@@ -5,8 +5,6 @@ namespace RadioChatBox;
 class RadioStatusService
 {
     private SettingsService $settings;
-    private \Redis $redis;
-    private string $prefix;
 
     private const CACHE_KEY = 'radio:now_playing';
     private const CACHE_TTL = 10; // seconds
@@ -14,13 +12,6 @@ class RadioStatusService
     public function __construct()
     {
         $this->settings = new SettingsService();
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
-    }
-
-    private function prefixKey(string $key): string
-    {
-        return $this->prefix . $key;
     }
 
     /**
@@ -40,18 +31,15 @@ class RadioStatusService
             ];
         }
 
-        // Check cache first
-        $cached = $this->redis->get($this->prefixKey(self::CACHE_KEY));
-        if ($cached !== false) {
-            $data = json_decode($cached, true);
-            if (is_array($data)) {
-                return $data;
-            }
+        // Check cache first (RedisStore serialises, so the array round-trips as-is).
+        $cached = Cache::store()->get(self::CACHE_KEY);
+        if (is_array($cached)) {
+            return $cached;
         }
 
         $parsed = $this->fetchAndParse($url);
-        // Cache parsed result briefly
-        $this->redis->setex($this->prefixKey(self::CACHE_KEY), self::CACHE_TTL, json_encode($parsed));
+        // Cache parsed result briefly.
+        Cache::store()->set(self::CACHE_KEY, $parsed, self::CACHE_TTL);
         return $parsed;
     }
 
