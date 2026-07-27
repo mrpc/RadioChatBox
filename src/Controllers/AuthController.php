@@ -7,6 +7,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\ChatService;
 use RadioChatBox\Database;
+use RadioChatBox\Http\Validate;
 use RadioChatBox\UserService;
 
 /**
@@ -38,13 +39,22 @@ final class AuthController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $username  = $input['username'] ?? '';
-            $password  = $input['password'] ?? '';
-            $sessionId = $input['sessionId'] ?? '';
-
-            if (empty($username) || empty($password) || empty($sessionId)) {
-                throw new InvalidArgumentException('Username, password, and session ID are required');
+            $error = Validate::check($input, [
+                'username'  => 'required',
+                'password'  => 'required',
+                'sessionId' => 'required',
+            ], [
+                'username.required'  => 'Username, password, and session ID are required',
+                'password.required'  => 'Username, password, and session ID are required',
+                'sessionId.required' => 'Username, password, and session ID are required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $username  = (string) $input['username'];
+            $password  = (string) $input['password'];
+            $sessionId = (string) $input['sessionId'];
 
             $userService = new UserService();
 
@@ -112,11 +122,14 @@ final class AuthController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $sessionId = $input['sessionId'] ?? '';
-
-            if (empty($sessionId)) {
-                throw new InvalidArgumentException('Session ID is required');
+            $error = Validate::check($input, ['sessionId' => 'required'], [
+                'sessionId.required' => 'Session ID is required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $sessionId = (string) $input['sessionId'];
 
             $chatService = new ChatService();
             $success = $chatService->logoutUser($sessionId);
@@ -153,45 +166,47 @@ final class AuthController
             $input = $_POST;
 
             if (empty($input)) {
-                throw new InvalidArgumentException('Invalid JSON');
+                return Response::json(['error' => 'Invalid JSON'], 400);
             }
 
-            $username  = $input['username'] ?? '';
-            $sessionId = $input['sessionId'] ?? '';
-            $age       = $input['age'] ?? null;
-            $location  = $input['location'] ?? null;
-            $sex       = $input['sex'] ?? null;
-            $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-
-            if (empty($username) || empty($sessionId)) {
-                throw new InvalidArgumentException('Username and session ID are required');
-            }
-
-            $chatService = new ChatService();
-
-            // Check if profile is required
+            $chatService    = new ChatService();
             $requireProfile = $chatService->getSetting('require_profile', 'false') === 'true';
 
+            // Field order matters: Validate surfaces the FIRST failing rule's
+            // message as `error`, so username/sessionId precede the profile fields.
+            // age is numeric even as a form string (framework Validator handles it).
+            $rules = [
+                'username'  => 'required',
+                'sessionId' => 'required',
+                'age'       => $requireProfile ? 'required|integer|min:18|max:120' : 'nullable|integer|min:18|max:120',
+            ];
             if ($requireProfile) {
-                // Validate that all profile fields are provided
-                if ($age === null || $age === '' || $location === null || $location === '' || $sex === null || $sex === '') {
-                    throw new InvalidArgumentException('Age, location, and sex are required');
-                }
-
-                // Validate age range
-                $ageInt = (int) $age;
-                if ($ageInt < 18 || $ageInt > 120) {
-                    throw new InvalidArgumentException('Age must be between 18 and 120');
-                }
-            } elseif ($age !== null && $age !== '') {
-                // Validate age if provided (even when not required)
-                $ageInt = (int) $age;
-                if ($ageInt < 18 || $ageInt > 120) {
-                    throw new InvalidArgumentException('Age must be between 18 and 120');
-                }
+                $rules['location'] = 'required';
+                $rules['sex']      = 'required';
+            }
+            $messages = [
+                'username.required'  => 'Username and session ID are required',
+                'sessionId.required' => 'Username and session ID are required',
+                'age.required'       => 'Age, location, and sex are required',
+                'location.required'  => 'Age, location, and sex are required',
+                'sex.required'       => 'Age, location, and sex are required',
+                'age.integer'        => 'Age must be between 18 and 120',
+                'age.min'            => 'Age must be between 18 and 120',
+                'age.max'            => 'Age must be between 18 and 120',
+            ];
+            if ($error = Validate::check($input, $rules, $messages)) {
+                return $error;
             }
 
-            $success = $chatService->registerUser($username, $sessionId, $ipAddress, $age, $location, $sex);
+            $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+            $success = $chatService->registerUser(
+                (string) $input['username'],
+                (string) $input['sessionId'],
+                $ipAddress,
+                $input['age'] ?? null,
+                $input['location'] ?? null,
+                $input['sex'] ?? null
+            );
 
             if (!$success) {
                 return Response::json(['error' => 'Username is already taken or you are banned.'], 409);

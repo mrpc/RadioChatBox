@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\ChatService;
+use RadioChatBox\Http\Validate;
 use RadioChatBox\StatsService;
 
 /**
@@ -29,12 +30,19 @@ final class HeartbeatController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $username  = $input['username'] ?? '';
-            $sessionId = $input['sessionId'] ?? '';
-
-            if (empty($username) || empty($sessionId)) {
-                throw new InvalidArgumentException('Username and session ID are required');
+            $error = Validate::check($input, [
+                'username'  => 'required',
+                'sessionId' => 'required',
+            ], [
+                'username.required'  => 'Username and session ID are required',
+                'sessionId.required' => 'Username and session ID are required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $username  = (string) $input['username'];
+            $sessionId = (string) $input['sessionId'];
 
             $chatService = new ChatService();
 

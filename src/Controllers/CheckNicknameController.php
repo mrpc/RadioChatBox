@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\ChatService;
+use RadioChatBox\Http\Validate;
 
 /**
  * POST /api/check-nickname — whether a nickname is free for this session.
@@ -26,12 +27,15 @@ final class CheckNicknameController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $nickname  = $input['nickname'] ?? '';
-            $sessionId = $input['sessionId'] ?? '';
-
-            if (empty($nickname)) {
-                throw new InvalidArgumentException('Nickname is required');
+            $error = Validate::check($input, ['nickname' => 'required'], [
+                'nickname.required' => 'Nickname is required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $nickname  = (string) $input['nickname'];
+            $sessionId = $input['sessionId'] ?? '';
 
             $available = (new ChatService())->isNicknameAvailable($nickname, $sessionId);
 
