@@ -162,8 +162,7 @@ class WorkerReloader
         }
 
         try {
-            $stmt = Database::getPDO()->query('SELECT MAX(updated_at) FROM settings');
-            $max = $stmt === false ? null : $stmt->fetchColumn();
+            $max = Database::getDb()->queryBuilder()->from('settings')->max('updated_at');
 
             return (string) ($max ?: 'none');
         } catch (\Throwable) {

@@ -166,15 +166,13 @@ class AdminAuth
             // If not found, look up the identifier in database to get the actual username
             // This handles the case where someone logged in with email instead of username
             try {
-                $db = Database::getPDO();
-                $stmt = $db->prepare("
-                    SELECT username FROM users
-                    WHERE username = :identifier OR email = :identifier
-                    LIMIT 1
-                ");
-                $stmt->execute(['identifier' => $identifier]);
-                $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-                
+                $lookup = Database::getDb()->queryBuilder()
+                    ->from('users')
+                    ->select(['username'])
+                    ->whereRaw('username = %s OR email = %s', [$identifier, $identifier])
+                    ->first();
+                $user = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
+
                 if ($user) {
                     $actualUsername = $user['username'];
                     // Try to get session with the actual username
