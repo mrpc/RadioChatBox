@@ -512,7 +512,7 @@ class ArtworkService
             $nw = max(1, (int)round($w * $scale));
             $nh = max(1, (int)round($h * $scale));
             $dst = imagecreatetruecolor($nw, $nh);
-            imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            \Pramnos\Media\ResizeTools::fastimagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
             @imagejpeg($dst, $dstDisk, 85);
             @chmod($dstDisk, 0644);
             imagedestroy($src);

@@ -367,7 +367,9 @@ class PhotoService
         \imagealphablending($resized, false);
         \imagesavealpha($resized, true);
         
-        \imagecopyresampled(
+        // Framework's quality resampler (multi-step downscaling for sharper
+        // results; alpha-safe). Signature matches imagecopyresampled + quality.
+        \Pramnos\Media\ResizeTools::fastimagecopyresampled(
             $resized, $image,
             0, 0, 0, 0,
             $newWidth, $newHeight,
