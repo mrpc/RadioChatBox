@@ -2005,7 +2005,7 @@ class RadioChatBox {
     // Keep this method as a fallback, but it's no longer polled
     async loadActiveUsers() {
         try {
-            const response = await fetch(`${this.apiUrl}/api/active-users.php`);
+            const response = await fetch(`${this.apiUrl}/api/active-users`);
             const data = await response.json();
 
             if (data.success) {

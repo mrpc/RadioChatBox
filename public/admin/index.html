@@ -6818,7 +6818,7 @@
 
         async function loadUsers() {
             try {
-                const response = await fetch('/api/active-users.php');
+                const response = await fetch('/api/active-users');
                 const data = await response.json();
 
                 if (data.success) {
