@@ -45,3 +45,5 @@ coverage/
 
 # Adminer
 /public/adminer.php
+# PramnosFramework runtime state (locks, daemon orchestrator state, framework logs)
+/var/
