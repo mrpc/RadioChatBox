@@ -2,7 +2,6 @@
 
 namespace RadioChatBox;
 
-use PDO;
 
 /**
  * What the provider itself reports: the remaining balance and the models it
@@ -330,16 +329,12 @@ class LlmAccount
         }
 
         try {
-            $stmt = Database::getPDO()->prepare(
-                'INSERT INTO bot_llm_balance (provider, currency, total_balance, granted_balance, topped_up_balance)
-                 VALUES (:provider, :currency, :total, :granted, :topped_up)'
-            );
-            $stmt->execute([
-                'provider' => $this->provider,
-                'currency' => $balance['currency'],
-                'total' => $balance['total'],
-                'granted' => $balance['granted'],
-                'topped_up' => $balance['topped_up'],
+            Database::getDb()->queryBuilder()->from('bot_llm_balance')->insert([
+                'provider'          => $this->provider,
+                'currency'          => $balance['currency'],
+                'total_balance'     => $balance['total'],
+                'granted_balance'   => $balance['granted'],
+                'topped_up_balance' => $balance['topped_up'],
             ]);
         } catch (\Throwable $e) {
             Log::write('LlmAccount::snapshot failed: ' . $e->getMessage());
@@ -353,9 +348,10 @@ class LlmAccount
     private function snapshotIsDue(): bool
     {
         try {
-            $stmt = Database::getPDO()->prepare('SELECT MAX(created_at) FROM bot_llm_balance WHERE provider = ?');
-            $stmt->execute([$this->provider]);
-            $last = $stmt->fetchColumn();
+            $last = Database::getDb()->queryBuilder()
+                ->from('bot_llm_balance')
+                ->where('provider', '=', $this->provider)
+                ->max('created_at');
         } catch (\Throwable) {
             return false;
         }
@@ -394,17 +390,13 @@ class LlmAccount
         }
 
         try {
-            $stmt = Database::getPDO()->prepare(
-                'SELECT created_at, currency, total_balance
-                 FROM bot_llm_balance
-                 WHERE created_at > NOW() - make_interval(hours => :hours)
-                   AND provider = :provider
-                 ORDER BY created_at ASC'
-            );
-            $stmt->bindValue(':hours', max(1, $hours), PDO::PARAM_INT);
-            $stmt->bindValue(':provider', $this->provider);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $rows = Database::getDb()->queryBuilder()
+                ->from('bot_llm_balance')
+                ->select(['created_at', 'currency', 'total_balance'])
+                ->whereRaw('created_at > NOW() - make_interval(hours => %s)', [max(1, $hours)])
+                ->where('provider', '=', $this->provider)
+                ->orderBy('created_at', 'asc')
+                ->getAll();
         } catch (\Throwable $e) {
             Log::write('LlmAccount::realSpend failed: ' . $e->getMessage());
 
