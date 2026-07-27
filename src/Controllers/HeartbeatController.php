@@ -58,7 +58,7 @@ final class HeartbeatController
             try {
                 (new StatsService())->recordSnapshot();
             } catch (\Exception $e) {
-                error_log('Stats snapshot recording failed: ' . $e->getMessage());
+                \RadioChatBox\Log::write('Stats snapshot recording failed: ' . $e->getMessage());
             }
 
             return Response::json([
@@ -70,7 +70,7 @@ final class HeartbeatController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

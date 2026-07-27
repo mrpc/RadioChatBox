@@ -25,7 +25,7 @@ final class ActiveUsersController
                 'users'   => $users,
             ]);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

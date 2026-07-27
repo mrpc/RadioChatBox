@@ -201,7 +201,7 @@ final class AdminSystemController
                 'schedule_failures'  => count(array_filter($tasks, static fn (array $t): bool => $t['last_status'] === 'failed')),
             ]);
         } catch (\Throwable $e) {
-            error_log('worker-status error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('worker-status error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to read worker status'], 500);
         }
     }
@@ -232,7 +232,7 @@ final class AdminSystemController
                 'users'   => $allUsers,
             ]);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -349,7 +349,7 @@ final class AdminSystemController
                 ],
             ]);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -435,7 +435,7 @@ final class AdminSystemController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log('Admin photos error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('Admin photos error: ' . $e->getMessage());
             return Response::json(['error' => 'Server error'], 500);
         }
     }
@@ -486,7 +486,7 @@ final class AdminSystemController
                 'expires_in'    => 24 * 60 * 60,
             ]);
         } catch (\Throwable $e) {
-            error_log('Error creating session token: ' . $e->getMessage());
+            \RadioChatBox\Log::write('Error creating session token: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to create session token'], 500);
         }
     }
@@ -545,7 +545,7 @@ final class AdminSystemController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

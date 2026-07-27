@@ -379,7 +379,7 @@ final class AdminSettingsController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log("Admin notifications error: " . $e->getMessage());
+            \RadioChatBox\Log::write("Admin notifications error: " . $e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -461,7 +461,7 @@ final class AdminSettingsController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log("Admin notifications error: " . $e->getMessage());
+            \RadioChatBox\Log::write("Admin notifications error: " . $e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -495,7 +495,7 @@ final class AdminSettingsController
                 'message' => "Deleted $count old notification(s)",
             ]);
         } catch (\Throwable $e) {
-            error_log("Admin notifications error: " . $e->getMessage());
+            \RadioChatBox\Log::write("Admin notifications error: " . $e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

@@ -117,7 +117,7 @@ final class AdminStatsController
                 'photos_enabled' => $allowPhotoUploads,
             ]);
         } catch (\Throwable $e) {
-            error_log('Stats retrieval error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('Stats retrieval error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to retrieve stats'], 500);
         }
     }
@@ -171,7 +171,7 @@ final class AdminStatsController
                 'results' => $results,
             ]);
         } catch (\Throwable $e) {
-            error_log('Stats aggregation error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('Stats aggregation error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to aggregate stats'], 500);
         }
     }
@@ -194,7 +194,7 @@ final class AdminStatsController
                 'snapshot' => $snapshot,
             ]);
         } catch (\Throwable $e) {
-            error_log('Stats snapshot error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('Stats snapshot error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to record snapshot'], 500);
         }
     }
@@ -445,7 +445,7 @@ final class AdminStatsController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -601,7 +601,7 @@ final class AdminStatsController
                     return Response::json(['error' => 'Unknown view'], 400);
             }
         } catch (\Throwable $e) {
-            error_log('bot-activity error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('bot-activity error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to load bot activity'], 500);
         }
     }
@@ -664,7 +664,7 @@ final class AdminStatsController
                 'problems'   => $problems,
             ]);
         } catch (\Throwable $e) {
-            error_log('bot-llm-stats error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('bot-llm-stats error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to load bot LLM stats'], 500);
         }
     }

@@ -56,7 +56,7 @@ final class SendController
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 429);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

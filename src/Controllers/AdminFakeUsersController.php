@@ -38,7 +38,7 @@ final class AdminFakeUsersController
                 'fake_users' => $fakeUsers,
             ]);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -60,7 +60,7 @@ final class AdminFakeUsersController
                 'users'   => $fakeUsers, // 'users' (not 'fake_users') for dashboard compatibility
             ]);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -119,10 +119,10 @@ final class AdminFakeUsersController
             if (strpos($e->getMessage(), 'unique') !== false) {
                 return Response::json(['error' => 'Nickname already exists'], 400);
             }
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Database error'], 500);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -174,7 +174,7 @@ final class AdminFakeUsersController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log('update-fake-user error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('update-fake-user error: ' . $e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -248,7 +248,7 @@ final class AdminFakeUsersController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log('update-fake-user-bot error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('update-fake-user-bot error: ' . $e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -288,7 +288,7 @@ final class AdminFakeUsersController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -328,7 +328,7 @@ final class AdminFakeUsersController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -351,7 +351,7 @@ final class AdminFakeUsersController
                 'fake_users' => $fakeUsers,
             ]);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -400,7 +400,7 @@ final class AdminFakeUsersController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log($e->getMessage());
+            \RadioChatBox\Log::write($e->getMessage());
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -449,7 +449,7 @@ final class AdminFakeUsersController
 
             $cleared = (new BotService())->clearHistoryFor($nickname);
 
-            error_log(sprintf(
+            \RadioChatBox\Log::write(sprintf(
                 'Admin %s cleared bot history for %s (%d messages, %d threads)',
                 $currentUser['username'] ?? '?',
                 $nickname,
@@ -465,7 +465,7 @@ final class AdminFakeUsersController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            error_log('clear-fake-user-history error: ' . $e->getMessage());
+            \RadioChatBox\Log::write('clear-fake-user-history error: ' . $e->getMessage());
             return Response::json(['error' => 'Failed to clear the history'], 500);
         }
     }

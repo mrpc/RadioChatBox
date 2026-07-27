@@ -50,7 +50,7 @@ final class UserProfileController
 
             return Response::json(['success' => true, 'profile' => $profile]);
         } catch (\Throwable $e) {
-            error_log('Error fetching user profile: ' . $e->getMessage());
+            \RadioChatBox\Log::write('Error fetching user profile: ' . $e->getMessage());
             return Response::json(['success' => false, 'error' => 'Failed to fetch profile'], 500);
         }
     }
