@@ -10,6 +10,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\BlockService;
 use RadioChatBox\BotService;
 use RadioChatBox\ChatService;
+use RadioChatBox\Http\Validate;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
 use RadioChatBox\PhotoService;
@@ -54,14 +55,30 @@ final class MessageActionController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $messageId = trim($input['message_id'] ?? '');
-            $username  = trim($input['username'] ?? '');
-            $sessionId = trim($input['session_id'] ?? '');
-            $emoji     = $input['emoji'] ?? '';
-
-            if ($messageId === '' || $username === '' || $sessionId === '') {
-                throw new InvalidArgumentException('message_id, username and session_id are required');
+            // Pre-trim so the required rules reject whitespace-only values exactly
+            // as the original === '' checks did.
+            $data = [
+                'message_id' => trim($input['message_id'] ?? ''),
+                'username'   => trim($input['username'] ?? ''),
+                'session_id' => trim($input['session_id'] ?? ''),
+            ];
+            $error = Validate::check($data, [
+                'message_id' => 'required',
+                'username'   => 'required',
+                'session_id' => 'required',
+            ], [
+                'message_id.required' => 'message_id, username and session_id are required',
+                'username.required'   => 'message_id, username and session_id are required',
+                'session_id.required' => 'message_id, username and session_id are required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $messageId = $data['message_id'];
+            $username  = $data['username'];
+            $sessionId = $data['session_id'];
+            $emoji     = $input['emoji'] ?? '';
 
             // Verify the caller owns this session (prevents spoofing reactions as others).
             $chatService = new ChatService();
@@ -120,19 +137,34 @@ final class MessageActionController
         try {
             $input = $_POST;
 
-            $messageId = trim($input['message_id'] ?? '');
-            $newText   = trim($input['message']    ?? '');
-            $username  = trim($input['username']   ?? '');
-            $sessionId = trim($input['sessionId']  ?? '');
-
-            if (empty($messageId) || empty($newText) || empty($username) || empty($sessionId)) {
-                return Response::json(['error' => 'message_id, message, username and sessionId are required'], 400);
+            // Pre-trim so required rejects whitespace-only exactly as the legacy
+            // empty() checks did; max:500 is a string-length limit (same as send).
+            $data = [
+                'message_id' => trim($input['message_id'] ?? ''),
+                'message'    => trim($input['message']    ?? ''),
+                'username'   => trim($input['username']   ?? ''),
+                'sessionId'  => trim($input['sessionId']  ?? ''),
+            ];
+            $error = Validate::check($data, [
+                'message_id' => 'required',
+                'message'    => 'required|max:500',
+                'username'   => 'required',
+                'sessionId'  => 'required',
+            ], [
+                'message_id.required' => 'message_id, message, username and sessionId are required',
+                'message.required'    => 'message_id, message, username and sessionId are required',
+                'username.required'   => 'message_id, message, username and sessionId are required',
+                'sessionId.required'  => 'message_id, message, username and sessionId are required',
+                'message.max'         => 'Message too long (max 500 characters)',
+            ]);
+            if ($error) {
+                return $error;
             }
 
-            // Length validation (same as send.php)
-            if (mb_strlen($newText) > 500) {
-                return Response::json(['error' => 'Message too long (max 500 characters)'], 400);
-            }
+            $messageId = $data['message_id'];
+            $newText   = $data['message'];
+            $username  = $data['username'];
+            $sessionId = $data['sessionId'];
 
             $pdo = Database::getPDO();
 
@@ -244,14 +276,28 @@ final class MessageActionController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $action         = $input['action'] ?? '';
-            $username       = trim($input['username'] ?? '');
-            $sessionId      = trim($input['session_id'] ?? '');
-            $targetUsername = trim($input['target_username'] ?? '');
-
-            if ($username === '' || $sessionId === '' || $targetUsername === '') {
-                throw new InvalidArgumentException('username, session_id and target_username are required');
+            $action = $input['action'] ?? '';
+            $data = [
+                'username'        => trim($input['username'] ?? ''),
+                'session_id'      => trim($input['session_id'] ?? ''),
+                'target_username' => trim($input['target_username'] ?? ''),
+            ];
+            $error = Validate::check($data, [
+                'username'        => 'required',
+                'session_id'      => 'required',
+                'target_username' => 'required',
+            ], [
+                'username.required'        => 'username, session_id and target_username are required',
+                'session_id.required'      => 'username, session_id and target_username are required',
+                'target_username.required' => 'username, session_id and target_username are required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $username       = $data['username'];
+            $sessionId      = $data['session_id'];
+            $targetUsername = $data['target_username'];
 
             // Verify the caller actually owns this session (prevents trivial spoofing).
             if ($chatService->getSessionInfo($username, $sessionId) === null) {
@@ -355,17 +401,26 @@ final class MessageActionController
                 throw new InvalidArgumentException('Invalid JSON');
             }
 
-            $fromUsername  = $input['from_username'] ?? '';
-            $fromSessionId = $input['from_session_id'] ?? '';
-            $toUsername    = $input['to_username'] ?? '';
+            $error = Validate::check($input, [
+                'from_username'   => 'required',
+                'to_username'     => 'required',
+                'from_session_id' => 'required',
+            ], [
+                'from_username.required'   => 'From username, to username, and session ID are required',
+                'to_username.required'     => 'From username, to username, and session ID are required',
+                'from_session_id.required' => 'From username, to username, and session ID are required',
+            ]);
+            if ($error) {
+                return $error;
+            }
+
+            $fromUsername  = $input['from_username'];
+            $fromSessionId = $input['from_session_id'];
+            $toUsername    = $input['to_username'];
             $message       = $input['message'] ?? '';
             $attachmentId  = $input['attachment_id'] ?? null;
 
-            if (empty($fromUsername) || empty($toUsername) || empty($fromSessionId)) {
-                throw new InvalidArgumentException('From username, to username, and session ID are required');
-            }
-
-            // Message is optional if there's an attachment
+            // Message is optional if there's an attachment (cross-field rule).
             if (empty($message) && empty($attachmentId)) {
                 throw new InvalidArgumentException('Either message or attachment is required');
             }

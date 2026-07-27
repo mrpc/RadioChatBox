@@ -2,6 +2,7 @@
 
 namespace RadioChatBox\Controllers;
 
+use RadioChatBox\Http\Validate;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Database;
@@ -48,19 +49,24 @@ final class ProfileController
         $location    = $input['location'] ?? '';
         $displayName = $input['displayName'] ?? null;
 
-        // Validation
-        if (empty($username) || empty($sessionId)) {
-            return Response::json(['success' => false, 'error' => 'Username and session ID are required'], 400);
-        }
-
-        // Validate age
-        if ($age !== null && ($age < 18 || $age > 120)) {
-            return Response::json(['success' => false, 'error' => 'Age must be between 18 and 120'], 400);
-        }
-
-        // Validate sex
-        if (!empty($sex) && !in_array($sex, ['male', 'female'])) {
-            return Response::json(['success' => false, 'error' => 'Invalid sex value'], 400);
+        // Validation (age range compares numerically even for form strings;
+        // sex, when given, must be male/female). Field order sets which message
+        // surfaces as `error`.
+        $error = Validate::check($input, [
+            'username'  => 'required',
+            'sessionId' => 'required',
+            'age'       => 'nullable|integer|min:18|max:120',
+            'sex'       => 'nullable|in:male,female',
+        ], [
+            'username.required'  => 'Username and session ID are required',
+            'sessionId.required' => 'Username and session ID are required',
+            'age.integer'        => 'Age must be between 18 and 120',
+            'age.min'            => 'Age must be between 18 and 120',
+            'age.max'            => 'Age must be between 18 and 120',
+            'sex.in'             => 'Invalid sex value',
+        ]);
+        if ($error) {
+            return $error;
         }
 
         try {
@@ -241,13 +247,20 @@ final class ProfileController
     {
         try {
             // Get form data
-            $username  = $_POST['username'] ?? '';
-            $recipient = $_POST['recipient'] ?? '';
-            $sessionId = $_POST['sessionId'] ?? '';
-
-            if (empty($username) || empty($recipient)) {
-                throw new \InvalidArgumentException('Username and recipient are required');
+            $error = Validate::check($_POST, [
+                'username'  => 'required',
+                'recipient' => 'required',
+            ], [
+                'username.required'  => 'Username and recipient are required',
+                'recipient.required' => 'Username and recipient are required',
+            ]);
+            if ($error) {
+                return $error;
             }
+
+            $username  = $_POST['username'];
+            $recipient = $_POST['recipient'];
+            $sessionId = $_POST['sessionId'] ?? '';
 
             if (!isset($_FILES['photo'])) {
                 throw new \InvalidArgumentException('No photo file provided');
