@@ -186,7 +186,16 @@ old code path.
 
 ---
 
-## Phase 4 — Scheduling (decision documented, low-risk)
+## Phase 4 — Scheduling (decision documented, low-risk) — ✅ IMPLEMENTED
+
+> **As built** (`feat: Phase 4 — cron-fallback schedule`): the in-worker `Scheduler` stays PRIMARY
+> (cron can't do `track_poll`'s 30s cadence). `app/schedule.php` mirrors all 11 tasks via the
+> framework `Scheduler` (each `call()`s `worker.php run-task <name>` — no duplicated logic,
+> `withoutOverlapping()`), driven by `./radiochatbox schedule` → `bin/rcb schedule:run` for hosts
+> that run cron instead of the worker daemon. Verified: `schedule:list` shows all 11 with correct
+> cron expressions; `schedule:run --pretend` reports due tasks. **Use one or the other, never both**
+> (they don't share per-task last-run state). `ScheduleFallbackTest` guards the two lists from
+> drifting. The `track_poll` fallback is every-minute (60s) with that caveat documented.
 
 **Goal.** Bring scheduling under the framework where beneficial, without losing the in-worker
 model's advantages.

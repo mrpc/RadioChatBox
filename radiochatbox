@@ -65,6 +65,13 @@ case "$command" in
         exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php stats-cron.php "$@"
         ;;
 
+    schedule)
+        # Framework cron scheduler (fallback for hosts not running the worker
+        # daemon). Wire to system cron: `* * * * * ./radiochatbox schedule`.
+        # Do NOT use alongside the in-worker scheduler (would double-run).
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bin/rcb schedule:run "$@"
+        ;;
+
     psql)
         exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} postgres psql -U "$DB_USER" -d "$DB_NAME" "$@"
         ;;
