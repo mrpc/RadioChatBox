@@ -671,7 +671,7 @@ class RadioChatBox {
         const el = document.getElementById('now-playing');
         if (!el) return;
         try {
-            const resp = await fetch(`${this.apiUrl}/api/now-playing.php?t=${Date.now()}`, { cache: 'no-cache' });
+            const resp = await fetch(`${this.apiUrl}/api/now-playing?t=${Date.now()}`, { cache: 'no-cache' });
             const data = await resp.json();
             if (data && data.success && data.nowPlaying && data.nowPlaying.active && data.nowPlaying.display) {
                 el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
@@ -714,7 +714,7 @@ class RadioChatBox {
         this._coverKey = key;
         try {
             const params = new URLSearchParams({ artist, title });
-            const resp = await fetch(`${this.apiUrl}/api/artwork.php?${params.toString()}`);
+            const resp = await fetch(`${this.apiUrl}/api/artwork?${params.toString()}`);
             const data = await resp.json();
             // Prefer the album cover; fall back to the artist image when there
             // is no cover.
@@ -999,7 +999,7 @@ class RadioChatBox {
                 registerPayload.sex = sex;
             }
             
-            const registerResponse = await fetch(`${this.apiUrl}/api/register.php`, {
+            const registerResponse = await fetch(`${this.apiUrl}/api/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(registerPayload)
@@ -1281,7 +1281,7 @@ class RadioChatBox {
     async loginAndJoin(username, password) {
         try {
             // Call login API
-            const response = await fetch(`${this.apiUrl}/api/login.php`, {
+            const response = await fetch(`${this.apiUrl}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -1456,7 +1456,7 @@ class RadioChatBox {
         errorDiv.textContent = '';
         
         try {
-            const response = await fetch(`${this.apiUrl}/api/update-profile.php`, {
+            const response = await fetch(`${this.apiUrl}/api/update-profile`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1502,7 +1502,7 @@ class RadioChatBox {
         errorDiv.textContent = '';
         
         try {
-            const response = await fetch(`${this.apiUrl}/api/update-profile.php`, {
+            const response = await fetch(`${this.apiUrl}/api/update-profile`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1555,7 +1555,7 @@ class RadioChatBox {
         // Call logout API to remove session from database
         const sessionId = this.getStorage('chatSessionId');
         if (sessionId) {
-            fetch(`${this.apiUrl}/api/logout.php`, {
+            fetch(`${this.apiUrl}/api/logout`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1911,7 +1911,7 @@ class RadioChatBox {
         try {
             // If in private chat, reload the entire conversation
             if (this.privateChat.active && this.privateChat.withUser) {
-                const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&with_user=${encodeURIComponent(this.privateChat.withUser)}`);
+                const response = await fetch(`${this.apiUrl}/api/private-message?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&with_user=${encodeURIComponent(this.privateChat.withUser)}`);
                 const data = await response.json();
                 
                 if (data.success && data.messages) {
@@ -2129,7 +2129,7 @@ class RadioChatBox {
         
         // Load conversation history
         try {
-            const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&with_user=${encodeURIComponent(username)}`);
+            const response = await fetch(`${this.apiUrl}/api/private-message?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&with_user=${encodeURIComponent(username)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -2261,7 +2261,7 @@ class RadioChatBox {
     /** Fetch block state between the current user and `withUser`. */
     async getBlockState(withUser) {
         try {
-            const resp = await fetch(`${this.apiUrl}/api/block.php?username=${encodeURIComponent(this.username)}&with_user=${encodeURIComponent(withUser)}`);
+            const resp = await fetch(`${this.apiUrl}/api/block?username=${encodeURIComponent(this.username)}&with_user=${encodeURIComponent(withUser)}`);
             const data = await resp.json();
             if (data.success) {
                 return { i_blocked: !!data.i_blocked, is_blocked_between: !!data.is_blocked_between };
@@ -2274,7 +2274,7 @@ class RadioChatBox {
 
     /** POST a block/unblock action. Returns the parsed response. */
     async setBlock(targetUsername, action) {
-        const resp = await fetch(`${this.apiUrl}/api/block.php`, {
+        const resp = await fetch(`${this.apiUrl}/api/block`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2882,7 +2882,7 @@ class RadioChatBox {
         saveBtn.textContent = '…';
 
         try {
-            const response = await fetch('/api/edit-message.php', {
+            const response = await fetch('/api/edit-message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3275,7 +3275,7 @@ class RadioChatBox {
     /** Toggle one of our reactions via the API. */
     async toggleReaction(msgId, emoji) {
         try {
-            const resp = await fetch(`${this.apiUrl}/api/react.php`, {
+            const resp = await fetch(`${this.apiUrl}/api/react`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3628,7 +3628,7 @@ class RadioChatBox {
         try {
             console.log('Sending delete request for message:', messageId); // Debug
             
-            const response = await fetch(`${this.apiUrl}/api/admin/delete-message.php`, {
+            const response = await fetch(`${this.apiUrl}/api/admin/delete-message`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3964,7 +3964,7 @@ class RadioChatBox {
                 payload.message = message;
             }
             
-            const response = await fetch(`${this.apiUrl}/api/private-message.php`, {
+            const response = await fetch(`${this.apiUrl}/api/private-message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -4073,7 +4073,7 @@ class RadioChatBox {
         formData.append('sessionId', this.sessionId);
         
         try {
-            const response = await fetch(`${this.apiUrl}/api/upload-photo.php`, {
+            const response = await fetch(`${this.apiUrl}/api/upload-photo`, {
                 method: 'POST',
                 body: formData
             });
@@ -4122,7 +4122,7 @@ class RadioChatBox {
     
     async loadAllConversations() {
         try {
-            const response = await fetch(`${this.apiUrl}/api/private-message.php?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
+            const response = await fetch(`${this.apiUrl}/api/private-message?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -4673,7 +4673,7 @@ class RadioChatBox {
             preview = RadioChatBox._previewCache[url];
         } else {
             try {
-                const resp = await fetch(`/api/link-preview.php?url=${encodeURIComponent(url)}`);
+                const resp = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
                 if (!resp.ok) {
                     RadioChatBox._previewCache[url] = null;
                     return;

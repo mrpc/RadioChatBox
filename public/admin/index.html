@@ -2103,7 +2103,7 @@
                 const table = document.getElementById('kicked-users-table');
                 table.innerHTML = '<div style="color:#6b7280;padding:20px;">Loading kicked users...</div>';
                 try {
-                    const response = await fetch('/api/admin/list-kicked-users.php', {
+                    const response = await fetch('/api/admin/list-kicked-users', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                     });
                     const data = await response.json();
@@ -3020,7 +3020,7 @@
             
             try {
                 // First, verify admin credentials
-                const adminResponse = await fetch('/api/admin/messages.php?limit=1', {
+                const adminResponse = await fetch('/api/admin/messages?limit=1', {
                     headers: {
                         'Authorization': `Bearer ${credentials}`
                     }
@@ -3038,7 +3038,7 @@
                 // Now authenticate in the chat system and set up chat session
                 const sessionId = 'chat_session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 
-                const loginResponse = await fetch('/api/login.php', {
+                const loginResponse = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -3109,7 +3109,7 @@
 
         async function createAdminSessionToken() {
             try {
-                const response = await fetch('/api/admin/create-session.php', {
+                const response = await fetch('/api/admin/create-session', {
                     method: 'POST',
                     headers: { 
                         'Authorization': `Bearer ${authToken}`
@@ -3789,7 +3789,7 @@
 
         // POST a track-stats action (edit metadata / enrich).
         async function trackStatsPost(payload) {
-            const resp = await fetch('/api/admin/track-stats.php', {
+            const resp = await fetch('/api/admin/track-stats', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -3836,7 +3836,7 @@
             fd.append('id', id);
             fd.append('file', inp.files[0]);
             try {
-                const resp = await fetch('/api/admin/track-artwork-upload.php', {
+                const resp = await fetch('/api/admin/track-artwork-upload', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${authToken}` }, // no Content-Type: browser sets multipart boundary
                     body: fd
@@ -3936,7 +3936,7 @@
         }
 
         async function trackStatsFetch(qs) {
-            const resp = await fetch(`/api/admin/track-stats.php?${qs}`, {
+            const resp = await fetch(`/api/admin/track-stats?${qs}`, {
                 headers: { 'Authorization': `Bearer ${authToken}` }
             });
             const data = await resp.json();
@@ -4358,7 +4358,7 @@
         // Fetch artwork.php and set the given <img> if a URL comes back.
         async function loadDetailCover(qs, field, imgId) {
             try {
-                const resp = await fetch(`/api/artwork.php?${qs}`);
+                const resp = await fetch(`/api/artwork?${qs}`);
                 const data = await resp.json();
                 if (!data || !data.success) return;
                 // Prefer the thumbnail for the small detail image.
@@ -4715,7 +4715,7 @@
             if (!card) return;
 
             try {
-                const response = await fetch('/api/admin/bot-llm-stats.php', {
+                const response = await fetch('/api/admin/bot-llm-stats', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -4781,7 +4781,7 @@
                 
                 // Load active users count (real users only)
                 try {
-                    const usersResponse = await fetch('/api/admin/active-users.php', {
+                    const usersResponse = await fetch('/api/admin/active-users', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                     });
                     if (usersResponse.ok) {
@@ -4800,7 +4800,7 @@
                 
                 // Load today's stats from summary
                 try {
-                    const statsResponse = await fetch('/api/admin/stats.php?granularity=summary', {
+                    const statsResponse = await fetch('/api/admin/stats?granularity=summary', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                     });
                     if (statsResponse.ok) {
@@ -4818,7 +4818,7 @@
                 
                 // Load messages for recent messages dashboard
                 try {
-                    const messagesResponse = await fetch('/api/admin/messages.php?limit=100', {
+                    const messagesResponse = await fetch('/api/admin/messages?limit=100', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                     });
                     if (messagesResponse.ok) {
@@ -4839,7 +4839,7 @@
                 
                 // Load fake users
                 try {
-                    const fakeUsersResponse = await fetch('/api/admin/fake-users.php', {
+                    const fakeUsersResponse = await fetch('/api/admin/fake-users', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                     });
                     if (fakeUsersResponse.ok) {
@@ -4855,7 +4855,7 @@
                 
                 // Load IP bans
                 try {
-                    const bansResponse = await fetch('/api/admin/ban-ip.php', {
+                    const bansResponse = await fetch('/api/admin/ban-ip', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                     });
                     if (bansResponse.ok) {
@@ -4870,7 +4870,7 @@
                 
                 // Load radio status (Shoutcast listeners)
                 try {
-                    const radioResponse = await fetch('/api/now-playing.php');
+                    const radioResponse = await fetch('/api/now-playing');
                     if (radioResponse.ok) {
                         const radioData = await radioResponse.json();
                         const kpiListenersCard = document.getElementById('kpi-listeners-card');
@@ -5056,7 +5056,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin/clear-chat.php', {
+                const response = await fetch('/api/admin/clear-chat', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
@@ -5081,7 +5081,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin/clear-messages-cache.php', {
+                const response = await fetch('/api/admin/clear-messages-cache', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
@@ -5107,7 +5107,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin/flush-redis.php', {
+                const response = await fetch('/api/admin/flush-redis', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
@@ -5134,7 +5134,7 @@
                 const filterDropdown = document.getElementById('message-type-filter');
                 const filter = filterDropdown ? filterDropdown.value : 'all';
                 
-                const response = await fetch(`/api/admin/messages.php?page=${page}&limit=20&type=${filter}`, {
+                const response = await fetch(`/api/admin/messages?page=${page}&limit=20&type=${filter}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -5213,7 +5213,7 @@
 
         async function loadIPBans() {
             try {
-                const response = await fetch('/api/admin/ban-ip.php', {
+                const response = await fetch('/api/admin/ban-ip', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -5253,7 +5253,7 @@
 
         async function loadNicknameBans() {
             try {
-                const response = await fetch('/api/admin/ban-nickname.php', {
+                const response = await fetch('/api/admin/ban-nickname', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -5552,7 +5552,7 @@
         // Download every fake user (profile + bot settings) as a JSON file.
         async function exportFakeUsers() {
             try {
-                const response = await fetch('/api/admin/export-fake-users.php', {
+                const response = await fetch('/api/admin/export-fake-users', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -5599,7 +5599,7 @@
                 : { ...parsed, update_existing: updateExisting };
 
             try {
-                const response = await fetch('/api/admin/import-fake-users.php', {
+                const response = await fetch('/api/admin/import-fake-users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                     body: JSON.stringify(body)
@@ -5754,7 +5754,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/add-fake-user.php', {
+                const response = await fetch('/api/admin/add-fake-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -5788,7 +5788,7 @@
 
         async function toggleFakeUser(id) {
             try {
-                const response = await fetch('/api/admin/toggle-fake-user.php', {
+                const response = await fetch('/api/admin/toggle-fake-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -5816,7 +5816,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/delete-fake-user.php', {
+                const response = await fetch('/api/admin/delete-fake-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -5845,7 +5845,7 @@
 
         function botActivityFetch(params) {
             const query = new URLSearchParams(params).toString();
-            return fetch(`/api/admin/bot-activity.php?${query}`, {
+            return fetch(`/api/admin/bot-activity?${query}`, {
                 headers: { 'Authorization': `Bearer ${authToken}` }
             }).then(r => r.json());
         }
@@ -5861,7 +5861,7 @@
             if (!value || !detail) return;
 
             try {
-                const response = await fetch('/api/admin/worker-status.php', {
+                const response = await fetch('/api/admin/worker-status', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -6262,7 +6262,7 @@
         // take/release/reset/force on a bot conversation, by fake user + peer.
         async function botConversationAction(fakeUser, peer, action) {
             try {
-                const res = await fetch('/api/admin/impersonate-bot.php', {
+                const res = await fetch('/api/admin/impersonate-bot', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                     body: JSON.stringify({ fake_user: fakeUser, peer, action })
@@ -6520,7 +6520,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/update-fake-user.php', {
+                const response = await fetch('/api/admin/update-fake-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6585,7 +6585,7 @@
             // would silently do nothing - and show the inherited goodbye list
             // as the placeholder.
             try {
-                const response = await fetch('/api/admin/settings.php', {
+                const response = await fetch('/api/admin/settings', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -6624,7 +6624,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/clear-fake-user-history.php', {
+                const response = await fetch('/api/admin/clear-fake-user-history', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6668,7 +6668,7 @@
             };
 
             try {
-                const response = await fetch('/api/admin/update-fake-user-bot.php', {
+                const response = await fetch('/api/admin/update-fake-user-bot', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6697,7 +6697,7 @@
             const duration = document.getElementById('ban-ip-duration').value;
 
             try {
-                const response = await fetch('/api/admin/ban-ip.php', {
+                const response = await fetch('/api/admin/ban-ip', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6730,7 +6730,7 @@
             if (!confirm(`Unban IP ${ipAddress}?`)) return;
 
             try {
-                const response = await fetch('/api/admin/ban-ip.php', {
+                const response = await fetch('/api/admin/ban-ip', {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6757,7 +6757,7 @@
             const reason = document.getElementById('ban-nickname-reason').value;
 
             try {
-                const response = await fetch('/api/admin/ban-nickname.php', {
+                const response = await fetch('/api/admin/ban-nickname', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6788,7 +6788,7 @@
             if (!confirm(`Unban nickname "${nickname}"?`)) return;
 
             try {
-                const response = await fetch('/api/admin/ban-nickname.php', {
+                const response = await fetch('/api/admin/ban-nickname', {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -6863,7 +6863,7 @@
 
         async function viewUserDetails(username, page = 1, search = '') {
             try {
-                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10&search=${encodeURIComponent(search)}`, {
+                const response = await fetch(`/api/admin/user-details?username=${encodeURIComponent(username)}&page=${page}&limit=10&search=${encodeURIComponent(search)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -7028,7 +7028,7 @@
 
         async function viewInactiveUserDetails(username, page = 1, search = '') {
             try {
-                const response = await fetch(`/api/admin/user-details.php?username=${encodeURIComponent(username)}&page=${page}&limit=10&search=${encodeURIComponent(search)}`, {
+                const response = await fetch(`/api/admin/user-details?username=${encodeURIComponent(username)}&page=${page}&limit=10&search=${encodeURIComponent(search)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -7262,7 +7262,7 @@
             const box = document.getElementById('feed-capabilities');
             box.innerHTML = 'Checking…';
             try {
-                const resp = await fetch(`/api/now-playing.php?t=${Date.now()}`, { cache: 'no-cache' });
+                const resp = await fetch(`/api/now-playing?t=${Date.now()}`, { cache: 'no-cache' });
                 const data = await resp.json();
                 const np = data.nowPlaying || {};
                 if (!np.active) {
@@ -7337,7 +7337,7 @@
 
         async function loadSettings() {
             try {
-                const response = await fetch('/api/admin/settings.php', {
+                const response = await fetch('/api/admin/settings', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -7686,7 +7686,7 @@
                 formData.append('logo', file);
                 formData.append('type', type);
                 
-                const response = await fetch('/api/admin/upload-logo.php', {
+                const response = await fetch('/api/admin/upload-logo', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -7821,7 +7821,7 @@
             };
 
             try {
-                const response = await fetch('/api/admin/settings.php', {
+                const response = await fetch('/api/admin/settings', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -7880,7 +7880,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin/kick-user.php', {
+                const response = await fetch('/api/admin/kick-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -7905,7 +7905,7 @@
         
         async function loadInactiveUsers(page = 1) {
             try {
-                const response = await fetch(`/api/admin/inactive-users.php?page=${page}&limit=20`, {
+                const response = await fetch(`/api/admin/inactive-users?page=${page}&limit=20`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -7958,7 +7958,7 @@
         
         async function loadUrlWhitelist() {
             try {
-                const response = await fetch('/api/admin/url-whitelist.php', {
+                const response = await fetch('/api/admin/url-whitelist', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8009,7 +8009,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin/url-whitelist.php', {
+                const response = await fetch('/api/admin/url-whitelist', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -8038,7 +8038,7 @@
             }
             
             try {
-                const response = await fetch(`/api/admin/url-whitelist.php?id=${id}`, {
+                const response = await fetch(`/api/admin/url-whitelist?id=${id}`, {
                     method: 'DELETE',
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -8059,7 +8059,7 @@
         
         async function loadUrlBlacklist() {
             try {
-                const response = await fetch('/api/admin/url-blacklist.php', {
+                const response = await fetch('/api/admin/url-blacklist', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8110,7 +8110,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin/url-blacklist.php', {
+                const response = await fetch('/api/admin/url-blacklist', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -8139,7 +8139,7 @@
             }
             
             try {
-                const response = await fetch(`/api/admin/url-blacklist.php?id=${id}`, {
+                const response = await fetch(`/api/admin/url-blacklist?id=${id}`, {
                     method: 'DELETE',
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -8162,7 +8162,7 @@
         async function emptyPhotoTrash() {
             if (!confirm('Permanently delete every photo in the trash? This removes the files and cannot be undone.')) return;
             try {
-                const response = await fetch('/api/admin/photos.php', {
+                const response = await fetch('/api/admin/photos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                     body: JSON.stringify({ action: 'empty_trash' })
@@ -8204,7 +8204,7 @@
         async function loadPhotos(page = 1) {
             try {
                 const includeDeleted = document.getElementById('photos-show-deleted')?.checked ? 1 : 0;
-                const response = await fetch(`/api/admin/photos.php?action=list&page=${page}&limit=20&include_deleted=${includeDeleted}`, {
+                const response = await fetch(`/api/admin/photos?action=list&page=${page}&limit=20&include_deleted=${includeDeleted}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8264,7 +8264,7 @@
 
         async function loadPhotosByUser(username) {
             try {
-                const response = await fetch(`/api/admin/photos.php?action=by_user&username=${encodeURIComponent(username)}`, {
+                const response = await fetch(`/api/admin/photos?action=by_user&username=${encodeURIComponent(username)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8392,7 +8392,7 @@
 
         async function loadCurrentUser() {
             try {
-                const response = await fetch('/api/admin/current-user.php', {
+                const response = await fetch('/api/admin/current-user', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8567,7 +8567,7 @@
 
         async function loadAdminUsers() {
             try {
-                const response = await fetch('/api/admin/users.php?include_inactive=true', {
+                const response = await fetch('/api/admin/users?include_inactive=true', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8649,7 +8649,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/create-user.php', {
+                const response = await fetch('/api/admin/create-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -8682,7 +8682,7 @@
 
         async function editAdminUser(userId) {
             try {
-                const response = await fetch('/api/admin/users.php', {
+                const response = await fetch('/api/admin/users', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -8781,7 +8781,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/update-user.php', {
+                const response = await fetch('/api/admin/update-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -8820,7 +8820,7 @@
             }
 
             try {
-                const response = await fetch('/api/admin/delete-user.php', {
+                const response = await fetch('/api/admin/delete-user', {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -9273,7 +9273,7 @@
             formData.append('sessionId', 'fake_' + md5(currentImpersonateAs));
 
             try {
-                const response = await fetch('/api/upload-photo.php', {
+                const response = await fetch('/api/upload-photo', {
                     method: 'POST',
                     body: formData
                 });
@@ -9303,7 +9303,7 @@
 
         async function refreshImpersonateConversations() {
             try {
-                const response = await fetch('/api/admin/impersonate-conversations.php', {
+                const response = await fetch('/api/admin/impersonate-conversations', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -9563,7 +9563,7 @@
         // including replies that are already queued or generated.
         async function takeOverImpersonateBot(fakeUser, senderUsername) {
             try {
-                const resp = await fetch('/api/admin/impersonate-bot.php', {
+                const resp = await fetch('/api/admin/impersonate-bot', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -9590,7 +9590,7 @@
             if (!confirm(message)) return;
 
             try {
-                const resp = await fetch('/api/admin/impersonate-bot.php', {
+                const resp = await fetch('/api/admin/impersonate-bot', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -9671,7 +9671,7 @@
             if (!btn) return;
             btn.style.display = 'none';
             try {
-                const resp = await fetch(`/api/admin/impersonate-block.php?impersonate_as=${encodeURIComponent(fakeUser)}&to_username=${encodeURIComponent(senderUsername)}`, {
+                const resp = await fetch(`/api/admin/impersonate-block?impersonate_as=${encodeURIComponent(fakeUser)}&to_username=${encodeURIComponent(senderUsername)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await resp.json();
@@ -9694,7 +9694,7 @@
                 return;
             }
             try {
-                const resp = await fetch('/api/admin/impersonate-block.php', {
+                const resp = await fetch('/api/admin/impersonate-block', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action, impersonate_as: currentImpersonateAs, to_username: currentSender })
@@ -9751,7 +9751,7 @@
 
             // Load full conversation - get ALL messages with admin=true parameter
             try {
-                const response = await fetch(`/api/private-message.php?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}&admin=true`, {
+                const response = await fetch(`/api/private-message?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}&admin=true`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -9858,7 +9858,7 @@
                     requestBody.attachment_id = impersonatePhotoAttachmentId;
                 }
 
-                const response = await fetch('/api/admin/impersonate-send.php', {
+                const response = await fetch('/api/admin/impersonate-send', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -10730,7 +10730,7 @@
         
         async function fetchStatsData(granularity, params = {}) {
             const queryString = new URLSearchParams(params).toString();
-            const url = `/api/admin/stats.php?granularity=${granularity}&${queryString}`;
+            const url = `/api/admin/stats?granularity=${granularity}&${queryString}`;
             
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${authToken}` }
@@ -10776,7 +10776,7 @@
                 if (unreadOnly) params.append('unread_only', 'true');
                 if (type) params.append('type', type);
 
-                const response = await fetch(`/api/admin/notifications.php?${params.toString()}`, {
+                const response = await fetch(`/api/admin/notifications?${params.toString()}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
 
@@ -10889,7 +10889,7 @@
 
         async function markNotificationRead(notificationId) {
             try {
-                const response = await fetch('/api/admin/notifications.php', {
+                const response = await fetch('/api/admin/notifications', {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -10910,7 +10910,7 @@
             if (!confirm('Mark all notifications as read?')) return;
 
             try {
-                const response = await fetch('/api/admin/notifications.php', {
+                const response = await fetch('/api/admin/notifications', {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -10936,7 +10936,7 @@
             if (!confirm('Delete all read notifications? This action cannot be undone.')) return;
 
             try {
-                const response = await fetch('/api/admin/notifications.php', {
+                const response = await fetch('/api/admin/notifications', {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
