@@ -134,7 +134,16 @@ change. `schemaversion` is inert if unused.
 
 ---
 
-## Phase 3 — Daemon orchestrator (framework replaces `DaemonSupervisor`)
+## Phase 3 — Daemon orchestrator (framework replaces `DaemonSupervisor`) — ✅ IMPLEMENTED
+
+> **As built** (`feat: Phase 3 — daemon orchestrator`): `RadioChatBox\Console\RadioChatBoxDaemons`
+> (subclass of `DaemonOrchestrator`) is registered as `daemons:start` in `bin/rcb` and supervises
+> the existing `worker.php` via a shell command (no worker changes). `./radiochatbox daemons`
+> drives it (`daemon` still runs the legacy `daemon.php` for BC). **Live chaos test passed** in the
+> container: spawn; healthy reconcile with no duplicate; crash → respawn (cleanup one cycle, restart
+> the next — ~1 interval, as before); graceful stop via the `.stop` sentinel; and the flock
+> singleton guard ("Another orchestrator instance is already running"). Git-HEAD redeploy restart is
+> framework-provided (parses `.git/HEAD` every 60s) and not separately live-tested.
 
 **Goal.** Supervise the worker with `Pramnos\Console\DaemonOrchestrator` — gaining crash respawn,
 heartbeat-staleness restart, `/proc` dedup, graceful `.stop`, singleton guard, git-HEAD redeploy

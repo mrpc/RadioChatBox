@@ -49,7 +49,16 @@ case "$command" in
         ;;
 
     daemon)
+        # Legacy supervisor (kept for BC). New deployments use `daemons` below.
         exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php daemon.php "$@"
+        ;;
+
+    daemons)
+        # PramnosFramework daemon orchestrator (supervises the worker): crash
+        # respawn, graceful stop, singleton guard, redeploy restart.
+        #   ./radiochatbox daemons            run the reconcile loop
+        #   ./radiochatbox daemons --once     one reconciliation cycle
+        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bin/rcb daemons:start "$@"
         ;;
 
     stats)
