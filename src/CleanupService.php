@@ -5,17 +5,17 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 class CleanupService
 {
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private \Redis $redis;
     private string $prefix;
 
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->redis = Database::getRedis();
         $this->prefix = Database::getRedisPrefix();
     }
@@ -26,22 +26,21 @@ class CleanupService
     public function cleanupExpiredBans(): int
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'DELETE FROM banned_ips 
-                 WHERE banned_until IS NOT NULL 
-                 AND banned_until < NOW()'
-            );
-            $stmt->execute();
-            $count = $stmt->rowCount();
-            
+            $result = $this->db->queryBuilder()
+                ->from('banned_ips')
+                ->whereNotNull('banned_until')
+                ->whereRaw('banned_until < NOW()')
+                ->delete();
+            $count = $result ? $result->getAffectedRows() : 0;
+
             // Invalidate cache if any bans were removed
             if ($count > 0) {
                 $this->redis->del($this->prefix . 'banned_ips');
                 Log::write("Cleanup: Removed {$count} expired IP bans");
             }
-            
+
             return $count;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to cleanup expired bans: " . $e->getMessage());
             return 0;
         }
@@ -53,19 +52,18 @@ class CleanupService
     public function cleanupStaleSessions(): int
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'DELETE FROM sessions 
-                 WHERE last_heartbeat < NOW() - INTERVAL \'5 minutes\''
-            );
-            $stmt->execute();
-            $count = $stmt->rowCount();
-            
+            $result = $this->db->queryBuilder()
+                ->from('sessions')
+                ->whereRaw("last_heartbeat < NOW() - INTERVAL '5 minutes'")
+                ->delete();
+            $count = $result ? $result->getAffectedRows() : 0;
+
             if ($count > 0) {
                 Log::write("Cleanup: Removed {$count} stale sessions");
             }
-            
+
             return $count;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to cleanup stale sessions: " . $e->getMessage());
             return 0;
         }
@@ -77,24 +75,22 @@ class CleanupService
     public function purgeOldDeletedMessages(int $daysOld = 30): int
     {
         try {
-            $stmt = $this->pdo->prepare(
-                // INTERVAL :days DAY is not parameterisable in PostgreSQL - it parses
-                // as a literal, so every run failed with a syntax error and the purge
-                // silently never happened. make_interval() takes a real parameter.
-                'DELETE FROM messages
-                 WHERE is_deleted = TRUE
-                 AND created_at < NOW() - make_interval(days => :days)'
-            );
-            $stmt->bindValue(':days', $daysOld, PDO::PARAM_INT);
-            $stmt->execute();
-            $count = $stmt->rowCount();
-            
+            // INTERVAL :days DAY is not parameterisable in PostgreSQL - it parses
+            // as a literal, so every run failed with a syntax error and the purge
+            // silently never happened. make_interval() takes a real parameter.
+            $result = $this->db->queryBuilder()
+                ->from('messages')
+                ->whereRaw('is_deleted = TRUE')
+                ->whereRaw('created_at < NOW() - make_interval(days => %s)', [$daysOld])
+                ->delete();
+            $count = $result ? $result->getAffectedRows() : 0;
+
             if ($count > 0) {
                 Log::write("Cleanup: Purged {$count} old deleted messages (>{$daysOld} days)");
             }
-            
+
             return $count;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to purge deleted messages: " . $e->getMessage());
             return 0;
         }
@@ -110,33 +106,32 @@ class CleanupService
             // First, ensure archive table exists
             $this->createArchiveTableIfNeeded();
             
-            // Move old messages to archive
-            $stmt = $this->pdo->prepare(
+            // Move old messages to archive. INSERT ... SELECT ... ON CONFLICT is
+            // not expressible via the QueryBuilder's value-based insert, so it
+            // stays a verbatim prepared statement.
+            $result = $this->db->preparedQuery(
                 'INSERT INTO messages_archive
                  SELECT * FROM messages
                  WHERE created_at < NOW() - make_interval(days => :days)
                  AND is_deleted = FALSE
-                 ON CONFLICT (message_id) DO NOTHING'
+                 ON CONFLICT (message_id) DO NOTHING',
+                ['days' => $daysOld]
             );
-            $stmt->bindValue(':days', $daysOld, PDO::PARAM_INT);
-            $stmt->execute();
-            $archived = $stmt->rowCount();
-            
+            $archived = $result ? $result->getAffectedRows() : 0;
+
             // Delete from main table
             if ($archived > 0) {
-                $stmt = $this->pdo->prepare(
-                    'DELETE FROM messages
-                     WHERE created_at < NOW() - make_interval(days => :days)
-                     AND is_deleted = FALSE'
-                );
-                $stmt->bindValue(':days', $daysOld, PDO::PARAM_INT);
-                $stmt->execute();
-                
+                $this->db->queryBuilder()
+                    ->from('messages')
+                    ->whereRaw('created_at < NOW() - make_interval(days => %s)', [$daysOld])
+                    ->whereRaw('is_deleted = FALSE')
+                    ->delete();
+
                 Log::write("Cleanup: Archived {$archived} old messages (>{$daysOld} days)");
             }
-            
+
             return $archived;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to archive old messages: " . $e->getMessage());
             return 0;
         }
@@ -164,16 +159,17 @@ class CleanupService
     public function cleanupExpiredDmBlocks(): int
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'DELETE FROM dm_blocks WHERE expires_at IS NOT NULL AND expires_at < NOW()'
-            );
-            $stmt->execute();
-            $count = $stmt->rowCount();
+            $result = $this->db->queryBuilder()
+                ->from('dm_blocks')
+                ->whereNotNull('expires_at')
+                ->whereRaw('expires_at < NOW()')
+                ->delete();
+            $count = $result ? $result->getAffectedRows() : 0;
             if ($count > 0) {
                 Log::write("Cleanup: Removed {$count} expired DM blocks");
             }
             return $count;
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write("Failed to cleanup expired DM blocks: " . $e->getMessage());
             return 0;
         }
@@ -198,7 +194,7 @@ class CleanupService
      */
     private function createArchiveTableIfNeeded(): void
     {
-        $this->pdo->exec('
+        $this->db->statement('
             CREATE TABLE IF NOT EXISTS messages_archive (
                 LIKE messages INCLUDING ALL
             )
