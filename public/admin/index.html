@@ -3363,7 +3363,7 @@
 
             try {
                 const fakeSessionId = 'fake_' + md5(fakeUser);
-                const url = `/api/stream.php?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}&admin=true`;
+                const url = `/api/stream?username=${encodeURIComponent(fakeUser)}&with_user=${encodeURIComponent(senderUsername)}&session_id=${encodeURIComponent(fakeSessionId)}&admin=true`;
                 
                 impersonateChatEventSource = new EventSource(url);
 

@@ -1767,7 +1767,7 @@ class RadioChatBox {
         this.updateStatus('connecting', 'Connecting...');
 
         try {
-            this.eventSource = new EventSource(`${this.apiUrl}/api/stream.php?username=${encodeURIComponent(this.username)}`);
+            this.eventSource = new EventSource(`${this.apiUrl}/api/stream?username=${encodeURIComponent(this.username)}`);
 
             this.eventSource.addEventListener('open', () => {
                 this.updateStatus('connected', 'Connected');

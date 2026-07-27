@@ -20,6 +20,7 @@ declare(strict_types=1);
 use Pramnos\Application\Container;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use Pramnos\Http\StreamedResponse;
 use Pramnos\Http\Middleware\CorsMiddleware;
 use Pramnos\Http\Middleware\JsonResponseMiddleware;
 use Pramnos\Routing\Router;
@@ -63,7 +64,9 @@ try {
     return;
 }
 
-if ($response instanceof Response) {
+if ($response instanceof Response || $response instanceof StreamedResponse) {
+    // StreamedResponse (SSE) streams for the life of the request inside send();
+    // a buffered Response sends once. Both expose send().
     $response->send();
     return;
 }
