@@ -3554,7 +3554,7 @@ class RadioChatBox {
                     messagePayload.pinned_track = this.currentTrack;
                 }
 
-                const response = await fetch(`${this.apiUrl}/api/send.php`, {
+                const response = await fetch(`${this.apiUrl}/api/send`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -4610,7 +4610,7 @@ class RadioChatBox {
             session_id: this.sessionId
         };
 
-        fetch('api/send.php', {
+        fetch('api/send', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
