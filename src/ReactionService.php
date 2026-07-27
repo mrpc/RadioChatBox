@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * Emoji reactions on public chat messages.
@@ -14,7 +14,7 @@ use PDO;
 class ReactionService
 {
     private \Redis $redis;
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private string $prefix;
 
     /** Redis pub/sub channel reused for real-time chat updates. */
@@ -26,7 +26,7 @@ class ReactionService
     public function __construct()
     {
         $this->redis = Database::getRedis();
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->prefix = Database::getRedisPrefix();
     }
 
@@ -65,33 +65,46 @@ class ReactionService
         }
 
         // A user has at most one reaction per message. Look up their current one.
-        $stmt = $this->pdo->prepare(
-            'SELECT id, emoji FROM message_reactions
-             WHERE message_id = :m AND LOWER(username) = LOWER(:u)'
-        );
-        $stmt->execute(['m' => $messageId, 'u' => $username]);
-        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+        $lookup = $this->db->queryBuilder()
+            ->from('message_reactions')
+            ->select(['id', 'emoji'])
+            ->where('message_id', '=', $messageId)
+            ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
+            ->first();
+        $existing = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
 
         if ($existing !== false && $existing['emoji'] === $emoji) {
             // Same emoji again → remove (toggle off).
-            $del = $this->pdo->prepare('DELETE FROM message_reactions WHERE id = :id');
-            $del->execute(['id' => $existing['id']]);
+            $this->db->queryBuilder()
+                ->from('message_reactions')
+                ->where('id', '=', $existing['id'])
+                ->delete();
             $action = 'removed';
         } elseif ($existing !== false) {
             // Different emoji → replace the existing reaction.
-            $upd = $this->pdo->prepare(
-                'UPDATE message_reactions SET emoji = :e, session_id = :s, created_at = NOW() WHERE id = :id'
-            );
-            $upd->execute(['e' => $emoji, 's' => $sessionId, 'id' => $existing['id']]);
+            $qb = $this->db->queryBuilder()->from('message_reactions');
+            $qb->where('id', '=', $existing['id'])->update([
+                'emoji'      => $emoji,
+                'session_id' => $sessionId,
+                'created_at' => $qb->raw('NOW()'),
+            ]);
             $action = 'changed';
         } else {
-            // No reaction yet → add one.
-            $ins = $this->pdo->prepare(
-                'INSERT INTO message_reactions (message_id, username, session_id, emoji)
-                 VALUES (:m, :u, :s, :e)
-                 ON CONFLICT (message_id, username) DO UPDATE SET emoji = EXCLUDED.emoji, created_at = NOW()'
+            // No reaction yet → add one. The ON CONFLICT branch is a race safety
+            // net; created_at is written on both insert and conflict-update so
+            // EXCLUDED.created_at carries NOW() forward (session_id is not).
+            $qb = $this->db->queryBuilder()->from('message_reactions');
+            $qb->upsert(
+                [
+                    'message_id' => $messageId,
+                    'username'   => $username,
+                    'session_id' => $sessionId,
+                    'emoji'      => $emoji,
+                    'created_at' => $qb->raw('NOW()'),
+                ],
+                ['message_id', 'username'],
+                ['emoji', 'created_at']
             );
-            $ins->execute(['m' => $messageId, 'u' => $username, 's' => $sessionId, 'e' => $emoji]);
             $action = 'added';
         }
 
@@ -144,22 +157,19 @@ class ReactionService
             return $messages;
         }
 
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-
         // Counts per (message_id, emoji).
         $counts = [];
         try {
-            $stmt = $this->pdo->prepare(
-                "SELECT message_id, emoji, COUNT(*) AS cnt
-                 FROM message_reactions
-                 WHERE message_id IN ($placeholders)
-                 GROUP BY message_id, emoji"
-            );
-            $stmt->execute($ids);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $rows = $this->db->queryBuilder()
+                ->from('message_reactions')
+                ->select(['message_id', 'emoji', 'COUNT(*) AS cnt'])
+                ->whereIn('message_id', $ids)
+                ->groupBy(['message_id', 'emoji'])
+                ->getAll();
+            foreach ($rows as $row) {
                 $counts[$row['message_id']][$row['emoji']] = (int)$row['cnt'];
             }
-        } catch (\PDOException $e) {
+        } catch (\Throwable $e) {
             Log::write('ReactionService::attachToMessages counts failed: ' . $e->getMessage());
         }
 
@@ -167,17 +177,16 @@ class ReactionService
         $mine = [];
         if ($username !== null && $username !== '') {
             try {
-                $params = $ids;
-                $params[] = $username;
-                $stmt = $this->pdo->prepare(
-                    "SELECT message_id, emoji FROM message_reactions
-                     WHERE message_id IN ($placeholders) AND LOWER(username) = LOWER(?)"
-                );
-                $stmt->execute($params);
-                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $rows = $this->db->queryBuilder()
+                    ->from('message_reactions')
+                    ->select(['message_id', 'emoji'])
+                    ->whereIn('message_id', $ids)
+                    ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
+                    ->getAll();
+                foreach ($rows as $row) {
                     $mine[$row['message_id']][$row['emoji']] = true;
                 }
-            } catch (\PDOException $e) {
+            } catch (\Throwable $e) {
                 Log::write('ReactionService::attachToMessages mine failed: ' . $e->getMessage());
             }
         }
@@ -220,10 +229,11 @@ class ReactionService
     private function messageExists(string $messageId): bool
     {
         try {
-            $stmt = $this->pdo->prepare('SELECT 1 FROM messages WHERE message_id = :m LIMIT 1');
-            $stmt->execute(['m' => $messageId]);
-            return $stmt->fetchColumn() !== false;
-        } catch (\PDOException $e) {
+            return $this->db->queryBuilder()
+                ->from('messages')
+                ->where('message_id', '=', $messageId)
+                ->exists();
+        } catch (\Throwable $e) {
             Log::write('ReactionService::messageExists failed: ' . $e->getMessage());
             return false;
         }
