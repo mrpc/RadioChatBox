@@ -1939,7 +1939,7 @@ class RadioChatBox {
                 }
             } else {
                 // Fetch missed public messages
-                const response = await fetch(`${this.apiUrl}/api/history.php?username=${encodeURIComponent(this.username)}`);
+                const response = await fetch(`${this.apiUrl}/api/history?username=${encodeURIComponent(this.username)}`);
                 const data = await response.json();
                 
                 if (data.success && data.messages) {
@@ -2357,7 +2357,7 @@ class RadioChatBox {
     async loadPublicMessages() {
         try {
             console.log('[loadPublicMessages] Starting...');
-            const response = await fetch(`${this.apiUrl}/api/history.php?username=${encodeURIComponent(this.username)}`);
+            const response = await fetch(`${this.apiUrl}/api/history?username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -2520,7 +2520,7 @@ class RadioChatBox {
     async reloadHistory() {
         // Fetch fresh history from server
         try {
-            const response = await fetch(`${this.apiUrl}/api/history.php?username=${encodeURIComponent(this.username)}`);
+            const response = await fetch(`${this.apiUrl}/api/history?username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (data.success && data.messages) {
@@ -2562,7 +2562,7 @@ class RadioChatBox {
                 }
             }
             
-            const response = await fetch(`${this.apiUrl}/api/history.php?offset=${offset}&limit=${limit}&username=${encodeURIComponent(this.username)}`);
+            const response = await fetch(`${this.apiUrl}/api/history?offset=${offset}&limit=${limit}&username=${encodeURIComponent(this.username)}`);
             const data = await response.json();
             
             if (!data.success || !data.messages || data.messages.length === 0) {
