@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * Periodic maintenance, run by the bot worker instead of by crontab entries.
@@ -92,7 +92,7 @@ class Scheduler
         ],
     ];
 
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private SettingsService $settings;
 
     /** @var array<string,callable>|null Injected runners, for tests */
@@ -110,7 +110,7 @@ class Scheduler
         ?array $runners = null,
         ?callable $clock = null
     ) {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->settings = $settings ?? new SettingsService();
         $this->runners = $runners;
         $this->clock = $clock ?? static fn (): int => time();
@@ -165,8 +165,7 @@ class Scheduler
      */
     public function state(): array
     {
-        $stmt = $this->pdo->query('SELECT * FROM scheduled_tasks');
-        $rows = $stmt === false ? [] : $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $this->db->queryBuilder()->from('scheduled_tasks')->getAll();
 
         $state = [];
         foreach ($rows as $row) {
@@ -322,24 +321,30 @@ class Scheduler
     private function record(string $name, string $status, int $durationMs, ?string $error): void
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'INSERT INTO scheduled_tasks (task, last_run_at, last_status, last_duration_ms, last_error, runs, failures)
-                 VALUES (:task, NOW(), :status, :duration, :error, 1, :failed)
-                 ON CONFLICT (task) DO UPDATE SET
-                     last_run_at = NOW(),
-                     last_status = EXCLUDED.last_status,
-                     last_duration_ms = EXCLUDED.last_duration_ms,
-                     last_error = EXCLUDED.last_error,
-                     runs = scheduled_tasks.runs + 1,
-                     failures = scheduled_tasks.failures + EXCLUDED.failures'
+            $qb = $this->db->queryBuilder()->from('scheduled_tasks');
+            $qb->upsert(
+                [
+                    'task'             => $name,
+                    'last_run_at'      => $qb->raw('NOW()'),
+                    'last_status'      => $status,
+                    'last_duration_ms' => $durationMs,
+                    'last_error'       => $error,
+                    'runs'             => 1,
+                    'failures'         => $status === 'ok' ? 0 : 1,
+                ],
+                ['task'],
+                [
+                    // Custom SET clause: overwrite the "last" columns with the
+                    // just-inserted values, bump runs, and accumulate failures —
+                    // the counter semantics EXCLUDED-only upserts cannot express.
+                    'last_run_at'      => $qb->raw('NOW()'),
+                    'last_status'      => $qb->raw('EXCLUDED.last_status'),
+                    'last_duration_ms' => $qb->raw('EXCLUDED.last_duration_ms'),
+                    'last_error'       => $qb->raw('EXCLUDED.last_error'),
+                    'runs'             => $qb->raw('scheduled_tasks.runs + 1'),
+                    'failures'         => $qb->raw('scheduled_tasks.failures + EXCLUDED.failures'),
+                ]
             );
-            $stmt->execute([
-                'task' => $name,
-                'status' => $status,
-                'duration' => $durationMs,
-                'error' => $error,
-                'failed' => $status === 'ok' ? 0 : 1,
-            ]);
         } catch (\Throwable $e) {
             Log::write('Scheduler::record failed: ' . $e->getMessage());
         }

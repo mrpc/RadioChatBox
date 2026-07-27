@@ -131,6 +131,58 @@ class SchedulerTest extends TestCase
     // Running
     // ------------------------------------------------------------------
 
+    /**
+     * Running the same task twice must accumulate the run counter rather than
+     * reset it — the ON CONFLICT ... DO UPDATE SET runs = runs + 1 path. This
+     * pins the counter-increment behaviour after the move to the QueryBuilder's
+     * associative upsert(), which the plain EXCLUDED-only form cannot express.
+     */
+    public function testRunCounterAccumulatesAcrossRuns(): void
+    {
+        $scheduler = $this->schedulerWith(['test_thing' => static fn () => null]);
+
+        $scheduler->run('test_thing');
+        // The task is not due again within its interval, so backdate it to force
+        // a second recorded run through the ON CONFLICT branch.
+        $this->backdate('test_thing', 3600);
+        $scheduler->run('test_thing');
+
+        $row = $scheduler->state()['test_thing'];
+        $this->assertSame(2, (int) $row['runs'], 'runs must increment, not reset');
+        $this->assertSame(0, (int) $row['failures']);
+    }
+
+    /**
+     * Failures accumulate across runs too (failures = failures + EXCLUDED.failures),
+     * and a later success must not clear the historical failure count.
+     */
+    public function testFailureCounterAccumulatesAndSurvivesLaterSuccess(): void
+    {
+        $flaky = true;
+        $scheduler = $this->schedulerWith(['test_flaky' => static function () use (&$flaky): void {
+            if ($flaky) {
+                throw new \RuntimeException('boom');
+            }
+        }]);
+
+        // The scheduler logs each failure; allow that output (as the other
+        // failure tests do) so the strict-output suite does not flag it risky.
+        $this->expectOutputRegex('/./');
+        error_log('');
+
+        $scheduler->run('test_flaky');            // failure → failures = 1
+        $this->backdate('test_flaky', 3600);
+        $scheduler->run('test_flaky');            // failure → failures = 2
+        $this->backdate('test_flaky', 3600);
+        $flaky = false;
+        $scheduler->run('test_flaky');            // success → failures unchanged
+
+        $row = $scheduler->state()['test_flaky'];
+        $this->assertSame(3, (int) $row['runs']);
+        $this->assertSame(2, (int) $row['failures'], 'past failures must persist');
+        $this->assertSame('ok', $row['last_status']);
+    }
+
     public function testARunIsRecordedWithItsOutcome(): void
     {
         $ran = 0;
