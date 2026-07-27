@@ -6,11 +6,11 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 class PhotoService
 {
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private string $uploadDir;
     private int $maxFileSize; // bytes
     private array $allowedMimeTypes = [
@@ -31,7 +31,7 @@ class PhotoService
 
     public function __construct()
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->uploadDir = __DIR__ . '/../public/uploads/photos';
         
         // Get max size from settings (default 5MB)
@@ -114,27 +114,18 @@ class PhotoService
         }
 
         // Save to database
-        $stmt = $this->pdo->prepare("
-            INSERT INTO attachments 
-            (attachment_id, filename, original_filename, file_path, file_size, mime_type, 
-             width, height, uploaded_by, recipient, ip_address)
-            VALUES 
-            (:attachment_id, :filename, :original_filename, :file_path, :file_size, :mime_type,
-             :width, :height, :uploaded_by, :recipient, :ip_address)
-        ");
-
-        $stmt->execute([
-            'attachment_id' => $attachmentId,
-            'filename' => $filename,
+        $this->db->queryBuilder()->from('attachments')->insert([
+            'attachment_id'     => $attachmentId,
+            'filename'          => $filename,
             'original_filename' => $file['name'],
-            'file_path' => '/uploads/photos/' . $filename,
-            'file_size' => $fileSize,
-            'mime_type' => $mimeType,
-            'width' => $width,
-            'height' => $height,
-            'uploaded_by' => $username,
-            'recipient' => $recipient,
-            'ip_address' => $ipAddress
+            'file_path'         => '/uploads/photos/' . $filename,
+            'file_size'         => $fileSize,
+            'mime_type'         => $mimeType,
+            'width'             => $width,
+            'height'            => $height,
+            'uploaded_by'       => $username,
+            'recipient'         => $recipient,
+            'ip_address'        => $ipAddress,
         ]);
 
         // Invalidate user cache
@@ -165,13 +156,13 @@ class PhotoService
         }
         
         // Query database
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM attachments 
-            WHERE attachment_id = :id AND is_deleted = FALSE
-        ");
-        $stmt->execute(['id' => $attachmentId]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+        $row = $this->db->queryBuilder()
+            ->from('attachments')
+            ->where('attachment_id', '=', $attachmentId)
+            ->whereRaw('is_deleted = FALSE')
+            ->first();
+        $result = ($row && $row->numRows > 0) ? $row->fields : null;
+
         if ($result) {
             // Cache the result
             Cache::store()->set($cacheKey, $result, self::CACHE_TTL_ATTACHMENT);
@@ -195,14 +186,13 @@ class PhotoService
         }
         
         // Query database
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM attachments 
-            WHERE uploaded_by = :username AND is_deleted = FALSE
-            ORDER BY uploaded_at DESC
-        ");
-        $stmt->execute(['username' => $username]);
-        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+        $result = $this->db->queryBuilder()
+            ->from('attachments')
+            ->where('uploaded_by', '=', $username)
+            ->whereRaw('is_deleted = FALSE')
+            ->orderBy('uploaded_at', 'desc')
+            ->getAll();
+
         // Cache the result
         Cache::store()->set($cacheKey, $result, self::CACHE_TTL_USER_ATTACHMENTS);
         
@@ -214,17 +204,14 @@ class PhotoService
      */
     public function getAllAttachments(int $limit = 100, int $offset = 0, bool $includeDeleted = false): array
     {
-        $where = $includeDeleted ? '' : 'WHERE is_deleted = FALSE';
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM attachments
-            {$where}
-            ORDER BY uploaded_at DESC
-            LIMIT :limit OFFSET :offset
-        ");
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $qb = $this->db->queryBuilder()->from('attachments');
+        if (!$includeDeleted) {
+            $qb->whereRaw('is_deleted = FALSE');
+        }
+        return $qb->orderBy('uploaded_at', 'desc')
+            ->limit($limit)
+            ->offset($offset)
+            ->getAll();
     }
 
     /**
@@ -232,9 +219,11 @@ class PhotoService
      */
     public function getTotalAttachmentsCount(bool $includeDeleted = false): int
     {
-        $where = $includeDeleted ? '' : 'WHERE is_deleted = FALSE';
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM attachments {$where}");
-        return (int)$stmt->fetchColumn();
+        $qb = $this->db->queryBuilder()->from('attachments');
+        if (!$includeDeleted) {
+            $qb->whereRaw('is_deleted = FALSE');
+        }
+        return $qb->count();
     }
 
     /**
@@ -244,13 +233,13 @@ class PhotoService
      */
     public function cleanupExpiredPhotos(): int
     {
-        $stmt = $this->pdo->prepare("
-            UPDATE attachments SET is_deleted = TRUE
-            WHERE expires_at < NOW() AND is_deleted = FALSE
-            RETURNING attachment_id
-        ");
-        $stmt->execute();
-        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $result = $this->db->queryBuilder()
+            ->from('attachments')
+            ->whereRaw('expires_at < NOW()')
+            ->whereRaw('is_deleted = FALSE')
+            ->returning('attachment_id')
+            ->update(['is_deleted' => true]);
+        $ids = $result ? array_column($result->fetchAll(), 'attachment_id') : [];
 
         foreach ($ids as $id) {
             Cache::store()->delete("attachment:{$id}");
@@ -270,12 +259,11 @@ class PhotoService
      */
     public function emptyTrash(): int
     {
-        $stmt = $this->pdo->query("
-            SELECT attachment_id, file_path FROM attachments WHERE is_deleted = TRUE
-        ");
-        $trashed = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $del = $this->pdo->prepare("DELETE FROM attachments WHERE attachment_id = :id");
+        $trashed = $this->db->queryBuilder()
+            ->from('attachments')
+            ->select(['attachment_id', 'file_path'])
+            ->whereRaw('is_deleted = TRUE')
+            ->getAll();
 
         $count = 0;
         foreach ($trashed as $photo) {
@@ -283,7 +271,10 @@ class PhotoService
             if (is_file($fullPath)) {
                 @unlink($fullPath);
             }
-            $del->execute(['id' => $photo['attachment_id']]);
+            $this->db->queryBuilder()
+                ->from('attachments')
+                ->where('attachment_id', '=', $photo['attachment_id'])
+                ->delete();
             Cache::store()->delete("attachment:{$photo['attachment_id']}");
             $count++;
         }
@@ -434,11 +425,12 @@ class PhotoService
         }
         
         // Query database
-        $stmt = $this->pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
-        $stmt->execute([$key]);
-        $result = $stmt->fetchColumn();
-        
-        $value = $result !== false ? $result : $default;
+        $result = $this->db->queryBuilder()
+            ->from('settings')
+            ->where('setting_key', '=', $key)
+            ->value('setting_value');
+
+        $value = $result !== null ? $result : $default;
         
         // Cache the result
         Cache::store()->set($cacheKey, $value, self::CACHE_TTL_SETTINGS);

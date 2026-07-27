@@ -79,6 +79,26 @@ class PhotoServiceTest extends TestCase
     }
 
     /**
+     * getAttachment() returns a live (not soft-deleted) row by id, and returns
+     * null once the photo is trashed — exercising the converted first()/
+     * whereRaw('is_deleted = FALSE') read and its cache invalidation on cleanup.
+     */
+    public function testGetAttachmentReturnsLiveRowThenNullAfterTrash(): void
+    {
+        $service = new PhotoService();
+
+        $live = $service->getAttachment($this->id);
+        $this->assertIsArray($live, 'a live photo is returned by id');
+        $this->assertSame($this->id, $live['attachment_id']);
+        $this->assertSame('/uploads/photos/' . basename($this->fullPath), $live['file_path']);
+
+        // Trashing it invalidates the cached row; the next read must miss the
+        // is_deleted = FALSE filter and return null.
+        $this->cleanupQuietly($service);
+        $this->assertNull($service->getAttachment($this->id), 'a trashed photo is no longer returned');
+    }
+
+    /**
      * A trashed photo is hidden from the normal listing and appears only when
      * deleted photos are explicitly included.
      */
