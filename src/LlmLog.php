@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-use PDO;
+use Pramnos\Database\Database as PramnosDatabase;
 
 /**
  * Request/response log for LLM calls.
@@ -20,13 +20,13 @@ class LlmLog
 {
     public const DEFAULT_RETENTION_DAYS = 7;
 
-    private PDO $pdo;
+    private PramnosDatabase $db;
     private SettingsService $settings;
     private ?LlmPricing $pricing = null;
 
     public function __construct(?SettingsService $settings = null, ?LlmPricing $pricing = null)
     {
-        $this->pdo = Database::getPDO();
+        $this->db = Database::getDb();
         $this->settings = $settings ?? new SettingsService();
         $this->pricing = $pricing;
     }
@@ -56,43 +56,32 @@ class LlmLog
         }
 
         try {
-            $stmt = $this->pdo->prepare(
-                'INSERT INTO bot_llm_log
-                    (fake_nickname, peer_username, purpose, provider, model, endpoint, system_prompt,
-                     messages, max_tokens, temperature, reasoning, http_status, finish_reason,
-                     reply, usage, duration_ms, error, cost, currency)
-                 VALUES
-                    (:fake_nickname, :peer_username, :purpose, :provider, :model, :endpoint, :system_prompt,
-                     :messages, :max_tokens, :temperature, :reasoning, :http_status, :finish_reason,
-                     :reply, :usage, :duration_ms, :error, :cost, :currency)'
-            );
-
-            $stmt->bindValue(':fake_nickname', $entry['fake_nickname'] ?? null);
-            $stmt->bindValue(':peer_username', $entry['peer_username'] ?? null);
-            $stmt->bindValue(':purpose', (string) ($entry['purpose'] ?? 'reply'));
-            $stmt->bindValue(':provider', $entry['provider'] ?? null);
-            $stmt->bindValue(':model', (string) ($entry['model'] ?? ''));
-            $stmt->bindValue(':endpoint', $entry['endpoint'] ?? null);
-            $stmt->bindValue(':system_prompt', $entry['system_prompt'] ?? null);
-            $stmt->bindValue(':messages', self::encode($entry['messages'] ?? null));
-            $stmt->bindValue(':max_tokens', $entry['max_tokens'] ?? null, PDO::PARAM_INT);
-            $stmt->bindValue(':temperature', $entry['temperature'] ?? null);
-            $stmt->bindValue(':reasoning', (bool) ($entry['reasoning'] ?? false), PDO::PARAM_BOOL);
-            $stmt->bindValue(':http_status', $entry['http_status'] ?? null, PDO::PARAM_INT);
-            $stmt->bindValue(':finish_reason', $entry['finish_reason'] ?? null);
-            $stmt->bindValue(':reply', $entry['reply'] ?? null);
-            $stmt->bindValue(':usage', self::encode($entry['usage'] ?? null));
-            $stmt->bindValue(':duration_ms', $entry['duration_ms'] ?? null, PDO::PARAM_INT);
-            $stmt->bindValue(':error', $entry['error'] ?? null);
-
             // Costed at write time: the unit prices can be edited, and history must
             // keep what the call actually cost when it was made.
             $usage = is_array($entry['usage'] ?? null) ? $entry['usage'] : [];
             $pricing = $this->pricing();
-            $stmt->bindValue(':cost', $pricing->cost((string) ($entry['model'] ?? ''), $usage));
-            $stmt->bindValue(':currency', $pricing->getCurrency());
 
-            $stmt->execute();
+            $this->db->queryBuilder()->from('bot_llm_log')->insert([
+                'fake_nickname' => $entry['fake_nickname'] ?? null,
+                'peer_username' => $entry['peer_username'] ?? null,
+                'purpose'       => (string) ($entry['purpose'] ?? 'reply'),
+                'provider'      => $entry['provider'] ?? null,
+                'model'         => (string) ($entry['model'] ?? ''),
+                'endpoint'      => $entry['endpoint'] ?? null,
+                'system_prompt' => $entry['system_prompt'] ?? null,
+                'messages'      => self::encode($entry['messages'] ?? null),
+                'max_tokens'    => $entry['max_tokens'] ?? null,
+                'temperature'   => $entry['temperature'] ?? null,
+                'reasoning'     => (bool) ($entry['reasoning'] ?? false),
+                'http_status'   => $entry['http_status'] ?? null,
+                'finish_reason' => $entry['finish_reason'] ?? null,
+                'reply'         => $entry['reply'] ?? null,
+                'usage'         => self::encode($entry['usage'] ?? null),
+                'duration_ms'   => $entry['duration_ms'] ?? null,
+                'error'         => $entry['error'] ?? null,
+                'cost'          => $pricing->cost((string) ($entry['model'] ?? ''), $usage),
+                'currency'      => $pricing->getCurrency(),
+            ]);
         } catch (\Throwable $e) {
             Log::write('LlmLog::record failed: ' . $e->getMessage());
         }
@@ -105,17 +94,15 @@ class LlmLog
      */
     public function recent(int $limit = 20, bool $problemsOnly = false): array
     {
-        $sql = 'SELECT * FROM bot_llm_log';
+        $qb = $this->db->queryBuilder()->from('bot_llm_log');
         if ($problemsOnly) {
-            $sql .= " WHERE error IS NOT NULL OR finish_reason <> 'stop'";
+            $qb->whereRaw("(error IS NOT NULL OR finish_reason <> 'stop')");
         }
-        $sql .= ' ORDER BY created_at DESC, id DESC LIMIT :limit';
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
-        $stmt->execute();
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $qb->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
+            ->limit(max(1, min(500, $limit)))
+            ->getAll();
     }
 
     /**
@@ -126,7 +113,9 @@ class LlmLog
      */
     public function summary(int $hours = 24): array
     {
-        $stmt = $this->pdo->prepare(
+        // Verbatim: PostgreSQL aggregate with FILTER, jsonb extraction and
+        // make_interval — kept raw (a QueryBuilder rewrite would obscure it).
+        $result = $this->db->preparedQuery(
             "SELECT COUNT(*) AS calls,
                     COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
                     COUNT(*) FILTER (WHERE finish_reason = 'length') AS truncated,
@@ -138,14 +127,13 @@ class LlmLog
                     MAX(currency) AS currency,
                     ROUND(AVG(duration_ms)) AS avg_duration_ms
              FROM bot_llm_log
-             WHERE created_at > NOW() - make_interval(hours => :hours)"
+             WHERE created_at > NOW() - make_interval(hours => :hours)",
+            ['hours' => max(1, $hours)]
         );
-        $stmt->bindValue(':hours', max(1, $hours), PDO::PARAM_INT);
-        $stmt->execute();
 
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $result ? $result->fetch() : null;
 
-        return $row === false ? [] : $row;
+        return ($row === null || $row === false) ? [] : $row;
     }
 
     /**
@@ -156,7 +144,8 @@ class LlmLog
      */
     public function summaryByProvider(int $hours = 24): array
     {
-        $stmt = $this->pdo->prepare(
+        // Verbatim: same PG aggregate as summary(), grouped by provider.
+        $result = $this->db->preparedQuery(
             "SELECT COALESCE(provider, 'unknown') AS provider,
                     COUNT(*) AS calls,
                     COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
@@ -168,13 +157,12 @@ class LlmLog
              FROM bot_llm_log
              WHERE created_at > NOW() - make_interval(hours => :hours)
              GROUP BY COALESCE(provider, 'unknown')
-             ORDER BY SUM(cost) DESC NULLS LAST"
+             ORDER BY SUM(cost) DESC NULLS LAST",
+            ['hours' => max(1, $hours)]
         );
-        $stmt->bindValue(':hours', max(1, $hours), PDO::PARAM_INT);
-        $stmt->execute();
 
         $byProvider = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        foreach (($result ? $result->fetchAll() : []) as $row) {
             $byProvider[(string) $row['provider']] = $row;
         }
 
@@ -188,11 +176,12 @@ class LlmLog
      */
     public function find(int $id): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM bot_llm_log WHERE id = ?');
-        $stmt->execute([$id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $this->db->queryBuilder()
+            ->from('bot_llm_log')
+            ->where('id', '=', $id)
+            ->first();
 
-        return $row === false ? null : $row;
+        return ($row && $row->numRows > 0) ? $row->fields : null;
     }
 
     /**
@@ -203,47 +192,41 @@ class LlmLog
      */
     public function page(int $limit = 25, int $offset = 0, array $filters = []): array
     {
-        $where = [];
-        $params = [];
+        // Apply the same optional filters to both the COUNT and the page query.
+        $applyFilters = static function ($qb) use ($filters) {
+            if (!empty($filters['problems_only'])) {
+                $qb->whereRaw("(error IS NOT NULL OR finish_reason <> 'stop')");
+            }
+            if (!empty($filters['fake_nickname'])) {
+                $qb->where('fake_nickname', '=', $filters['fake_nickname']);
+            }
+            if (!empty($filters['peer_username'])) {
+                $qb->where('peer_username', '=', $filters['peer_username']);
+            }
+            if (!empty($filters['purpose'])) {
+                $qb->where('purpose', '=', $filters['purpose']);
+            }
+            return $qb;
+        };
 
-        if (!empty($filters['problems_only'])) {
-            $where[] = "(error IS NOT NULL OR finish_reason <> 'stop')";
-        }
-        if (!empty($filters['fake_nickname'])) {
-            $where[] = 'fake_nickname = :fake_nickname';
-            $params['fake_nickname'] = $filters['fake_nickname'];
-        }
-        if (!empty($filters['peer_username'])) {
-            $where[] = 'peer_username = :peer_username';
-            $params['peer_username'] = $filters['peer_username'];
-        }
-        if (!empty($filters['purpose'])) {
-            $where[] = 'purpose = :purpose';
-            $params['purpose'] = $filters['purpose'];
-        }
+        $total = $applyFilters($this->db->queryBuilder()->from('bot_llm_log'))->count();
 
-        $clause = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+        $entries = $applyFilters(
+            $this->db->queryBuilder()
+                ->from('bot_llm_log')
+                ->select([
+                    'id', 'created_at', 'fake_nickname', 'peer_username', 'purpose', 'provider',
+                    'model', 'reasoning', 'max_tokens', 'http_status', 'finish_reason', 'messages',
+                    'reply', 'usage', 'duration_ms', 'error', 'cost', 'currency',
+                ])
+        )
+            ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
+            ->limit(max(1, min(200, $limit)))
+            ->offset(max(0, $offset))
+            ->getAll();
 
-        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM bot_llm_log' . $clause);
-        $stmt->execute($params);
-        $total = (int) $stmt->fetchColumn();
-
-        $stmt = $this->pdo->prepare(
-            'SELECT id, created_at, fake_nickname, peer_username, purpose, provider, model, reasoning,
-                    max_tokens, http_status, finish_reason, messages, reply, usage, duration_ms, error,
-                    cost, currency
-             FROM bot_llm_log' . $clause . '
-             ORDER BY created_at DESC, id DESC
-             LIMIT :limit OFFSET :offset'
-        );
-        foreach ($params as $k => $v) {
-            $stmt->bindValue(':' . $k, $v);
-        }
-        $stmt->bindValue(':limit', max(1, min(200, $limit)), PDO::PARAM_INT);
-        $stmt->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
-        $stmt->execute();
-
-        return ['entries' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'total' => $total];
+        return ['entries' => $entries, 'total' => $total];
     }
 
     /**
@@ -254,13 +237,12 @@ class LlmLog
         $days = $days ?? (int) $this->settings->get('bot_llm_log_retention_days', self::DEFAULT_RETENTION_DAYS);
         $days = max(1, min(365, $days));
 
-        $stmt = $this->pdo->prepare(
-            'DELETE FROM bot_llm_log WHERE created_at < NOW() - make_interval(days => :days)'
-        );
-        $stmt->bindValue(':days', $days, PDO::PARAM_INT);
-        $stmt->execute();
+        $result = $this->db->queryBuilder()
+            ->from('bot_llm_log')
+            ->whereRaw('created_at < NOW() - make_interval(days => %s)', [$days])
+            ->delete();
 
-        return $stmt->rowCount();
+        return $result ? $result->getAffectedRows() : 0;
     }
 
     /**
