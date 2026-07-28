@@ -644,12 +644,10 @@ class FakeUserService
      */
     private function getJitteredTarget(int $minUsers): int
     {
-        $cacheKey = $this->redisPrefix . 'fake_users:jitter_target';
-
         try {
-            $cached = $this->redis->get($cacheKey);
-            if ($cached !== false) {
-                [$base, $target] = array_map('intval', explode(':', $cached) + [0, 0]);
+            $cached = Cache::store()->get('fake_users:jitter_target');
+            if ($cached !== null) {
+                [$base, $target] = array_map('intval', explode(':', (string) $cached) + [0, 0]);
                 if ($base === $minUsers) {
                     return $target;
                 }
@@ -670,7 +668,7 @@ class FakeUserService
 
         try {
             // Refresh roughly every 3 minutes for a natural drift.
-            $this->redis->setex($cacheKey, 180, $minUsers . ':' . $target);
+            Cache::store()->set('fake_users:jitter_target', $minUsers . ':' . $target, 180);
         } catch (\Exception $e) {
             // Non-fatal: without caching it just recomputes next call.
         }

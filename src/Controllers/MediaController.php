@@ -9,6 +9,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\ArtworkService;
+use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\RadioStatusService;
 use RadioChatBox\TrackStatsService;
@@ -117,20 +118,15 @@ final class MediaController
             return Response::json(['error' => 'Forbidden URL'], 403);
         }
 
-        // Check Redis cache first
+        // Check cache first
+        $cacheKey = 'link_preview:' . md5($url);
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $cacheKey = $prefix . 'link_preview:' . md5($url);
-
-            $cached = $redis->get($cacheKey);
-            if ($cached !== false) {
-                return Response::json(json_decode($cached, true));
+            $cached = Cache::store()->get($cacheKey);
+            if ($cached !== null) {
+                return Response::json($cached);
             }
         } catch (\Exception $e) {
-            // Redis unavailable — proceed without cache
-            $redis = null;
-            $cacheKey = null;
+            // Cache backend unavailable — proceed without cache
         }
 
         // Fetch the page content
@@ -181,8 +177,10 @@ final class MediaController
         }
 
         // Cache the result for 1 hour
-        if ($redis !== null && $cacheKey !== null) {
-            $redis->setex($cacheKey, 3600, json_encode($preview));
+        try {
+            Cache::store()->set($cacheKey, $preview, 3600);
+        } catch (\Exception $e) {
+            // Cache backend unavailable — return uncached
         }
 
         return Response::json($preview);

@@ -311,15 +311,10 @@ class MessageFilter
         }
         
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $cacheKey = $prefix . 'url_whitelist_patterns';
-            $cacheTTL = 300; // 5 minutes
-            
-            $cachedData = $redis->get($cacheKey);
-            
-            if ($cachedData !== false) {
-                $patterns = json_decode($cachedData, true);
+            $cachedData = Cache::store()->get('url_whitelist_patterns');
+
+            if ($cachedData !== null) {
+                $patterns = $cachedData;
             } else {
                 // Cache miss - fetch from database
                 $patterns = Database::getDb()->queryBuilder()
@@ -327,10 +322,10 @@ class MessageFilter
                     ->orderBy('pattern')
                     ->pluck('pattern');
 
-                // Store in Redis cache
-                $redis->setex($cacheKey, $cacheTTL, json_encode($patterns));
+                // Store in cache (5 minutes)
+                Cache::store()->set('url_whitelist_patterns', $patterns, 300);
             }
-            
+
             return $patterns;
         } catch (\Exception $e) {
             Log::write("Error fetching URL whitelist: " . $e->getMessage());
@@ -369,26 +364,21 @@ class MessageFilter
     private static function checkBlacklistedUrls(string $message, string $ipAddress = ''): array
     {
         try {
-            // Try to get from Redis cache first
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $cacheKey = $prefix . 'url_blacklist_patterns';
-            $cacheTTL = 300; // 5 minutes
-            
-            $cachedData = $redis->get($cacheKey);
-            
-            if ($cachedData !== false) {
-                $blacklist = json_decode($cachedData, true);
+            // Try the cache first
+            $cachedData = Cache::store()->get('url_blacklist_patterns');
+
+            if ($cachedData !== null) {
+                $blacklist = $cachedData;
             } else {
                 // Cache miss - fetch from database
                 $blacklist = Database::getDb()->queryBuilder()
                     ->from('url_blacklist')
                     ->pluck('pattern');
 
-                // Store in Redis cache
-                $redis->setex($cacheKey, $cacheTTL, json_encode($blacklist));
+                // Store in cache (5 minutes)
+                Cache::store()->set('url_blacklist_patterns', $blacklist, 300);
             }
-            
+
             $originalMessage = $message;
             $violationDetected = false;
             

@@ -7,6 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
+use RadioChatBox\Cache;
 use RadioChatBox\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
@@ -401,7 +402,7 @@ final class AdminModerationController
 
                 // Invalidate Redis cache (legacy uses the un-prefixed key here).
                 $redis = Database::getRedis();
-                $redis->del('url_blacklist_patterns');
+                Cache::store()->delete('url_blacklist_patterns');
 
                 return Response::json([
                     'success' => true,
@@ -420,7 +421,7 @@ final class AdminModerationController
 
             // Invalidate Redis cache (legacy uses the un-prefixed key here).
             $redis = Database::getRedis();
-            $redis->del('url_blacklist_patterns');
+            Cache::store()->delete('url_blacklist_patterns');
 
             return Response::json([
                 'success' => true,
@@ -492,7 +493,7 @@ final class AdminModerationController
                 // Invalidate Redis cache (legacy uses the prefixed key here).
                 $redis  = Database::getRedis();
                 $prefix = Database::getRedisPrefix();
-                $redis->del($prefix . 'url_whitelist_patterns');
+                Cache::store()->delete('url_whitelist_patterns');
 
                 return Response::json([
                     'success' => true,
@@ -512,7 +513,7 @@ final class AdminModerationController
             // Invalidate Redis cache (legacy uses the prefixed key here).
             $redis  = Database::getRedis();
             $prefix = Database::getRedisPrefix();
-            $redis->del($prefix . 'url_whitelist_patterns');
+            Cache::store()->delete('url_whitelist_patterns');
 
             return Response::json([
                 'success' => true,
