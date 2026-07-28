@@ -11,8 +11,7 @@ namespace RadioChatBox;
 class UserService
 {
     private \Pramnos\Database\Database $db;
-    private \Redis $redis;
-    
+
     // Role hierarchy (higher number = more privileges)
     private const ROLE_LEVELS = [
         'simple_user' => 0,
@@ -52,7 +51,6 @@ class UserService
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
     }
     
     /**
@@ -490,12 +488,8 @@ class UserService
      */
     private function clearUserSession(string $username): void
     {
-        try {
-            $prefix = Database::getRedisPrefix();
-            $this->redis->del($prefix . "admin_session:{$username}");
-        } catch (\Exception $e) {
-            Log::write("UserService::clearUserSession error: " . $e->getMessage());
-        }
+        // AdminAuth owns the admin_session keyspace — ask it to destroy the session.
+        AdminAuth::destroySession($username);
     }
 
     /**

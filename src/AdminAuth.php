@@ -113,9 +113,25 @@ class AdminAuth
             ]);
             
             $redis->setex($prefix . "admin_session:{$username}", 86400, $sessionData);
-            
+
         } catch (\Exception $e) {
             Log::write("AdminAuth::setCurrentUser error: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Destroy an admin's cached auth session (forces re-login).
+     *
+     * The `admin_session:<username>` keyspace is owned by AdminAuth; other
+     * services (e.g. UserService, when a user's role/status changes) ask here
+     * rather than reaching into the Redis key themselves.
+     */
+    public static function destroySession(string $username): void
+    {
+        try {
+            Database::getRedis()->del(Database::getRedisPrefix() . "admin_session:{$username}");
+        } catch (\Exception $e) {
+            Log::write("AdminAuth::destroySession error: " . $e->getMessage());
         }
     }
     
