@@ -81,7 +81,11 @@ try {
                 'enabled' => $settings->get('bot_replies_enabled', 'false') === 'true',
                 // So the panel can show strikes as "2/3" rather than a bare count.
                 'insult_threshold' => $bot->insultBlockThreshold(),
-                'threads' => $bot->listThreads((int) ($_GET['limit'] ?? 100)),
+                'total' => $bot->countThreads(),
+                'threads' => $bot->listThreads(
+                    (int) ($_GET['limit'] ?? 100),
+                    (int) ($_GET['offset'] ?? 0)
+                ),
             ]);
             break;
 

@@ -2245,7 +2245,7 @@
                     <div style="margin-top: 16px; display: flex; gap: 10px; align-items: center;">
                         <button class="btn" onclick="loadBotActivity()">🔄 Refresh</button>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6b7280; cursor: pointer;">
-                            <input type="checkbox" id="bot-activity-problems-only" style="width: auto;" onchange="loadBotActivityLog()">
+                            <input type="checkbox" id="bot-activity-problems-only" style="width: auto;" onchange="botLogOffset = 0; loadBotActivityLog()">
                             Only failed or truncated calls
                         </label>
                     </div>
@@ -6090,15 +6090,47 @@
             }
         }
 
+        // Pagination for the Bot Activity lists. Offsets are module-level so the
+        // 4s background refresh reloads the SAME page instead of jumping to the top.
+        const BOT_PAGE_SIZE = 25;
+        let botThreadsOffset = 0;
+        let botLogOffset = 0;
+
+        function paginationControls(offset, total, pageSize, prevFn, nextFn) {
+            if (total <= pageSize) return '';
+            const from = total === 0 ? 0 : offset + 1;
+            const to = Math.min(offset + pageSize, total);
+            const hasPrev = offset > 0;
+            const hasNext = offset + pageSize < total;
+            return `
+                <div style="display:flex; align-items:center; gap:10px; margin-top:10px; justify-content:flex-end; font-size:13px; color:#6b7280;">
+                    <span>${from}–${to} of ${total}</span>
+                    <button class="btn btn-secondary" ${hasPrev ? '' : 'disabled'} onclick="${prevFn}">‹ Prev</button>
+                    <button class="btn btn-secondary" ${hasNext ? '' : 'disabled'} onclick="${nextFn}">Next ›</button>
+                </div>`;
+        }
+
+        function botThreadsPrev() { botThreadsOffset = Math.max(0, botThreadsOffset - BOT_PAGE_SIZE); loadBotActivityThreads(); }
+        function botThreadsNext() { botThreadsOffset += BOT_PAGE_SIZE; loadBotActivityThreads(); }
+        function botLogPrev() { botLogOffset = Math.max(0, botLogOffset - BOT_PAGE_SIZE); loadBotActivityLog(); }
+        function botLogNext() { botLogOffset += BOT_PAGE_SIZE; loadBotActivityLog(); }
+
         async function loadBotActivityThreads() {
             const box = document.getElementById('bot-activity-threads');
             if (!box) return;
 
             try {
-                const data = await botActivityFetch({ view: 'threads' });
+                const data = await botActivityFetch({ view: 'threads', limit: BOT_PAGE_SIZE, offset: botThreadsOffset });
                 if (!data.success) return;
 
                 const threshold = Number(data.insult_threshold || 0);
+                const total = Number(data.total || 0);
+
+                // A page that fell off the end (e.g. items removed) — go back one.
+                if (!data.threads.length && botThreadsOffset > 0) {
+                    botThreadsOffset = Math.max(0, botThreadsOffset - BOT_PAGE_SIZE);
+                    return loadBotActivityThreads();
+                }
 
                 if (!data.threads.length) {
                     box.innerHTML = '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
@@ -6149,7 +6181,8 @@
                                     </tr>`;
                             }).join('')}
                         </tbody>
-                    </table>`;
+                    </table>
+                    ${paginationControls(botThreadsOffset, total, BOT_PAGE_SIZE, 'botThreadsPrev()', 'botThreadsNext()')}`;
             } catch (error) {
                 console.error('Failed to load bot threads:', error);
             }
@@ -6431,15 +6464,24 @@
             const problemsOnly = document.getElementById('bot-activity-problems-only')?.checked;
 
             try {
-                const params = { view: 'log', limit: 25 };
+                const params = { view: 'log', limit: BOT_PAGE_SIZE, offset: botLogOffset };
                 if (problemsOnly) params.problems = 1;
 
                 const data = await botActivityFetch(params);
                 if (!data.success) return;
 
+                const total = Number(data.total || 0);
+
+                // A page past the end (filter change, entries pruned) — step back.
+                if (!data.entries.length && botLogOffset > 0) {
+                    botLogOffset = Math.max(0, botLogOffset - BOT_PAGE_SIZE);
+                    return loadBotActivityLog();
+                }
+
                 box.innerHTML = `
-                    <p style="color: #6b7280; margin-bottom: 12px;">${data.total} call(s) recorded${problemsOnly ? ' (filtered to failures)' : ''}.</p>
-                    ${botCallRows(data.entries)}`;
+                    <p style="color: #6b7280; margin-bottom: 12px;">${total} call(s) recorded${problemsOnly ? ' (filtered to failures)' : ''}.</p>
+                    ${botCallRows(data.entries)}
+                    ${paginationControls(botLogOffset, total, BOT_PAGE_SIZE, 'botLogPrev()', 'botLogNext()')}`;
             } catch (error) {
                 console.error('Failed to load bot log:', error);
             }

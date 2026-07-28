@@ -1061,7 +1061,7 @@ class BotService
      *
      * @return list<array<string,mixed>>
      */
-    public function listThreads(int $limit = 100): array
+    public function listThreads(int $limit = 100, int $offset = 0): array
     {
         $stmt = $this->pdo->prepare('
             SELECT f.nickname,
@@ -1091,9 +1091,10 @@ class BotService
             FROM bot_threads t
             JOIN fake_users f ON f.id = t.fake_user_id
             ORDER BY COALESCE(t.last_reply_at, t.created_at) DESC
-            LIMIT :limit
+            LIMIT :limit OFFSET :offset
         ');
         $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
+        $stmt->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $stmt->execute();
 
         $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1113,6 +1114,14 @@ class BotService
         }
 
         return $threads;
+    }
+
+    /** Total number of bot conversations, for paginating the admin overview. */
+    public function countThreads(): int
+    {
+        $stmt = $this->pdo->query('SELECT COUNT(*) FROM bot_threads');
+
+        return (int) $stmt->fetchColumn();
     }
 
     /**
