@@ -49,8 +49,8 @@ $console = new \Pramnos\Console\Application();
 // orchestrator is abstract; each app registers its concrete subclass).
 $console->add(new \RadioChatBox\Console\RadioChatBoxDaemons());
 
-// Register app-specific health checks so `health:check` reports them alongside
-// the framework's built-in database/disk/memory checks.
-\Pramnos\Health\HealthRegistry::register(new \RadioChatBox\Health\RedisConnectivityCheck());
+// Register the framework's native Redis health check (pings via the shared
+// ConnectionManager) alongside the built-in database/disk/memory checks.
+\Pramnos\Health\HealthRegistry::register(new \Pramnos\Health\Checks\RedisConnectivityCheck());
 
 $console->run();

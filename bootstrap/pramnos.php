@@ -55,6 +55,22 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
             \Pramnos\Logs\Logger::setOutputMode($mode !== false && $mode !== '' ? $mode : \Pramnos\Logs\Logger::OUTPUT_FILE);
         }
 
+        // Configure the framework's central Redis connection manager from
+        // RadioChatBox's own config, so the cache/broadcasting/queue drivers,
+        // the health check and the app's state repositories all share one
+        // connection source (with the app's tight local-Redis timeouts). Keys are
+        // prefixed per-install. Independent of mbstring/Settings.
+        if (class_exists(\Pramnos\Redis\ConnectionManager::class)) {
+            $redisConfig = \RadioChatBox\Config::get('redis');
+            \Pramnos\Redis\ConnectionManager::setInstance(new \Pramnos\Redis\ConnectionManager([
+                'host'         => $redisConfig['host'],
+                'port'         => $redisConfig['port'],
+                'prefix'       => \RadioChatBox\Database::getRedisPrefix(),
+                'timeout'      => 0.5,
+                'read_timeout' => 1,
+            ]));
+        }
+
         // The framework core requires mbstring; bail out cleanly if it is absent
         // (e.g. a host/CLI that has not been provisioned yet — see Dockerfile).
         if (!extension_loaded('mbstring')) {

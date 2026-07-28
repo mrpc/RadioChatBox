@@ -2,59 +2,56 @@
 
 namespace RadioChatBox\Tests;
 
-use Mockery;
 use PHPUnit\Framework\TestCase;
+use Pramnos\Health\Checks\RedisConnectivityCheck;
 use Pramnos\Health\HealthStatus;
+use Pramnos\Redis\ConnectionManager;
+use RadioChatBox\Config;
 use RadioChatBox\Database;
-use RadioChatBox\Health\RedisConnectivityCheck;
 
 /**
- * Covers the RadioChatBox Redis health check registered into the framework's
- * HealthRegistry. Redis is load-bearing (SSE transport + job bus), so a reachable
- * Redis must report Ok and any failure must report Down with the error surfaced.
+ * Integration test for Redis health reporting after the migration to the
+ * framework-native check (Phase 8 / Phase C).
+ *
+ * RadioChatBox no longer ships its own RedisConnectivityCheck; it registers the
+ * framework's Pramnos\Health\Checks\RedisConnectivityCheck, which pings through
+ * the shared ConnectionManager. This verifies that check reports the app's
+ * (reachable) dev Redis as up when the manager is configured exactly as the
+ * bootstrap configures it.
  */
 class RedisHealthCheckTest extends TestCase
 {
-    protected function tearDown(): void
+    private function manager(): ConnectionManager
     {
-        Database::reset();
-        Mockery::close();
-    }
-
-    public function testNameIsRedis(): void
-    {
-        $this->assertSame('redis', (new RedisConnectivityCheck())->getName());
-    }
-
-    /**
-     * A successful PING reports Ok. phpredis returns bool true (or '+PONG'); the
-     * check accepts both.
-     */
-    public function testOkWhenPingSucceeds(): void
-    {
-        $redis = Mockery::mock(\Redis::class);
-        $redis->shouldReceive('ping')->once()->andReturn(true);
-        Database::setRedis($redis);
-
-        $result = (new RedisConnectivityCheck())->run();
-
-        $this->assertSame(HealthStatus::Ok, $result->status);
-        $this->assertSame('PONG', $result->message);
+        $redis = Config::get('redis');
+        return new ConnectionManager([
+            'host'         => $redis['host'],
+            'port'         => $redis['port'],
+            'prefix'       => Database::getRedisPrefix(),
+            'timeout'      => 0.5,
+            'read_timeout' => 1,
+        ]);
     }
 
     /**
-     * When Redis is unreachable the check reports Down and surfaces the error
-     * message (rather than throwing).
+     * The framework Redis check reports up (PONG) against the app's dev Redis.
      */
-    public function testDownWhenRedisFails(): void
+    public function testFrameworkCheckReportsUpAgainstAppRedis(): void
     {
-        $redis = Mockery::mock(\Redis::class);
-        $redis->shouldReceive('ping')->once()->andThrow(new \RedisException('connection refused'));
-        Database::setRedis($redis);
+        $result = (new RedisConnectivityCheck($this->manager()))->run();
 
-        $result = (new RedisConnectivityCheck())->run();
+        $this->assertSame('redis', $result->name);
+        $this->assertSame(HealthStatus::Ok, $result->status, 'dev Redis should be reachable');
+    }
+
+    /**
+     * A misconfigured manager (unreachable port) reports down — not fatal.
+     */
+    public function testReportsDownWhenUnreachable(): void
+    {
+        $bad = new ConnectionManager(['host' => '127.0.0.1', 'port' => 6399, 'timeout' => 0.2]);
+        $result = (new RedisConnectivityCheck($bad))->run();
 
         $this->assertSame(HealthStatus::Down, $result->status);
-        $this->assertStringContainsString('connection refused', $result->message);
     }
 }
