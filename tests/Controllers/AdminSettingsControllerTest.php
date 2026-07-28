@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminSettingsController;
+use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -21,11 +22,40 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
  */
 class AdminSettingsControllerTest extends TestCase
 {
+    private const ADMIN_ID = 'settingsadmin';
+    private ?string $sessionKey = null;
+
     protected function tearDown(): void
     {
+        if ($this->sessionKey !== null) {
+            try {
+                Database::getRedis()->del($this->sessionKey);
+            } catch (\Throwable) {
+                // best effort
+            }
+            $this->sessionKey = null;
+        }
         $_POST = [];
         $_GET = [];
-        unset($_FILES['logo']);
+        unset($_FILES['logo'], $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+    }
+
+    /**
+     * Establish an administrator session so AdminAuth::getCurrentUser() returns a
+     * privileged user for the notifications RBAC gate; skips if Redis is down.
+     */
+    private function authAsAdmin(string $role = 'administrator'): void
+    {
+        try {
+            $redis  = Database::getRedis();
+            $prefix = Database::getRedisPrefix();
+            $key    = $prefix . 'admin_session:' . self::ADMIN_ID;
+            $redis->setex($key, 120, json_encode(['username' => self::ADMIN_ID, 'role' => $role]));
+            $this->sessionKey = $key;
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ADMIN_ID . ':x';
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -182,5 +212,68 @@ class AdminSettingsControllerTest extends TestCase
             'Forbidden: Only root/administrator can view notifications',
             json_decode($response->getBody(), true)['error']
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // DB-path coverage for the Phase-7 conversion (getPDO -> getDb). The
+    // notifications actions run the converted preparedQuery reads, stored-function
+    // calls and getAffectedRows() count; drive them as an administrator against
+    // the dev DB. All are read-only or scoped to a throwaway admin username.
+    // ---------------------------------------------------------------------
+
+    /**
+     * GET /api/admin/notifications as an administrator returns the converted
+     * payload: a notifications list plus an integer unread_count from the
+     * get_unread_notification_count() stored function. Read-only.
+     */
+    public function testNotificationsIndexReturnsPayloadForAdmin(): void
+    {
+        $this->authAsAdmin();
+        $_GET = ['limit' => 10, 'offset' => 0];
+
+        $response = (new AdminSettingsController())->notificationsIndex();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertIsArray($body['notifications']);
+        $this->assertIsInt($body['unread_count']);
+        $this->assertSame(self::ADMIN_ID, $body['admin']);
+    }
+
+    /**
+     * PUT /api/admin/notifications {mark_all_read} as an administrator drives the
+     * mark_all_notifications_read() stored function and returns the count message.
+     * The throwaway admin username has no notifications, so this is effectively a
+     * no-op against real data.
+     */
+    public function testNotificationsMarkAllReadReturnsSuccessForAdmin(): void
+    {
+        $this->authAsAdmin();
+        $_POST = ['mark_all_read' => true];
+
+        $response = (new AdminSettingsController())->notificationsUpdate();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertStringContainsString('as read', $body['message']);
+    }
+
+    /**
+     * DELETE /api/admin/notifications as root (cleanup is root-only) drives the
+     * cleanup_old_notifications() stored function and returns the deleted-count
+     * message. Only already-old notifications are affected.
+     */
+    public function testNotificationsCleanupReturnsSuccessForRoot(): void
+    {
+        $this->authAsAdmin('root');
+
+        $response = (new AdminSettingsController())->notificationsCleanup();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertStringContainsString('old notification(s)', $body['message']);
     }
 }

@@ -3,7 +3,6 @@
 namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
-use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -45,17 +44,19 @@ final class AdminSettingsController
     #[Route('/api/admin/settings', methods: 'GET', name: 'admin.settings.show', middleware: [AdminAuthMiddleware::class])]
     public function show(): Response
     {
-        $db = Database::getPDO();
+        $db = Database::getDb();
 
         try {
-            $stmt = $db->query("SELECT setting_key, setting_value FROM settings ORDER BY setting_key");
+            $result = $db->query("SELECT setting_key, setting_value FROM settings ORDER BY setting_key");
             $settings = [];
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                // SECURITY: Never send password hash to client
-                if ($row['setting_key'] === 'admin_password_hash') {
-                    continue;
+            if ($result) {
+                while ($row = $result->fetch()) {
+                    // SECURITY: Never send password hash to client
+                    if ($row['setting_key'] === 'admin_password_hash') {
+                        continue;
+                    }
+                    $settings[$row['setting_key']] = $row['setting_value'];
                 }
-                $settings[$row['setting_key']] = $row['setting_value'];
             }
 
             // Get PHP's upload_max_filesize limit
@@ -118,7 +119,7 @@ final class AdminSettingsController
             return Response::json(['success' => true, 'settings' => $settings]);
         } catch (\Throwable $e) {
             if ($db->inTransaction()) {
-                $db->rollBack();
+                $db->rollbackTransaction();
             }
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
@@ -135,7 +136,7 @@ final class AdminSettingsController
     #[Route('/api/admin/settings', methods: 'POST', name: 'admin.settings.update', middleware: [AdminAuthMiddleware::class])]
     public function update(): Response
     {
-        $db = Database::getPDO();
+        $db = Database::getDb();
 
         try {
             // The framework Request has already decoded the JSON body into $_POST.
@@ -171,7 +172,7 @@ final class AdminSettingsController
             return Response::json($response);
         } catch (\Throwable $e) {
             if ($db->inTransaction()) {
-                $db->rollBack();
+                $db->rollbackTransaction();
             }
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
@@ -221,7 +222,7 @@ final class AdminSettingsController
     #[Route('/api/admin/upload-logo', methods: 'POST', name: 'admin.settings.upload-logo', middleware: [AdminAuthMiddleware::class])]
     public function uploadLogo(): Response
     {
-        $db = Database::getPDO();
+        $db = Database::getDb();
         $redis = Database::getRedis();
 
         try {
@@ -266,17 +267,16 @@ final class AdminSettingsController
 
             // Update database setting
             $settingKey = $logoType === 'favicon' ? 'favicon_url' : 'logo_url';
-            $stmt = $db->prepare(
+            $db->preparedQuery(
                 'INSERT INTO settings (setting_key, setting_value, updated_at)
                  VALUES (:key, :value, NOW())
                  ON CONFLICT (setting_key)
-                 DO UPDATE SET setting_value = :value, updated_at = NOW()'
+                 DO UPDATE SET setting_value = :value, updated_at = NOW()',
+                [
+                    'key' => $settingKey,
+                    'value' => $fileUrl,
+                ]
             );
-
-            $stmt->execute([
-                'key' => $settingKey,
-                'value' => $fileUrl,
-            ]);
 
             // Invalidate settings cache
             $redis->del('settings:all');
@@ -307,7 +307,7 @@ final class AdminSettingsController
         }
 
         try {
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
             $request = Request::getInstance();
 
             $limitRaw = $request->get('limit', null, 'get');
@@ -331,7 +331,9 @@ final class AdminSettingsController
 
             $whereClause = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
 
-            $stmt = $pdo->prepare("
+            $params[] = $limit;
+            $params[] = $offset;
+            $result = $db->preparedQuery("
                 SELECT
                     n.id,
                     n.notification_type,
@@ -348,12 +350,8 @@ final class AdminSettingsController
                 $whereClause
                 ORDER BY n.created_at DESC
                 LIMIT ? OFFSET ?
-            ");
-
-            $params[] = $limit;
-            $params[] = $offset;
-            $stmt->execute($params);
-            $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            ", $params);
+            $notifications = $result ? $result->fetchAll() : [];
 
             // Decode JSON metadata
             foreach ($notifications as &$notification) {
@@ -365,9 +363,8 @@ final class AdminSettingsController
             unset($notification);
 
             // Get unread count for this admin using the function
-            $stmt = $pdo->prepare("SELECT get_unread_notification_count(?)");
-            $stmt->execute([$adminUsername]);
-            $unreadCount = $stmt->fetchColumn();
+            $countResult = $db->preparedQuery("SELECT get_unread_notification_count(?)", [$adminUsername]);
+            $unreadCount = $countResult ? $countResult->fetchColumn() : 0;
 
             return Response::json([
                 'success' => true,
@@ -400,7 +397,7 @@ final class AdminSettingsController
         }
 
         try {
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
 
             // The framework Request has already decoded the JSON body into $_POST.
             $input = $_POST;
@@ -414,7 +411,7 @@ final class AdminSettingsController
             $clearReadNotifications = $input['clear_read'] ?? false;
 
             if ($clearReadNotifications) {
-                $stmt = $pdo->prepare("
+                $result = $db->preparedQuery("
                     DELETE FROM admin_notifications
                     WHERE id IN (
                         SELECT n.id FROM admin_notifications n
@@ -422,27 +419,24 @@ final class AdminSettingsController
                             ON n.id = r.notification_id
                             AND r.admin_username = ?
                     )
-                ");
-                $stmt->execute([$currentUser['username']]);
-                $count = $stmt->rowCount();
+                ", [$currentUser['username']]);
+                $count = $result ? $result->getAffectedRows() : 0;
 
                 return Response::json([
                     'success' => true,
                     'message' => "Cleared $count read notification(s)",
                 ]);
             } elseif ($markAllRead) {
-                $stmt = $pdo->prepare("SELECT mark_all_notifications_read(?)");
-                $stmt->execute([$currentUser['username']]);
-                $count = $stmt->fetchColumn();
+                $result = $db->preparedQuery("SELECT mark_all_notifications_read(?)", [$currentUser['username']]);
+                $count = $result ? $result->fetchColumn() : 0;
 
                 return Response::json([
                     'success' => true,
                     'message' => "Marked $count notification(s) as read",
                 ]);
             } elseif ($notificationId) {
-                $stmt = $pdo->prepare("SELECT mark_notification_read(?, ?)");
-                $stmt->execute([$notificationId, $currentUser['username']]);
-                $success = $stmt->fetchColumn();
+                $result = $db->preparedQuery("SELECT mark_notification_read(?, ?)", [$notificationId, $currentUser['username']]);
+                $success = $result ? $result->fetchColumn() : null;
 
                 if ($success) {
                     return Response::json([
@@ -485,10 +479,10 @@ final class AdminSettingsController
         }
 
         try {
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
 
-            $stmt = $pdo->query("SELECT cleanup_old_notifications()");
-            $count = $stmt->fetchColumn();
+            $result = $db->query("SELECT cleanup_old_notifications()");
+            $count = $result ? $result->fetchColumn() : 0;
 
             return Response::json([
                 'success' => true,
