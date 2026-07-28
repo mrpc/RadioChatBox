@@ -2,7 +2,6 @@
 
 namespace RadioChatBox;
 
-use Redis;
 use RuntimeException;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -17,14 +16,12 @@ use Pramnos\Database\Database as PramnosDatabase;
 class StatsService
 {
     private PramnosDatabase $db;
-    private Redis $redis;
     private RadioStatusService $radioStatus;
     private bool $tablesChecked = false;
 
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
         $this->radioStatus = new RadioStatusService();
     }
 
@@ -87,25 +84,24 @@ class StatsService
         // Rate limiting: don't record more than once per 5 minutes
         if (!$ignoreRateLimit) {
             $lastSnapshotKey = 'stats:last_snapshot_time';
-            $lastSnapshot = $this->redis->get($lastSnapshotKey);
-            
-            if ($lastSnapshot !== false) {
-                $lastTime = (int)$lastSnapshot;
+            $lastSnapshot = Cache::store()->get($lastSnapshotKey);
+
+            if ($lastSnapshot !== null) {
                 $now = time();
-                
+
                 // If less than 5 minutes have passed, skip recording
-                if (($now - $lastTime) < 300) {
+                if (($now - (int) $lastSnapshot) < 300) {
                     // Return cached snapshot instead of recording
-                    $cached = $this->redis->get('stats:latest_snapshot');
-                    if ($cached !== false) {
-                        return json_decode($cached, true);
+                    $cached = Cache::store()->get('stats:latest_snapshot');
+                    if ($cached !== null) {
+                        return $cached;
                     }
                     return [];
                 }
             }
-            
+
             // Update last snapshot time
-            $this->redis->setex($lastSnapshotKey, 3600, time());
+            Cache::store()->set($lastSnapshotKey, time(), 3600);
         }
         $this->ensureTablesExist();
         
@@ -141,7 +137,7 @@ class StatsService
         ];
 
         // Cache latest snapshot for 5 minutes
-        $this->redis->setex('stats:latest_snapshot', 300, json_encode($snapshot));
+        Cache::store()->set('stats:latest_snapshot', $snapshot, 300);
 
         return $snapshot;
     }
@@ -164,7 +160,7 @@ class StatsService
             $this->db->preparedQuery("SELECT aggregate_hourly_stats(:hour)", ['hour' => $hourTimestamp]);
             
             // Invalidate cache
-            $this->redis->del('stats:hourly:latest');
+            Cache::store()->delete('stats:hourly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -188,7 +184,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_daily_stats(:date)", ['date' => $date]);
             
-            $this->redis->del('stats:daily:latest');
+            Cache::store()->delete('stats:daily:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -212,7 +208,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_weekly_stats(:date)", ['date' => $date]);
             
-            $this->redis->del('stats:weekly:latest');
+            Cache::store()->delete('stats:weekly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -236,7 +232,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_monthly_stats(:date)", ['date' => $date]);
             
-            $this->redis->del('stats:monthly:latest');
+            Cache::store()->delete('stats:monthly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -260,7 +256,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_yearly_stats(:year)", ['year' => $year]);
             
-            $this->redis->del('stats:yearly:latest');
+            Cache::store()->delete('stats:yearly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -280,9 +276,9 @@ class StatsService
     public function getHourlyStats(?string $startDate = null, ?string $endDate = null, int $limit = 168): array
     {
         $cacheKey = "stats:hourly:{$startDate}:{$endDate}:{$limit}";
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cached = Cache::store()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
         $qb = $this->db->queryBuilder()->from('stats_hourly');
@@ -295,7 +291,7 @@ class StatsService
         $results = $qb->orderBy('stat_hour', 'desc')->limit($limit)->getAll();
 
         // Cache for 10 minutes
-        $this->redis->setex($cacheKey, 600, json_encode($results));
+        Cache::store()->set($cacheKey, $results, 600);
 
         return $results;
     }
@@ -311,9 +307,9 @@ class StatsService
     public function getDailyStats(?string $startDate = null, ?string $endDate = null, int $limit = 90): array
     {
         $cacheKey = "stats:daily:{$startDate}:{$endDate}:{$limit}";
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cached = Cache::store()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
         $qb = $this->db->queryBuilder()->from('stats_daily');
@@ -326,7 +322,7 @@ class StatsService
         $results = $qb->orderBy('stat_date', 'desc')->limit($limit)->getAll();
 
         // Cache for 1 hour
-        $this->redis->setex($cacheKey, 3600, json_encode($results));
+        Cache::store()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -342,9 +338,9 @@ class StatsService
     public function getWeeklyStats(?int $year = null, int $limit = 52): array
     {
         $cacheKey = "stats:weekly:{$year}:{$limit}";
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cached = Cache::store()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
         $qb = $this->db->queryBuilder()->from('stats_weekly');
@@ -392,7 +388,7 @@ class StatsService
         $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
-        $this->redis->setex($cacheKey, 3600, json_encode($results));
+        Cache::store()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -408,9 +404,9 @@ class StatsService
     public function getMonthlyStats(?int $year = null, int $limit = 24): array
     {
         $cacheKey = "stats:monthly:{$year}:{$limit}";
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cached = Cache::store()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
         $qb = $this->db->queryBuilder()->from('stats_monthly');
@@ -455,7 +451,7 @@ class StatsService
         $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
-        $this->redis->setex($cacheKey, 3600, json_encode($results));
+        Cache::store()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -470,9 +466,9 @@ class StatsService
     public function getYearlyStats(int $limit = 10): array
     {
         $cacheKey = "stats:yearly:{$limit}";
-        $cached = $this->redis->get($cacheKey);
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cached = Cache::store()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
         $results = $this->db->queryBuilder()
@@ -515,7 +511,7 @@ class StatsService
         $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
-        $this->redis->setex($cacheKey, 3600, json_encode($results));
+        Cache::store()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -535,12 +531,12 @@ class StatsService
         $this->ensureTablesExist();
         
         $cacheKey = 'stats:summary';
-        $cached = $this->redis->get($cacheKey);
+        $cached = Cache::store()->get($cacheKey);
         
         // Use cache if available - real-time checks happen at cache creation time
         // Cache is short-lived (30s) to ensure frequent updates
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        if ($cached !== null) {
+            return $cached;
         }
 
         $today = date('Y-m-d');
@@ -652,7 +648,7 @@ class StatsService
         ];
 
         // Cache for 30 seconds - short TTL ensures real-time updates show up quickly
-        $this->redis->setex($cacheKey, 30, json_encode($summary));
+        Cache::store()->set($cacheKey, $summary, 30);
 
         return $summary;
     }
@@ -922,20 +918,20 @@ class StatsService
         
         // Check if hourly aggregation is needed (run every 70 minutes max)
         $lastHourlyKey = 'stats:last_hourly_aggregation';
-        $lastHourly = $this->redis->get($lastHourlyKey);
+        $lastHourly = Cache::store()->get($lastHourlyKey);
         
-        if ($lastHourly === false || ($now - (int)$lastHourly) > 4200) { // 70 minutes
+        if ($lastHourly === null || ($now - (int)$lastHourly) > 4200) { // 70 minutes
             $results['hourly'] = $this->aggregateHourlyStats();
-            $this->redis->setex($lastHourlyKey, 86400, $now); // Remember for 24 hours
+            Cache::store()->set($lastHourlyKey, $now, 86400); // Remember for 24 hours
         }
         
         // Check if daily aggregation is needed (run every 25 hours max)
         $lastDailyKey = 'stats:last_daily_aggregation';
-        $lastDaily = $this->redis->get($lastDailyKey);
+        $lastDaily = Cache::store()->get($lastDailyKey);
         
-        if ($lastDaily === false || ($now - (int)$lastDaily) > 90000) { // 25 hours
+        if ($lastDaily === null || ($now - (int)$lastDaily) > 90000) { // 25 hours
             $results['daily'] = $this->aggregateDailyStats();
-            $this->redis->setex($lastDailyKey, 604800, $now); // Remember for 7 days
+            Cache::store()->set($lastDailyKey, $now, 604800); // Remember for 7 days
         }
         
         return $results;

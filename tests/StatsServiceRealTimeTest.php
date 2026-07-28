@@ -3,6 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
+use RadioChatBox\Cache;
 use RadioChatBox\StatsService;
 use RadioChatBox\Database;
 
@@ -53,7 +54,7 @@ class StatsServiceRealTimeTest extends TestCase
     {
         try {
             // Clear Redis stats cache (don't add prefix - Redis client handles it)
-            self::$redis->del('stats:summary');
+            Cache::store()->delete('stats:summary');
             
             // Clean up test messages and sessions from today
             self::$pdo->exec("DELETE FROM messages WHERE created_at >= CURRENT_DATE AND message LIKE '%Test message%'");
@@ -94,7 +95,7 @@ class StatsServiceRealTimeTest extends TestCase
     public function testRealTimeFallbackLogicWorks()
     {
         // Clear Redis cache to force fresh query
-        self::$redis->del('stats:summary');
+        Cache::store()->delete('stats:summary');
         
         $summary = self::$service->getSummary();
         
@@ -132,7 +133,7 @@ class StatsServiceRealTimeTest extends TestCase
         
         try {
             // Clear Redis cache to force fresh query
-            self::$redis->del('stats:summary');
+            Cache::store()->delete('stats:summary');
             
             $summary = self::$service->getSummary();
             
@@ -153,7 +154,7 @@ class StatsServiceRealTimeTest extends TestCase
     public function testCacheWorksOnSecondCall()
     {
         // First call - miss cache
-        self::$redis->del('stats:summary');
+        Cache::store()->delete('stats:summary');
         $summary1 = self::$service->getSummary();
         
         // Second call - should hit cache
