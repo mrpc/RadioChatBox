@@ -38,7 +38,7 @@ class ChatServiceCacheTest extends TestCase
         }
         
         // Clear messages cache before each test
-        self::$redis->del(self::$prefix . 'chat:messages');
+        self::$redis->del(self::$prefix . 'chat:history');
     }
 
     /**
@@ -61,20 +61,20 @@ class ChatServiceCacheTest extends TestCase
         
         try {
             // Manually add some junk to Redis cache to simulate stale/partial data
-            $staleMessage = json_encode([
+            $staleMessage = serialize([
                 'id' => 'stale_msg_' . uniqid(),
                 'username' => 'stale_user',
                 'message' => 'This should be removed',
                 'timestamp' => time() - 3600
             ]);
-            self::$redis->lPush(self::$prefix . 'chat:messages', $staleMessage);
+            self::$redis->lPush(self::$prefix . 'chat:history', $staleMessage);
             
             // Verify stale message is in cache
-            $cachedBefore = self::$redis->lRange(self::$prefix . 'chat:messages', 0, -1);
+            $cachedBefore = self::$redis->lRange(self::$prefix . 'chat:history', 0, -1);
             $this->assertCount(1, $cachedBefore, 'Should have stale message in cache');
             
             // Clear cache to trigger loadHistoryFromDB
-            self::$redis->del(self::$prefix . 'chat:messages');
+            self::$redis->del(self::$prefix . 'chat:history');
             
             // Get history - this should load from DB and populate clean cache
             $history = self::$service->getHistory(50);
@@ -83,12 +83,12 @@ class ChatServiceCacheTest extends TestCase
             $this->assertGreaterThanOrEqual(3, count($history), 'Should load messages from DB');
             
             // Check Redis cache - should NOT have duplicates
-            $cachedAfter = self::$redis->lRange(self::$prefix . 'chat:messages', 0, -1);
-            $decodedMessages = array_map('json_decode', $cachedAfter);
-            
+            $cachedAfter = self::$redis->lRange(self::$prefix . 'chat:history', 0, -1);
+            $decodedMessages = array_map('unserialize', $cachedAfter);
+
             // Count message IDs - if there are duplicates, we'll have more IDs than unique IDs
             $messageIdsList = array_map(function($msg) {
-                return $msg->id ?? null;
+                return $msg['id'] ?? null;
             }, $decodedMessages);
             
             $uniqueIds = array_unique(array_filter($messageIdsList));
@@ -101,7 +101,7 @@ class ChatServiceCacheTest extends TestCase
             
             // Verify the stale message is NOT in the repopulated cache
             foreach ($decodedMessages as $msg) {
-                $this->assertNotEquals('stale_user', $msg->username ?? null,
+                $this->assertNotEquals('stale_user', $msg['username'] ?? null,
                     'Stale message should not be in repopulated cache');
             }
             
@@ -111,7 +111,7 @@ class ChatServiceCacheTest extends TestCase
                 $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ANY(?)");
                 $stmt->execute(['{' . implode(',', $messageIds) . '}']);
             }
-            self::$redis->del(self::$prefix . 'chat:messages');
+            self::$redis->del(self::$prefix . 'chat:history');
         }
     }
 
@@ -132,11 +132,11 @@ class ChatServiceCacheTest extends TestCase
         
         try {
             // Clear cache and get history to populate it
-            self::$redis->del(self::$prefix . 'chat:messages');
+            self::$redis->del(self::$prefix . 'chat:history');
             self::$service->getHistory(50);
             
             // Check that cache has TTL set
-            $ttl = self::$redis->ttl(self::$prefix . 'chat:messages');
+            $ttl = self::$redis->ttl(self::$prefix . 'chat:history');
             
             $this->assertGreaterThan(0, $ttl, 'Message cache should have TTL set');
             $this->assertLessThanOrEqual(86400, $ttl, 'TTL should not exceed 24 hours');
@@ -145,7 +145,7 @@ class ChatServiceCacheTest extends TestCase
             // Cleanup
             $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ?");
             $stmt->execute([$dbMessageId]);
-            self::$redis->del(self::$prefix . 'chat:messages');
+            self::$redis->del(self::$prefix . 'chat:history');
         }
     }
 
@@ -158,7 +158,7 @@ class ChatServiceCacheTest extends TestCase
         
         try {
             // Clear cache
-            self::$redis->del(self::$prefix . 'chat:messages');
+            self::$redis->del(self::$prefix . 'chat:history');
             
             // Post first message
             $msg1Id = uniqid('test_ttl1_', true);
@@ -174,7 +174,7 @@ class ChatServiceCacheTest extends TestCase
             self::$service->getHistory(50);
             
             // Get initial TTL
-            $ttl1 = self::$redis->ttl(self::$prefix . 'chat:messages');
+            $ttl1 = self::$redis->ttl(self::$prefix . 'chat:history');
             
             // Wait a second
             sleep(1);
@@ -184,17 +184,18 @@ class ChatServiceCacheTest extends TestCase
             $stmt->execute([$msg2Id, 'user2', 'Second message', '127.0.0.1']);
             $messageIds[] = $stmt->fetchColumn();
             
-            // Manually simulate what postMessage does
-            self::$redis->lPush(self::$prefix . 'chat:messages', json_encode([
+            // Manually simulate what postMessage does (serialised, as the Cache
+            // structured-list ops store values).
+            self::$redis->lPush(self::$prefix . 'chat:history', serialize([
                 'id' => $msg2Id,
                 'username' => 'user2',
                 'message' => 'Second message',
                 'timestamp' => time()
             ]));
-            self::$redis->expire(self::$prefix . 'chat:messages', 86400);
+            self::$redis->expire(self::$prefix . 'chat:history', 86400);
             
             // Get new TTL
-            $ttl2 = self::$redis->ttl(self::$prefix . 'chat:messages');
+            $ttl2 = self::$redis->ttl(self::$prefix . 'chat:history');
             
             // TTL should be refreshed (should be close to 86400 again, not decreased by 1 second)
             $this->assertGreaterThanOrEqual($ttl1, $ttl2, 
@@ -206,7 +207,7 @@ class ChatServiceCacheTest extends TestCase
                 $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ANY(?)");
                 $stmt->execute(['{' . implode(',', $messageIds) . '}']);
             }
-            self::$redis->del(self::$prefix . 'chat:messages');
+            self::$redis->del(self::$prefix . 'chat:history');
         }
     }
 }

@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
+use RadioChatBox\KickRegistry;
 
 /**
  * A banned (nickname or IP) or kicked user must not be able to communicate with
@@ -40,7 +41,7 @@ class CommunicationBanTest extends TestCase
         $this->chat->unbanNickname($this->nickname);
         $this->chat->unbanIP($this->ip);
         try {
-            Database::getRedis()->del('banned_session:' . $this->sessionId);
+            (new KickRegistry())->forget($this->sessionId);
         } catch (\Throwable) {
             // ignore
         }
@@ -76,7 +77,7 @@ class CommunicationBanTest extends TestCase
     /** A kicked session (Redis banned_session:<id>) is blocked with the kick message. */
     public function testKickedSessionIsBlocked(): void
     {
-        Database::getRedis()->setex('banned_session:' . $this->sessionId, 3600, json_encode(['reason' => 'test']));
+        (new KickRegistry())->kick($this->sessionId, 'test', 'test');
 
         $reason = $this->chat->communicationBlockReason($this->nickname, $this->ip, $this->sessionId);
         $this->assertSame('You have been kicked and cannot send messages right now.', $reason);

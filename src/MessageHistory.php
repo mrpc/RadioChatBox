@@ -2,127 +2,99 @@
 
 namespace RadioChatBox;
 
-use Redis;
+use Pramnos\Cache\FlatCache;
 
 /**
- * Recent-message history state — the Redis structures that back the live chat.
+ * Recent-message history — a cache of PostgreSQL, held behind the framework Cache
+ * capability (Redis driver in production) using its structured operations.
  *
- * This is the single owner of the three message-history keyspaces, which are a
- * cache of PostgreSQL (ChatService rebuilds them from the `messages` table when
- * they are empty) rather than the source of truth:
+ * This owns the three message-history structures as cache keys:
  *
- *   <prefix>chat:messages          LIST  newest-first JSON message objects (lTrim'd)
- *   <prefix>chat:messages:hash     HASH  messageId => {username,display_name,message}
- *                                        for O(1) reply-quote lookups
- *   <prefix>chat:deleted_messages  HASH  messageId => "1" tombstones for the list
+ *   chat:history           LIST  newest-first message objects (trimmed to the limit)
+ *   chat:history:hash      HASH  messageId => {username,display_name,message} (reply quotes)
+ *   chat:history:deleted   HASH  messageId => "1" tombstones for the list
  *
- * The exact key shapes, the per-install prefix, the 24-hour TTLs and the JSON
- * envelopes live here and nowhere else, so services ask this repository to
- * append/fetch/trim/tombstone instead of hand-rolling raw Redis calls scattered
- * across ChatService and the controllers (Phase 8 State layer, mirroring
- * {@see KickRegistry}). Because the list uses native LPUSH/LTRIM (atomic append +
- * bounded trim) and the hashes are field-addressed, this state store wraps the
- * raw Redis connection directly rather than the flat-key Cache capability; keeping
- * it behind this one boundary makes a future re-model a single-file change.
+ * It is a cache of the `messages` table (ChatService rebuilds it via
+ * loadHistoryFromDB when empty), so it depends on the Cache capability, not on
+ * raw Redis — the list/hash/expire operations are the framework's structured
+ * cache ops (native Redis LPUSH/LTRIM/LRANGE/HSET under the hood, an in-memory
+ * fallback elsewhere). Keys are prefixed per-install by the Cache layer.
  *
- * Keys ARE prefixed with the per-install Redis prefix — byte-identical to the
- * historical `ChatService::prefixKey()` call sites this class replaces — so the
- * cache carries over unchanged and in-flight history survives the refactor.
+ * The class keeps only the domain shape (which keys, the message quote fields,
+ * the TTL and trim); storage is entirely the Cache capability's job.
+ *
+ * NOTE: these are new (`chat:history*`) keys, distinct from the pre-Phase-8 raw
+ * `chat:messages*` keys, so the switch to serialised structured values is a clean
+ * cutover — old keys simply expire; the history rebuilds from the database.
  */
 final class MessageHistory
 {
-    private const MESSAGES_KEY = 'chat:messages';
-    private const HASH_KEY     = 'chat:messages:hash';
-    private const DELETED_KEY  = 'chat:deleted_messages';
+    private const MESSAGES_KEY = 'chat:history';
+    private const HASH_KEY     = 'chat:history:hash';
+    private const DELETED_KEY  = 'chat:history:deleted';
 
-    /** How long the cached history/hash live before Redis lets them expire. */
+    /** How long the cached history/hash live before they expire. */
     public const TTL = 86400;
 
-    private Redis $redis;
-    private string $prefix;
+    private FlatCache $cache;
     private int $historyLimit;
 
-    public function __construct(?Redis $redis = null, ?string $prefix = null, ?int $historyLimit = null)
+    public function __construct(?int $historyLimit = null, ?FlatCache $cache = null)
     {
-        $this->redis        = $redis ?? Database::getRedis();
-        $this->prefix       = $prefix ?? Database::getRedisPrefix();
+        $this->cache        = $cache ?? Cache::store();
         $this->historyLimit = $historyLimit ?? (int) Config::get('chat')['history_limit'];
-    }
-
-    private function listKey(): string
-    {
-        return $this->prefix . self::MESSAGES_KEY;
-    }
-
-    private function hashKey(): string
-    {
-        return $this->prefix . self::HASH_KEY;
-    }
-
-    private function deletedKey(): string
-    {
-        return $this->prefix . self::DELETED_KEY;
     }
 
     // ── Recent-message list ─────────────────────────────────────────────────────
 
     /**
-     * Prepend a message to the recent-history list, trim to the history limit and
-     * refresh the TTL. Newest message ends up at position 0.
+     * Prepend a message to the recent-history list, trim to the limit, refresh TTL.
      *
      * @param array<string,mixed> $messageData
      */
     public function append(array $messageData): void
     {
-        $key = $this->listKey();
-        $this->redis->lPush($key, (string) json_encode($messageData));
-        $this->redis->lTrim($key, 0, $this->historyLimit - 1);
-        $this->redis->expire($key, self::TTL);
+        $this->cache->listPush(self::MESSAGES_KEY, $messageData);
+        $this->cache->listTrim(self::MESSAGES_KEY, 0, $this->historyLimit - 1);
+        $this->cache->expire(self::MESSAGES_KEY, self::TTL);
     }
 
     /**
-     * The most recent messages, newest-first, as decoded arrays (as stored).
-     *
-     * Returns an empty array when the cache is empty — the caller then rebuilds
-     * from the database via {@see replace()}.
+     * The most recent messages, newest-first. Returns an empty array when the
+     * cache is empty (the caller then rebuilds from the database via replace()).
      *
      * @return list<array<string,mixed>>
      */
     public function recent(int $limit): array
     {
-        $raw = $this->redis->lRange($this->listKey(), 0, $limit - 1);
-        if (!is_array($raw) || $raw === []) {
+        $messages = $this->cache->listRange(self::MESSAGES_KEY, 0, $limit - 1);
+        if (!is_array($messages) || $messages === []) {
             return [];
         }
-
-        $messages = [];
-        foreach ($raw as $json) {
-            $decoded = json_decode((string) $json, true);
-            if (is_array($decoded)) {
-                $messages[] = $decoded;
+        // Defensive: any non-array element means stale/foreign data — treat the
+        // whole cache as empty so the caller rebuilds from the database.
+        foreach ($messages as $msg) {
+            if (!is_array($msg)) {
+                return [];
             }
         }
-
-        return $messages;
+        return array_values($messages);
     }
 
     /**
-     * Replace the whole list from a newest-first set of messages (the database
-     * rebuild path): clear, push oldest-first so newest lands at position 0, trim
-     * and set the TTL.
+     * Replace the whole list from a newest-first set of messages (the DB rebuild):
+     * clear, push oldest-first so newest lands at position 0, trim, set TTL.
      *
      * @param list<array<string,mixed>> $messagesNewestFirst
      */
     public function replace(array $messagesNewestFirst): void
     {
-        $key = $this->listKey();
-        $this->redis->del($key);
-
+        $this->cache->delete(self::MESSAGES_KEY);
         foreach (array_reverse($messagesNewestFirst) as $msg) {
-            $this->redis->lPush($key, (string) json_encode($msg));
+            $this->cache->listPush(self::MESSAGES_KEY, $msg);
         }
-        $this->redis->lTrim($key, 0, $this->historyLimit - 1);
-        $this->redis->expire($key, self::TTL);
+        $this->cache->listTrim(self::MESSAGES_KEY, 0, $this->historyLimit - 1);
+        $this->cache->expire(self::MESSAGES_KEY, self::TTL);
     }
 
     /**
@@ -130,7 +102,7 @@ final class MessageHistory
      */
     public function clear(): void
     {
-        $this->redis->del($this->listKey());
+        $this->cache->delete(self::MESSAGES_KEY);
     }
 
     // ── Reply-quote hash ────────────────────────────────────────────────────────
@@ -142,9 +114,7 @@ final class MessageHistory
      */
     public function cacheReply(string $messageId, array $quote): void
     {
-        $key = $this->hashKey();
-        $this->redis->hSet($key, $messageId, (string) json_encode($quote));
-        $this->redis->expire($key, self::TTL);
+        $this->cache->hashSet(self::HASH_KEY, $messageId, $quote, self::TTL);
     }
 
     /**
@@ -154,13 +124,9 @@ final class MessageHistory
      */
     public function getReply(string $messageId): ?array
     {
-        $cached = $this->redis->hGet($this->hashKey(), $messageId);
-        if ($cached === false) {
-            return null;
-        }
-        $decoded = json_decode((string) $cached, true);
+        $cached = $this->cache->hashGet(self::HASH_KEY, $messageId);
 
-        return is_array($decoded) ? $decoded : null;
+        return is_array($cached) ? $cached : null;
     }
 
     /**
@@ -174,7 +140,7 @@ final class MessageHistory
             return;
         }
         $existing['message'] = $message;
-        $this->redis->hSet($this->hashKey(), $messageId, (string) json_encode($existing));
+        $this->cache->hashSet(self::HASH_KEY, $messageId, $existing);
     }
 
     // ── Deleted-message tombstones ──────────────────────────────────────────────
@@ -185,9 +151,7 @@ final class MessageHistory
      */
     public function markDeleted(string $messageId): void
     {
-        $key = $this->deletedKey();
-        $this->redis->hSet($key, $messageId, '1');
-        $this->redis->expire($key, self::TTL);
+        $this->cache->hashSet(self::DELETED_KEY, $messageId, '1', self::TTL);
     }
 
     /**
@@ -195,6 +159,6 @@ final class MessageHistory
      */
     public function isDeleted(string $messageId): bool
     {
-        return $this->redis->hGet($this->deletedKey(), $messageId) === '1';
+        return $this->cache->hashGet(self::DELETED_KEY, $messageId) === '1';
     }
 }

@@ -2,38 +2,36 @@
 
 namespace RadioChatBox;
 
-use Redis;
+use Pramnos\Cache\FlatCache;
 
 /**
- * Registry of kicked sessions — durable moderation state, NOT a cache.
+ * Registry of kicked sessions — short-lived moderation state, held behind the
+ * framework Cache capability (Redis driver in production).
  *
- * When an admin kicks a user, their session id is recorded here for one hour so
- * they cannot immediately rejoin or keep communicating. This is the single owner
- * of the `banned_session:<id>` keyspace: the exact key shape, the 1-hour TTL and
- * the JSON envelope live here and nowhere else, so services ask
- * "isKicked(sessionId)" / "kick(...)" instead of hand-rolling raw Redis calls.
+ * When an admin kicks a user, their session id is recorded for one hour so they
+ * cannot immediately rejoin or keep communicating. This is the single owner of
+ * the `banned_session:<id>` cache namespace: the key shape, the 1-hour TTL and
+ * the stored fields live here and nowhere else, so services ask
+ * "isKicked(sessionId)" / "kick(...)" instead of hand-rolling Redis calls.
  *
- * The keys are deliberately stored WITHOUT the per-install Redis prefix (a kick
- * is intentionally global across installs that share the Redis), preserving the
- * historical behaviour of the scattered call sites this class replaces. Because
- * enumeration ({@see list()}) needs a keyspace scan, this state store wraps the
- * raw Redis connection directly rather than the (scan-less) Cache capability;
- * keeping it behind this one boundary makes a future re-model (a SET/hash index,
- * or a DB table) a single-file change.
+ * Keys are per-install (prefixed by the Cache layer): a kick on one install does
+ * not affect another that merely shares the same Redis. Enumeration for the admin
+ * view uses the Cache `keys()` operation (Redis SCAN under the hood); the
+ * remaining lock time is derived from the stored `kicked_at` + TTL, so no
+ * separate TTL read is needed.
  */
 final class KickRegistry
 {
-    /** Un-prefixed by design: kicks are global across installs sharing Redis. */
     private const KEY_PREFIX = 'banned_session:';
 
     /** How long a kick keeps a session locked out. */
     public const TTL = 3600;
 
-    private Redis $redis;
+    private FlatCache $cache;
 
-    public function __construct(?Redis $redis = null)
+    public function __construct(?FlatCache $cache = null)
     {
-        $this->redis = $redis ?? Database::getRedis();
+        $this->cache = $cache ?? Cache::store();
     }
 
     private function key(string $sessionId): string
@@ -46,11 +44,11 @@ final class KickRegistry
      */
     public function kick(string $sessionId, string $username, string $reason = 'Kicked by admin'): void
     {
-        $this->redis->setex($this->key($sessionId), self::TTL, (string) json_encode([
+        $this->cache->set($this->key($sessionId), [
             'username'  => $username,
             'reason'    => $reason,
             'kicked_at' => time(),
-        ]));
+        ], self::TTL);
     }
 
     /**
@@ -61,7 +59,7 @@ final class KickRegistry
         if ($sessionId === '') {
             return false;
         }
-        return (bool) $this->redis->exists($this->key($sessionId));
+        return $this->cache->has($this->key($sessionId));
     }
 
     /**
@@ -69,7 +67,7 @@ final class KickRegistry
      */
     public function forget(string $sessionId): void
     {
-        $this->redis->del($this->key($sessionId));
+        $this->cache->delete($this->key($sessionId));
     }
 
     /**
@@ -79,28 +77,21 @@ final class KickRegistry
      */
     public function list(): array
     {
-        $pattern = self::KEY_PREFIX . '*';
-        $cursor  = null;
-        $kicked  = [];
-        do {
-            $keys = $this->redis->scan($cursor, $pattern, 100);
-            if ($keys === false) {
-                break;
+        $kicked = [];
+        foreach ($this->cache->keys(self::KEY_PREFIX . '*') as $key) {
+            $data = $this->cache->get($key);
+            if (!is_array($data)) {
+                continue;
             }
-            foreach ($keys as $key) {
-                $ttl  = $this->redis->ttl($key);
-                $data = json_decode((string) $this->redis->get($key), true);
-                if ($data) {
-                    $kicked[] = [
-                        'session_id' => substr($key, strlen(self::KEY_PREFIX)),
-                        'username'   => $data['username'] ?? null,
-                        'reason'     => $data['reason'] ?? null,
-                        'kicked_at'  => $data['kicked_at'] ?? null,
-                        'expires_in' => $ttl,
-                    ];
-                }
-            }
-        } while ($cursor !== 0 && $cursor !== null);
+            $kickedAt = (int) ($data['kicked_at'] ?? 0);
+            $kicked[] = [
+                'session_id' => substr($key, strlen(self::KEY_PREFIX)),
+                'username'   => $data['username'] ?? null,
+                'reason'     => $data['reason'] ?? null,
+                'kicked_at'  => $data['kicked_at'] ?? null,
+                'expires_in' => $kickedAt > 0 ? max(0, $kickedAt + self::TTL - time()) : self::TTL,
+            ];
+        }
 
         return $kicked;
     }

@@ -5,6 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use RadioChatBox\Cache;
 use RadioChatBox\Controllers\AdminStatsController;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -29,7 +30,7 @@ class AdminStatsControllerTest extends TestCase
     {
         if ($this->sessionKey !== null) {
             try {
-                Database::getRedis()->del($this->sessionKey);
+                Cache::store()->delete($this->sessionKey);
             } catch (\Throwable) {
                 // best effort
             }
@@ -48,13 +49,11 @@ class AdminStatsControllerTest extends TestCase
     private function authAsAdmin(): void
     {
         try {
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key    = $prefix . 'admin_session:' . self::ADMIN_ID;
-            $redis->setex($key, 120, json_encode([
+            $key = 'admin_session:' . self::ADMIN_ID;
+            Cache::store()->set($key, [
                 'username' => self::ADMIN_ID,
                 'role'     => 'administrator',
-            ]));
+            ], 120);
             $this->sessionKey = $key;
             $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ADMIN_ID . ':x';
         } catch (\Throwable $e) {

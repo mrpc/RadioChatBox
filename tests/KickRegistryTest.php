@@ -2,94 +2,99 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Cache\Adapter\RedisAdapter;
+use Pramnos\Cache\FlatCache;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Database;
+use RadioChatBox\Config;
 use RadioChatBox\KickRegistry;
 
 /**
- * Covers RadioChatBox\KickRegistry, the single owner of the kicked-session
- * (`banned_session:<id>`) state introduced when the scattered raw-Redis kick
- * calls were consolidated behind one boundary (Phase 8 State layer).
+ * Covers RadioChatBox\KickRegistry after Phase C moved it onto the framework
+ * Cache capability (per-install, structured keys() enumeration) instead of raw
+ * Redis.
  *
- * Runs against the shared dev Redis (kicks are Redis state, not a cache), using
- * a random session id and cleaning up after itself. Also pins the historical
- * contract that keys are stored UNPREFIXED, so a kick recorded here is visible
- * to any reader on the same Redis regardless of the per-install prefix.
+ * Injects a FlatCache on a RedisAdapter with a random per-test prefix (against
+ * the shared dev Redis, since list() relies on SCAN, which the in-memory adapter
+ * does not implement) and cleans up afterwards.
  */
 class KickRegistryTest extends TestCase
 {
-    private string $sessionId;
+    private FlatCache $cache;
+    private KickRegistry $registry;
 
     protected function setUp(): void
     {
-        $this->sessionId = 'kicktest_' . bin2hex(random_bytes(6));
+        $redis  = Config::get('redis');
+        $prefix = 'kicktest_' . bin2hex(random_bytes(6)) . ':';
+        $this->cache = new FlatCache(
+            new RedisAdapter(
+                (string) ($redis['host'] ?? '127.0.0.1'),
+                (int) ($redis['port'] ?? 6379),
+                0,
+                $redis['password'] ?? null,
+                $prefix
+            ),
+            $prefix
+        );
+        $this->registry = new KickRegistry($this->cache);
     }
 
     protected function tearDown(): void
     {
         try {
-            Database::getRedis()->del('banned_session:' . $this->sessionId);
+            foreach ($this->cache->keys('*') as $key) {
+                $this->cache->delete($key);
+            }
         } catch (\Throwable) {
             // best effort
         }
     }
 
     /**
-     * kick() locks a session out, isKicked() reports it, forget() clears it —
-     * the full lifecycle the moderation flow relies on.
+     * kick() locks a session out, isKicked() reports it, forget() clears it.
      */
     public function testKickThenIsKickedThenForget(): void
     {
-        $registry = new KickRegistry();
+        $id = 'sess_' . bin2hex(random_bytes(4));
+        $this->assertFalse($this->registry->isKicked($id), 'not kicked initially');
 
-        $this->assertFalse($registry->isKicked($this->sessionId), 'not kicked initially');
+        $this->registry->kick($id, 'baduser', 'Kicked by admin');
+        $this->assertTrue($this->registry->isKicked($id), 'kick locks the session out');
 
-        $registry->kick($this->sessionId, 'baduser', 'Kicked by admin');
-        $this->assertTrue($registry->isKicked($this->sessionId), 'kick must lock the session out');
-
-        $registry->forget($this->sessionId);
-        $this->assertFalse($registry->isKicked($this->sessionId), 'forget must clear the kick');
+        $this->registry->forget($id);
+        $this->assertFalse($this->registry->isKicked($id), 'forget clears the kick');
     }
 
     /** An empty session id is never considered kicked. */
     public function testEmptySessionIsNeverKicked(): void
     {
-        $this->assertFalse((new KickRegistry())->isKicked(''));
+        $this->assertFalse($this->registry->isKicked(''));
     }
 
     /**
-     * list() surfaces a kicked session with its metadata and a positive TTL, so
-     * the admin moderation view keeps working after the consolidation.
+     * list() enumerates the kicked sessions with their metadata and a positive
+     * remaining lock time derived from kicked_at + TTL.
      */
-    public function testListSurfacesTheKickedSessionWithMetadata(): void
+    public function testListReportsKickedSessions(): void
     {
-        $registry = new KickRegistry();
-        $registry->kick($this->sessionId, 'baduser', 'spamming');
+        $this->assertSame([], $this->registry->list(), 'empty initially');
 
-        $rows = $registry->list();
-        $mine = null;
-        foreach ($rows as $row) {
-            if ($row['session_id'] === $this->sessionId) {
-                $mine = $row;
-                break;
-            }
+        $this->registry->kick('sA', 'alice', 'spam');
+        $this->registry->kick('sB', 'bob');
+
+        $list = $this->registry->list();
+        $this->assertCount(2, $list);
+
+        $bySession = [];
+        foreach ($list as $row) {
+            $bySession[$row['session_id']] = $row;
         }
+        $this->assertSame('alice', $bySession['sA']['username']);
+        $this->assertSame('spam', $bySession['sA']['reason']);
+        $this->assertGreaterThan(0, $bySession['sA']['expires_in']);
+        $this->assertLessThanOrEqual(KickRegistry::TTL, $bySession['sA']['expires_in']);
 
-        $this->assertNotNull($mine, 'the kicked session must appear in list()');
-        $this->assertSame('baduser', $mine['username']);
-        $this->assertSame('spamming', $mine['reason']);
-        $this->assertGreaterThan(0, $mine['expires_in']);
-        $this->assertLessThanOrEqual(KickRegistry::TTL, $mine['expires_in']);
-    }
-
-    /**
-     * The key is stored UNPREFIXED (a kick is global across installs sharing the
-     * Redis) — pins the BC contract the consolidated call sites depended on.
-     */
-    public function testKeyIsStoredUnprefixed(): void
-    {
-        (new KickRegistry())->kick($this->sessionId, 'baduser');
-
-        $this->assertSame(1, Database::getRedis()->exists('banned_session:' . $this->sessionId));
+        $this->registry->forget('sA');
+        $this->assertCount(1, $this->registry->list());
     }
 }

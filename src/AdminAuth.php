@@ -103,18 +103,14 @@ class AdminAuth
     private static function setCurrentUser(string $username, string $role): void
     {
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            
-            // Store session with user info (expires in 24 hours)
-            $sessionData = json_encode([
+            // Cache the authenticated user's info for 24h so getCurrentUser() skips
+            // a DB role lookup per request. This is a cache, not a login session —
+            // auth itself is the per-request Bearer check in verify().
+            Cache::store()->set("admin_session:{$username}", [
                 'username' => $username,
                 'role' => $role,
-                'authenticated_at' => time()
-            ]);
-            
-            $redis->setex($prefix . "admin_session:{$username}", 86400, $sessionData);
-
+                'authenticated_at' => time(),
+            ], 86400);
         } catch (\Exception $e) {
             Log::write("AdminAuth::setCurrentUser error: " . $e->getMessage());
         }
@@ -123,14 +119,14 @@ class AdminAuth
     /**
      * Destroy an admin's cached auth session (forces re-login).
      *
-     * The `admin_session:<username>` keyspace is owned by AdminAuth; other
+     * The `admin_session:<username>` cache namespace is owned by AdminAuth; other
      * services (e.g. UserService, when a user's role/status changes) ask here
-     * rather than reaching into the Redis key themselves.
+     * rather than reaching into the cache key themselves.
      */
     public static function destroySession(string $username): void
     {
         try {
-            Database::getRedis()->del(Database::getRedisPrefix() . "admin_session:{$username}");
+            Cache::store()->delete("admin_session:{$username}");
         } catch (\Exception $e) {
             Log::write("AdminAuth::destroySession error: " . $e->getMessage());
         }
@@ -172,12 +168,9 @@ class AdminAuth
             
             // The identifier could be either username or email
             // First try to look up directly in case it's a username with active session
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            
-            $sessionData = $redis->get($prefix . "admin_session:{$identifier}");
-            if ($sessionData) {
-                return json_decode($sessionData, true);
+            $sessionData = Cache::store()->get("admin_session:{$identifier}");
+            if (is_array($sessionData)) {
+                return $sessionData;
             }
             
             // If not found, look up the identifier in database to get the actual username
@@ -193,9 +186,9 @@ class AdminAuth
                 if ($user) {
                     $actualUsername = $user['username'];
                     // Try to get session with the actual username
-                    $sessionData = $redis->get($prefix . "admin_session:{$actualUsername}");
-                    if ($sessionData) {
-                        return json_decode($sessionData, true);
+                    $sessionData = Cache::store()->get("admin_session:{$actualUsername}");
+                    if (is_array($sessionData)) {
+                        return $sessionData;
                     }
                 }
             } catch (\Exception $e) {

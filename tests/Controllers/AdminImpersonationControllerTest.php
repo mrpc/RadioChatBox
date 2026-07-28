@@ -7,6 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Services\BlockService;
 use RadioChatBox\Controllers\AdminImpersonationController;
+use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
@@ -35,7 +36,7 @@ class AdminImpersonationControllerTest extends TestCase
     {
         if ($this->sessionKey !== null) {
             try {
-                Database::getRedis()->del($this->sessionKey);
+                Cache::store()->delete($this->sessionKey);
             } catch (\Throwable $e) {
                 // best effort cleanup
             }
@@ -57,13 +58,11 @@ class AdminImpersonationControllerTest extends TestCase
     private function authAsRoot(): void
     {
         try {
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key    = $prefix . 'admin_session:' . self::ROOT_ID;
-            $redis->setex($key, 120, json_encode([
+            $key = 'admin_session:' . self::ROOT_ID;
+            Cache::store()->set($key, [
                 'username' => self::ROOT_ID,
                 'role'     => 'root',
-            ]));
+            ], 120);
             $this->sessionKey = $key;
             $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ROOT_ID . ':x';
         } catch (\Throwable $e) {

@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminSettingsController;
+use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
@@ -29,7 +30,7 @@ class AdminSettingsControllerTest extends TestCase
     {
         if ($this->sessionKey !== null) {
             try {
-                Database::getRedis()->del($this->sessionKey);
+                Cache::store()->delete($this->sessionKey);
             } catch (\Throwable) {
                 // best effort
             }
@@ -47,10 +48,8 @@ class AdminSettingsControllerTest extends TestCase
     private function authAsAdmin(string $role = 'administrator'): void
     {
         try {
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key    = $prefix . 'admin_session:' . self::ADMIN_ID;
-            $redis->setex($key, 120, json_encode(['username' => self::ADMIN_ID, 'role' => $role]));
+            $key = 'admin_session:' . self::ADMIN_ID;
+            Cache::store()->set($key, ['username' => self::ADMIN_ID, 'role' => $role], 120);
             $this->sessionKey = $key;
             $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ADMIN_ID . ':x';
         } catch (\Throwable $e) {

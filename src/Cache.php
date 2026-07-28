@@ -4,7 +4,6 @@ namespace RadioChatBox;
 
 use Pramnos\Cache\Adapter\RedisAdapter;
 use Pramnos\Cache\FlatCache;
-use Psr\SimpleCache\CacheInterface;
 
 /**
  * Application cache accessor.
@@ -17,22 +16,22 @@ use Psr\SimpleCache\CacheInterface;
  * adapter) and test-doubleable (inject an ArrayAdapter-backed FlatCache).
  *
  * As of Phase 8 this accessor also exposes the atomic counter capability
- * (increment/decrement/counter) that rate-limit, login-attempt, spam-violation
- * and bot-reply-epoch counters use — native Redis INCRBY under the hood.
- *
- * Genuinely non-cache Redis uses (pub/sub — see RadioChatBox\Broadcast; the job
- * queue; admin/kicked-session state; the ban lists; the message hash/list)
- * intentionally stay on Database::getRedis() for now — they are state, not a
- * recomputable cache — pending the remaining Phase 8 steps.
+ * (increment/decrement/counter/swap) and the structured operations (hash/list/
+ * expire/keys) — native Redis under the hood — so the recent-message history,
+ * the kicked-session registry and the admin user-info cache go through the Cache
+ * capability rather than raw Redis. Genuinely non-cache Redis (pub/sub — see
+ * RadioChatBox\Broadcast; the job queue; the SSE blocking subscribe connection;
+ * keyspace-pattern maintenance) uses the framework Redis ConnectionManager.
  */
 final class Cache
 {
-    private static ?CacheInterface $store = null;
+    private static ?FlatCache $store = null;
 
     /**
-     * The shared cache store (lazy). Redis-backed in production.
+     * The shared cache store (lazy). Redis-backed in production. Returns FlatCache
+     * so the structured operations (hash/list/expire/keys) are available.
      */
-    public static function store(): CacheInterface
+    public static function store(): FlatCache
     {
         if (self::$store === null) {
             $redis  = (array) Config::get('redis');
@@ -54,7 +53,7 @@ final class Cache
     /**
      * Override the store (test seam). Pass null to reset to the default.
      */
-    public static function setStore(?CacheInterface $store): void
+    public static function setStore(?FlatCache $store): void
     {
         self::$store = $store;
     }
