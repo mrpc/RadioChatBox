@@ -3,7 +3,6 @@
 namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
-use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -248,7 +247,7 @@ final class AdminSystemController
     #[Route('/api/admin/inactive-users', methods: 'GET', name: 'admin.system.inactive-users', middleware: [AdminAuthMiddleware::class])]
     public function inactiveUsers(): Response
     {
-        $db = Database::getPDO();
+        $db = Database::getDb();
 
         try {
             $request = Request::getInstance();
@@ -256,18 +255,19 @@ final class AdminSystemController
             $limit   = min((int) $request->get('limit', 100, 'get'), 200);
             $offset  = ($page - 1) * $limit;
 
-            // Get total count.
-            $countStmt = $db->query("
+            // Get total count (analytical query with NOT IN subquery — verbatim).
+            $countResult = $db->query("
                 SELECT COUNT(DISTINCT u.username)
                 FROM user_activity u
                 WHERE u.username NOT IN (SELECT username FROM sessions)
             ");
-            $total      = (int) $countStmt->fetchColumn();
+            $total      = (int) ($countResult ? $countResult->fetchColumn() : 0);
             $totalPages = ceil($total / $limit);
 
             // Users from user_activity who are NOT in sessions: everyone who has
-            // ever connected but is not currently active.
-            $stmt = $db->prepare("
+            // ever connected but is not currently active (correlated subqueries +
+            // DISTINCT + NULLS LAST — kept verbatim via preparedQuery).
+            $result = $db->preparedQuery("
                 SELECT DISTINCT
                     u.username,
                     u.ip_address,
@@ -281,12 +281,9 @@ final class AdminSystemController
                 WHERE u.username NOT IN (SELECT username FROM sessions)
                 ORDER BY last_message_at DESC NULLS LAST
                 LIMIT :limit OFFSET :offset
-            ");
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-            $stmt->execute();
+            ", ['limit' => $limit, 'offset' => $offset]);
 
-            $inactiveUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $inactiveUsers = $result ? $result->fetchAll() : [];
 
             return Response::json([
                 'success'    => true,
@@ -528,13 +525,17 @@ final class AdminSystemController
                 throw new \RuntimeException('Invalid image or storage failed');
             }
 
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
             if ($type === 'track_cover') {
-                $pdo->prepare('UPDATE tracks SET cover_file = :c WHERE id = :id')
-                    ->execute(['c' => $saved['full'], 'id' => $id]);
+                $db->queryBuilder()->from('tracks')
+                    ->where('id', '=', $id)
+                    ->update(['cover_file' => $saved['full']]);
             } else {
-                $pdo->prepare('UPDATE artists SET image_file = :c, updated_at = NOW() WHERE id = :id')
-                    ->execute(['c' => $saved['full'], 'id' => $id]);
+                // updated_at = NOW() expression — kept as verbatim prepared SQL.
+                $db->preparedQuery(
+                    'UPDATE artists SET image_file = :c, updated_at = NOW() WHERE id = :id',
+                    ['c' => $saved['full'], 'id' => $id]
+                );
             }
 
             return Response::json([
