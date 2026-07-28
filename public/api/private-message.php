@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../vendor/autoload.php';
 
+use RadioChatBox\AdminAuth;
 use RadioChatBox\CorsHandler;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
@@ -236,7 +237,25 @@ try {
         $sessionId = $_GET['session_id'] ?? '';
         $withUser = $_GET['with_user'] ?? null;
         $adminMode = isset($_GET['admin']) && $_GET['admin'] === 'true';
-        
+
+        // Admin mode returns ALL messages between two users, bypassing the
+        // session isolation that scopes the normal read — so it must be gated
+        // behind an authenticated admin who may already read private messages.
+        // Without this, anyone could read any private conversation.
+        if ($adminMode) {
+            if (!AdminAuth::verify()) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Unauthorized']);
+                exit;
+            }
+            $adminUser = AdminAuth::getCurrentUser();
+            if (!$adminUser || !in_array($adminUser['role'] ?? '', ['root', 'owner', 'administrator'], true)) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden: private conversations require an administrator']);
+                exit;
+            }
+        }
+
         if (empty($username) || empty($sessionId)) {
             throw new InvalidArgumentException('Username and session ID are required');
         }
