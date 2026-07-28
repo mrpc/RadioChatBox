@@ -560,7 +560,7 @@ class BotServicePipelineTest extends TestCase
 
     public function testAFailedClosingCallFallsBackToACannedGoodbye(): void
     {
-        $this->incoming('kai meta;');
+        $this->incoming('και μετά;');
         $this->exhaustBudget();
         $this->llm->throw = new \RuntimeException('network down');
 
@@ -725,7 +725,7 @@ class BotServicePipelineTest extends TestCase
 
     public function testAMultiLineReplyIsDeliveredAsSeparateBubblesCountingOneTurn(): void
     {
-        $this->incoming('geia');
+        $this->incoming('γεια');
         $this->llm->reply = "γεια!\nτι κανεις;"; // two lines
 
         $this->bot->processReplyJob($this->replyPayload(0));
@@ -758,7 +758,7 @@ class BotServicePipelineTest extends TestCase
     public function testEmojisAreStrippedFromTheDeliveredMessageWhenTheChanceIsZero(): void
     {
         $this->settings->values['bot_emoji_chance'] = '0';
-        $this->incoming('geia');
+        $this->incoming('γεια');
         $this->llm->reply = 'γεια 😅';
 
         $this->bot->processReplyJob($this->replyPayload(0));
@@ -1329,19 +1329,20 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame('καλά είμαι ρε', $this->claimAll()[0]['payload']['message']);
     }
 
-    public function testWithoutAChoiceTheBotIsToldToMirrorThePeer(): void
+    public function testAutoModeWritesGreekAndConvertsToGreeklishForAGreeklishPeer(): void
     {
-        $this->incoming('ti kaneis re');
-        $this->llm->reply = 'kala esy;';
+        $this->incoming('ti kaneis re');   // the peer writes greeklish (latin)
+        $this->llm->reply = 'καλά εσύ;';   // the model replies in GREEK, as instructed
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
-        $this->assertStringContainsString(
-            'ίδιο αλφάβητο',
-            $this->llm->calls[0]['system'],
-            'auto should mirror the script the peer writes in'
-        );
-        // Nothing is rewritten in auto mode.
+        // The model is told to write GREEK characters and never greeklish itself.
+        $system = $this->llm->calls[0]['system'];
+        $this->assertStringContainsString('ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες', $system);
+        $this->assertStringNotContainsString('ίδιο αλφάβητο', $system);
+
+        // The system — not the model — converts the reply to greeklish for the
+        // greeklish peer.
         $this->assertSame('kala esy;', $this->claimAll()[0]['payload']['message']);
     }
 

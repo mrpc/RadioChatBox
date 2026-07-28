@@ -548,7 +548,10 @@ class BotService
                     'peer_session_id' => $fromSessionId,
                     'epoch' => $epoch,
                 ], self::sanitizeReply(
-                    self::enforceLanguage($this->pickBrushOff(), self::replyLanguage($fakeUser)),
+                    self::enforceLanguage(
+                        $this->pickBrushOff(),
+                        self::resolveEnforceLanguage($fakeUser, (string) $message)
+                    ),
                     (int) (Config::get('chat')['max_message_length'] ?? 500)
                 ), true);
 
@@ -637,6 +640,11 @@ class BotService
         $maxLength = (int) (Config::get('chat')['max_message_length'] ?? 500);
         $reply = '';
 
+        // Decide the output script from what the peer wrote (auto mode); the model
+        // is never asked to write greeklish — it only ever comes from this conversion.
+        $peerMessage = $this->latestInboundMessage((string) $fakeUser['nickname'], $peer);
+        $enforceLanguage = self::resolveEnforceLanguage($fakeUser, $peerMessage);
+
         if (!$llm->isConfigured()) {
             $this->recordThreadError(
                 $fakeUserId,
@@ -682,7 +690,7 @@ class BotService
                 $result = $llm->chat($systemPrompt, $history);
                 $reply = self::enforceLanguage(
                     self::sanitizeReply($result['text'], $maxLength),
-                    self::replyLanguage($fakeUser)
+                    $enforceLanguage
                 );
             } catch (\Throwable $e) {
                 $this->recordThreadError($fakeUserId, $peer, $e->getMessage());
@@ -702,7 +710,7 @@ class BotService
 
             $reply = self::enforceLanguage(
                 self::sanitizeReply($this->pickFarewellFor($fakeUser), $maxLength),
-                self::replyLanguage($fakeUser)
+                $enforceLanguage
             );
         }
 
@@ -725,7 +733,7 @@ class BotService
 
             $reply = self::enforceLanguage(
                 self::sanitizeReply($this->pickDeflection(), $maxLength),
-                self::replyLanguage($fakeUser)
+                $enforceLanguage
             );
         }
 
@@ -1692,9 +1700,16 @@ class BotService
                 . ' Emoji επιτρέπονται.',
             'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.',
             'english' => 'LANGUAGE - MANDATORY: Reply in English only, in a casual chat tone.',
-            default => 'ΓΛΩΣΣΑ: Απαντάς με το ίδιο αλφάβητο που χρησιμοποιεί ο συνομιλητής -'
-                . ' αν σου γράφει greeklish (ελληνικά με λατινικούς χαρακτήρες) απάντα σε greeklish,'
-                . ' αν σου γράφει ελληνικά απάντα στα ελληνικά.',
+            // Auto: match the person's LANGUAGE, but never the greeklish SCRIPT.
+            // If they write Greek or greeklish, the model writes Greek characters
+            // and the system transliterates to greeklish afterwards when needed
+            // (see resolveEnforceLanguage/enforceLanguage). The model must never
+            // produce greeklish itself.
+            default => 'ΓΛΩΣΣΑ: Αν ο συνομιλητής γράφει ελληνικά Ή greeklish (ελληνικά με'
+                . ' λατινικούς χαρακτήρες), απαντάς με ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες (φυσικά, καθημερινά'
+                . ' ελληνικά). ΠΟΤΕ δεν γράφεις εσύ greeklish/λατινικούς για ελληνικά - το σύστημα'
+                . ' κάνει μόνο του τη μετατροπή σε greeklish αν χρειάζεται. Αν σου γράφει στα'
+                . ' αγγλικά, απάντα στα αγγλικά.',
         };
     }
 
@@ -1712,6 +1727,33 @@ class BotService
         }
 
         return self::toGreeklish($text);
+    }
+
+    /**
+     * The language to enforce on a reply, given the bot's setting and what the
+     * peer actually wrote. Greeklish is ONLY ever produced by transliteration
+     * (enforceLanguage); the model is never asked to write it.
+     *
+     * In 'auto' mode, a peer writing in latin characters (greeklish or English)
+     * makes the reply greeklish: the model was told to answer in Greek script, so
+     * transliterating gives greeklish for a greeklish peer, while an English reply
+     * has no Greek characters and passes through unchanged. A peer writing Greek
+     * script keeps the reply in Greek.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public static function resolveEnforceLanguage(array $fakeUser, string $peerMessage): string
+    {
+        $language = self::replyLanguage($fakeUser);
+
+        if ($language === 'auto'
+            && $peerMessage !== ''
+            && !preg_match('/\p{Greek}/u', $peerMessage)
+        ) {
+            return 'greeklish';
+        }
+
+        return $language;
     }
 
     /**
