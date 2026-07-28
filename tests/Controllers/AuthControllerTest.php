@@ -5,6 +5,8 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AuthController;
+use RadioChatBox\Database;
+use RadioChatBox\UserService;
 
 /**
  * Golden-contract tests for the migrated Auth endpoints login / logout /
@@ -67,6 +69,55 @@ class AuthControllerTest extends TestCase
 
         $this->assertSame(401, $response->getStatusCode());
         $this->assertSame('Invalid username or password', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * login: valid credentials link the session to the user via the upsert that
+     * was converted from raw PDO to the framework DB layer. Logging in twice on
+     * the same (username, session_id) must exercise BOTH the INSERT and the
+     * ON CONFLICT DO UPDATE branch, leaving exactly one session row carrying the
+     * user_id — the golden behaviour the raw statement guaranteed. All seeded
+     * rows are cleaned up.
+     */
+    public function testLoginSuccessLinksSessionToUserViaUpsert(): void
+    {
+        $pdo      = Database::getPDO();
+        $username = 'authctl_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $password = 'testpass123';
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        $created = (new UserService())->createUser($username, $password, 'simple_user', null, null);
+        $this->assertTrue($created['success'] ?? false, 'test user must be created');
+        $userId = $created['user']['id'];
+
+        try {
+            $_POST = ['username' => $username, 'password' => $password, 'sessionId' => $sessionId];
+
+            // First login inserts the session row.
+            $first = (new AuthController())->login();
+            $this->assertSame(200, $first->getStatusCode());
+            $body = json_decode($first->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame($userId, $body['user']['id']);
+
+            // Second login on the same (username, session_id) takes the ON CONFLICT
+            // DO UPDATE branch — still one row, still linked.
+            $second = (new AuthController())->login();
+            $this->assertSame(200, $second->getStatusCode());
+
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) AS n, MAX(user_id) AS uid FROM sessions
+                 WHERE username = :u AND session_id = :s'
+            );
+            $stmt->execute(['u' => $username, 's' => $sessionId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            $this->assertSame(1, (int) $row['n'], 'the upsert must keep exactly one session row');
+            $this->assertSame($userId, (int) $row['uid'], 'the session must be linked to the user');
+        } finally {
+            $pdo->prepare('DELETE FROM sessions WHERE username = :u')->execute(['u' => $username]);
+            $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $userId]);
+        }
     }
 
     /**

@@ -2,7 +2,6 @@
 
 namespace RadioChatBox\Controllers;
 
-use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -27,20 +26,21 @@ final class UserProfileController
         }
 
         try {
-            $db = Database::getPDO();
+            $db = Database::getDb();
 
-            $userStmt = $db->prepare('SELECT id, username, display_name FROM users WHERE username = :username');
-            $userStmt->execute(['username' => $username]);
-            $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+            $userRow = $db->queryBuilder()
+                ->from('users')
+                ->select(['id', 'username', 'display_name'])
+                ->where('username', '=', $username)
+                ->first();
+            $user = ($userRow && $userRow->numRows > 0) ? $userRow->fields : null;
 
-            $stmt = $db->prepare('
-                SELECT age, sex, location
-                FROM user_profiles
-                WHERE username = :username
-                LIMIT 1
-            ');
-            $stmt->execute(['username' => $username]);
-            $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+            $profileRow = $db->queryBuilder()
+                ->from('user_profiles')
+                ->select(['age', 'sex', 'location'])
+                ->where('username', '=', $username)
+                ->first();
+            $profile = ($profileRow && $profileRow->numRows > 0) ? $profileRow->fields : null;
 
             if (!$profile) {
                 $profile = ['age' => null, 'sex' => null, 'location' => null];

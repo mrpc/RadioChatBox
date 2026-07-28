@@ -2,7 +2,6 @@
 
 namespace RadioChatBox\Controllers;
 
-use PDO;
 use Pramnos\Broadcasting\Drivers\RedisDriver;
 use Pramnos\Broadcasting\SubscriptionOptions;
 use Pramnos\Http\Request;
@@ -46,11 +45,12 @@ final class AdminStreamController
             $sse->comment('Admin SSE connection established');
 
             try {
-                // Initial unread notification count for this admin.
-                $pdo  = Database::getPDO();
-                $stmt = $pdo->prepare('SELECT get_unread_notification_count(?)');
-                $stmt->execute([$currentUser['username']]);
-                $sse->event('notification_count', ['unread_count' => (int) $stmt->fetchColumn()]);
+                // Initial unread notification count for this admin (stored fn).
+                $result = Database::getDb()->preparedQuery(
+                    'SELECT get_unread_notification_count(?)',
+                    [$currentUser['username']]
+                );
+                $sse->event('notification_count', ['unread_count' => (int) ($result ? $result->fetchColumn() : 0)]);
 
                 $driver = new RedisDriver(
                     ['prefix' => Database::getRedisPrefix()],

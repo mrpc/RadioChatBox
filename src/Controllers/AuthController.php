@@ -66,25 +66,25 @@ final class AuthController
             }
 
             // Link the session to this authenticated user
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
-            // Create or update session with user_id
-            $stmt = $pdo->prepare(
+            // Create or update session with user_id (upsert with NOW() expressions
+            // in both VALUES and DO UPDATE — kept as verbatim prepared SQL).
+            $db->preparedQuery(
                 'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
                  ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
                      user_id = :user_id,
-                     last_heartbeat = NOW()'
+                     last_heartbeat = NOW()',
+                [
+                    'username' => $user['username'],
+                    'session_id' => $sessionId,
+                    'ip_address' => $ipAddress,
+                    'user_id' => $user['id'],
+                ]
             );
-
-            $stmt->execute([
-                'username' => $user['username'],
-                'session_id' => $sessionId,
-                'ip_address' => $ipAddress,
-                'user_id' => $user['id'],
-            ]);
 
             return Response::json([
                 'success' => true,
