@@ -8,7 +8,6 @@ class ChatService
 {
     private PramnosDatabase $db;
     private MessageHistory $messageHistory;
-    private ActiveUsersRegistry $activeUsers;
     private const PUBSUB_CHANNEL = 'chat:updates';
     private const RATE_LIMIT_PREFIX = 'ratelimit:';
     private const USER_UPDATE_CHANNEL = 'chat:user_updates';
@@ -17,7 +16,6 @@ class ChatService
     {
         $this->db = Database::getDb();
         $this->messageHistory = new MessageHistory();
-        $this->activeUsers = new ActiveUsersRegistry();
     }
 
     /**
@@ -729,12 +727,6 @@ class ChatService
                 );
             }
             
-            // Also record presence in the active-users hash.
-            $this->activeUsers->join($username, [
-                'username' => $username,
-                'joined_at' => time(),
-            ]);
-            
             // Publish user update to SSE subscribers
             $this->publishUserUpdate();
             
@@ -756,9 +748,6 @@ class ChatService
                 'DELETE FROM sessions WHERE session_id = :session_id',
                 ['session_id' => $sessionId]
             );
-
-            // Remove from the active-users hash.
-            $this->activeUsers->leave($sessionId);
 
             // Publish user update after logout
             $this->publishUserUpdate();
@@ -986,8 +975,6 @@ class ChatService
                     'session_id' => $sessionId,
                 ]
             );
-
-            $this->activeUsers->leave($username);
 
             // Publish user update to SSE subscribers
             $this->publishUserUpdate();

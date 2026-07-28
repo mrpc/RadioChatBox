@@ -8,7 +8,6 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
 use RadioChatBox\Cache;
-use RadioChatBox\ActiveUsersRegistry;
 use RadioChatBox\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
@@ -203,9 +202,6 @@ final class AdminModerationController
                 ->delete();
 
             if ($result) {
-                // Remove from the active-users hash.
-                (new ActiveUsersRegistry())->leave($username);
-
                 // Notify clients that user was kicked. (Historically published to an
                 // UNPREFIXED channel — now normalized to the prefixed channel the SSE
                 // edge subscribes to; see docs/pramnos-migration/06 §8.2.)

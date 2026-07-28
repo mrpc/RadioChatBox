@@ -23,7 +23,6 @@ class FakeUserService
     private const ACTIVE_CONVERSATION_WINDOW_MINUTES = 180;
 
     private PramnosDatabase $db;
-    private ActiveUsersRegistry $activeUsers;
 
     /** The fake-user columns returned by the read/RETURNING queries. */
     private const SELECT_COLUMNS = [
@@ -36,7 +35,6 @@ class FakeUserService
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->activeUsers = new ActiveUsersRegistry();
     }
 
     /**
@@ -256,14 +254,6 @@ class FakeUserService
             }
 
             throw $e;
-        }
-
-        // Keep the visible user list in sync with the new profile.
-        if ($updated !== null && $updated['is_active']) {
-            if ($newNickname !== null) {
-                $this->removeFakeUserFromRedis((string) $current['nickname']);
-            }
-            $this->addFakeUserToRedis($updated);
         }
 
         return $updated;
@@ -541,15 +531,6 @@ class FakeUserService
             ->update(['is_active' => $qb->raw('NOT is_active')]);
         $user = ($result && $result->numRows > 0) ? $result->fields : null;
 
-        // Update Redis active users list
-        if ($user) {
-            if ($user['is_active']) {
-                $this->addFakeUserToRedis($user);
-            } else {
-                $this->removeFakeUserFromRedis($user['nickname']);
-            }
-        }
-
         return $user ?? [];
     }
 
@@ -566,11 +547,6 @@ class FakeUserService
         $user = ($result && $result->numRows > 0) ? $result->fields : null;
 
         if ($user) {
-            if ($active) {
-                $this->addFakeUserToRedis($user);
-            } else {
-                $this->removeFakeUserFromRedis($user['nickname']);
-            }
             return true;
         }
         return false;
@@ -762,43 +738,10 @@ class FakeUserService
      */
     private function deactivateAllFakeUsers(): void
     {
-        // Get all active fake users first
-        $nicknames = $this->db->queryBuilder()
-            ->from('fake_users')
-            ->whereRaw('is_active = TRUE')
-            ->pluck('nickname');
-
-        // Deactivate in database
         $this->db->queryBuilder()
             ->from('fake_users')
             ->whereRaw('is_active = TRUE')
             ->update(['is_active' => false]);
-
-        // Remove from Redis
-        foreach ($nicknames as $nickname) {
-            $this->removeFakeUserFromRedis($nickname);
-        }
     }
 
-    /**
-     * Add fake user to Redis active users
-     */
-    private function addFakeUserToRedis(array $user): void
-    {
-        $this->activeUsers->join((string) $user['nickname'], [
-            'nickname' => $user['nickname'],
-            'age' => $user['age'],
-            'sex' => $user['sex'],
-            'location' => $user['location'],
-            'is_fake' => true,
-        ]);
-    }
-
-    /**
-     * Remove fake user from the active-users hash
-     */
-    private function removeFakeUserFromRedis(string $nickname): void
-    {
-        $this->activeUsers->leave($nickname);
-    }
 }
