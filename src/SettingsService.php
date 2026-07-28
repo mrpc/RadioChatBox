@@ -2,14 +2,11 @@
 
 namespace RadioChatBox;
 
-use Redis;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class SettingsService
 {
     private PramnosDatabase $db;
-    private Redis $redis;
-    private string $prefix;
     private const SETTINGS_CACHE_KEY = 'settings:all';
 
     /**
@@ -146,16 +143,6 @@ class SettingsService
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
-    }
-
-    /**
-     * Prefix a Redis key with instance identifier
-     */
-    private function prefixKey(string $key): string
-    {
-        return $this->prefix . $key;
     }
 
     /**
@@ -173,9 +160,9 @@ class SettingsService
     public function getAll(): array
     {
         // Try cache first
-        $cached = $this->redis->get($this->prefixKey(self::SETTINGS_CACHE_KEY));
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        $cached = Cache::store()->get(self::SETTINGS_CACHE_KEY);
+        if ($cached !== null) {
+            return $cached;
         }
 
         // Load from database
@@ -190,7 +177,7 @@ class SettingsService
         }
 
         // Cache for future requests
-        $this->redis->setex($this->prefixKey(self::SETTINGS_CACHE_KEY), self::CACHE_TTL, json_encode($settings));
+        Cache::store()->set(self::SETTINGS_CACHE_KEY, $settings, self::CACHE_TTL);
 
         return $settings;
     }
@@ -243,7 +230,7 @@ class SettingsService
 
         if ($result !== false) {
             // Invalidate cache
-            $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
+            Cache::store()->delete(self::SETTINGS_CACHE_KEY);
         }
 
         return $result !== false;
@@ -376,12 +363,12 @@ class SettingsService
      */
     public function invalidateCache(): void
     {
-        $this->redis->del($this->prefixKey(self::SETTINGS_CACHE_KEY));
-        $this->redis->del($this->prefixKey(self::RATE_LIMIT_CACHE_KEY));
+        Cache::store()->delete(self::SETTINGS_CACHE_KEY);
+        Cache::store()->delete(self::RATE_LIMIT_CACHE_KEY);
 
         // Tell the long-running workers to rebuild what they derived from settings;
         // clearing the cache alone would not reach a client built at startup.
-        $this->redis->set($this->prefixKey(self::VERSION_KEY), (string) microtime(true));
+        Cache::store()->set(self::VERSION_KEY, (string) microtime(true));
     }
 
     /**
@@ -415,8 +402,7 @@ class SettingsService
             $this->db->commitTransaction();
 
             // Invalidate cache
-            $cacheKey = $this->prefixKey(self::SETTINGS_CACHE_KEY);
-            $this->redis->del($cacheKey);
+            Cache::store()->delete(self::SETTINGS_CACHE_KEY);
 
             return true;
         } catch (\Exception $e) {

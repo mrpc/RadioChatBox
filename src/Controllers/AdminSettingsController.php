@@ -8,6 +8,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BotService;
+use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\LlmAccount;
@@ -223,7 +224,6 @@ final class AdminSettingsController
     public function uploadLogo(): Response
     {
         $db = Database::getDb();
-        $redis = Database::getRedis();
 
         try {
             if (!isset($_FILES['logo'])) {
@@ -278,8 +278,9 @@ final class AdminSettingsController
                 ]
             );
 
-            // Invalidate settings cache
-            $redis->del('settings:all');
+            // Invalidate settings cache (routed through Cache so the instance
+            // prefix matches SettingsService — the bare key missed it before).
+            Cache::store()->delete('settings:all');
 
             return Response::json([
                 'success' => true,

@@ -28,8 +28,6 @@ class WorkerReloader
     public const WATCHED = ['src', 'worker.php', 'composer.lock'];
 
     private string $root;
-    private ?\Redis $redis = null;
-    private string $prefix = '';
 
     private ?string $codeFingerprint = null;
     private ?string $settingsVersion = null;
@@ -37,14 +35,6 @@ class WorkerReloader
     public function __construct(?string $root = null)
     {
         $this->root = rtrim($root ?? dirname(__DIR__), '/');
-
-        try {
-            $this->redis = Database::getRedis();
-            $this->prefix = Database::getRedisPrefix();
-        } catch (\Throwable) {
-            // Without Redis the settings check falls back to the database.
-            $this->redis = null;
-        }
     }
 
     // ------------------------------------------------------------------
@@ -150,15 +140,13 @@ class WorkerReloader
      */
     public function settingsVersion(): string
     {
-        if ($this->redis !== null) {
-            try {
-                $stamp = $this->redis->get($this->prefix . SettingsService::VERSION_KEY);
-                if (is_string($stamp) && $stamp !== '') {
-                    return $stamp;
-                }
-            } catch (\Throwable) {
-                // Fall through to the database.
+        try {
+            $stamp = Cache::store()->get(SettingsService::VERSION_KEY);
+            if (is_string($stamp) && $stamp !== '') {
+                return $stamp;
             }
+        } catch (\Throwable) {
+            // Fall through to the database.
         }
 
         try {
