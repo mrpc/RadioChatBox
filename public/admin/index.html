@@ -5005,8 +5005,14 @@
                 const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="event.stopPropagation(); switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(toUsername)}</a>` : '';
                 const displayUserHTML = isPrivate ? `${fromLink} → ${toLink}` : fromLink;
 
+                // A DM row opens the full conversation (same as Message History).
+                const rowClick = isPrivate
+                    ? `onclick="openConversationFromHistory(\`${fromArg}\`, \`${toArg}\`)" title="Open the full conversation"`
+                    : '';
+                const clickStyle = isPrivate ? ' cursor: pointer;' : '';
+
                 html += `
-                    <tr style="${rowStyle}">
+                    <tr style="${rowStyle}${clickStyle}" ${rowClick}>
                         ${dashboardIncludesPrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                         <td>${time}</td>
                         <td><strong>${displayUserHTML}</strong></td>
