@@ -70,36 +70,30 @@ final class ProfileController
         }
 
         try {
-            $db = Database::getPDO();
+            $db = Database::getDb();
 
             // Verify session belongs to user
-            $stmt = $db->prepare("
-                SELECT username
-                FROM sessions
-                WHERE session_id = :session_id AND username = :username
-            ");
-            $stmt->execute([
-                'session_id' => $sessionId,
-                'username'   => $username,
-            ]);
+            $sessionOwned = $db->queryBuilder()
+                ->from('sessions')
+                ->where('session_id', '=', $sessionId)
+                ->where('username', '=', $username)
+                ->exists();
 
-            if (!$stmt->fetch()) {
+            if (!$sessionOwned) {
                 return Response::json(['success' => false, 'error' => 'Invalid session'], 403);
             }
 
             // Update display name in users table if key is present (even if value is null)
             if (array_key_exists('displayName', $input)) {
                 // Check if user is authenticated (has user_id in session)
-                $stmt = $db->prepare("
-                    SELECT user_id
-                    FROM sessions
-                    WHERE session_id = :session_id AND username = :username AND user_id IS NOT NULL
-                ");
-                $stmt->execute([
-                    'session_id' => $sessionId,
-                    'username'   => $username,
-                ]);
-                $session = $stmt->fetch();
+                $sessionRow = $db->queryBuilder()
+                    ->from('sessions')
+                    ->select(['user_id'])
+                    ->where('session_id', '=', $sessionId)
+                    ->where('username', '=', $username)
+                    ->whereRaw('user_id IS NOT NULL')
+                    ->first();
+                $session = ($sessionRow && $sessionRow->numRows > 0) ? $sessionRow->fields : null;
 
                 if ($session && $session['user_id']) {
                     // Handle null and empty string cases for PHP 8+ compatibility
@@ -109,58 +103,36 @@ final class ProfileController
                     // If setting a display name (not clearing it), check for uniqueness
                     if ($finalDisplayName !== null) {
                         // Check if display name conflicts with any username
-                        $stmt = $db->prepare("
-                            SELECT id FROM users WHERE username = :display_name
-                        ");
-                        $stmt->execute(['display_name' => $finalDisplayName]);
-                        if ($stmt->fetch()) {
+                        if ($db->queryBuilder()->from('users')->where('username', '=', $finalDisplayName)->exists()) {
                             return Response::json(['success' => false, 'error' => 'This display name is already taken as a username'], 400);
                         }
 
                         // Check if display name conflicts with another user's display name
-                        $stmt = $db->prepare("
-                            SELECT id FROM users
-                            WHERE display_name = :display_name
-                            AND id != :user_id
-                        ");
-                        $stmt->execute([
-                            'display_name' => $finalDisplayName,
-                            'user_id'      => $session['user_id'],
-                        ]);
-                        if ($stmt->fetch()) {
+                        $conflictsOtherUser = $db->queryBuilder()
+                            ->from('users')
+                            ->where('display_name', '=', $finalDisplayName)
+                            ->where('id', '!=', $session['user_id'])
+                            ->exists();
+                        if ($conflictsOtherUser) {
                             return Response::json(['success' => false, 'error' => 'This display name is already taken'], 400);
                         }
 
                         // Check if display name conflicts with fake user nicknames
-                        $stmt = $db->prepare("
-                            SELECT id FROM fake_users WHERE nickname = :display_name
-                        ");
-                        $stmt->execute(['display_name' => $finalDisplayName]);
-                        if ($stmt->fetch()) {
+                        if ($db->queryBuilder()->from('fake_users')->where('nickname', '=', $finalDisplayName)->exists()) {
                             return Response::json(['success' => false, 'error' => 'This display name conflicts with a system user'], 400);
                         }
 
                         // Check if display name conflicts with active guest nicknames
-                        $stmt = $db->prepare("
-                            SELECT session_id FROM sessions WHERE username = :display_name
-                        ");
-                        $stmt->execute(['display_name' => $finalDisplayName]);
-                        if ($stmt->fetch()) {
+                        if ($db->queryBuilder()->from('sessions')->where('username', '=', $finalDisplayName)->exists()) {
                             return Response::json(['success' => false, 'error' => 'This display name is currently in use as a nickname'], 400);
                         }
                     }
 
                     // Update display_name in users table
-                    $stmt = $db->prepare("
-                        UPDATE users
-                        SET display_name = :display_name
-                        WHERE id = :user_id
-                    ");
-
-                    $stmt->execute([
-                        'display_name' => $finalDisplayName,
-                        'user_id'      => $session['user_id'],
-                    ]);
+                    $db->queryBuilder()
+                        ->from('users')
+                        ->where('id', '=', $session['user_id'])
+                        ->update(['display_name' => $finalDisplayName]);
 
                     // Clear ALL caches related to this user's display name
                     $redis  = Database::getRedis();
@@ -199,8 +171,8 @@ final class ProfileController
                 }
             }
 
-            // Update profile
-            $stmt = $db->prepare("
+            // Update profile (upsert with EXCLUDED — kept as verbatim prepared SQL)
+            $db->preparedQuery("
                 INSERT INTO user_profiles (username, session_id, age, sex, location)
                 VALUES (:username, :session_id, :age, :sex, :location)
                 ON CONFLICT (username, session_id)
@@ -208,9 +180,7 @@ final class ProfileController
                     age = EXCLUDED.age,
                     sex = EXCLUDED.sex,
                     location = EXCLUDED.location
-            ");
-
-            $stmt->execute([
+            ", [
                 'username'   => $username,
                 'session_id' => $sessionId,
                 'age'        => $age,
