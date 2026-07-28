@@ -1519,6 +1519,17 @@
                     </div>
                 </div>
 
+                <!-- Read-only conversation modal (message history → full conversation) -->
+                <div id="history-conversation-modal" class="modal-overlay" style="display: none;" onclick="closeHistoryConversation()">
+                    <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 760px;">
+                        <div class="modal-header">
+                            <h2 id="history-conversation-title">Conversation</h2>
+                            <button class="modal-close" onclick="closeHistoryConversation()">✕</button>
+                        </div>
+                        <div class="modal-body" id="history-conversation-body"></div>
+                    </div>
+                </div>
+
                 <!-- Active Users Tab -->
                 <div id="users-tab" class="tab-content">
                     <div class="section">
@@ -2245,7 +2256,7 @@
                     <div style="margin-top: 16px; display: flex; gap: 10px; align-items: center;">
                         <button class="btn" onclick="loadBotActivity()">🔄 Refresh</button>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6b7280; cursor: pointer;">
-                            <input type="checkbox" id="bot-activity-problems-only" style="width: auto;" onchange="loadBotActivityLog()">
+                            <input type="checkbox" id="bot-activity-problems-only" style="width: auto;" onchange="botLogOffset = 0; loadBotActivityLog()">
                             Only failed or truncated calls
                         </label>
                     </div>
@@ -4990,12 +5001,18 @@
                 const fromArg = String(fromUsername).replace(/`/g, '\\`');
                 const toArg = toUsername != null ? String(toUsername).replace(/`/g, '\\`') : '';
                 const linkStyle = 'color: #374151; text-decoration: none; font-weight: 600; cursor: pointer; padding: 2px 4px; border-radius: 3px; transition: all 0.2s;';
-                const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(fromUsername)}</a>`;
-                const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(toUsername)}</a>` : '';
+                const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="event.stopPropagation(); switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(fromUsername)}</a>`;
+                const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="event.stopPropagation(); switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(toUsername)}</a>` : '';
                 const displayUserHTML = isPrivate ? `${fromLink} → ${toLink}` : fromLink;
 
+                // A DM row opens the full conversation (same as Message History).
+                const rowClick = isPrivate
+                    ? `onclick="openConversationFromHistory(\`${fromArg}\`, \`${toArg}\`)" title="Open the full conversation"`
+                    : '';
+                const clickStyle = isPrivate ? ' cursor: pointer;' : '';
+
                 html += `
-                    <tr style="${rowStyle}">
+                    <tr style="${rowStyle}${clickStyle}" ${rowClick}>
                         ${dashboardIncludesPrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                         <td>${time}</td>
                         <td><strong>${displayUserHTML}</strong></td>
@@ -5186,10 +5203,16 @@
                                     const fromArg = String(fromUsername).replace(/`/g, '\\`');
                                     const toArg = toUsername != null ? String(toUsername).replace(/`/g, '\\`') : '';
                                     const linkStyle = 'color: #374151; text-decoration: none; font-weight: 600; cursor: pointer; padding: 2px 4px; border-radius: 3px; transition: all 0.2s;';
-                                    const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(fromUsername)}</a>`;
-                                    const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(toUsername)}</a>` : '-';
+                                    const fromLink = `<a href="#user-details/${encodeURIComponent(fromUsername)}" onclick="event.stopPropagation(); switchTab('users'); setTimeout(() => viewUserDetails(\`${fromArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(fromUsername)}</a>`;
+                                    const toLink = isPrivate && toUsername ? `<a href="#user-details/${encodeURIComponent(toUsername)}" onclick="event.stopPropagation(); switchTab('users'); setTimeout(() => viewUserDetails(\`${toArg}\`), 0); return false;" style="${linkStyle}" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='transparent'">${escapeHtml(toUsername)}</a>` : '-';
+                                    // A DM row opens the full conversation between the two users
+                                    // (public messages have no 1-on-1 conversation to open).
+                                    const rowClick = isPrivate
+                                        ? `onclick="openConversationFromHistory(\`${fromArg}\`, \`${toArg}\`)" title="Open the full conversation"`
+                                        : '';
+                                    const clickStyle = isPrivate ? ' cursor: pointer;' : '';
                                     return `
-                                    <tr style="${rowStyle}">
+                                    <tr style="${rowStyle}${clickStyle}" ${rowClick}>
                                         ${includePrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                                         <td>${new Date(msg.created_at).toLocaleString()}</td>
                                         ${includePrivate 
@@ -5209,6 +5232,66 @@
             } catch (error) {
                 console.error('Failed to load messages:', error);
             }
+        }
+
+        // Message history → the full conversation between two users. If either is a
+        // fake user, jump to Bot Activity (Take over + Force/Stop/Block/Return);
+        // otherwise show their DM history read-only.
+        async function openConversationFromHistory(a, b) {
+            if (!fakeUsersCache || !fakeUsersCache.length) {
+                try { await loadFakeUsers(); } catch (e) { /* fall through to read-only */ }
+            }
+            const fake = (fakeUsersCache || []).find(u => u.nickname === a || u.nickname === b);
+            if (fake) {
+                const peer = fake.nickname === a ? b : a;
+                switchTab('bot-activity');
+                setTimeout(() => openBotThread(fake.nickname, peer, true), 0);
+                return;
+            }
+            openReadOnlyConversation(a, b);
+        }
+
+        async function openReadOnlyConversation(a, b) {
+            const modal = document.getElementById('history-conversation-modal');
+            const body = document.getElementById('history-conversation-body');
+            const title = document.getElementById('history-conversation-title');
+            if (!modal || !body) return;
+
+            title.textContent = `${a} ↔ ${b}`;
+            body.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
+            modal.style.display = 'flex';
+
+            try {
+                const res = await fetch(`/api/private-message.php?username=${encodeURIComponent(a)}&with_user=${encodeURIComponent(b)}&session_id=admin&admin=true`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                const messages = (data && data.messages) || [];
+
+                if (!messages.length) {
+                    body.innerHTML = '<p style="color:#9ca3af;">No messages.</p>';
+                    return;
+                }
+
+                body.innerHTML = `<div style="max-height:60vh; overflow-y:auto;">` + messages.map(m => {
+                    const mine = m.from_username === a;
+                    return `
+                        <div style="display:flex; justify-content:${mine ? 'flex-end' : 'flex-start'}; margin-bottom:8px;">
+                            <div style="max-width:70%; padding:8px 12px; border-radius:10px; background:${mine ? '#eef2ff' : '#f3f4f6'};">
+                                <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}</div>
+                                <div>${m.message ? escapeHtml(m.message) : '<em>[attachment]</em>'}</div>
+                            </div>
+                        </div>`;
+                }).join('') + `</div>`;
+            } catch (e) {
+                console.error('Failed to load conversation:', e);
+                body.innerHTML = '<p style="color:#ef4444;">Failed to load conversation.</p>';
+            }
+        }
+
+        function closeHistoryConversation() {
+            const modal = document.getElementById('history-conversation-modal');
+            if (modal) modal.style.display = 'none';
         }
 
         async function loadIPBans() {
@@ -6090,15 +6173,47 @@
             }
         }
 
+        // Pagination for the Bot Activity lists. Offsets are module-level so the
+        // 4s background refresh reloads the SAME page instead of jumping to the top.
+        const BOT_PAGE_SIZE = 10;
+        let botThreadsOffset = 0;
+        let botLogOffset = 0;
+
+        function paginationControls(offset, total, pageSize, prevFn, nextFn) {
+            if (total <= pageSize) return '';
+            const from = total === 0 ? 0 : offset + 1;
+            const to = Math.min(offset + pageSize, total);
+            const hasPrev = offset > 0;
+            const hasNext = offset + pageSize < total;
+            return `
+                <div style="display:flex; align-items:center; gap:10px; margin-top:10px; justify-content:flex-end; font-size:13px; color:#6b7280;">
+                    <span>${from}–${to} of ${total}</span>
+                    <button class="btn btn-secondary" ${hasPrev ? '' : 'disabled'} onclick="${prevFn}">‹ Prev</button>
+                    <button class="btn btn-secondary" ${hasNext ? '' : 'disabled'} onclick="${nextFn}">Next ›</button>
+                </div>`;
+        }
+
+        function botThreadsPrev() { botThreadsOffset = Math.max(0, botThreadsOffset - BOT_PAGE_SIZE); loadBotActivityThreads(); }
+        function botThreadsNext() { botThreadsOffset += BOT_PAGE_SIZE; loadBotActivityThreads(); }
+        function botLogPrev() { botLogOffset = Math.max(0, botLogOffset - BOT_PAGE_SIZE); loadBotActivityLog(); }
+        function botLogNext() { botLogOffset += BOT_PAGE_SIZE; loadBotActivityLog(); }
+
         async function loadBotActivityThreads() {
             const box = document.getElementById('bot-activity-threads');
             if (!box) return;
 
             try {
-                const data = await botActivityFetch({ view: 'threads' });
+                const data = await botActivityFetch({ view: 'threads', limit: BOT_PAGE_SIZE, offset: botThreadsOffset });
                 if (!data.success) return;
 
                 const threshold = Number(data.insult_threshold || 0);
+                const total = Number(data.total || 0);
+
+                // A page that fell off the end (e.g. items removed) — go back one.
+                if (!data.threads.length && botThreadsOffset > 0) {
+                    botThreadsOffset = Math.max(0, botThreadsOffset - BOT_PAGE_SIZE);
+                    return loadBotActivityThreads();
+                }
 
                 if (!data.threads.length) {
                     box.innerHTML = '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
@@ -6145,11 +6260,12 @@
                                         <td>${t.message_count}</td>
                                         <td style="color: ${color};">${state}${strikeNote}</td>
                                         <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}</td>
-                                        <td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="openBotThread('${nk}', '${pk}')">View</button>${forceBtn}</td>
+                                        <td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="openBotThread('${nk}', '${pk}', true)">View</button>${forceBtn}<button class="btn btn-secondary" style="margin-left:6px;" title="Stop the bot in this conversation (reversible with Force)" onclick="botRowStop('${nk}', '${pk}')">⏹️ Stop</button><button class="btn btn-danger" style="margin-left:6px;" title="The fake user blocks this user (DM block) and the bot stops" onclick="botRowBlock('${nk}', '${pk}')">🚫 Block</button></td>
                                     </tr>`;
                             }).join('')}
                         </tbody>
-                    </table>`;
+                    </table>
+                    ${paginationControls(botThreadsOffset, total, BOT_PAGE_SIZE, 'botThreadsPrev()', 'botThreadsNext()')}`;
             } catch (error) {
                 console.error('Failed to load bot threads:', error);
             }
@@ -6158,7 +6274,7 @@
         let currentBotThread = null; // {fakeUser, peer} of the open Bot Activity conversation
         let currentBotThreadData = null; // last fetched {state, messages, calls} for export
 
-        async function openBotThread(fakeUser, peer) {
+        async function openBotThread(fakeUser, peer, scroll = false) {
             const box = document.getElementById('bot-activity-thread-detail');
             if (!box) return;
 
@@ -6175,6 +6291,19 @@
                 currentBotThreadData = data; // kept so the log can be exported
 
                 const state = data.state || {};
+
+                // A taken-over conversation is answered by the admin in Impersonate,
+                // not viewed read-only here. On an explicit "View" (not the 4s
+                // background refresh), go straight to Impersonate for this thread.
+                if (scroll && state.is_taken_over) {
+                    box.style.display = 'none';
+                    box.dataset.loaded = '';
+                    currentBotThread = null;
+                    switchTab('impersonate');
+                    selectSender(fakeUser, peer);
+                    return;
+                }
+
                 const bubbles = data.messages.map(m => {
                     const mine = m.from_username === fakeUser;
                     return `
@@ -6211,6 +6340,8 @@
                         ${state.is_ignored
                             ? '<button class="btn btn-secondary" onclick="botThreadForce()" title="The bot chose to ignore this conversation from the start — reply anyway">▶️ Reply anyway (override ignore)</button>'
                             : '<button class="btn btn-secondary" onclick="botThreadForce()" title="Clear stuck states (ended, spent budget) and make the bot reply now">⚡ Force continue</button>'}
+                        <button class="btn btn-secondary" onclick="botThreadStop()" title="Stop the bot in this conversation (reversible with Force)">⏹️ Force stop</button>
+                        <button class="btn btn-danger" onclick="botThreadBlock()" title="The fake user blocks this user (DM block) and the bot stops">🚫 Block user</button>
                         <button class="btn btn-secondary" onclick="botThreadExport()" title="Download this conversation's full log (messages, state and LLM calls) as JSON to share for debugging">📥 Export log</button>
                     </div>
                     <h3 style="font-size: 14px; color: #374151;">Calls for this conversation</h3>
@@ -6220,6 +6351,10 @@
                 // Keep the newest messages in view as the conversation updates.
                 const msgs = document.getElementById('bot-thread-messages');
                 if (msgs) msgs.scrollTop = msgs.scrollHeight;
+
+                // On an explicit "View" (not the background refresh), bring the
+                // conversation panel into view.
+                if (scroll) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (error) {
                 console.error('Failed to open bot thread:', error);
             }
@@ -6312,6 +6447,41 @@
             openBotThread(t.fakeUser, t.peer);
         }
 
+        async function botThreadStop() {
+            const t = currentBotThread;
+            if (!t || !(await botThreadAction('stop'))) return;
+            loadBotActivityThreads();
+            openBotThread(t.fakeUser, t.peer);
+        }
+
+        async function botThreadBlock() {
+            const t = currentBotThread;
+            if (!t) return;
+            if (!confirm(`Block ${t.peer}? ${t.fakeUser} will no longer exchange messages with them and the bot will stop.`)) return;
+            if (!(await botThreadAction('block'))) return;
+            loadBotActivityThreads();
+            openBotThread(t.fakeUser, t.peer);
+        }
+
+        // Force-stop from a Conversations table row.
+        async function botRowStop(fakeUser, peer) {
+            if (!(await botConversationAction(fakeUser, peer, 'stop'))) return;
+            loadBotActivityThreads();
+            if (currentBotThread && currentBotThread.fakeUser === fakeUser && currentBotThread.peer === peer) {
+                openBotThread(fakeUser, peer);
+            }
+        }
+
+        // Block (fake user ↔ peer DM block) from a Conversations table row.
+        async function botRowBlock(fakeUser, peer) {
+            if (!confirm(`Block ${peer}? ${fakeUser} will no longer exchange messages with them and the bot will stop.`)) return;
+            if (!(await botConversationAction(fakeUser, peer, 'block'))) return;
+            loadBotActivityThreads();
+            if (currentBotThread && currentBotThread.fakeUser === fakeUser && currentBotThread.peer === peer) {
+                openBotThread(fakeUser, peer);
+            }
+        }
+
         // Download the open conversation's full log (state, messages, LLM calls)
         // as JSON, to share when a bot is misbehaving and needs diagnosing.
         function botThreadExport() {
@@ -6390,15 +6560,24 @@
             const problemsOnly = document.getElementById('bot-activity-problems-only')?.checked;
 
             try {
-                const params = { view: 'log', limit: 25 };
+                const params = { view: 'log', limit: BOT_PAGE_SIZE, offset: botLogOffset };
                 if (problemsOnly) params.problems = 1;
 
                 const data = await botActivityFetch(params);
                 if (!data.success) return;
 
+                const total = Number(data.total || 0);
+
+                // A page past the end (filter change, entries pruned) — step back.
+                if (!data.entries.length && botLogOffset > 0) {
+                    botLogOffset = Math.max(0, botLogOffset - BOT_PAGE_SIZE);
+                    return loadBotActivityLog();
+                }
+
                 box.innerHTML = `
-                    <p style="color: #6b7280; margin-bottom: 12px;">${data.total} call(s) recorded${problemsOnly ? ' (filtered to failures)' : ''}.</p>
-                    ${botCallRows(data.entries)}`;
+                    <p style="color: #6b7280; margin-bottom: 12px;">${total} call(s) recorded${problemsOnly ? ' (filtered to failures)' : ''}.</p>
+                    ${botCallRows(data.entries)}
+                    ${paginationControls(botLogOffset, total, BOT_PAGE_SIZE, 'botLogPrev()', 'botLogNext()')}`;
             } catch (error) {
                 console.error('Failed to load bot log:', error);
             }

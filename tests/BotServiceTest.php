@@ -691,6 +691,81 @@ class BotServiceTest extends TestCase
         $this->assertSame($expected, BotService::revealsBotIdentity($reply), $reply);
     }
 
+    // ------------------------------------------------------------------
+    // Language: the model must NEVER write greeklish — it only ever comes
+    // from transliteration (enforceLanguage/resolveEnforceLanguage).
+    // ------------------------------------------------------------------
+
+    /**
+     * The auto (default) language directive tells the model to answer in GREEK
+     * characters for a Greek/greeklish peer and never to produce greeklish itself
+     * — the system converts afterwards.
+     */
+    public function testAutoLanguageDirectiveNeverAsksTheModelForGreeklish(): void
+    {
+        $directive = BotService::languageInstruction('auto');
+
+        $this->assertStringContainsString('ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες', $directive);
+        $this->assertStringContainsString('ΠΟΤΕ', $directive);
+        // It must not tell the model to answer IN greeklish.
+        $this->assertStringNotContainsString('απάντα σε greeklish', $directive);
+        $this->assertStringNotContainsString('απαντάς σε greeklish', $directive);
+    }
+
+    /**
+     * resolveEnforceLanguage picks greeklish (i.e. transliterate the reply) only
+     * when appropriate; the model itself is never set to 'greeklish' output.
+     *
+     * @dataProvider enforceLanguageCases
+     */
+    #[DataProvider('enforceLanguageCases')]
+    public function testResolveEnforceLanguage(?string $setting, string $peerMessage, string $expected): void
+    {
+        $fakeUser = $setting === null ? [] : ['bot_reply_language' => $setting];
+        $this->assertSame($expected, BotService::resolveEnforceLanguage($fakeUser, $peerMessage));
+    }
+
+    public static function enforceLanguageCases(): array
+    {
+        return [
+            // Auto + a peer writing greeklish (latin) → transliterate the reply.
+            'auto greeklish peer'      => ['auto', 'ti kaneis re', 'greeklish'],
+            'unset greeklish peer'     => [null, 'kalimera pws eisai', 'greeklish'],
+            // Auto + a peer writing Greek script → keep Greek (no forced greeklish).
+            'auto greek peer'          => ['auto', 'τι κάνεις ρε', 'auto'],
+            // Auto + an English peer is latin too → greeklish, but that is a no-op on
+            // an English reply (no Greek characters), so English is preserved.
+            'auto english peer'        => ['auto', 'how are you', 'greeklish'],
+            'auto empty peer'          => ['auto', '', 'auto'],
+            // Explicit settings are honoured as-is.
+            'explicit greeklish'       => ['greeklish', 'anything', 'greeklish'],
+            'explicit greek'           => ['greek', 'ti kaneis', 'greek'],
+            'explicit english'         => ['english', 'ti kaneis', 'english'],
+        ];
+    }
+
+    /**
+     * End-to-end of the rule: a Greek model reply becomes greeklish for a
+     * greeklish peer (auto), stays Greek for a Greek peer, and an English reply to
+     * an English peer is untouched — the model never emits greeklish itself.
+     */
+    public function testGreeklishOnlyComesFromConversion(): void
+    {
+        $auto = ['bot_reply_language' => 'auto'];
+
+        // Greeklish peer → the Greek reply is transliterated.
+        $lang = BotService::resolveEnforceLanguage($auto, 'ti kaneis');
+        $this->assertSame('geia sou, kala eimai', BotService::enforceLanguage('γεια σου, καλά είμαι', $lang));
+
+        // Greek peer → the Greek reply stays in Greek.
+        $lang = BotService::resolveEnforceLanguage($auto, 'τι κάνεις');
+        $this->assertSame('γεια σου, καλά είμαι', BotService::enforceLanguage('γεια σου, καλά είμαι', $lang));
+
+        // English peer → an English reply has no Greek characters, so it is kept.
+        $lang = BotService::resolveEnforceLanguage($auto, 'how are you');
+        $this->assertSame('fine, you?', BotService::enforceLanguage('fine, you?', $lang));
+    }
+
     public function testTheDeflectionsSoundHumanAndNeverGiveItAway(): void
     {
         $this->assertGreaterThanOrEqual(3, count(BotService::AI_DEFLECTIONS), 'one fixed line would be a tell');

@@ -548,7 +548,10 @@ class BotService
                     'peer_session_id' => $fromSessionId,
                     'epoch' => $epoch,
                 ], self::sanitizeReply(
-                    self::enforceLanguage($this->pickBrushOff(), self::replyLanguage($fakeUser)),
+                    self::enforceLanguage(
+                        $this->pickBrushOff(),
+                        self::resolveEnforceLanguage($fakeUser, (string) $message)
+                    ),
                     (int) (Config::get('chat')['max_message_length'] ?? 500)
                 ), true);
 
@@ -637,6 +640,11 @@ class BotService
         $maxLength = (int) (Config::get('chat')['max_message_length'] ?? 500);
         $reply = '';
 
+        // Decide the output script from what the peer wrote (auto mode); the model
+        // is never asked to write greeklish — it only ever comes from this conversion.
+        $peerMessage = $this->latestInboundMessage((string) $fakeUser['nickname'], $peer);
+        $enforceLanguage = self::resolveEnforceLanguage($fakeUser, $peerMessage);
+
         if (!$llm->isConfigured()) {
             $this->recordThreadError(
                 $fakeUserId,
@@ -682,7 +690,7 @@ class BotService
                 $result = $llm->chat($systemPrompt, $history);
                 $reply = self::enforceLanguage(
                     self::sanitizeReply($result['text'], $maxLength),
-                    self::replyLanguage($fakeUser)
+                    $enforceLanguage
                 );
             } catch (\Throwable $e) {
                 $this->recordThreadError($fakeUserId, $peer, $e->getMessage());
@@ -702,7 +710,7 @@ class BotService
 
             $reply = self::enforceLanguage(
                 self::sanitizeReply($this->pickFarewellFor($fakeUser), $maxLength),
-                self::replyLanguage($fakeUser)
+                $enforceLanguage
             );
         }
 
@@ -725,7 +733,7 @@ class BotService
 
             $reply = self::enforceLanguage(
                 self::sanitizeReply($this->pickDeflection(), $maxLength),
-                self::replyLanguage($fakeUser)
+                $enforceLanguage
             );
         }
 
@@ -1014,11 +1022,42 @@ class BotService
     }
 
     /**
+     * Stop the bot in a single conversation, without taking it over.
+     *
+     * The thread is marked ended so the reply guard skips it, and the epoch is
+     * bumped so any reply already queued becomes a no-op. Fully reversible: 'Force'
+     * (forceReply) or 'Return to bot' (releaseThread) bring the bot back. An abuse
+     * block is left untouched.
+     */
+    public function stopThread(string $fakeNickname, string $peer): bool
+    {
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+        if ($fakeUserId === null) {
+            return false;
+        }
+
+        $this->getOrCreateThread($fakeUserId, $peer);
+
+        $stmt = $this->pdo->prepare('
+            UPDATE bot_threads
+            SET farewell_sent_at = COALESCE(farewell_sent_at, NOW()),
+                updated_at = NOW()
+            WHERE fake_user_id = :fake_user_id AND peer_username = :peer
+        ');
+        $stmt->execute(['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+
+        // Any reply still queued for this conversation is now a no-op.
+        $this->bumpEpoch($fakeUserId, $peer);
+
+        return true;
+    }
+
+    /**
      * Every conversation a bot is (or was) in, for the admin overview.
      *
      * @return list<array<string,mixed>>
      */
-    public function listThreads(int $limit = 100): array
+    public function listThreads(int $limit = 100, int $offset = 0): array
     {
         $result = $this->db->preparedQuery('
             SELECT f.nickname,
@@ -1048,8 +1087,8 @@ class BotService
             FROM bot_threads t
             JOIN fake_users f ON f.id = t.fake_user_id
             ORDER BY COALESCE(t.last_reply_at, t.created_at) DESC
-            LIMIT :limit
-        ', ['limit' => max(1, min(500, $limit))]);
+            LIMIT :limit OFFSET :offset
+        ', ['limit' => max(1, min(500, $limit)), 'offset' => max(0, $offset)]);
 
         $threads = $result ? $result->fetchAll() : [];
         $globalMax = (int) $this->settings->get('bot_max_messages_per_thread', 4);
@@ -1070,6 +1109,14 @@ class BotService
         return $threads;
     }
 
+    /** Total number of bot conversations, for paginating the admin overview. */
+    public function countThreads(): int
+    {
+        $stmt = $this->pdo->query('SELECT COUNT(*) FROM bot_threads');
+
+        return (int) $stmt->fetchColumn();
+    }
+
     /**
      * The messages of one bot conversation, oldest first.
      *
@@ -1082,7 +1129,7 @@ class BotService
             FROM private_messages
             WHERE (from_username = :fake AND to_username = :peer)
                OR (from_username = :peer2 AND to_username = :fake2)
-            ORDER BY created_at ASC, id ASC
+            ORDER BY created_at DESC, id DESC
             LIMIT :limit
         ', [
             'fake' => $fakeNickname,
@@ -1092,10 +1139,12 @@ class BotService
             'limit' => max(1, min(500, $limit)),
         ]);
 
-        return array_map(
+        // Fetched newest-first (so a long thread keeps its RECENT messages, not its
+        // oldest), then flipped back to chronological order for display.
+        return array_reverse(array_map(
             static fn (array $row): array => $row + ['is_bot' => $row['from_username'] === $fakeNickname],
             $result ? $result->fetchAll() : []
-        );
+        ));
     }
 
     /**
@@ -1686,9 +1735,16 @@ class BotService
                 . ' Emoji επιτρέπονται.',
             'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.',
             'english' => 'LANGUAGE - MANDATORY: Reply in English only, in a casual chat tone.',
-            default => 'ΓΛΩΣΣΑ: Απαντάς με το ίδιο αλφάβητο που χρησιμοποιεί ο συνομιλητής -'
-                . ' αν σου γράφει greeklish (ελληνικά με λατινικούς χαρακτήρες) απάντα σε greeklish,'
-                . ' αν σου γράφει ελληνικά απάντα στα ελληνικά.',
+            // Auto: match the person's LANGUAGE, but never the greeklish SCRIPT.
+            // If they write Greek or greeklish, the model writes Greek characters
+            // and the system transliterates to greeklish afterwards when needed
+            // (see resolveEnforceLanguage/enforceLanguage). The model must never
+            // produce greeklish itself.
+            default => 'ΓΛΩΣΣΑ: Αν ο συνομιλητής γράφει ελληνικά Ή greeklish (ελληνικά με'
+                . ' λατινικούς χαρακτήρες), απαντάς με ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες (φυσικά, καθημερινά'
+                . ' ελληνικά). ΠΟΤΕ δεν γράφεις εσύ greeklish/λατινικούς για ελληνικά - το σύστημα'
+                . ' κάνει μόνο του τη μετατροπή σε greeklish αν χρειάζεται. Αν σου γράφει στα'
+                . ' αγγλικά, απάντα στα αγγλικά.',
         };
     }
 
@@ -1706,6 +1762,33 @@ class BotService
         }
 
         return self::toGreeklish($text);
+    }
+
+    /**
+     * The language to enforce on a reply, given the bot's setting and what the
+     * peer actually wrote. Greeklish is ONLY ever produced by transliteration
+     * (enforceLanguage); the model is never asked to write it.
+     *
+     * In 'auto' mode, a peer writing in latin characters (greeklish or English)
+     * makes the reply greeklish: the model was told to answer in Greek script, so
+     * transliterating gives greeklish for a greeklish peer, while an English reply
+     * has no Greek characters and passes through unchanged. A peer writing Greek
+     * script keeps the reply in Greek.
+     *
+     * @param array<string,mixed> $fakeUser
+     */
+    public static function resolveEnforceLanguage(array $fakeUser, string $peerMessage): string
+    {
+        $language = self::replyLanguage($fakeUser);
+
+        if ($language === 'auto'
+            && $peerMessage !== ''
+            && !preg_match('/\p{Greek}/u', $peerMessage)
+        ) {
+            return 'greeklish';
+        }
+
+        return $language;
     }
 
     /**
@@ -2074,7 +2157,33 @@ class BotService
             return 'skipped: conversation already ended by the bot';
         }
 
+        // A banned user must not receive bot messages either. This also closes the
+        // race where a reply was queued before the admin banned the peer and the
+        // delayed delivery would otherwise still fire.
+        if ($this->isPeerBanned($peer)) {
+            return 'skipped: peer is banned';
+        }
+
         return null;
+    }
+
+    /**
+     * Whether the peer (the human the bot is talking to) has been banned by an
+     * admin. Checked fresh (no cache) so a just-banned user stops receiving bot
+     * messages immediately, on every job stage that passes through guard().
+     */
+    private function isPeerBanned(string $peer): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM banned_nicknames WHERE LOWER(nickname) = LOWER(?) LIMIT 1'
+            );
+            $stmt->execute([$peer]);
+            return $stmt->fetchColumn() !== false;
+        } catch (\Throwable $e) {
+            error_log('BotService::isPeerBanned failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

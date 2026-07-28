@@ -560,7 +560,7 @@ class BotServicePipelineTest extends TestCase
 
     public function testAFailedClosingCallFallsBackToACannedGoodbye(): void
     {
-        $this->incoming('kai meta;');
+        $this->incoming('και μετά;');
         $this->exhaustBudget();
         $this->llm->throw = new \RuntimeException('network down');
 
@@ -723,9 +723,54 @@ class BotServicePipelineTest extends TestCase
         $this->assertNotEmpty(array_filter($jobs, fn ($j) => $j['type'] === BotService::JOB_REPLY));
     }
 
+    /**
+     * Force-stop silences the bot in a single conversation (marks it ended so the
+     * guard skips it) and is fully reversible with Force.
+     */
+    public function testStopThreadEndsTheConversationAndIsReversible(): void
+    {
+        // stopThread creates the thread if needed and marks it ended.
+        $this->assertTrue($this->bot->stopThread($this->nick, $this->peer));
+        $this->assertNotNull($this->threadRow()['farewell_sent_at'], 'force stop marks the thread ended');
+
+        // Force brings the bot back — nothing is stuck permanently.
+        $this->assertTrue($this->bot->forceReply($this->nick, $this->peer));
+        $this->assertNull($this->threadRow()['farewell_sent_at']);
+    }
+
+    /**
+     * The Bot Activity conversation view must show the RECENT messages of a long
+     * thread, not the oldest 200 (which hid new messages, incl. those just sent).
+     */
+    public function testThreadMessagesShowsTheRecentWindowNotTheOldest(): void
+    {
+        $total = 210; // more than the 200-message window
+        $values = [];
+        $params = [];
+        for ($i = 1; $i <= $total; $i++) {
+            $from = $i % 2 === 1 ? $this->peer : $this->nick;
+            $to = $i % 2 === 1 ? $this->nick : $this->peer;
+            $values[] = "(?, ?, ?, ?, ?, NOW() + (? || ' seconds')::interval)";
+            array_push($params, $from, 'sess_' . $from, $to, 'fake_' . md5($this->nick), 'm#' . $i, $i);
+        }
+        $this->pdo->prepare(
+            'INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES ' . implode(',', $values)
+        )->execute($params);
+
+        $bodies = array_column($this->bot->threadMessages($this->nick, $this->peer), 'message');
+
+        $this->assertCount(200, $bodies, 'capped at the 200-message window');
+        $this->assertContains('m#' . $total, $bodies, 'the newest message must be shown');
+        $this->assertNotContains('m#1', $bodies, 'the oldest is outside the window');
+        // Chronological (oldest-first) within the recent window.
+        $this->assertSame('m#' . ($total - 199), $bodies[0]);
+        $this->assertSame('m#' . $total, $bodies[array_key_last($bodies)]);
+    }
+
     public function testAMultiLineReplyIsDeliveredAsSeparateBubblesCountingOneTurn(): void
     {
-        $this->incoming('geia');
+        $this->incoming('γεια');
         $this->llm->reply = "γεια!\nτι κανεις;"; // two lines
 
         $this->bot->processReplyJob($this->replyPayload(0));
@@ -758,7 +803,7 @@ class BotServicePipelineTest extends TestCase
     public function testEmojisAreStrippedFromTheDeliveredMessageWhenTheChanceIsZero(): void
     {
         $this->settings->values['bot_emoji_chance'] = '0';
-        $this->incoming('geia');
+        $this->incoming('γεια');
         $this->llm->reply = 'γεια 😅';
 
         $this->bot->processReplyJob($this->replyPayload(0));
@@ -1329,19 +1374,20 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame('καλά είμαι ρε', $this->claimAll()[0]['payload']['message']);
     }
 
-    public function testWithoutAChoiceTheBotIsToldToMirrorThePeer(): void
+    public function testAutoModeWritesGreekAndConvertsToGreeklishForAGreeklishPeer(): void
     {
-        $this->incoming('ti kaneis re');
-        $this->llm->reply = 'kala esy;';
+        $this->incoming('ti kaneis re');   // the peer writes greeklish (latin)
+        $this->llm->reply = 'καλά εσύ;';   // the model replies in GREEK, as instructed
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
-        $this->assertStringContainsString(
-            'ίδιο αλφάβητο',
-            $this->llm->calls[0]['system'],
-            'auto should mirror the script the peer writes in'
-        );
-        // Nothing is rewritten in auto mode.
+        // The model is told to write GREEK characters and never greeklish itself.
+        $system = $this->llm->calls[0]['system'];
+        $this->assertStringContainsString('ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες', $system);
+        $this->assertStringNotContainsString('ίδιο αλφάβητο', $system);
+
+        // The system — not the model — converts the reply to greeklish for the
+        // greeklish peer.
         $this->assertSame('kala esy;', $this->claimAll()[0]['payload']['message']);
     }
 
