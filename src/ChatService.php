@@ -659,8 +659,7 @@ class ChatService
         }
         
         // Check if session is banned (from being kicked)
-        $sessionBanKey = 'banned_session:' . $sessionId;
-        if ($this->redis->exists($sessionBanKey)) {
+        if ((new KickRegistry())->isKicked($sessionId)) {
             Log::write("Registration blocked: session {$sessionId} is banned (kicked user)");
             return false;
         }
@@ -1147,7 +1146,7 @@ class ChatService
             return false;
         }
         try {
-            return (bool) $this->redis->exists('banned_session:' . $sessionId);
+            return (new KickRegistry())->isKicked($sessionId);
         } catch (\Throwable $e) {
             error_log('Failed to check kicked session: ' . $e->getMessage());
             return false;

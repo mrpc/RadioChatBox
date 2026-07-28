@@ -9,6 +9,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
 use RadioChatBox\ChatService;
 use RadioChatBox\Database;
+use RadioChatBox\KickRegistry;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -191,12 +192,7 @@ final class AdminModerationController
             }
 
             // Ban the user's session ID temporarily (1 hour) to prevent immediate rejoin.
-            $sessionBanKey = 'banned_session:' . $user['session_id'];
-            $redis->setex($sessionBanKey, 3600, json_encode([
-                'username'  => $username,
-                'reason'    => 'Kicked by admin',
-                'kicked_at' => time(),
-            ]));
+            (new KickRegistry())->kick((string) $user['session_id'], $username);
 
             // Remove from database.
             $result = $db->queryBuilder()
@@ -239,32 +235,7 @@ final class AdminModerationController
     #[Route('/api/admin/list-kicked-users', methods: 'GET', name: 'admin.list-kicked-users', middleware: [AdminAuthMiddleware::class])]
     public function listKicked(): Response
     {
-        $redis = Database::getRedis();
-
-        $pattern = 'banned_session:*';
-        $cursor  = null;
-        $kicked  = [];
-        do {
-            $keys = $redis->scan($cursor, $pattern, 100);
-            if ($keys === false) {
-                break;
-            }
-            foreach ($keys as $key) {
-                $ttl  = $redis->ttl($key);
-                $data = json_decode($redis->get($key), true);
-                if ($data) {
-                    $kicked[] = [
-                        'session_id' => substr($key, strlen('banned_session:')),
-                        'username'   => $data['username'] ?? null,
-                        'reason'     => $data['reason'] ?? null,
-                        'kicked_at'  => $data['kicked_at'] ?? null,
-                        'expires_in' => $ttl,
-                    ];
-                }
-            }
-        } while ($cursor !== 0 && $cursor !== null);
-
-        return Response::json(['kicked_sessions' => $kicked]);
+        return Response::json(['kicked_sessions' => (new KickRegistry())->list()]);
     }
 
     /**
