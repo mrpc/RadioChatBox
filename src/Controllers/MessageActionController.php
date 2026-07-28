@@ -3,7 +3,6 @@
 namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
-use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -167,10 +166,11 @@ final class MessageActionController
             $username  = $data['username'];
             $sessionId = $data['sessionId'];
 
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
 
             // Fetch the original message and verify ownership + timing in one query
-            $stmt = $pdo->prepare(
+            // (timezone math + dollar-quoted literals — kept verbatim).
+            $result = $db->preparedQuery(
                 'SELECT m.message_id, m.username, m.created_at, m.is_deleted, s.user_id,
                         EXTRACT(EPOCH FROM (
                             NOW() - ((m.created_at AT TIME ZONE current_setting($$TIMEZONE$$)) AT TIME ZONE $$UTC$$)
@@ -181,14 +181,14 @@ final class MessageActionController
                      AND m.username   = :username
                      AND s.session_id = :session_id
                      AND m.is_deleted = false
-                 LIMIT 1'
+                 LIMIT 1',
+                [
+                    'message_id' => $messageId,
+                    'username'   => $username,
+                    'session_id' => $sessionId,
+                ]
             );
-            $stmt->execute([
-                'message_id' => $messageId,
-                'username'   => $username,
-                'session_id' => $sessionId,
-            ]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = ($result && $result->numRows > 0) ? $result->fields : false;
 
             if (!$row) {
                 return Response::json(['error' => 'Message not found or you do not own it'], 403);
@@ -203,16 +203,16 @@ final class MessageActionController
             $filterResult = MessageFilter::filterPublicMessage($newText);
             $filtered = $filterResult['filtered'];
 
-            // Persist to PostgreSQL
-            $updateStmt = $pdo->prepare(
+            // Persist to PostgreSQL (edited_at = NOW() — kept verbatim).
+            $db->preparedQuery(
                 'UPDATE messages
                  SET message = :message, edited_at = NOW()
-                 WHERE message_id = :message_id'
+                 WHERE message_id = :message_id',
+                [
+                    'message'    => $filtered,
+                    'message_id' => $messageId,
+                ]
             );
-            $updateStmt->execute([
-                'message'    => $filtered,
-                'message_id' => $messageId,
-            ]);
 
             // Invalidate the Redis message list cache so getHistory() refetches from DB
             $redis  = Database::getRedis();
@@ -394,7 +394,7 @@ final class MessageActionController
     public function privateMessage(): Response
     {
         try {
-            $db    = Database::getPDO();
+            $db    = Database::getDb();
             $redis = Database::getRedis();
 
             $input = $_POST;
@@ -458,9 +458,11 @@ final class MessageActionController
             }
 
             // Check if recipient has a live session (most recent one if multiple devices)
-            $stmt = $db->prepare("SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1");
-            $stmt->execute([$toUsername]);
-            $recipient = $stmt->fetch();
+            $result    = $db->preparedQuery(
+                "SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1",
+                [$toUsername]
+            );
+            $recipient = ($result && $result->numRows > 0) ? $result->fields : false;
 
             $isFakeUser = false;
             $fakeUserBotEnabled = false;
@@ -468,9 +470,11 @@ final class MessageActionController
                 $toSessionId = $recipient['session_id'];
             } else {
                 // No live session. Check if it's an active fake user.
-                $stmt = $db->prepare("SELECT nickname, bot_enabled FROM fake_users WHERE nickname = ? AND is_active = TRUE");
-                $stmt->execute([$toUsername]);
-                $fakeUser = $stmt->fetch();
+                $result   = $db->preparedQuery(
+                    "SELECT nickname, bot_enabled FROM fake_users WHERE nickname = ? AND is_active = TRUE",
+                    [$toUsername]
+                );
+                $fakeUser = ($result && $result->numRows > 0) ? $result->fields : false;
 
                 if ($fakeUser) {
                     // Create a fake session ID for the fake user
@@ -484,7 +488,7 @@ final class MessageActionController
                     // messages so the DM is delivered when they reconnect (the client
                     // keeps the same session id in localStorage). This lets short
                     // disconnects continue a conversation instead of hard-failing.
-                    $stmt = $db->prepare("
+                    $result = $db->preparedQuery("
                         SELECT session_id FROM (
                             SELECT to_session_id AS session_id, created_at
                             FROM private_messages WHERE to_username = ?
@@ -494,9 +498,8 @@ final class MessageActionController
                         ) recent
                         ORDER BY created_at DESC
                         LIMIT 1
-                    ");
-                    $stmt->execute([$toUsername, $toUsername]);
-                    $recentSessionId = $stmt->fetchColumn();
+                    ", [$toUsername, $toUsername]);
+                    $recentSessionId = $result ? $result->fetchColumn() : false;
 
                     if ($recentSessionId) {
                         $toSessionId = $recentSessionId;
@@ -511,25 +514,28 @@ final class MessageActionController
             $fromDisplayName = null;
             $toDisplayName = null;
 
-            $stmt = $db->prepare("SELECT u.username, u.display_name FROM users u WHERE u.username IN (?, ?)");
-            $stmt->execute([$fromUsername, $toUsername]);
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                if ($row['username'] === $fromUsername) {
-                    $fromDisplayName = $row['display_name'];
-                }
-                if ($row['username'] === $toUsername) {
-                    $toDisplayName = $row['display_name'];
+            $namesResult = $db->preparedQuery(
+                "SELECT u.username, u.display_name FROM users u WHERE u.username IN (?, ?)",
+                [$fromUsername, $toUsername]
+            );
+            if ($namesResult) {
+                while ($row = $namesResult->fetch()) {
+                    if ($row['username'] === $fromUsername) {
+                        $fromDisplayName = $row['display_name'];
+                    }
+                    if ($row['username'] === $toUsername) {
+                        $toDisplayName = $row['display_name'];
+                    }
                 }
             }
 
             // Store message with session IDs and display_name snapshots
-            $stmt = $db->prepare("
+            $insert = $db->preparedQuery("
                 INSERT INTO private_messages (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, attachment_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 RETURNING id, created_at
-            ");
-            $stmt->execute([$fromUsername, $fromSessionId, $fromDisplayName, $toUsername, $toSessionId, $toDisplayName, $message, $attachmentId]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            ", [$fromUsername, $fromSessionId, $fromDisplayName, $toUsername, $toSessionId, $toDisplayName, $message, $attachmentId]);
+            $result = ($insert && $insert->numRows > 0) ? $insert->fields : null;
 
             // Get attachment info if present
             $attachmentData = null;
@@ -565,14 +571,17 @@ final class MessageActionController
 
                 if (!$botWillHandle) {
                     try {
-                        $stmt = $db->prepare("SELECT create_fake_user_dm_notification(?, ?, ?, ?)");
-                        $stmt->execute([
-                            $fromUsername,
-                            $toUsername,
-                            $message ?: '[Photo attachment]',
-                            $result['id']
-                        ]);
-                        $notificationId = $stmt->fetchColumn();
+                        // Stored function — kept verbatim via preparedQuery.
+                        $notifResult = $db->preparedQuery(
+                            "SELECT create_fake_user_dm_notification(?, ?, ?, ?)",
+                            [
+                                $fromUsername,
+                                $toUsername,
+                                $message ?: '[Photo attachment]',
+                                $result['id'],
+                            ]
+                        );
+                        $notificationId = $notifResult ? $notifResult->fetchColumn() : null;
 
                         // Publish notification to Redis for real-time admin alerts
                         $notificationData = [
@@ -634,7 +643,7 @@ final class MessageActionController
     public function privateMessageList(): Response
     {
         try {
-            $db = Database::getPDO();
+            $db = Database::getDb();
 
             $request   = Request::getInstance();
             $username  = $request->get('username', '', 'get');
@@ -664,7 +673,7 @@ final class MessageActionController
                 // Get conversation with specific user
                 if ($adminMode) {
                     // Admin mode: Get ALL messages between these two users, ignoring session_id
-                    $stmt = $db->prepare("
+                    $result = $db->preparedQuery("
                         SELECT pm.*,
                                a.attachment_id, a.filename, a.file_path, a.file_size,
                                a.mime_type, a.width, a.height,
@@ -678,18 +687,18 @@ final class MessageActionController
                             OR (pm.from_username = ? AND pm.to_username = ?))
                         ORDER BY pm.created_at DESC
                         LIMIT 500
-                    ");
-                    $stmt->execute([$username, $withUser, $withUser, $username]);
+                    ", [$username, $withUser, $withUser, $username]);
                 } else {
                     // Check if talking to a fake user
-                    $stmt2 = $db->prepare("SELECT nickname FROM fake_users WHERE nickname = ?");
-                    $stmt2->execute([$withUser]);
-                    $isFakeUser = $stmt2->fetch() !== false;
+                    $isFakeUser = $db->queryBuilder()
+                        ->from('fake_users')
+                        ->where('nickname', '=', $withUser)
+                        ->exists();
 
                     if ($isFakeUser) {
                         // Fake users are persistent: show all messages ever sent to this fake user
                         // This allows users to see admin replies even if their session changed
-                        $stmt = $db->prepare("
+                        $result = $db->preparedQuery("
                             SELECT pm.*,
                                    a.attachment_id, a.filename, a.file_path, a.file_size,
                                    a.mime_type, a.width, a.height,
@@ -703,12 +712,11 @@ final class MessageActionController
                                 OR (pm.from_username = ? AND pm.to_username = ?))
                             ORDER BY pm.created_at DESC
                             LIMIT 500
-                        ");
-                        $stmt->execute([$username, $withUser, $withUser, $username]);
+                        ", [$username, $withUser, $withUser, $username]);
                     } else {
                         // Real users: only show messages from current session
                         // This prevents guests with the same username from seeing each other's messages
-                        $stmt = $db->prepare("
+                        $result = $db->preparedQuery("
                             SELECT pm.*,
                                    a.attachment_id, a.filename, a.file_path, a.file_size,
                                    a.mime_type, a.width, a.height,
@@ -722,13 +730,12 @@ final class MessageActionController
                                 OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
                             ORDER BY pm.created_at DESC
                             LIMIT 500
-                        ");
-                        $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
+                        ", [$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
                     }
                 }
             } else {
                 // Get all recent private messages for current session only
-                $stmt = $db->prepare("
+                $result = $db->preparedQuery("
                     SELECT pm.*,
                            a.attachment_id, a.filename, a.file_path, a.file_size,
                            a.mime_type, a.width, a.height,
@@ -742,11 +749,10 @@ final class MessageActionController
                        OR (pm.to_username = ? AND pm.to_session_id = ?)
                     ORDER BY pm.created_at DESC
                     LIMIT 50
-                ");
-                $stmt->execute([$username, $sessionId, $username, $sessionId]);
+                ", [$username, $sessionId, $username, $sessionId]);
             }
 
-            $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $messages = $result ? $result->fetchAll() : [];
 
             // The conversation queries fetch the most RECENT 500 (ORDER BY created_at
             // DESC LIMIT 500) so long threads never hide new messages; the client

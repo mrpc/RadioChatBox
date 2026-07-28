@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\ChatService;
 use RadioChatBox\Controllers\MessageActionController;
+use RadioChatBox\Database;
 use RadioChatBox\ReactionService;
 
 /**
@@ -273,6 +274,118 @@ class MessageActionControllerTest extends TestCase
             );
         } finally {
             $chat->unbanNickname($nick);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // DB-path coverage for the Phase-7 conversion (getPDO -> getDb). edit-message
+    // carries the riskiest converted SQL (dollar-quoted $$TIMEZONE$$/$$UTC$$ and
+    // timezone math), and the conversation list runs the converted preparedQuery
+    // reads; both are pinned here with seeded rows that are cleaned up.
+    // ---------------------------------------------------------------------
+
+    /**
+     * edit-message: an owned, recent message is updated in place. This drives the
+     * converted ownership/timing SELECT (with its $$-quoted timezone literals) and
+     * the edited_at = NOW() UPDATE, returning the {success, message, ...} shape
+     * with the filtered new text. All seeded rows are cleaned up.
+     */
+    public function testEditMessageUpdatesAnOwnedRecentMessage(): void
+    {
+        $pdo       = Database::getPDO();
+        $username  = 'editor_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $messageId = 'msg_' . bin2hex(random_bytes(6));
+
+        $pdo->prepare(
+            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+             VALUES (:u, :s, :ip, NOW(), NOW())'
+        )->execute(['u' => $username, 's' => $sessionId, 'ip' => '127.0.0.1']);
+        $pdo->prepare(
+            'INSERT INTO messages (message_id, username, message, ip_address, created_at)
+             VALUES (:mid, :u, :msg, :ip, NOW())'
+        )->execute(['mid' => $messageId, 'u' => $username, 'msg' => 'original text', 'ip' => '127.0.0.1']);
+
+        try {
+            $_POST = [
+                'message_id' => $messageId,
+                'message'    => 'edited text',
+                'username'   => $username,
+                'sessionId'  => $sessionId,
+            ];
+            $response = (new MessageActionController())->editMessage();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame('edited text', $body['message']);
+
+            $stmt = $pdo->prepare('SELECT message, edited_at FROM messages WHERE message_id = ?');
+            $stmt->execute([$messageId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $this->assertSame('edited text', $row['message'], 'the row must be updated');
+            $this->assertNotNull($row['edited_at'], 'edited_at must be stamped');
+        } finally {
+            $pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+        }
+    }
+
+    /**
+     * edit-message: a message the caller does not own (no matching session) must
+     * return 403 "Message not found or you do not own it" — the converted
+     * ownership SELECT returning no row. No seeding required.
+     */
+    public function testEditMessageForeignMessageReturns403(): void
+    {
+        $_POST = [
+            'message_id' => 'msg_' . bin2hex(random_bytes(6)),
+            'message'    => 'hijack',
+            'username'   => 'ghost_' . substr(bin2hex(random_bytes(4)), 0, 8),
+            'sessionId'  => 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8),
+        ];
+        $response = (new MessageActionController())->editMessage();
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame(
+            'Message not found or you do not own it',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
+
+    /**
+     * private-message GET (real-user branch): the converted conversation query
+     * fetches the recent window and reverses it to chronological order. Seed two
+     * DMs in the same session and assert they come back oldest-first with the
+     * newest last. Exercises the fake-user exists() check (false) plus the
+     * session-scoped preparedQuery read.
+     */
+    public function testPrivateMessageListReturnsConversationChronologically(): void
+    {
+        $pdo       = Database::getPDO();
+        $me        = 'me_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $peer      = 'peer_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        // Two messages in this session: an older one and a newer one.
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (:me, :s, :peer, :ps, 'older', NOW() - INTERVAL '2 minutes'),
+                    (:peer, :ps, :me, :s, 'newer', NOW())"
+        )->execute(['me' => $me, 's' => $sessionId, 'peer' => $peer, 'ps' => 'peer_sess']);
+
+        try {
+            $_GET = ['username' => $me, 'session_id' => $sessionId, 'with_user' => $peer];
+            $response = (new MessageActionController())->privateMessageList();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body     = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $bodies   = array_column($body['messages'], 'message');
+            $this->assertSame(['older', 'newer'], $bodies, 'messages must be oldest-first');
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = :me OR to_username = :me')
+                ->execute(['me' => $me]);
         }
     }
 }
