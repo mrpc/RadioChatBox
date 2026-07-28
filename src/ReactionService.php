@@ -13,9 +13,7 @@ use Pramnos\Database\Database as PramnosDatabase;
  */
 class ReactionService
 {
-    private \Redis $redis;
     private PramnosDatabase $db;
-    private string $prefix;
 
     /** Redis pub/sub channel reused for real-time chat updates. */
     private const PUBSUB_CHANNEL = 'chat:updates';
@@ -25,9 +23,7 @@ class ReactionService
 
     public function __construct()
     {
-        $this->redis = Database::getRedis();
         $this->db = Database::getDb();
-        $this->prefix = Database::getRedisPrefix();
     }
 
     /**

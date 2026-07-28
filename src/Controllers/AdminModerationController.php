@@ -393,8 +393,7 @@ final class AdminModerationController
                     'added_by'    => 'admin',
                 ]);
 
-                // Invalidate Redis cache (legacy uses the un-prefixed key here).
-                $redis = Database::getRedis();
+                // Invalidate the cached blacklist patterns.
                 Cache::store()->delete('url_blacklist_patterns');
 
                 return Response::json([
@@ -412,8 +411,7 @@ final class AdminModerationController
 
             $db->queryBuilder()->from('url_blacklist')->where('id', '=', $id)->delete();
 
-            // Invalidate Redis cache (legacy uses the un-prefixed key here).
-            $redis = Database::getRedis();
+            // Invalidate the cached blacklist patterns.
             Cache::store()->delete('url_blacklist_patterns');
 
             return Response::json([
@@ -483,9 +481,7 @@ final class AdminModerationController
                     'added_by'    => 'admin',
                 ]);
 
-                // Invalidate Redis cache (legacy uses the prefixed key here).
-                $redis  = Database::getRedis();
-                $prefix = Database::getRedisPrefix();
+                // Invalidate the cached whitelist patterns.
                 Cache::store()->delete('url_whitelist_patterns');
 
                 return Response::json([
@@ -503,9 +499,7 @@ final class AdminModerationController
 
             $db->queryBuilder()->from('url_whitelist')->where('id', '=', $id)->delete();
 
-            // Invalidate Redis cache (legacy uses the prefixed key here).
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
+            // Invalidate the cached whitelist patterns.
             Cache::store()->delete('url_whitelist_patterns');
 
             return Response::json([

@@ -3,7 +3,6 @@
 namespace RadioChatBox;
 
 use Pramnos\Database\Database as PramnosDatabase;
-use Redis;
 
 /**
  * Automatic LLM replies for fake users ("bots") in private messages.
@@ -383,8 +382,6 @@ class BotService
         . ' ΜΗΝ κάνεις καμία ερώτηση και ΜΗΝ υποσχεθείς συγκεκριμένη ώρα που θα επιστρέψεις.';
 
     private PramnosDatabase $db;
-    private Redis $redis;
-    private string $prefix;
     private SettingsService $settings;
     private JobQueue $queue;
     private ?LlmService $llm;
@@ -395,8 +392,6 @@ class BotService
         ?LlmService $llm = null
     ) {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
         $this->settings = $settings ?? new SettingsService();
         $this->queue = $queue ?? new JobQueue();
         // Built from the settings on first use unless one was injected.
