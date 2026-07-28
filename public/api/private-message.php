@@ -43,7 +43,17 @@ try {
         
         // Get IP address for violation tracking
         $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-        
+
+        // A banned (IP/nickname) or kicked user cannot communicate with anyone —
+        // enforce it here too, not only on the public chat send path.
+        $chatService = new \RadioChatBox\ChatService();
+        $banReason = $chatService->communicationBlockReason(trim($fromUsername), $ipAddress, $fromSessionId);
+        if ($banReason !== null) {
+            http_response_code(403);
+            echo json_encode(['error' => $banReason]);
+            exit;
+        }
+
         // Filter message for private chat (blocks dangerous content and blacklisted URLs).
         // NOTE: store the RAW (unescaped) text — like public messages — because
         // every renderer HTML-escapes at output time. Escaping here too caused

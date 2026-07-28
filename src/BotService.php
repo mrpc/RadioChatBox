@@ -2080,7 +2080,33 @@ class BotService
             return 'skipped: conversation already ended by the bot';
         }
 
+        // A banned user must not receive bot messages either. This also closes the
+        // race where a reply was queued before the admin banned the peer and the
+        // delayed delivery would otherwise still fire.
+        if ($this->isPeerBanned($peer)) {
+            return 'skipped: peer is banned';
+        }
+
         return null;
+    }
+
+    /**
+     * Whether the peer (the human the bot is talking to) has been banned by an
+     * admin. Checked fresh (no cache) so a just-banned user stops receiving bot
+     * messages immediately, on every job stage that passes through guard().
+     */
+    private function isPeerBanned(string $peer): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM banned_nicknames WHERE LOWER(nickname) = LOWER(?) LIMIT 1'
+            );
+            $stmt->execute([$peer]);
+            return $stmt->fetchColumn() !== false;
+        } catch (\Throwable $e) {
+            error_log('BotService::isPeerBanned failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

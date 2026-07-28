@@ -60,14 +60,10 @@ class ChatService
             throw new \InvalidArgumentException('Username too long (max 50 characters)');
         }
 
-        // Check if IP is banned
-        if ($this->isIPBanned($ipAddress)) {
-            throw new \RuntimeException('Your IP address has been banned from the chat.');
-        }
-
-        // Check if nickname is banned
-        if ($this->isNicknameBanned($username)) {
-            throw new \RuntimeException('This nickname is not allowed.');
+        // A banned (IP/nickname) or kicked user cannot communicate with anyone.
+        $banReason = $this->communicationBlockReason($username, $ipAddress, $sessionId);
+        if ($banReason !== null) {
+            throw new \RuntimeException($banReason);
         }
 
         // Check rate limit
@@ -1145,6 +1141,49 @@ class ChatService
      * Check if nickname is banned
      * Uses Redis cache to avoid hitting PostgreSQL on every message
      */
+    /**
+     * Whether a user is barred from communicating at all — the single source of
+     * truth enforced on every send path (public, private) and by the bot delivery
+     * guard. Covers all three moderation actions: a kicked session, a banned IP,
+     * and a banned nickname.
+     *
+     * @return string|null A human-readable error to show the sender, or null when
+     *                     they are allowed to communicate.
+     */
+    public function communicationBlockReason(string $username, string $ipAddress, string $sessionId = ''): ?string
+    {
+        // Kicked: a short session ban set by the admin "kick" action.
+        if ($this->isSessionKicked($sessionId)) {
+            return 'You have been kicked and cannot send messages right now.';
+        }
+        // IP ban.
+        if ($this->isIPBanned($ipAddress)) {
+            return 'Your IP address has been banned from the chat.';
+        }
+        // Nickname ban.
+        if ($this->isNicknameBanned($username)) {
+            return 'This nickname is not allowed.';
+        }
+        return null;
+    }
+
+    /**
+     * Whether a session was kicked (the admin "kick" action stores an unprefixed
+     * `banned_session:<id>` key in Redis with a TTL — see kick-user.php).
+     */
+    public function isSessionKicked(string $sessionId): bool
+    {
+        if ($sessionId === '') {
+            return false;
+        }
+        try {
+            return (bool) $this->redis->exists('banned_session:' . $sessionId);
+        } catch (\Throwable $e) {
+            error_log('Failed to check kicked session: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     private function isNicknameBanned(string $nickname): bool
     {
         try {
