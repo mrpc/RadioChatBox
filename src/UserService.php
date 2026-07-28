@@ -251,16 +251,12 @@ class UserService
     {
         // Try to get from Redis cache first
         $cacheKey = 'users:list:' . ($includeInactive ? 'all' : 'active');
-        
+
         try {
-            $prefix = Database::getRedisPrefix();
-            $cached = $this->redis->get($prefix . $cacheKey);
-            
-            if ($cached !== false) {
-                $users = json_decode($cached, true);
-                if (is_array($users)) {
-                    return $users;
-                }
+            $cached = Cache::store()->get($cacheKey);
+
+            if (is_array($cached)) {
+                return $cached;
             }
         } catch (\Exception $e) {
             Log::write("UserService::getAllUsers Redis error: " . $e->getMessage());
@@ -291,8 +287,7 @@ class UserService
             
             // Cache the results for 5 minutes
             try {
-                $prefix = Database::getRedisPrefix();
-                $this->redis->setex($prefix . $cacheKey, 300, json_encode($users));
+                Cache::store()->set($cacheKey, $users, 300);
             } catch (\Exception $e) {
                 Log::write("UserService::getAllUsers cache set error: " . $e->getMessage());
             }
@@ -469,16 +464,17 @@ class UserService
     private function clearUsersCache(): void
     {
         try {
-            $prefix = Database::getRedisPrefix();
             // Clear both active and all users cache
-            $this->redis->del($prefix . 'users:list:active');
-            $this->redis->del($prefix . 'users:list:all');
+            Cache::store()->delete('users:list:active');
+            Cache::store()->delete('users:list:all');
 
-            // PERFORMANCE OPTIMIZATION FIX: Clear all display name related caches
-            // This ensures updated display names are reflected everywhere
-            $this->redis->del($prefix . 'chat:all_users'); // Combined user list
-            $this->redis->del($prefix . 'chat:messages'); // Message history
-            $this->redis->del($prefix . 'chat:messages:hash'); // Message hash for replies
+            // Clear all display-name-related caches so an updated name shows
+            // everywhere. (chat:messages / chat:messages:hash are the message-history
+            // Redis structures — deleting the key forces getHistory() to rebuild from
+            // the DB; the structures themselves are re-modeled in Phase 8 Step 4.)
+            Cache::store()->delete('chat:all_users'); // Combined user list
+            Cache::store()->delete('chat:messages'); // Message history
+            Cache::store()->delete('chat:messages:hash'); // Message hash for replies
 
             // Note: Individual user_data:{username} caches will expire naturally in 5 minutes
             // or can be cleared per-user if we know which user was updated
@@ -511,11 +507,10 @@ class UserService
     private function clearUserDataCache(string $username): void
     {
         try {
-            $prefix = Database::getRedisPrefix();
-            // Clear legacy display_name cache
-            $this->redis->del($prefix . "display_name:{$username}");
+            // Clear legacy display_name cache (write-less; kept for safety)
+            Cache::store()->delete("display_name:{$username}");
             // Clear new user_data cache (includes both user_id and display_name)
-            $this->redis->del($prefix . "user_data:{$username}");
+            Cache::store()->delete("user_data:{$username}");
         } catch (\Exception $e) {
             Log::write("UserService::clearUserDataCache error: " . $e->getMessage());
         }

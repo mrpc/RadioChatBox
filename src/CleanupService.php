@@ -10,14 +10,10 @@ use Pramnos\Database\Database as PramnosDatabase;
 class CleanupService
 {
     private PramnosDatabase $db;
-    private \Redis $redis;
-    private string $prefix;
 
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
     }
 
     /**
@@ -35,7 +31,7 @@ class CleanupService
 
             // Invalidate cache if any bans were removed
             if ($count > 0) {
-                $this->redis->del($this->prefix . 'banned_ips');
+                Cache::store()->delete('banned_ips');
                 Log::write("Cleanup: Removed {$count} expired IP bans");
             }
 

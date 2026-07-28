@@ -516,9 +516,9 @@ class ChatService
         try {
             // Check Redis cache first (cache both fields together)
             $cacheKey = 'user_data:' . $username;
-            $cached = $this->redis->get($this->prefixKey($cacheKey));
-            if ($cached !== false) {
-                return json_decode($cached, true);
+            $cached = Cache::store()->get($cacheKey);
+            if ($cached !== null) {
+                return $cached;
             }
 
             // Fetch from database (single query for both fields)
@@ -534,7 +534,7 @@ class ChatService
             ];
 
             // Cache result for 5 minutes
-            $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($userData));
+            Cache::store()->set($cacheKey, $userData, 300);
 
             return $userData;
         } catch (\Throwable $e) {
@@ -854,16 +854,16 @@ class ChatService
     private function publishUserUpdateThrottled(): void
     {
         try {
-            $rateLimitKey = $this->prefixKey('user_update:last_publish');
-            $lastPublish = $this->redis->get($rateLimitKey);
+            $rateLimitKey = 'user_update:last_publish';
+            $lastPublish = Cache::store()->get($rateLimitKey);
 
-            if ($lastPublish !== false) {
+            if ($lastPublish !== null) {
                 // Published recently, skip it
                 return;
             }
 
             // Set rate limit lock for 10 seconds
-            $this->redis->setex($rateLimitKey, 10, time());
+            Cache::store()->set($rateLimitKey, time(), 10);
 
             // Actually publish the update
             $this->publishUserUpdate();
@@ -954,11 +954,11 @@ class ChatService
     public function getAllUsers(): array
     {
         // PERFORMANCE OPTIMIZATION: Cache combined user list
-        $cacheKey = $this->prefixKey('chat:all_users');
-        $cached = $this->redis->get($cacheKey);
+        $cacheKey = 'chat:all_users';
+        $cached = Cache::store()->get($cacheKey);
 
-        if ($cached !== false) {
-            return json_decode($cached, true);
+        if ($cached !== null) {
+            return $cached;
         }
 
         // Get real users
@@ -985,7 +985,7 @@ class ChatService
         $allUsers = array_merge($realUsers, $formattedFakeUsers);
 
         // Cache for 30 seconds (short TTL because user list changes frequently)
-        $this->redis->setex($cacheKey, 30, json_encode($allUsers));
+        Cache::store()->set($cacheKey, $allUsers, 30);
 
         return $allUsers;
     }
@@ -997,7 +997,7 @@ class ChatService
     private function invalidateUserListCache(): void
     {
         try {
-            $this->redis->del($this->prefixKey('chat:all_users'));
+            Cache::store()->delete('chat:all_users');
         } catch (\Exception $e) {
             Log::write("Failed to invalidate user list cache: " . $e->getMessage());
         }
@@ -1053,16 +1053,16 @@ class ChatService
     {
         try {
             // PERFORMANCE OPTIMIZATION: Rate limit cleanup to max once per 30 seconds
-            $rateLimitKey = $this->prefixKey('cleanup:last_run');
-            $lastRun = $this->redis->get($rateLimitKey);
+            $rateLimitKey = 'cleanup:last_run';
+            $lastRun = Cache::store()->get($rateLimitKey);
 
-            if ($lastRun !== false) {
+            if ($lastRun !== null) {
                 // Cleanup was run recently, skip it
                 return;
             }
 
             // Set rate limit lock for 30 seconds
-            $this->redis->setex($rateLimitKey, 30, time());
+            Cache::store()->set($rateLimitKey, time(), 30);
 
             // Run the cleanup
             $this->db->statement("SELECT cleanup_inactive_sessions()");
@@ -1082,10 +1082,10 @@ class ChatService
         try {
                         // Try cache first
             $cacheKey = 'banned_ips';
-            $cached = $this->redis->get($this->prefixKey($cacheKey));
+            $cached = Cache::store()->get($cacheKey);
             
-            if ($cached !== false) {
-                $bannedIPs = json_decode($cached, true);
+            if ($cached !== null) {
+                $bannedIPs = $cached;
             } else {
                 // Cache miss - fetch from database
                 $result = $this->db->query(
@@ -1096,7 +1096,7 @@ class ChatService
                 $bannedIPs = array_map(fn($r) => reset($r), $rows);
                 
                 // Cache for 5 minutes
-                $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($bannedIPs));
+                Cache::store()->set($cacheKey, $bannedIPs, 300);
             }
             
             return in_array($ipAddress, $bannedIPs, true);
@@ -1158,10 +1158,10 @@ class ChatService
         try {
             // Try cache first
             $cacheKey = 'banned_nicknames';
-            $cached = $this->redis->get($this->prefixKey($cacheKey));
+            $cached = Cache::store()->get($cacheKey);
             
-            if ($cached !== false) {
-                $bannedNicknames = json_decode($cached, true);
+            if ($cached !== null) {
+                $bannedNicknames = $cached;
             } else {
                 // Cache miss - fetch from database
                 $result = $this->db->query('SELECT LOWER(nickname) FROM banned_nicknames');
@@ -1169,7 +1169,7 @@ class ChatService
                 $bannedNicknames = array_map(fn($r) => reset($r), $rows);
                 
                 // Cache for 5 minutes
-                $this->redis->setex($this->prefixKey($cacheKey), 300, json_encode($bannedNicknames));
+                Cache::store()->set($cacheKey, $bannedNicknames, 300);
             }
             
             return in_array(strtolower($nickname), $bannedNicknames, true);
@@ -1317,7 +1317,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del($this->prefixKey('banned_ips'));
+                Cache::store()->delete('banned_ips');
             }
 
             return $result !== false;
@@ -1337,7 +1337,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del($this->prefixKey('banned_ips'));
+                Cache::store()->delete('banned_ips');
             }
 
             return $result !== false;
@@ -1371,7 +1371,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del($this->prefixKey('banned_nicknames'));
+                Cache::store()->delete('banned_nicknames');
             }
 
             return $result !== false;
@@ -1391,7 +1391,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                $this->redis->del($this->prefixKey('banned_nicknames'));
+                Cache::store()->delete('banned_nicknames');
             }
 
             return $result !== false;

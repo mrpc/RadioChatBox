@@ -6,6 +6,7 @@ use RadioChatBox\Http\Validate;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
+use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\PhotoService;
 
@@ -135,24 +136,15 @@ final class ProfileController
                         ->where('id', '=', $session['user_id'])
                         ->update(['display_name' => $finalDisplayName]);
 
-                    // Clear ALL caches related to this user's display name
-                    $redis  = Database::getRedis();
-                    $prefix = Database::getRedisPrefix();
-
-                    // Clear old display_name cache (legacy)
-                    $redis->del($prefix . 'display_name:' . $username);
-
-                    // Clear NEW user_data cache (from performance optimization)
-                    $redis->del($prefix . 'user_data:' . $username);
-
-                    // Clear message history cache to force reload with new display name
-                    $redis->del($prefix . 'chat:messages');
-
-                    // Clear combined user list cache (includes display names)
-                    $redis->del($prefix . 'chat:all_users');
-
-                    // Clear message hash (may contain old display names)
-                    $redis->del($prefix . 'chat:messages:hash');
+                    // Clear ALL caches related to this user's display name (the
+                    // Cache capability applies the instance prefix). chat:messages /
+                    // chat:messages:hash are the message-history Redis structures —
+                    // deleting the key forces a rebuild (re-modeled in Step 4).
+                    Cache::store()->delete('display_name:' . $username); // legacy
+                    Cache::store()->delete('user_data:' . $username);
+                    Cache::store()->delete('chat:messages'); // message history
+                    Cache::store()->delete('chat:all_users'); // combined user list
+                    Cache::store()->delete('chat:messages:hash'); // reply hash
 
                     // Small delay to ensure database commit and cache clear complete
                     usleep(100000); // 100ms

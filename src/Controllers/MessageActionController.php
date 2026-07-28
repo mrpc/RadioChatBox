@@ -8,6 +8,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BlockService;
+use RadioChatBox\Cache;
 use RadioChatBox\BotService;
 use RadioChatBox\Broadcast;
 use RadioChatBox\ChatService;
@@ -215,12 +216,13 @@ final class MessageActionController
                 ]
             );
 
-            // Invalidate the Redis message list cache so getHistory() refetches from DB
+            // Invalidate the message-history list so getHistory() refetches from DB
+            // (delete-by-key; the list itself is re-modeled in Phase 8 Step 4).
+            Cache::store()->delete('chat:messages');
+
+            // Also update the HASH used for reply lookups (Step 4 leak — still raw).
             $redis  = Database::getRedis();
             $prefix = Database::getRedisPrefix();
-            $redis->del($prefix . 'chat:messages');
-
-            // Also update the HASH used for reply lookups
             $hashKey = $prefix . 'chat:messages:hash';
             $existing = $redis->hGet($hashKey, $messageId);
             if ($existing !== false) {
