@@ -723,6 +723,21 @@ class BotServicePipelineTest extends TestCase
         $this->assertNotEmpty(array_filter($jobs, fn ($j) => $j['type'] === BotService::JOB_REPLY));
     }
 
+    /**
+     * Force-stop silences the bot in a single conversation (marks it ended so the
+     * guard skips it) and is fully reversible with Force.
+     */
+    public function testStopThreadEndsTheConversationAndIsReversible(): void
+    {
+        // stopThread creates the thread if needed and marks it ended.
+        $this->assertTrue($this->bot->stopThread($this->nick, $this->peer));
+        $this->assertNotNull($this->threadRow()['farewell_sent_at'], 'force stop marks the thread ended');
+
+        // Force brings the bot back — nothing is stuck permanently.
+        $this->assertTrue($this->bot->forceReply($this->nick, $this->peer));
+        $this->assertNull($this->threadRow()['farewell_sent_at']);
+    }
+
     public function testAMultiLineReplyIsDeliveredAsSeparateBubblesCountingOneTurn(): void
     {
         $this->incoming('γεια');

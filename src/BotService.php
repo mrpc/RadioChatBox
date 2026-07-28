@@ -1026,6 +1026,37 @@ class BotService
     }
 
     /**
+     * Stop the bot in a single conversation, without taking it over.
+     *
+     * The thread is marked ended so the reply guard skips it, and the epoch is
+     * bumped so any reply already queued becomes a no-op. Fully reversible: 'Force'
+     * (forceReply) or 'Return to bot' (releaseThread) bring the bot back. An abuse
+     * block is left untouched.
+     */
+    public function stopThread(string $fakeNickname, string $peer): bool
+    {
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+        if ($fakeUserId === null) {
+            return false;
+        }
+
+        $this->getOrCreateThread($fakeUserId, $peer);
+
+        $stmt = $this->pdo->prepare('
+            UPDATE bot_threads
+            SET farewell_sent_at = COALESCE(farewell_sent_at, NOW()),
+                updated_at = NOW()
+            WHERE fake_user_id = :fake_user_id AND peer_username = :peer
+        ');
+        $stmt->execute(['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+
+        // Any reply still queued for this conversation is now a no-op.
+        $this->bumpEpoch($fakeUserId, $peer);
+
+        return true;
+    }
+
+    /**
      * Every conversation a bot is (or was) in, for the admin overview.
      *
      * @return list<array<string,mixed>>
