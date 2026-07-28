@@ -16,9 +16,14 @@ use Psr\SimpleCache\CacheInterface;
  * Database::getRedis() directly, so cache access is uniform, swappable (any
  * adapter) and test-doubleable (inject an ArrayAdapter-backed FlatCache).
  *
- * Non-cache Redis uses (pub/sub, the job queue, admin sessions, rate-limit
- * counters) intentionally stay on Database::getRedis() — they are state, not a
- * recomputable cache.
+ * As of Phase 8 this accessor also exposes the atomic counter capability
+ * (increment/decrement/counter) that rate-limit, login-attempt, spam-violation
+ * and bot-reply-epoch counters use — native Redis INCRBY under the hood.
+ *
+ * Genuinely non-cache Redis uses (pub/sub — see RadioChatBox\Broadcast; the job
+ * queue; admin/kicked-session state; the ban lists; the message hash/list)
+ * intentionally stay on Database::getRedis() for now — they are state, not a
+ * recomputable cache — pending the remaining Phase 8 steps.
  */
 final class Cache
 {
