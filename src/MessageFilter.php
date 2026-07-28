@@ -269,21 +269,36 @@ class MessageFilter
     /**
      * Check if GIF feature is enabled in settings
      */
+    /**
+     * Process-memoised gif_enabled flag. A class static (not a function-local
+     * static) so tests can reset it via resetCaches() after changing the
+     * setting — the shared dev database means the flag can otherwise leak
+     * between tests.
+     */
+    private static ?bool $gifEnabledMemo = null;
+
     private static function isGifEnabled(): bool
     {
-        static $gifEnabled = null;
-        
-        if ($gifEnabled === null) {
+        if (self::$gifEnabledMemo === null) {
             try {
                 $settingsService = new SettingsService();
-                $gifEnabled = $settingsService->get('gif_enabled', 'true') === 'true';
+                self::$gifEnabledMemo = $settingsService->get('gif_enabled', 'true') === 'true';
             } catch (\Exception $e) {
                 // Default to true if we can't check settings
-                $gifEnabled = true;
+                self::$gifEnabledMemo = true;
             }
         }
-        
-        return $gifEnabled;
+
+        return self::$gifEnabledMemo;
+    }
+
+    /**
+     * Reset process-memoised flags. Intended for tests that mutate the
+     * underlying settings (e.g. gif_enabled) in the shared database.
+     */
+    public static function resetCaches(): void
+    {
+        self::$gifEnabledMemo = null;
     }
     
     /**

@@ -4,9 +4,53 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\MessageFilter;
+use RadioChatBox\Database;
+use RadioChatBox\SettingsService;
 
 class MessageFilterTest extends TestCase
 {
+    /** The gif_enabled value present before the test, restored in tearDown. */
+    private ?string $previousGifEnabled = null;
+
+    /**
+     * The GIF-preservation tests assert the feature is ON. It is gated by the
+     * gif_enabled setting, which lives in the shared database and may be OFF
+     * (from real admin use or another test). Force it on, snapshotting the prior
+     * value, and clear MessageFilter's memoised flag so the change is seen.
+     */
+    protected function setUp(): void
+    {
+        $pdo = Database::getPDO();
+        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt->execute(['gif_enabled']);
+        $value = $stmt->fetchColumn();
+        $this->previousGifEnabled = $value === false ? null : (string) $value;
+
+        $pdo->prepare(
+            'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+             ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+        )->execute(['gif_enabled', 'true']);
+
+        (new SettingsService())->invalidateCache();
+        MessageFilter::resetCaches();
+    }
+
+    protected function tearDown(): void
+    {
+        $pdo = Database::getPDO();
+        if ($this->previousGifEnabled === null) {
+            $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['gif_enabled']);
+        } else {
+            $pdo->prepare(
+                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+            )->execute(['gif_enabled', $this->previousGifEnabled]);
+        }
+
+        (new SettingsService())->invalidateCache();
+        MessageFilter::resetCaches();
+    }
+
     public function testFilterPublicMessageRemovesUrls()
     {
         $message = 'Check out this link: https://example.com';
