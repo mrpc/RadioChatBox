@@ -62,4 +62,42 @@ class CacheAdoptionTest extends TestCase
         $this->assertArrayHasKey('active', $result);
         $this->assertArrayHasKey('display', $result);
     }
+
+    // ---------------------------------------------------------------------
+    // Atomic-counter capability (Phase 8 Step 2). The rate-limit, login-attempt,
+    // spam-violation and bot-reply-epoch counters route through
+    // Cache::store()->increment/counter/delete. Verified here over ArrayAdapter
+    // (the AbstractAdapter fallback); production uses the RedisAdapter's native
+    // INCRBY, exercised end-to-end by MessageFilterTest's auto-ban test.
+    // ---------------------------------------------------------------------
+
+    /**
+     * increment() returns the new post-increment total and accumulates, and
+     * counter() reads the current value (0 when absent, without creating it) —
+     * the contract the converted rate-limit/attempt/epoch counters rely on.
+     */
+    public function testCounterIncrementAccumulatesAndCounterReads(): void
+    {
+        Cache::setStore($this->arrayStore());
+
+        $this->assertSame(0, Cache::store()->counter('admin_auth_attempts:1.2.3.4'), 'absent counter reads 0');
+        $this->assertSame(1, Cache::store()->increment('admin_auth_attempts:1.2.3.4', 1, 900));
+        $this->assertSame(2, Cache::store()->increment('admin_auth_attempts:1.2.3.4', 1, 900));
+        $this->assertSame(2, Cache::store()->counter('admin_auth_attempts:1.2.3.4'));
+    }
+
+    /**
+     * delete() clears a counter (the "reset attempts on success" / "clear
+     * violations after ban" path).
+     */
+    public function testCounterDeleteResetsIt(): void
+    {
+        Cache::setStore($this->arrayStore());
+
+        Cache::store()->increment('violations:spam_url:9.9.9.9', 3);
+        $this->assertSame(3, Cache::store()->counter('violations:spam_url:9.9.9.9'));
+
+        Cache::store()->delete('violations:spam_url:9.9.9.9');
+        $this->assertSame(0, Cache::store()->counter('violations:spam_url:9.9.9.9'));
+    }
 }

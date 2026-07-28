@@ -355,17 +355,15 @@ class ChatService
         }
 
         $key = self::RATE_LIMIT_PREFIX . $ipAddress;
-        $current = $this->redis->get($this->prefixKey($key));
 
-        if ($current !== false && (int)$current >= $rateLimitMessages) {
+        if (Cache::store()->counter($key) >= $rateLimitMessages) {
             // Track repeated violations for auto-ban
             $this->trackViolation($ipAddress, 'rate_limit');
             return false;
         }
 
-        // Increment counter
-        $this->redis->incr($this->prefixKey($key));
-        $this->redis->expire($this->prefixKey($key), $rateLimitWindow);
+        // Atomic sliding-window counter (Redis INCRBY + window expiry).
+        Cache::store()->increment($key, 1, $rateLimitWindow);
 
         return true;
     }
@@ -377,14 +375,9 @@ class ChatService
     {
         try {
             $key = "violations:{$violationType}:{$ipAddress}";
-            $violations = (int)$this->redis->get($this->prefixKey($key));
-            
-            // Increment violation counter
-            $this->redis->incr($this->prefixKey($key));
-            $this->redis->expire($this->prefixKey($key), 3600); // Track violations for 1 hour
-            
-            $violations++; // Current violation count
-            
+            // Atomic sliding-window counter; returns the new post-increment count.
+            $violations = Cache::store()->increment($key, 1, 3600);
+
             // Auto-ban thresholds
             $thresholds = [
                 'rate_limit' => 3,  // Ban after 3 rate limit violations in 1 hour
@@ -397,9 +390,9 @@ class ChatService
                 // Auto-ban for 24 hours
                 $reason = "Automatic ban: Repeated {$violationType} violations ({$violations} times)";
                 $this->banIP($ipAddress, $reason, 'system', 1); // 1 day ban
-                
+
                 // Clear violation counter
-                $this->redis->del($this->prefixKey($key));
+                Cache::store()->delete($key);
                 
                 Log::write("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})");
             } else {

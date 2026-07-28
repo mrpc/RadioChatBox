@@ -427,17 +427,11 @@ class MessageFilter
     private static function trackSpamViolation(string $ipAddress): void
     {
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key = $prefix . "violations:spam_url:{$ipAddress}";
-            $violations = (int)$redis->get($key);
-            
-            // Increment violation counter
-            $redis->incr($key);
-            $redis->expire($key, 3600); // Track for 1 hour
-            
-            $violations++; // Current count
-            
+            // Atomic sliding-window counter via the Cache capability (Redis INCRBY
+            // + 1h expiry); returns the new post-increment count.
+            $key = "violations:spam_url:{$ipAddress}";
+            $violations = Cache::store()->increment($key, 1, 3600);
+
             // Auto-ban after 3 spam URL attempts
             if ($violations >= 3) {
                 $db = Database::getDb();
@@ -462,13 +456,13 @@ class MessageFilter
                     ]);
 
                     // Invalidate cache
-                    $redis->del(Database::getRedisPrefix() . 'banned_ips');
-                    
+                    Cache::store()->delete('banned_ips');
+
                     Log::write("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})");
                 }
-                
+
                 // Clear violation counter
-                $redis->del($key);
+                Cache::store()->delete($key);
             } else {
                 $remaining = 3 - $violations;
                 Log::write("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)");

@@ -232,11 +232,8 @@ class AdminAuth
     private static function checkRateLimit(string $ipAddress): bool
     {
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key = $prefix . "admin_auth_attempts:{$ipAddress}";
-            $attempts = (int)$redis->get($key);
-            
+            $attempts = Cache::store()->counter("admin_auth_attempts:{$ipAddress}");
+
             // Allow max 5 attempts per 15 minutes
             return $attempts < 5;
         } catch (\Exception $e) {
@@ -252,12 +249,8 @@ class AdminAuth
     private static function recordFailedAttempt(string $ipAddress): void
     {
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key = $prefix . "admin_auth_attempts:{$ipAddress}";
-            
-            $redis->incr($key);
-            $redis->expire($key, 900); // 15 minutes
+            // Atomic sliding-window counter (Redis INCRBY + 15-minute expiry).
+            Cache::store()->increment("admin_auth_attempts:{$ipAddress}", 1, 900);
         } catch (\Exception $e) {
             Log::write("Failed to record admin auth attempt: " . $e->getMessage());
         }
@@ -269,10 +262,7 @@ class AdminAuth
     private static function clearFailedAttempts(string $ipAddress): void
     {
         try {
-            $redis = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $key = $prefix . "admin_auth_attempts:{$ipAddress}";
-            $redis->del($key);
+            Cache::store()->delete("admin_auth_attempts:{$ipAddress}");
         } catch (\Exception $e) {
             Log::write("Failed to clear admin auth attempts: " . $e->getMessage());
         }

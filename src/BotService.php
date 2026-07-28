@@ -1185,7 +1185,9 @@ class BotService
 
         $epochs = 0;
         foreach ($peers as $peer) {
-            if ((int) $this->redis->del($this->epochKey($fakeUserId, (string) $peer)) > 0) {
+            $epochKey = $this->epochKey($fakeUserId, (string) $peer);
+            if (Cache::store()->counter($epochKey) > 0) {
+                Cache::store()->delete($epochKey);
                 $epochs++;
             }
         }
@@ -2718,25 +2720,22 @@ class BotService
         }
     }
 
+    /** Logical (unprefixed) counter key; the Cache capability adds the prefix. */
     private function epochKey(int $fakeUserId, string $peer): string
     {
-        return $this->prefix . 'bot:epoch:' . $fakeUserId . ':' . md5($peer);
+        return 'bot:epoch:' . $fakeUserId . ':' . md5($peer);
     }
 
     private function bumpEpoch(int $fakeUserId, string $peer): int
     {
-        $key = $this->epochKey($fakeUserId, $peer);
-        $epoch = (int) $this->redis->incr($key);
-        $this->redis->expire($key, self::EPOCH_TTL);
-
-        return $epoch;
+        // Atomic monotonic counter (Redis INCRBY) so any reply job queued under an
+        // older epoch becomes a no-op; refreshed 7-day TTL.
+        return Cache::store()->increment($this->epochKey($fakeUserId, $peer), 1, self::EPOCH_TTL);
     }
 
     private function currentEpoch(int $fakeUserId, string $peer): int
     {
-        $value = $this->redis->get($this->epochKey($fakeUserId, $peer));
-
-        return $value === false ? 0 : (int) $value;
+        return Cache::store()->counter($this->epochKey($fakeUserId, $peer));
     }
 
     private function randomBetween(int $min, int $max): int
