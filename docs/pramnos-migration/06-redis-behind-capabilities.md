@@ -148,3 +148,90 @@ no `\Redis`. Redis is one driver of each, beside Database / Pusher / Kafka.
 helpers (Phase 7), at which point it is a small framework-DB seam and can be renamed
 (e.g. `Connections`) or dissolved. See [00](00-overview-and-bc-strategy.md),
 [02](02-framework-improvements.md), [04](04-broadcasting-backplane-architecture.md).
+
+---
+
+## 8. Verified execution status & findings (2026-07-28)
+
+**Prerequisite done.** Phase 7 is complete: all services *and* all 10 controllers use
+`Database::getDb()`; no `src/` code calls `getPDO()` (tests still do, for seeding). Full
+suite green (761). Phase 8 has **not** started — no app code changed yet.
+
+### 8.1 Verified BC-risk analysis of the event bus (the Step-1 blocker)
+
+Who actually consumes the Redis pub/sub channels was audited before planning:
+
+- **Only two consumers**, both server-side: `StreamController` and `AdminStreamController`,
+  each via the framework `RedisDriver`, which **already decodes both** the framework
+  envelope *and* raw legacy JSON (raw-message fallback). Their callbacks `switch` on the
+  **channel** and use the payload array — the event name is irrelevant to them.
+- **Frontend is insulated.** The three `EventSource` clients (`chat.js` → `/api/stream`,
+  admin `/api/admin/stream`, impersonate) consume **SSE named events emitted by the
+  controllers**, never raw Redis. The on-wire Redis envelope never reaches the browser.
+- **`ChatService::subscribe()` is dead code** — zero callers anywhere in the repo (no
+  daemon reads raw pub/sub). Safe to delete in Step 1.
+- **No legacy raw-Redis SSE `.php`** remains (`public/api` is empty; all migrated).
+
+**Conclusion:** routing publishers through `BroadcastingManager::broadcast()` is BC-safe —
+no change reaches the frontend, and the sole consumers already handle the new envelope.
+
+### 8.2 ⚠️ Prefix inconsistency (a latent bug the migration will normalize)
+
+The Redis connection sets only `OPT_READ_TIMEOUT`, **not** `OPT_PREFIX` — phpredis does
+**not** auto-prefix. Publishers prefix the channel *manually*, and **two do not**:
+
+- `ChatService.php:1485` → `publish(self::USER_UPDATE_CHANNEL, …)` — **unprefixed**
+- `AdminModerationController.php:216` → `publish('chat:user_updates', …)` — **unprefixed**
+
+Subscribers (`RedisDriver`) listen on `prefix . 'chat:user_updates'`. So on any install
+with a non-empty prefix (multi-install by DB name), those two events (a display-name
+change and the kick notification) are published to the wrong channel and **never reach the
+SSE edge today**. It "works" only where the prefix is empty (single install).
+
+`BroadcastingManager::broadcast($channel, …)` always applies the *configured* prefix
+consistently, so converting these normalizes them. **Decision for Step 1:** treat this as
+a latent bugfix (recommended) — after conversion all channels are prefixed uniformly;
+verify the production prefix value first and call out the behavioural change explicitly,
+since on a prefixed install it starts delivering events that previously vanished.
+
+### 8.3 Exact publisher call sites (Step-1 checklist — 13 sites)
+
+Channels are shown as intended (all should end up `broadcast('<channel>', '<event>', $payload)`):
+
+| File:line | Channel | Prefixed today? |
+|---|---|---|
+| `ReactionService.php:259` | `chat:updates` | yes (`$this->prefix`) |
+| `ChatService.php:116` | `chat:updates` | yes (`prefixKey`) |
+| `ChatService.php:1485` | `chat:user_updates` | **NO** ⚠️ |
+| `BotService.php:889` | `chat:private_messages` | yes |
+| `MessageActionController.php:241` | `chat:updates` | yes |
+| `MessageActionController.php:561` | `chat:private_messages` | yes |
+| `MessageActionController.php:596` | `chat:admin_notifications` | yes |
+| `ProfileController.php:160` | `chat:updates` | yes |
+| `ProfileController.php:166` | `chat:user_updates` | yes |
+| `AdminModerationController.php:216` | `chat:user_updates` | **NO** ⚠️ |
+| `AdminModerationController.php:300` | `chat:updates` | yes |
+| `AdminModerationController.php:363` | `chat:updates` | yes |
+| `AdminImpersonationController.php:308` | `chat:private_messages` | yes |
+
+Each payload already carries a `type` field (`refresh_history`, `display_name_changed`,
+`user_kicked`, `private`, `fake_user_dm`, `message_edited`, …) — reuse it as the
+broadcast **event name** so the envelope is self-describing (the current subscribers
+ignore it, but future WS/Pusher consumers can filter on it).
+
+### 8.4 Remaining raw-Redis coupling (later steps)
+
+Approximate current counts (`$redis->` / `$this->redis->` in `src/`): `getRedis()` app
+refs **40**, `getRedisForSubscribe()` **2** (the two SSE controllers). Cache-shaped ops
+(`get/set/setex/del/expire/ttl/exists/keys/scan`) dominate → Step 2. `incr` ×2 (counters)
+→ Step 2 once framework `increment()` lands. `hSet/hGet/hDel` (active-users hash) and the
+message-history `lRange`/list on `$this->redis` in `ChatService` → Step 4 leaks.
+
+### 8.5 Framework gaps confirmed (both additive, need building + pushing to `origin/main`)
+
+- **`Cache::increment()` / `decrement()`** — **absent** in `Pramnos\Cache`. Blocks Step 2
+  counters.
+- **Redis queue driver** — **absent**; `Pramnos\Queue` is DB-backed only
+  (`QueueManager`/`Worker`/`QueueItem`). Blocks Step 3.
+- Everything else (`BroadcastingManager`, `RedisDriver` with raw fallback, `QueueManager`)
+  already exists — Step 1 needs **no framework change**, only app + a `config/broadcasting.php`.
