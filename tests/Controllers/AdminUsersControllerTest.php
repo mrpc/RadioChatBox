@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminUsersController;
+use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -23,10 +24,40 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
  */
 class AdminUsersControllerTest extends TestCase
 {
+    private const ROOT_ID = 'usersctlroot';
+    private ?string $sessionKey = null;
+
     protected function tearDown(): void
     {
+        if ($this->sessionKey !== null) {
+            try {
+                Database::getRedis()->del($this->sessionKey);
+            } catch (\Throwable) {
+                // best effort
+            }
+            $this->sessionKey = null;
+        }
         $_POST = [];
         $_GET  = [];
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+    }
+
+    /**
+     * Establish a root admin session so AdminAuth::getCurrentUser()/hasPermission()
+     * return a privileged user; skips the test if Redis is unreachable.
+     */
+    private function authAsRoot(): void
+    {
+        try {
+            $redis  = Database::getRedis();
+            $prefix = Database::getRedisPrefix();
+            $key    = $prefix . 'admin_session:' . self::ROOT_ID;
+            $redis->setex($key, 120, json_encode(['username' => self::ROOT_ID, 'role' => 'root']));
+            $this->sessionKey = $key;
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ROOT_ID . ':x';
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -129,6 +160,31 @@ class AdminUsersControllerTest extends TestCase
 
         $this->assertSame(400, $response->getStatusCode());
         $this->assertSame('Username parameter required', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * details() with a username runs every converted read (profile, message
+     * count + page, IP list, active session and — as root, which holds
+     * view_private_messages — the private-message count + page). Driving it as
+     * root against a username with no data pins that all nine preparedQuery reads
+     * execute and assemble the exact success shape (empty collections, not an
+     * error). This is the DB-path coverage the Phase-7 conversion needed.
+     */
+    public function testDetailsAsRootReturnsFullShapeForUnknownUser(): void
+    {
+        $this->authAsRoot();
+        $_GET = ['username' => 'nouser_' . substr(bin2hex(random_bytes(4)), 0, 8)];
+
+        $response = (new AdminUsersController())->details();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertNull($body['user']['profile'], 'no profile row => null');
+        $this->assertSame([], $body['user']['messages']);
+        $this->assertSame([], $body['user']['ip_addresses']);
+        $this->assertArrayHasKey('private_messages', $body['user']);
+        $this->assertSame([], $body['user']['private_messages']);
     }
 
     /**

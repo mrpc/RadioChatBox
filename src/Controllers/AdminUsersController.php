@@ -2,7 +2,6 @@
 
 namespace RadioChatBox\Controllers;
 
-use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -296,7 +295,7 @@ final class AdminUsersController
     #[Route('/api/admin/user-details', methods: 'GET', name: 'admin.users.details', middleware: [AdminAuthMiddleware::class])]
     public function details(): Response
     {
-        $db = Database::getPDO();
+        $db = Database::getDb();
 
         try {
             $request  = Request::getInstance();
@@ -315,80 +314,64 @@ final class AdminUsersController
             $search = (string) $request->get('search', '', 'get');
 
             // Get user profile.
-            $stmt = $db->prepare("SELECT * FROM user_profiles WHERE username = :username ORDER BY created_at DESC LIMIT 1");
-            $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-            $stmt->execute();
-            $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+            $result  = $db->preparedQuery(
+                "SELECT * FROM user_profiles WHERE username = :username ORDER BY created_at DESC LIMIT 1",
+                ['username' => $username]
+            );
+            $profile = $result ? $result->fetch() : false;
 
             // Get total message count for this user (with search filter if provided).
             if (!empty($search)) {
-                $stmt = $db->prepare("
-                    SELECT COUNT(*)
-                    FROM messages
-                    WHERE username = :username AND message ILIKE :search
-                ");
-                $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-                $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
-                $stmt->execute();
+                $result = $db->preparedQuery(
+                    "SELECT COUNT(*) FROM messages WHERE username = :username AND message ILIKE :search",
+                    ['username' => $username, 'search' => '%' . $search . '%']
+                );
             } else {
-                $stmt = $db->prepare("
-                    SELECT COUNT(*)
-                    FROM messages
-                    WHERE username = :username
-                ");
-                $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-                $stmt->execute();
+                $result = $db->preparedQuery(
+                    "SELECT COUNT(*) FROM messages WHERE username = :username",
+                    ['username' => $username]
+                );
             }
-            $totalMessages = (int) $stmt->fetchColumn();
+            $totalMessages = (int) ($result ? $result->fetchColumn() : 0);
             $totalPages = ceil($totalMessages / $limit);
 
             // Get user's messages with pagination and search.
             if (!empty($search)) {
-                $stmt = $db->prepare("
+                $result = $db->preparedQuery("
                     SELECT m.*, u.ip_address
                     FROM messages m
                     LEFT JOIN user_activity u ON m.username = u.username
                     WHERE m.username = :username AND m.message ILIKE :search
                     ORDER BY m.created_at DESC
                     LIMIT :limit OFFSET :offset
-                ");
-                $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-                $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-                $stmt->execute();
+                ", ['username' => $username, 'search' => '%' . $search . '%', 'limit' => $limit, 'offset' => $offset]);
             } else {
-                $stmt = $db->prepare("
+                $result = $db->preparedQuery("
                     SELECT m.*, u.ip_address
                     FROM messages m
                     LEFT JOIN user_activity u ON m.username = u.username
                     WHERE m.username = :username
                     ORDER BY m.created_at DESC
                     LIMIT :limit OFFSET :offset
-                ");
-                $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-                $stmt->execute();
+                ", ['username' => $username, 'limit' => $limit, 'offset' => $offset]);
             }
-            $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $messages = $result ? $result->fetchAll() : [];
 
             // Get user's IP addresses (from user_activity table).
-            $stmt = $db->prepare("
+            $result = $db->preparedQuery("
                 SELECT DISTINCT ip_address, first_seen
                 FROM user_activity
                 WHERE username = :username
                 ORDER BY first_seen DESC
-            ");
-            $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-            $stmt->execute();
-            $ipAddresses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            ", ['username' => $username]);
+            $ipAddresses = $result ? $result->fetchAll() : [];
 
             // Get active session info.
-            $stmt = $db->prepare("SELECT * FROM sessions WHERE username = :username");
-            $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-            $stmt->execute();
-            $activeSession = $stmt->fetch(PDO::FETCH_ASSOC);
+            $result = $db->preparedQuery(
+                "SELECT * FROM sessions WHERE username = :username",
+                ['username' => $username]
+            );
+            $activeSession = $result ? $result->fetch() : false;
 
             // Get private messages count and paginated results (only for root and administrator).
             $privateMessages = [];
@@ -396,28 +379,22 @@ final class AdminUsersController
             $privateMessagesPages = 0;
             if (AdminAuth::hasPermission('view_private_messages')) {
                 // Get total private messages count.
-                $stmt = $db->prepare("
+                $result = $db->preparedQuery("
                     SELECT COUNT(*)
                     FROM private_messages
                     WHERE from_username = :username OR to_username = :username
-                ");
-                $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-                $stmt->execute();
-                $totalPrivateMessages = (int) $stmt->fetchColumn();
+                ", ['username' => $username]);
+                $totalPrivateMessages = (int) ($result ? $result->fetchColumn() : 0);
                 $privateMessagesPages = ceil($totalPrivateMessages / $limit);
 
                 // Get paginated private messages.
-                $stmt = $db->prepare("
+                $result = $db->preparedQuery("
                     SELECT * FROM private_messages
                     WHERE from_username = :username OR to_username = :username
                     ORDER BY created_at DESC
                     LIMIT :limit OFFSET :offset
-                ");
-                $stmt->bindValue(':username', $username, PDO::PARAM_STR);
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-                $stmt->execute();
-                $privateMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                ", ['username' => $username, 'limit' => $limit, 'offset' => $offset]);
+                $privateMessages = $result ? $result->fetchAll() : [];
             }
 
             return Response::json([
