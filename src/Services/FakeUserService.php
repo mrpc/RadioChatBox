@@ -1,7 +1,11 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Cache;
+use RadioChatBox\Database;
+use RadioChatBox\LlmProviders;
+use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**
@@ -564,7 +568,7 @@ class FakeUserService
         $targetUserCount = null;
         $radioListeners = null;
         try {
-            $radioService = new \RadioChatBox\RadioStatusService();
+            $radioService = new \RadioChatBox\Services\RadioStatusService();
             $nowPlaying = $radioService->getNowPlaying();
             
             if (isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null && $nowPlaying['listeners'] > 0) {

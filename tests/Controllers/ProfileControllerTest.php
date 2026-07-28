@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\ProfileController;
 use RadioChatBox\Database;
-use RadioChatBox\UserService;
+use RadioChatBox\Services\UserService;
 
 /**
  * Golden-contract tests for the migrated "Profile" endpoints (replaced

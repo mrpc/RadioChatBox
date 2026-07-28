@@ -5,7 +5,7 @@ namespace RadioChatBox\Controllers;
 use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\MessageFilter;
 use RuntimeException;
 

@@ -7,9 +7,9 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Sse\SseWriter;
 use Pramnos\Http\StreamedResponse;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
-use RadioChatBox\ReactionService;
+use RadioChatBox\Services\ReactionService;
 
 /**
  * GET /api/stream — the public Server-Sent Events feed.

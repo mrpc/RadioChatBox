@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 
 /**
  * Covers the pure helpers of BotService (prompt building, typing delay,

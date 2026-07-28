@@ -6,8 +6,8 @@ use InvalidArgumentException;
 use RadioChatBox\Http\Validate;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\BotService;
-use RadioChatBox\FakeUserService;
+use RadioChatBox\Services\BotService;
+use RadioChatBox\Services\FakeUserService;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\AdminAuth;
 

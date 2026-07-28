@@ -2,6 +2,7 @@
 
 namespace RadioChatBox;
 
+use RadioChatBox\Services\UserService;
 class AdminAuth
 {
     /**

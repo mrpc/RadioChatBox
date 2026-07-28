@@ -8,7 +8,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
 use RadioChatBox\Cache;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
 use RadioChatBox\MessageHistory;

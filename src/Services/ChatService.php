@@ -1,7 +1,14 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Broadcast;
+use RadioChatBox\Cache;
+use RadioChatBox\Config;
+use RadioChatBox\Database;
+use RadioChatBox\KickRegistry;
+use RadioChatBox\Log;
+use RadioChatBox\MessageHistory;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class ChatService

@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\FakeUserService;
+use RadioChatBox\Services\FakeUserService;
 
 /**
  * Covers the per-bot overrides stored on a fake user: which provider and model it

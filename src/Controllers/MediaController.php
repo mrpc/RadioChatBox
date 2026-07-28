@@ -8,11 +8,11 @@ use InvalidArgumentException;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ArtworkService;
+use RadioChatBox\Services\ArtworkService;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\RadioStatusService;
-use RadioChatBox\TrackStatsService;
+use RadioChatBox\Services\RadioStatusService;
+use RadioChatBox\Services\TrackStatsService;
 
 /**
  * Media resource controller: cover/artist artwork, rich link previews and the

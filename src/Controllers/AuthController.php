@@ -5,10 +5,10 @@ namespace RadioChatBox\Controllers;
 use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\Http\Validate;
-use RadioChatBox\UserService;
+use RadioChatBox\Services\UserService;
 
 /**
  * Authentication endpoints: login / logout / register.

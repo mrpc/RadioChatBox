@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\CleanupService;
+use RadioChatBox\Services\CleanupService;
 use RadioChatBox\Database;
 
 /**

@@ -70,14 +70,14 @@ if (php_sapi_name() !== 'cli') {
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\JobQueue;
 use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
 use RadioChatBox\LlmPricing;
-use RadioChatBox\LlmService;
+use RadioChatBox\Services\LlmService;
 use RadioChatBox\Scheduler;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 use RadioChatBox\WorkerLock;
 use RadioChatBox\WorkerReloader;
 

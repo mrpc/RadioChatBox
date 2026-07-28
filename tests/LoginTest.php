@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\UserService;
+use RadioChatBox\Services\UserService;
 
 /**
  * Test chat login functionality for registered users

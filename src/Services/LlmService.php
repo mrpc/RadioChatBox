@@ -1,7 +1,11 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Config;
+use RadioChatBox\LlmLog;
+use RadioChatBox\LlmProviders;
+use RadioChatBox\Log;
 /**
  * Thin client for the DeepSeek chat completions API.
  *

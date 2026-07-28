@@ -49,9 +49,9 @@ if (php_sapi_name() !== 'cli') {
 // Load Composer autoloader
 require_once __DIR__ . '/vendor/autoload.php';
 
-use RadioChatBox\StatsService;
-use RadioChatBox\RadioStatusService;
-use RadioChatBox\TrackStatsService;
+use RadioChatBox\Services\StatsService;
+use RadioChatBox\Services\RadioStatusService;
+use RadioChatBox\Services\TrackStatsService;
 
 /**
  * Log message with timestamp

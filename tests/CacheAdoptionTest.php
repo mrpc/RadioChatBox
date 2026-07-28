@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Cache\Adapter\ArrayAdapter;
 use Pramnos\Cache\FlatCache;
 use RadioChatBox\Cache;
-use RadioChatBox\RadioStatusService;
+use RadioChatBox\Services\RadioStatusService;
 
 /**
  * Covers the RadioChatBox\Cache accessor (framework FlatCache adoption) and the

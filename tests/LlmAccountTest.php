@@ -4,11 +4,11 @@ namespace RadioChatBox\Tests;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\LlmAccount;
-use RadioChatBox\LlmService;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\LlmService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers the figures that come from the provider rather than from our own

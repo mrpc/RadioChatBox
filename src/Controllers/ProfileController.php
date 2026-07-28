@@ -8,7 +8,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\PhotoService;
+use RadioChatBox\Services\PhotoService;
 
 /**
  * "Profile" resource controller — public (non-admin) endpoints for a user's own

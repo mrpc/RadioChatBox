@@ -5,8 +5,8 @@ namespace RadioChatBox\Controllers;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ChatService;
-use RadioChatBox\ReactionService;
+use RadioChatBox\Services\ChatService;
+use RadioChatBox\Services\ReactionService;
 
 /**
  * GET /api/history — recent public chat messages (with emoji reactions attached),

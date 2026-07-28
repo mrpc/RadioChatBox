@@ -7,15 +7,15 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmLog;
 use RadioChatBox\LlmPricing;
 use RadioChatBox\LlmProviders;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
-use RadioChatBox\SettingsService;
-use RadioChatBox\StatsService;
-use RadioChatBox\TrackStatsService;
+use RadioChatBox\Services\SettingsService;
+use RadioChatBox\Services\StatsService;
+use RadioChatBox\Services\TrackStatsService;
 
 /**
  * Admin statistics endpoints (resource group "AdminStats").

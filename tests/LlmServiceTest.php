@@ -4,10 +4,10 @@ namespace RadioChatBox\Tests;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\LlmLog;
-use RadioChatBox\LlmService;
+use RadioChatBox\Services\LlmService;
 
 /**
  * Covers the LLM client's configuration and its handling of a truncated
@@ -397,7 +397,7 @@ class LlmServiceTest extends TestCase
 
     public function testLoggingCanBeTurnedOff(): void
     {
-        $settings = new class extends \RadioChatBox\SettingsService {
+        $settings = new class extends \RadioChatBox\Services\SettingsService {
             public function get(string $key, mixed $default = null): mixed
             {
                 return $key === 'bot_llm_log_enabled' ? 'false' : $default;

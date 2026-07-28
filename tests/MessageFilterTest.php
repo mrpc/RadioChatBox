@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 class MessageFilterTest extends TestCase
 {

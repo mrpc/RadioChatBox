@@ -4,12 +4,12 @@ namespace RadioChatBox\Tests;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\BlockService;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BlockService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
-use RadioChatBox\LlmService;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\LlmService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers the stateful half of BotService: the job pipeline, the conversation
@@ -1729,7 +1729,7 @@ class BotServicePipelineTest extends TestCase
         $stmt->execute([$this->fakeUserId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $client = \RadioChatBox\LlmService::forFakeUser($row, $this->settings);
+        $client = \RadioChatBox\Services\LlmService::forFakeUser($row, $this->settings);
 
         $this->assertSame('openai', $client->getProvider());
         $this->assertSame('gpt-5.4-nano', $client->getModel());

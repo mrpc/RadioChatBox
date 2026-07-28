@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Database;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 use RadioChatBox\Controllers\SendController;
 
 /**

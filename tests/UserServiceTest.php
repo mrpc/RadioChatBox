@@ -3,7 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\UserService;
+use RadioChatBox\Services\UserService;
 use RadioChatBox\Database;
 
 /**

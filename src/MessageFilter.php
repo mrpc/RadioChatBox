@@ -2,7 +2,7 @@
 
 namespace RadioChatBox;
 
-
+use RadioChatBox\Services\SettingsService;
 class MessageFilter
 {
     /**

@@ -1,7 +1,9 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Cache;
+use RadioChatBox\Log;
 /**
  * Fetches album cover art and artist images for tracks and stores them locally.
  *

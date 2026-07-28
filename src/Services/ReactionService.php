@@ -1,7 +1,10 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Broadcast;
+use RadioChatBox\Database;
+use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**

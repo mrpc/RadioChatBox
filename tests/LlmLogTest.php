@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\LlmLog;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Integration tests for LlmLog against the real (shared) database, added when it

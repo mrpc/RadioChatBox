@@ -2,7 +2,8 @@
 
 namespace RadioChatBox;
 
-
+use RadioChatBox\Services\SettingsService;
+use RadioChatBox\Services\LlmService;
 /**
  * What the provider itself reports: the remaining balance and the models it
  * currently serves.

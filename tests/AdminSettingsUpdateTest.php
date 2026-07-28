@@ -6,7 +6,7 @@ use PDO;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers SettingsService::updateFromAdmin(), the write path behind

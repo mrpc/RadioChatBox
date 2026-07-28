@@ -3,8 +3,11 @@
  * Cleanup Service - Handles automatic cleanup of expired data
  */
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Cache;
+use RadioChatBox\Database;
+use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class CleanupService
@@ -177,7 +180,7 @@ class CleanupService
     private function cleanupExpiredPhotos(): int
     {
         try {
-            $photoService = new \RadioChatBox\PhotoService();
+            $photoService = new \RadioChatBox\Services\PhotoService();
             return $photoService->cleanupExpiredPhotos();
         } catch (\Exception $e) {
             Log::write("Failed to cleanup expired photos: " . $e->getMessage());

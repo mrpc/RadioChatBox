@@ -4,7 +4,7 @@ namespace RadioChatBox\Controllers;
 
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 
 /**
  * GET /api/active-users — the online user list (real + active fake users) and its

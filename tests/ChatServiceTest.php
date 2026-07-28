@@ -3,7 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
 
 class ChatServiceTest extends TestCase
@@ -288,7 +288,7 @@ class ChatServiceTest extends TestCase
     public function testPrivateMessageDisplayNameSnapshotStored()
     {
         $pdo = Database::getPDO();
-        $userService = new \RadioChatBox\UserService();
+        $userService = new \RadioChatBox\Services\UserService();
         
         // Create two test users with display names
         $senderUsername = 'pm_sender_' . uniqid();
@@ -698,7 +698,7 @@ class ChatServiceTest extends TestCase
     public function testMessagesIncludeDisplayName()
     {
         $pdo = Database::getPDO();
-        $userService = new \RadioChatBox\UserService();
+        $userService = new \RadioChatBox\Services\UserService();
         
         // Create a test user with display name
         $testUsername = 'displaynametest_' . uniqid();
@@ -773,7 +773,7 @@ class ChatServiceTest extends TestCase
     public function testDisplayNameSnapshotStoredInDatabase()
     {
         $pdo = Database::getPDO();
-        $userService = new \RadioChatBox\UserService();
+        $userService = new \RadioChatBox\Services\UserService();
         
         // Create a test user with display name
         $testUsername = 'displaysnapshottest_' . uniqid();

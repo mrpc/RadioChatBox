@@ -6,7 +6,7 @@ use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\CleanupService;
+use RadioChatBox\Services\CleanupService;
 use Redis;
 
 /**

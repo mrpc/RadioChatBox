@@ -4,7 +4,7 @@ namespace RadioChatBox\Controllers;
 
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * GET /api/settings — public, client-safe settings bundle (branding, SEO, ads,

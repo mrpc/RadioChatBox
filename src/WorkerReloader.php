@@ -2,6 +2,7 @@
 
 namespace RadioChatBox;
 
+use RadioChatBox\Services\SettingsService;
 /**
  * Keeps a long-running worker current, because a PHP daemon otherwise runs the code
  * and the configuration it started with.

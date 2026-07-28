@@ -1,7 +1,8 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Cache;
 class RadioStatusService
 {
     private SettingsService $settings;

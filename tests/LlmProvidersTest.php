@@ -6,8 +6,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\LlmPricing;
 use RadioChatBox\LlmProviders;
-use RadioChatBox\LlmService;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\LlmService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers the multi-provider setup: which API a bot talks to, with which

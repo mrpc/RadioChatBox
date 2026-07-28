@@ -6,7 +6,7 @@ use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Scheduler;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers the periodic tasks the worker runs in place of crontab entries.

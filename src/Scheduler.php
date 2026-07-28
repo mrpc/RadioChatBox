@@ -2,6 +2,11 @@
 
 namespace RadioChatBox;
 
+use RadioChatBox\Services\SettingsService;
+use RadioChatBox\Services\TrackStatsService;
+use RadioChatBox\Services\RadioStatusService;
+use RadioChatBox\Services\StatsService;
+use RadioChatBox\Services\CleanupService;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**

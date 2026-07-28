@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
-use RadioChatBox\BlockService;
+use RadioChatBox\Services\BlockService;
 use RadioChatBox\Controllers\AdminImpersonationController;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;

@@ -2,6 +2,7 @@
 
 namespace RadioChatBox;
 
+use RadioChatBox\Services\SettingsService;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**

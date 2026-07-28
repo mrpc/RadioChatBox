@@ -2,6 +2,7 @@
 
 namespace RadioChatBox;
 
+use RadioChatBox\Services\SettingsService;
 /**
  * The LLM providers the bots can use.
  *

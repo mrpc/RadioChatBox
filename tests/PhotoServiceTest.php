@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\PhotoService;
+use RadioChatBox\Services\PhotoService;
 
 /**
  * Covers the photo "trash": on expiry a photo is soft-deleted but its file is

@@ -5,9 +5,9 @@ namespace RadioChatBox\Controllers;
 use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
-use RadioChatBox\StatsService;
+use RadioChatBox\Services\StatsService;
 
 /**
  * POST /api/heartbeat — keep a session alive and return the live user count.

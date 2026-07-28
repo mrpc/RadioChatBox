@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\StatsService;
+use RadioChatBox\Services\StatsService;
 
 /**
  * Integration tests for StatsService compute methods

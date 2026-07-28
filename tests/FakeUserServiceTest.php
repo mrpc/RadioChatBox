@@ -3,7 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use Mockery;
 
 /**
@@ -36,7 +36,7 @@ class FakeUserServiceTest extends TestCase
             ]);
         
         // Create a mock FakeUserService
-        $fakeUserServiceMock = Mockery::mock('RadioChatBox\FakeUserService');
+        $fakeUserServiceMock = Mockery::mock('RadioChatBox\Services\FakeUserService');
         $fakeUserServiceMock->shouldReceive('getActiveFakeUsers')
             ->andReturn([
                 ['nickname' => 'FakeUser1', 'age' => 28, 'sex' => 'female', 'location' => 'LA'],
@@ -171,7 +171,7 @@ class FakeUserServiceTest extends TestCase
     public function testExportOmitsRuntimeStateAndKeepsBotSettings(): void
     {
         $pdo = \RadioChatBox\Database::getPDO();
-        $service = new \RadioChatBox\FakeUserService();
+        $service = new \RadioChatBox\Services\FakeUserService();
         $nick = 'exp_' . substr(bin2hex(random_bytes(5)), 0, 8);
 
         try {
@@ -212,7 +212,7 @@ class FakeUserServiceTest extends TestCase
     public function testImportIsAdditiveAndNeverOverwrites(): void
     {
         $pdo = \RadioChatBox\Database::getPDO();
-        $service = new \RadioChatBox\FakeUserService();
+        $service = new \RadioChatBox\Services\FakeUserService();
         $suffix = substr(bin2hex(random_bytes(5)), 0, 8);
         $existing = 'imp_exist_' . $suffix;
         $fresh = 'imp_new_' . $suffix;
@@ -260,7 +260,7 @@ class FakeUserServiceTest extends TestCase
     public function testImportUpdatesExistingUsersOnlyWhenAsked(): void
     {
         $pdo = \RadioChatBox\Database::getPDO();
-        $service = new \RadioChatBox\FakeUserService();
+        $service = new \RadioChatBox\Services\FakeUserService();
         $nick = 'upd_' . substr(bin2hex(random_bytes(5)), 0, 8);
 
         try {
@@ -298,7 +298,7 @@ class FakeUserServiceTest extends TestCase
     public function testRotationSparesBotsInLiveConversations(): void
     {
         $pdo = \RadioChatBox\Database::getPDO();
-        $service = new \RadioChatBox\FakeUserService();
+        $service = new \RadioChatBox\Services\FakeUserService();
 
         $suffix = substr(bin2hex(random_bytes(5)), 0, 8);
         $busy = 'busybot_' . $suffix;   // active bot, message just now -> spared

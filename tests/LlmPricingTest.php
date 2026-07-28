@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\LlmPricing;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers turning token counts into money.
@@ -100,7 +100,7 @@ class LlmPricingTest extends TestCase
 
     public function testTheSeedTableCoversTheModelsOnOffer(): void
     {
-        foreach (array_keys(\RadioChatBox\BotService::MODELS) as $model) {
+        foreach (array_keys(\RadioChatBox\Services\BotService::MODELS) as $model) {
             $this->assertNotNull(
                 (new LlmPricing())->forModel($model),
                 "a model offered in the admin dropdown needs a price: {$model}"

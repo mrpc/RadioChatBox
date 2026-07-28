@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 
 class DisplayNameUniquenessTest extends TestCase
 {

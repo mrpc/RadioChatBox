@@ -4,8 +4,11 @@
  * Handles secure photo uploads with validation, resizing, and storage
  */
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Cache;
+use RadioChatBox\Database;
+use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class PhotoService

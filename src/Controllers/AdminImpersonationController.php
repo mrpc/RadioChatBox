@@ -8,13 +8,13 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\BlockService;
+use RadioChatBox\Services\BlockService;
 use RadioChatBox\Broadcast;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
-use RadioChatBox\PhotoService;
+use RadioChatBox\Services\PhotoService;
 
 /**
  * Admin impersonation endpoints: an admin acts as a fake user inside a private

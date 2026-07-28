@@ -2,6 +2,7 @@
 
 namespace RadioChatBox;
 
+use RadioChatBox\Services\SettingsService;
 /**
  * Turns token counts into money.
  *

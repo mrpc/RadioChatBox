@@ -8,7 +8,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
-use RadioChatBox\UserService;
+use RadioChatBox\Services\UserService;
 
 /**
  * Admin user management — migrated from the legacy per-file endpoints under

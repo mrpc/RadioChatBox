@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\TrackStatsService;
+use RadioChatBox\Services\TrackStatsService;
 
 /**
  * Integration tests for TrackStatsService against the real (shared) database,

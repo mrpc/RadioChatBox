@@ -7,7 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Installation;
@@ -15,7 +15,7 @@ use RadioChatBox\LlmAccount;
 use RadioChatBox\LlmPricing;
 use RadioChatBox\LlmProviders;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Admin settings resource. Migrated from four legacy file-per-endpoint scripts

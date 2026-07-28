@@ -3,7 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\ReactionService;
+use RadioChatBox\Services\ReactionService;
 use RadioChatBox\Database;
 
 class ReactionServiceTest extends TestCase

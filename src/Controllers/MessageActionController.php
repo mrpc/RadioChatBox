@@ -7,17 +7,17 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\BlockService;
+use RadioChatBox\Services\BlockService;
 use RadioChatBox\Cache;
-use RadioChatBox\BotService;
+use RadioChatBox\Services\BotService;
 use RadioChatBox\Broadcast;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
 use RadioChatBox\MessageHistory;
-use RadioChatBox\PhotoService;
-use RadioChatBox\ReactionService;
+use RadioChatBox\Services\PhotoService;
+use RadioChatBox\Services\ReactionService;
 use RuntimeException;
 
 /**

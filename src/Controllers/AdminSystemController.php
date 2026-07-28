@@ -7,16 +7,16 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\ArtworkService;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ArtworkService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\DaemonSupervisor;
 use RadioChatBox\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
-use RadioChatBox\PhotoService;
+use RadioChatBox\Services\PhotoService;
 use RadioChatBox\Scheduler;
-use RadioChatBox\SettingsService;
+use RadioChatBox\Services\SettingsService;
 use RadioChatBox\WorkerLock;
 
 /**

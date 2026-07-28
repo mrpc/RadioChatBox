@@ -4,10 +4,10 @@ namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
-use RadioChatBox\ChatService;
+use RadioChatBox\Services\ChatService;
 use RadioChatBox\Controllers\MessageActionController;
 use RadioChatBox\Database;
-use RadioChatBox\ReactionService;
+use RadioChatBox\Services\ReactionService;
 
 /**
  * Golden-contract tests for the migrated MessageAction endpoints (replaced
