@@ -8,9 +8,11 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Broadcast;
 use RadioChatBox\Cache;
+use RadioChatBox\ActiveUsersRegistry;
 use RadioChatBox\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
+use RadioChatBox\MessageHistory;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -168,8 +170,7 @@ final class AdminModerationController
     #[Route('/api/admin/kick-user', methods: 'POST', name: 'admin.kick-user', middleware: [AdminAuthMiddleware::class])]
     public function kickUser(): Response
     {
-        $db    = Database::getDb();
-        $redis = Database::getRedis();
+        $db = Database::getDb();
 
         try {
             $data = $_POST;
@@ -202,8 +203,8 @@ final class AdminModerationController
                 ->delete();
 
             if ($result) {
-                // Remove from Redis cache.
-                $redis->hDel('chat:active_users', $username);
+                // Remove from the active-users hash.
+                (new ActiveUsersRegistry())->leave($username);
 
                 // Notify clients that user was kicked. (Historically published to an
                 // UNPREFIXED channel — now normalized to the prefixed channel the SSE
@@ -250,8 +251,7 @@ final class AdminModerationController
     #[Route('/api/admin/clear-chat', methods: 'POST', name: 'admin.clear-chat', middleware: [AdminAuthMiddleware::class])]
     public function clearChat(): Response
     {
-        $db    = Database::getDb();
-        $redis = Database::getRedis();
+        $db = Database::getDb();
 
         try {
             // Soft delete all messages by setting is_deleted = true.
@@ -261,9 +261,8 @@ final class AdminModerationController
                 ->update(['is_deleted' => true]);
             $deletedCount = $result ? $result->getAffectedRows() : 0;
 
-            // Clear Redis message cache to remove all messages immediately.
-            $prefix = Database::getRedisPrefix();
-            $redis->del($prefix . 'chat:messages');
+            // Clear the recent-history cache to remove all messages immediately.
+            (new MessageHistory())->clear();
 
             // Publish clear event to all connected clients via Redis.
             $clearEvent = [
@@ -316,17 +315,11 @@ final class AdminModerationController
                 return Response::json(['error' => 'Message not found'], 404);
             }
 
-            // Publish deletion to Redis for real-time update.
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-
-            // Mark as deleted in Redis HASH so getHistory() can filter without the DB.
-            $redis->hSet($prefix . 'chat:deleted_messages', $messageId, '1');
-            // Set expiry on the hash key to match message cache TTL (24 hours).
-            $redis->expire($prefix . 'chat:deleted_messages', 86400);
-
-            // Also clear the message cache to force refresh (keeps behavior consistent).
-            $redis->del($prefix . 'chat:messages');
+            // Tombstone the message so getHistory() can filter it without the DB,
+            // and clear the recent-history cache to force a refresh.
+            $history = new MessageHistory();
+            $history->markDeleted($messageId);
+            $history->clear();
 
             $deleteEvent = [
                 'type'       => 'message_deleted',

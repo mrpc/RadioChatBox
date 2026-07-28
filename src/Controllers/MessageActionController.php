@@ -15,6 +15,7 @@ use RadioChatBox\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
+use RadioChatBox\MessageHistory;
 use RadioChatBox\PhotoService;
 use RadioChatBox\ReactionService;
 use RuntimeException;
@@ -216,20 +217,11 @@ final class MessageActionController
                 ]
             );
 
-            // Invalidate the message-history list so getHistory() refetches from DB
-            // (delete-by-key; the list itself is re-modeled in Phase 8 Step 4).
-            Cache::store()->delete('chat:messages');
-
-            // Also update the HASH used for reply lookups (Step 4 leak — still raw).
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
-            $hashKey = $prefix . 'chat:messages:hash';
-            $existing = $redis->hGet($hashKey, $messageId);
-            if ($existing !== false) {
-                $hashData = json_decode($existing, true) ?: [];
-                $hashData['message'] = $filtered;
-                $redis->hSet($hashKey, $messageId, json_encode($hashData));
-            }
+            // Invalidate the recent-history cache so getHistory() refetches from DB,
+            // and update the reply-lookup hash with the edited text.
+            $history = new MessageHistory();
+            $history->clear();
+            $history->updateReplyMessage($messageId, $filtered);
 
             // Publish real-time edit event to all SSE clients
             $editedAtIso = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('c');

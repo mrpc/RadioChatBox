@@ -2,7 +2,6 @@
 
 namespace RadioChatBox;
 
-use Redis;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**
@@ -24,8 +23,7 @@ class FakeUserService
     private const ACTIVE_CONVERSATION_WINDOW_MINUTES = 180;
 
     private PramnosDatabase $db;
-    private Redis $redis;
-    private string $redisPrefix;
+    private ActiveUsersRegistry $activeUsers;
 
     /** The fake-user columns returned by the read/RETURNING queries. */
     private const SELECT_COLUMNS = [
@@ -38,8 +36,7 @@ class FakeUserService
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
-        $this->redisPrefix = Database::getRedisPrefix();
+        $this->activeUsers = new ActiveUsersRegistry();
     }
 
     /**
@@ -788,26 +785,20 @@ class FakeUserService
      */
     private function addFakeUserToRedis(array $user): void
     {
-        $userData = json_encode([
+        $this->activeUsers->join((string) $user['nickname'], [
             'nickname' => $user['nickname'],
             'age' => $user['age'],
             'sex' => $user['sex'],
             'location' => $user['location'],
-            'is_fake' => true
+            'is_fake' => true,
         ]);
-
-        $this->redis->hSet(
-            $this->redisPrefix . 'active_users',
-            $user['nickname'],
-            $userData
-        );
     }
 
     /**
-     * Remove fake user from Redis active users
+     * Remove fake user from the active-users hash
      */
     private function removeFakeUserFromRedis(string $nickname): void
     {
-        $this->redis->hDel($this->redisPrefix . 'active_users', $nickname);
+        $this->activeUsers->leave($nickname);
     }
 }

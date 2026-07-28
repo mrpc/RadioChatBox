@@ -2,33 +2,22 @@
 
 namespace RadioChatBox;
 
-use Redis;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class ChatService
 {
-    private \Redis $redis;
     private PramnosDatabase $db;
-    private string $prefix;
-    private const MESSAGES_KEY = 'chat:messages';
+    private MessageHistory $messageHistory;
+    private ActiveUsersRegistry $activeUsers;
     private const PUBSUB_CHANNEL = 'chat:updates';
     private const RATE_LIMIT_PREFIX = 'ratelimit:';
-    private const ACTIVE_USERS_KEY = 'chat:active_users';
     private const USER_UPDATE_CHANNEL = 'chat:user_updates';
 
     public function __construct()
     {
-        $this->redis = Database::getRedis();
         $this->db = Database::getDb();
-        $this->prefix = Database::getRedisPrefix();
-    }
-    
-    /**
-     * Add prefix to Redis key for multi-instance support
-     */
-    private function prefixKey(string $key): string
-    {
-        return $this->prefix . $key;
+        $this->messageHistory = new MessageHistory();
+        $this->activeUsers = new ActiveUsersRegistry();
     }
 
     /**
@@ -95,22 +84,14 @@ class ChatService
             'pinned_track' => $pinnedTrack,
         ];
 
-        // Store in Redis (for real-time)
-        $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($messageData));
-        $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
-
-        // Set TTL to prevent stale cache (24 hours)
-        // This ensures Redis cache doesn't become permanently out of sync with PostgreSQL
-        $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), 86400);
-
-        // PERFORMANCE OPTIMIZATION: Store in Redis HASH for O(1) reply lookups
-        $hashKey = $this->prefixKey('chat:messages:hash');
-        $this->redis->hSet($hashKey, $messageData['id'], json_encode([
+        // Store in Redis (recent-history cache for real-time) + the O(1) reply
+        // lookup hash, both owned by the MessageHistory repository.
+        $this->messageHistory->append($messageData);
+        $this->messageHistory->cacheReply($messageData['id'], [
             'username' => $messageData['username'],
             'display_name' => $messageData['display_name'],
-            'message' => $messageData['message']
-        ]));
-        $this->redis->expire($hashKey, 86400); // 24 hour TTL
+            'message' => $messageData['message'],
+        ]);
 
         // Publish to subscribers
         Broadcast::publish(self::PUBSUB_CHANNEL, 'message', $messageData);
@@ -130,24 +111,15 @@ class ChatService
     public function getHistory(int $limit = 50): array
     {
         $limit = min($limit, Config::get('chat')['history_limit']);
-        $messages = $this->redis->lRange($this->prefixKey(self::MESSAGES_KEY), 0, $limit - 1);
+        $decodedMessages = $this->messageHistory->recent($limit);
 
-        // If Redis is empty, fallback to PostgreSQL
-        if (empty($messages)) {
-            return $this->loadHistoryFromDB($limit);
-        }
-
-        $decodedMessages = array_map(function($msg) {
-            return json_decode($msg, true);
-        }, $messages);
-
+        // If the cache is empty, fallback to PostgreSQL
         if (empty($decodedMessages)) {
             return $this->loadHistoryFromDB($limit);
         }
 
-        // Filter out deleted messages using Redis HASH (PERFORMANCE OPTIMIZATION)
+        // Filter out deleted messages using the tombstone hash (PERFORMANCE OPTIMIZATION)
         // This eliminates the need to query the database on every history load
-        $deletedKey = $this->prefixKey('chat:deleted_messages');
         $filteredMessages = [];
 
         foreach ($decodedMessages as $msg) {
@@ -156,9 +128,8 @@ class ChatService
                 continue;
             }
 
-            // Check Redis HASH for deleted status (O(1) operation)
-            $isDeleted = $this->redis->hGet($deletedKey, $messageId);
-            if ($isDeleted === '1') {
+            // Check the tombstone hash for deleted status (O(1) operation)
+            if ($this->messageHistory->isDeleted($messageId)) {
                 continue; // Skip deleted messages
             }
 
@@ -227,17 +198,8 @@ class ChatService
             // DB returns DESC (newest first), we need to push them so newest is at position 0
             // Use lPush which adds to the head, so push in reverse order (oldest first)
             if (!empty($messages)) {
-                // Clear existing cache first to prevent duplicates or stale data
-                $this->redis->del($this->prefixKey(self::MESSAGES_KEY));
-                
-                // Reverse so we push oldest first, making newest end up at position 0
-                foreach (array_reverse($messages) as $msg) {
-                    $this->redis->lPush($this->prefixKey(self::MESSAGES_KEY), json_encode($msg));
-                }
-                $this->redis->lTrim($this->prefixKey(self::MESSAGES_KEY), 0, Config::get('chat')['history_limit'] - 1);
-                
-                // Set TTL to prevent stale cache (24 hours)
-                $this->redis->expire($this->prefixKey(self::MESSAGES_KEY), 86400);
+                // Rebuild the recent-history cache from the DB rows (newest-first).
+                $this->messageHistory->replace($messages);
             }
             
             // Return in chronological order (oldest first) to match getHistory() behavior
@@ -451,19 +413,14 @@ class ChatService
     private function getReplyMessageData(string $messageId): ?array
     {
         try {
-            // PERFORMANCE OPTIMIZATION: Use Redis HASH for O(1) message lookup
-            $hashKey = $this->prefixKey('chat:messages:hash');
-            $cached = $this->redis->hGet($hashKey, $messageId);
-
-            if ($cached !== false) {
-                $decoded = json_decode($cached, true);
-                if ($decoded) {
-                    return [
-                        'username' => $decoded['username'],
-                        'display_name' => $decoded['display_name'] ?? null,
-                        'message' => mb_substr($decoded['message'], 0, 100), // Truncate to 100 chars for quote
-                    ];
-                }
+            // PERFORMANCE OPTIMIZATION: O(1) reply lookup via the message hash.
+            $decoded = $this->messageHistory->getReply($messageId);
+            if ($decoded) {
+                return [
+                    'username' => $decoded['username'],
+                    'display_name' => $decoded['display_name'] ?? null,
+                    'message' => mb_substr($decoded['message'], 0, 100), // Truncate to 100 chars for quote
+                ];
             }
 
             // Fallback to database
@@ -484,14 +441,12 @@ class ChatService
                     'message' => mb_substr($row['message'], 0, 100), // Truncate to 100 chars for quote
                 ];
 
-                // Cache in Redis HASH for future lookups
-                $messageData = [
+                // Cache for future lookups.
+                $this->messageHistory->cacheReply($messageId, [
                     'username' => $row['username'],
                     'display_name' => $row['display_name'],
-                    'message' => $row['message']
-                ];
-                $this->redis->hSet($hashKey, $messageId, json_encode($messageData));
-                $this->redis->expire($hashKey, 86400); // 24 hour TTL
+                    'message' => $row['message'],
+                ]);
 
                 return $replyData;
             }
@@ -774,11 +729,11 @@ class ChatService
                 );
             }
             
-            // Also cache in Redis for faster access
-            $this->redis->hSet(self::ACTIVE_USERS_KEY, $username, json_encode([
+            // Also record presence in the active-users hash.
+            $this->activeUsers->join($username, [
                 'username' => $username,
                 'joined_at' => time(),
-            ]));
+            ]);
             
             // Publish user update to SSE subscribers
             $this->publishUserUpdate();
@@ -802,8 +757,8 @@ class ChatService
                 ['session_id' => $sessionId]
             );
 
-            // Remove from Redis cache
-            $this->redis->hDel(self::ACTIVE_USERS_KEY, $sessionId);
+            // Remove from the active-users hash.
+            $this->activeUsers->leave($sessionId);
 
             // Publish user update after logout
             $this->publishUserUpdate();
@@ -1032,8 +987,8 @@ class ChatService
                 ]
             );
 
-            $this->redis->hDel(self::ACTIVE_USERS_KEY, $username);
-            
+            $this->activeUsers->leave($username);
+
             // Publish user update to SSE subscribers
             $this->publishUserUpdate();
             
