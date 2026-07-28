@@ -1038,13 +1038,12 @@ class BotService
 
         $this->getOrCreateThread($fakeUserId, $peer);
 
-        $stmt = $this->pdo->prepare('
+        $this->db->preparedQuery('
             UPDATE bot_threads
             SET farewell_sent_at = COALESCE(farewell_sent_at, NOW()),
                 updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
-        ');
-        $stmt->execute(['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+        ', ['fake_user_id' => $fakeUserId, 'peer' => $peer]);
 
         // Any reply still queued for this conversation is now a no-op.
         $this->bumpEpoch($fakeUserId, $peer);
@@ -1112,9 +1111,7 @@ class BotService
     /** Total number of bot conversations, for paginating the admin overview. */
     public function countThreads(): int
     {
-        $stmt = $this->pdo->query('SELECT COUNT(*) FROM bot_threads');
-
-        return (int) $stmt->fetchColumn();
+        return (int) $this->db->queryBuilder()->from('bot_threads')->count();
     }
 
     /**
@@ -2175,11 +2172,10 @@ class BotService
     private function isPeerBanned(string $peer): bool
     {
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT 1 FROM banned_nicknames WHERE LOWER(nickname) = LOWER(?) LIMIT 1'
-            );
-            $stmt->execute([$peer]);
-            return $stmt->fetchColumn() !== false;
+            return $this->db->queryBuilder()
+                ->from('banned_nicknames')
+                ->whereRaw('LOWER(nickname) = LOWER(%s)', [$peer])
+                ->exists();
         } catch (\Throwable $e) {
             error_log('BotService::isPeerBanned failed: ' . $e->getMessage());
             return false;
