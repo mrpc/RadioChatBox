@@ -9,6 +9,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BlockService;
+use RadioChatBox\Broadcast;
 use RadioChatBox\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\MessageFilter;
@@ -220,8 +221,7 @@ final class AdminImpersonationController
                 return Response::json(['error' => 'Either message or attachment is required'], 400);
             }
 
-            $db    = Database::getDb();
-            $redis = Database::getRedis();
+            $db = Database::getDb();
 
             // Verify the impersonation target is a fake user
             $lookup   = $db->preparedQuery(
@@ -304,8 +304,7 @@ final class AdminImpersonationController
                 'type'          => 'private',
             ];
 
-            $prefix = Database::getRedisPrefix();
-            $redis->publish($prefix . 'chat:private_messages', json_encode($messageData));
+            Broadcast::publish('chat:private_messages', 'private', $messageData);
 
             // The admin is now speaking as this fake user: silence the bot for this
             // conversation, including any reply that is already queued or generated.

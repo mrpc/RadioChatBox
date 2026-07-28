@@ -886,7 +886,7 @@ class BotService
             'type' => 'private',
         ];
 
-        $this->redis->publish($this->prefix . 'chat:private_messages', (string) json_encode($messageData));
+        Broadcast::publish('chat:private_messages', 'private', $messageData);
 
         $this->db->preparedQuery('
             UPDATE bot_threads

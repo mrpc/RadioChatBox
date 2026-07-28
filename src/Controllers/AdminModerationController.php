@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
+use RadioChatBox\Broadcast;
 use RadioChatBox\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -207,13 +208,14 @@ final class AdminModerationController
                 // Remove from Redis cache.
                 $redis->hDel('chat:active_users', $username);
 
-                // Notify clients that user was kicked.
-                $notification = json_encode([
+                // Notify clients that user was kicked. (Historically published to an
+                // UNPREFIXED channel — now normalized to the prefixed channel the SSE
+                // edge subscribes to; see docs/pramnos-migration/06 §8.2.)
+                Broadcast::publish('chat:user_updates', 'user_kicked', [
                     'type'      => 'user_kicked',
                     'username'  => $username,
                     'timestamp' => time(),
                 ]);
-                $redis->publish('chat:user_updates', $notification);
 
                 return Response::json([
                     'success' => true,
@@ -297,7 +299,7 @@ final class AdminModerationController
                 'timestamp' => time(),
             ];
 
-            $redis->publish($prefix . 'chat:updates', json_encode($clearEvent));
+            Broadcast::publish('chat:updates', 'clear', $clearEvent);
 
             return Response::json([
                 'success'       => true,
@@ -360,7 +362,7 @@ final class AdminModerationController
                 'timestamp'  => time(),
             ];
 
-            $redis->publish($prefix . 'chat:updates', json_encode($deleteEvent));
+            Broadcast::publish('chat:updates', 'message_deleted', $deleteEvent);
 
             return Response::json([
                 'success' => true,

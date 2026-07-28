@@ -9,6 +9,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\BlockService;
 use RadioChatBox\BotService;
+use RadioChatBox\Broadcast;
 use RadioChatBox\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Database;
@@ -238,7 +239,7 @@ final class MessageActionController
                 'edited_at'  => $editedAtIso,
                 'timestamp'  => $timestamp,
             ];
-            $redis->publish($prefix . 'chat:updates', json_encode($editEvent));
+            Broadcast::publish('chat:updates', 'message_edited', $editEvent);
 
             return Response::json([
                 'success'   => true,
@@ -394,8 +395,7 @@ final class MessageActionController
     public function privateMessage(): Response
     {
         try {
-            $db    = Database::getDb();
-            $redis = Database::getRedis();
+            $db = Database::getDb();
 
             $input = $_POST;
             if (empty($input)) {
@@ -557,8 +557,7 @@ final class MessageActionController
                 'type' => 'private'
             ];
 
-            $prefix = Database::getRedisPrefix();
-            $redis->publish($prefix . 'chat:private_messages', json_encode($messageData));
+            Broadcast::publish('chat:private_messages', 'private', $messageData);
 
             // If message was sent to a fake user, create admin notification —
             // UNLESS an AI bot is going to answer it. A bot handles its own
@@ -593,7 +592,7 @@ final class MessageActionController
                             'message_id' => $result['id'],
                             'timestamp' => time()
                         ];
-                        $redis->publish($prefix . 'chat:admin_notifications', json_encode($notificationData));
+                        Broadcast::publish('chat:admin_notifications', 'fake_user_dm', $notificationData);
                     } catch (\Exception $e) {
                         // Log error but don't fail the message send
                         \RadioChatBox\Log::write("Failed to create admin notification: " . $e->getMessage());

@@ -251,12 +251,11 @@ class ReactionService
             foreach ($reactions as $r) {
                 $counts[$r['emoji']] = $r['count'];
             }
-            $payload = json_encode([
+            Broadcast::publish(self::PUBSUB_CHANNEL, 'reaction', [
                 'type' => 'reaction',
                 'message_id' => $messageId,
                 'counts' => $counts,
             ]);
-            $this->redis->publish($this->prefix . self::PUBSUB_CHANNEL, $payload);
         } catch (\Exception $e) {
             Log::write('ReactionService::publishUpdate failed: ' . $e->getMessage());
         }

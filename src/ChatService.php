@@ -113,7 +113,7 @@ class ChatService
         $this->redis->expire($hashKey, 86400); // 24 hour TTL
 
         // Publish to subscribers
-        $this->redis->publish($this->prefixKey(self::PUBSUB_CHANNEL), json_encode($messageData));
+        Broadcast::publish(self::PUBSUB_CHANNEL, 'message', $messageData);
 
         // Store in PostgreSQL (for persistence) - user data already fetched
         $this->storeMessageInDB($messageData);
@@ -569,23 +569,6 @@ class ChatService
         $input = trim($input);
         $input = htmlspecialchars($input, ENT_QUOTES, 'UTF-8');
         return mb_substr($input, 0, $maxLength);
-    }
-
-    /**
-     * Subscribe to Redis pub/sub for SSE
-     */
-    public function subscribe(callable $callback): void
-    {
-        $this->redis->subscribe([self::PUBSUB_CHANNEL, self::USER_UPDATE_CHANNEL], function($redis, $channel, $message) use ($callback) {
-            if ($channel === self::PUBSUB_CHANNEL) {
-                $callback($message);
-            } elseif ($channel === self::USER_UPDATE_CHANNEL) {
-                // Send user update event
-                echo "event: users\n";
-                echo "data: " . $message . "\n\n";
-                flush();
-            }
-        });
     }
 
     /**
@@ -1477,12 +1460,10 @@ class ChatService
             $users = $this->getAllUsers();
             $count = count($users);
 
-            $updateData = json_encode([
+            Broadcast::publish(self::USER_UPDATE_CHANNEL, 'user_list', [
                 'count' => $count,
-                'users' => $users
+                'users' => $users,
             ]);
-
-            $this->redis->publish(self::USER_UPDATE_CHANNEL, $updateData);
         } catch (\Exception $e) {
             Log::write("Failed to publish user update: " . $e->getMessage());
         }
