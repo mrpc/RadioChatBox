@@ -35,7 +35,7 @@ class PhotoService
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->uploadDir = __DIR__ . '/../public/uploads/photos';
+        $this->uploadDir = __DIR__ . '/../../public/uploads/photos';
         
         // Get max size from settings (default 5MB)
         $maxSizeMB = $this->getSetting('max_photo_size_mb', 5);
@@ -270,7 +270,7 @@ class PhotoService
 
         $count = 0;
         foreach ($trashed as $photo) {
-            $fullPath = __DIR__ . '/../public' . $photo['file_path'];
+            $fullPath = __DIR__ . '/../../public' . $photo['file_path'];
             if (is_file($fullPath)) {
                 @unlink($fullPath);
             }

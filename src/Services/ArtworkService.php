@@ -25,7 +25,7 @@ class ArtworkService
 
     public function __construct()
     {
-        $this->diskDir = __DIR__ . '/../public/uploads/artwork';
+        $this->diskDir = __DIR__ . '/../../public/uploads/artwork';
         if (!is_dir($this->diskDir)) {
             @mkdir($this->diskDir, 0755, true);
         }
