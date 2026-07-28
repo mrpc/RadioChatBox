@@ -1,0 +1,1678 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "version": "1.0.0",
+        "title": "RadioChatBox API"
+    },
+    "servers": [
+        {
+            "url": "/"
+        }
+    ],
+    "paths": {
+        "/api/active-users": {
+            "get": {
+                "operationId": "active-users.index",
+                "tags": [
+                    "ActiveUsersController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/active-users": {
+            "get": {
+                "operationId": "admin.system.active-users",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET /api/admin/active-users — everyone the frontend shows (real + active",
+                "description": "fake users).\n\nMigrated from public/api/admin/active-users.php. Returns {success, count,\nusers} with count === number of users. Errors map to 500\n{\"error\":\"Internal server error\"} and are logged.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/add-fake-user": {
+            "post": {
+                "operationId": "admin.fake-users.add",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST /api/admin/add-fake-user — create a fake user.",
+                "description": "Migrated from public/api/admin/add-fake-user.php. Input (JSON body ->\n$_POST): nickname (required, 3-50 chars), age (optional, 18-99), sex,\nlocation. Success {success, fake_user}. Invalid input -> 400; a duplicate\nnickname (unique constraint) -> 400 \"Nickname already exists\"; other DB\nerrors -> 500 \"Database error\"; anything else -> 500.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/aggregate-stats": {
+            "post": {
+                "operationId": "admin.stats.aggregate",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "POST /api/admin/aggregate-stats — trigger stats aggregation (cron target).",
+                "description": "Migrated from public/api/admin/aggregate-stats.php. Reads query params\n(not the body): granularity (hourly|daily|weekly|monthly|yearly|all,\ndefault all) and date. Success 200: {success, results}. Invalid\ngranularity -> 400 {error:'Invalid granularity'}; failure -> 500\n{error:'Failed to aggregate stats'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/ban-ip": {
+            "get": {
+                "operationId": "admin.ban-ip",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/ban-ip.php.",
+                "description": "GET    -> 200 {success:true, banned_ips:[...]}\nPOST   -> ban {ip_address, reason?, duration_days?} => 200 {success:bool, message}\nDELETE -> unban {ip_address} => 200 {success:bool, message}\nMissing ip_address -> 400 {error:'IP address is required'}; any other\nfailure -> 500 {error:'Internal server error'} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.ban-ip",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/ban-ip.php.",
+                "description": "GET    -> 200 {success:true, banned_ips:[...]}\nPOST   -> ban {ip_address, reason?, duration_days?} => 200 {success:bool, message}\nDELETE -> unban {ip_address} => 200 {success:bool, message}\nMissing ip_address -> 400 {error:'IP address is required'}; any other\nfailure -> 500 {error:'Internal server error'} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "admin.ban-ip",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/ban-ip.php.",
+                "description": "GET    -> 200 {success:true, banned_ips:[...]}\nPOST   -> ban {ip_address, reason?, duration_days?} => 200 {success:bool, message}\nDELETE -> unban {ip_address} => 200 {success:bool, message}\nMissing ip_address -> 400 {error:'IP address is required'}; any other\nfailure -> 500 {error:'Internal server error'} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/ban-nickname": {
+            "get": {
+                "operationId": "admin.ban-nickname",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/ban-nickname.php.",
+                "description": "GET    -> 200 {success:true, banned_nicknames:[...]}\nPOST   -> ban {nickname, reason?} => 200 {success:bool, message}\nDELETE -> unban {nickname} => 200 {success:bool, message}\nMissing nickname -> 400 {error:'Nickname is required'}; any other failure\n-> 500 {error:'Internal server error'} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.ban-nickname",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/ban-nickname.php.",
+                "description": "GET    -> 200 {success:true, banned_nicknames:[...]}\nPOST   -> ban {nickname, reason?} => 200 {success:bool, message}\nDELETE -> unban {nickname} => 200 {success:bool, message}\nMissing nickname -> 400 {error:'Nickname is required'}; any other failure\n-> 500 {error:'Internal server error'} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "admin.ban-nickname",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/ban-nickname.php.",
+                "description": "GET    -> 200 {success:true, banned_nicknames:[...]}\nPOST   -> ban {nickname, reason?} => 200 {success:bool, message}\nDELETE -> unban {nickname} => 200 {success:bool, message}\nMissing nickname -> 400 {error:'Nickname is required'}; any other failure\n-> 500 {error:'Internal server error'} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/bot-activity": {
+            "get": {
+                "operationId": "admin.stats.bot-activity",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "GET /api/admin/bot-activity — bot conversations, LLM call log and usage.",
+                "description": "Migrated from public/api/admin/bot-activity.php. Because the log holds full\nprivate conversations, this keeps the legacy RBAC check on top of admin auth:\nonly root/owner/administrator may read it (otherwise 403). Dispatches on\n?view (threads|thread|log|call|summary|balance). Success payloads carry\n{success, ...} per branch; missing thread params -> 400; unknown call id ->\n404; unknown view -> 400; failure -> 500 {error:'Failed to load bot activity'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/bot-llm-stats": {
+            "get": {
+                "operationId": "admin.stats.bot-llm-stats",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "GET /api/admin/bot-llm-stats — token usage and health of the auto-reply bots.",
+                "description": "Migrated from public/api/admin/bot-llm-stats.php. No inputs. Success 200:\n{success, enabled, logging, model, reasoning, max_tokens, summary:{1h,24h,7d},\ncurrency, balance, problems}. Failure -> 500 {error:'Failed to load bot LLM stats'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/clear-chat": {
+            "post": {
+                "operationId": "admin.clear-chat",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/clear-chat.php.",
+                "description": "POST: soft-deletes every visible message (is_deleted = true), flushes the\nRedis message cache and publishes a clear event. 200 {success:true,\nmessage:'Public chat cleared', deleted_count:int}; thrown error -> 500\n{error:'Server error: <msg>'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/clear-fake-user-history": {
+            "post": {
+                "operationId": "admin.fake-users.clear-history",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST /api/admin/clear-fake-user-history — wipe a fake user's",
+                "description": "conversations so its bot can be tested from scratch.\n\nMigrated from public/api/admin/clear-fake-user-history.php. Destructive,\nso it keeps the legacy RBAC gate: only root/owner/administrator may call\nit (otherwise 403). Input: id or nickname. Success {success, nickname,\ncleared:{messages, threads, epochs}}; unknown id -> 404; invalid input ->\n400; failure -> 500 \"Failed to clear the history\".",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/clear-messages-cache": {
+            "get": {
+                "operationId": "admin.system.clear-messages-cache",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET|POST /api/admin/clear-messages-cache — drop only message-related Redis",
+                "description": "cache keys (leaves user sessions untouched).\n\nMigrated from public/api/admin/clear-messages-cache.php (which had no HTTP\nmethod restriction; the dashboard calls it via POST). Returns {success,\nmessage, keys_cleared (list), timestamp}. Errors map to 500\n{\"success\":false,\"error\":\"Failed to clear cache: <msg>\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.system.clear-messages-cache",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET|POST /api/admin/clear-messages-cache — drop only message-related Redis",
+                "description": "cache keys (leaves user sessions untouched).\n\nMigrated from public/api/admin/clear-messages-cache.php (which had no HTTP\nmethod restriction; the dashboard calls it via POST). Returns {success,\nmessage, keys_cleared (list), timestamp}. Errors map to 500\n{\"success\":false,\"error\":\"Failed to clear cache: <msg>\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/create-session": {
+            "post": {
+                "operationId": "admin.system.create-session",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "POST /api/admin/create-session — mint a short-lived admin session token for",
+                "description": "SSE connections (so raw credentials never appear in URLs).\n\nMigrated from public/api/admin/create-session.php. Stores a 24h Redis token\nkeyed to the current admin (AdminAuth::getCurrentUser()) and returns\n{success, session_token, expires_in}. Errors map to 500 {\"error\":\"Failed to\ncreate session token\"} and are logged. (The legacy hand-set CORS headers are\ndropped — the global CORS middleware handles them.)",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/create-user": {
+            "post": {
+                "operationId": "admin.users.create",
+                "tags": [
+                    "AdminUsersController"
+                ],
+                "summary": "POST /api/admin/create-user — create an admin/staff user account",
+                "description": "(replaces public/api/admin/create-user.php).\n\nRequires the manage_users permission; creating a root user additionally\nrequires create_root_users. Success returns the UserService::createUser\nresult payload with HTTP 201, failure the same payload with 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/current-user": {
+            "get": {
+                "operationId": "admin.users.current",
+                "tags": [
+                    "AdminUsersController"
+                ],
+                "summary": "GET /api/admin/current-user — the authenticated admin's own account",
+                "description": "(replaces public/api/admin/current-user.php).\n\nReturns {success:true, user:{...}} with the full DB user row, falling\nback to {username, role} from the session when no DB record exists\n(legacy auth). 200 on success, 401 if the session resolves to no user.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/delete-fake-user": {
+            "delete": {
+                "operationId": "admin.fake-users.delete",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST|DELETE /api/admin/delete-fake-user — delete a fake user.",
+                "description": "Migrated from public/api/admin/delete-fake-user.php. Input: id (required).\nSuccess {success, message}; unknown id -> 404; invalid input -> 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.fake-users.delete",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST|DELETE /api/admin/delete-fake-user — delete a fake user.",
+                "description": "Migrated from public/api/admin/delete-fake-user.php. Input: id (required).\nSuccess {success, message}; unknown id -> 404; invalid input -> 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/delete-message": {
+            "delete": {
+                "operationId": "admin.delete-message",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/delete-message.php.",
+                "description": "DELETE|POST {message_id}: soft-deletes a single message, marks it deleted\nin the Redis hash, flushes the message cache and publishes a\nmessage_deleted event. 200 {success:true, message:'Message deleted\nsuccessfully'}. Missing message_id -> 400 {error:'Message ID is required'};\nunknown message -> 404 {error:'Message not found'}; thrown error -> 500\n{error:'Failed to delete message', debug, file, line} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.delete-message",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/delete-message.php.",
+                "description": "DELETE|POST {message_id}: soft-deletes a single message, marks it deleted\nin the Redis hash, flushes the message cache and publishes a\nmessage_deleted event. 200 {success:true, message:'Message deleted\nsuccessfully'}. Missing message_id -> 400 {error:'Message ID is required'};\nunknown message -> 404 {error:'Message not found'}; thrown error -> 500\n{error:'Failed to delete message', debug, file, line} (also error_log'd).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/delete-user": {
+            "delete": {
+                "operationId": "admin.users.delete",
+                "tags": [
+                    "AdminUsersController"
+                ],
+                "summary": "DELETE /api/admin/delete-user — delete a user",
+                "description": "(replaces public/api/admin/delete-user.php).\n\nRequires manage_users; you cannot delete your own account, must be able\nto manage the target's role, and deleting a root user requires\ndelete_root_users. Success returns the UserService::deleteUser payload\nwith 200, failure with 400.\n\nNote: this is a genuine DELETE request carrying a JSON body. The framework\nonly json-decodes bodies into $_POST for POST requests — for DELETE it\nruns parse_str into its internal delete buffer, which garbles a JSON body\nand leaves $_POST empty. So we prefer $_POST (in case of a form/POST\ncaller) and fall back to decoding the raw JSON body ourselves, replicating\nthe legacy json_decode(file_get_contents('php://input')) exactly.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/export-fake-users": {
+            "get": {
+                "operationId": "admin.fake-users.export",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: GET /api/admin/export-fake-users — export all fake users.",
+                "description": "Migrated from public/api/admin/export-fake-users.php. Payload {success,\ncount, fake_users}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/fake-users": {
+            "get": {
+                "operationId": "admin.fake-users.index",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: GET /api/admin/fake-users — the full fake-user list under the",
+                "description": "'users' key (dashboard-compatible).\n\nMigrated from public/api/admin/fake-users.php. Payload {success, users}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/flush-redis": {
+            "post": {
+                "operationId": "admin.system.flush-redis",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "POST /api/admin/flush-redis — flush every Redis key for this installation.",
+                "description": "Migrated from public/api/admin/flush-redis.php. Deletes all keys matching\nthe database prefix and returns {success, message, keys_cleared}. Errors map\nto 500 {\"error\":\"Server error: <msg>\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/impersonate-block": {
+            "get": {
+                "operationId": "admin.impersonate.block",
+                "tags": [
+                    "AdminImpersonationController"
+                ],
+                "summary": "Block state / block+unblock on a fake user's behalf",
+                "description": "(replaces public/api/admin/impersonate-block.php).\n\nGET  ?impersonate_as=X&to_username=Y -> {success, i_blocked, is_blocked_between}\nPOST {action, impersonate_as, to_username} where action in block|unblock\n-> {success, action, blocked}\nErrors: missing/invalid input 400 {error}, failure 500\n{error:\"Internal server error\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.impersonate.block",
+                "tags": [
+                    "AdminImpersonationController"
+                ],
+                "summary": "Block state / block+unblock on a fake user's behalf",
+                "description": "(replaces public/api/admin/impersonate-block.php).\n\nGET  ?impersonate_as=X&to_username=Y -> {success, i_blocked, is_blocked_between}\nPOST {action, impersonate_as, to_username} where action in block|unblock\n-> {success, action, blocked}\nErrors: missing/invalid input 400 {error}, failure 500\n{error:\"Internal server error\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/impersonate-bot": {
+            "get": {
+                "operationId": "admin.impersonate.bot",
+                "tags": [
+                    "AdminImpersonationController"
+                ],
+                "summary": "Bot control for an impersonated conversation",
+                "description": "(replaces public/api/admin/impersonate-bot.php).\n\nGET  ?fake_user=X&peer=Y       -> {success, state} | 404 {error} | 400 {error}\nPOST {fake_user, peer, action} -> {success, action, state} | 404/400 {error}\naction in take|release|reset|force (default \"take\").\nErrors: bad input 400, unknown fake user 404, failure 500\n{error:\"Failed to update bot state\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.impersonate.bot",
+                "tags": [
+                    "AdminImpersonationController"
+                ],
+                "summary": "Bot control for an impersonated conversation",
+                "description": "(replaces public/api/admin/impersonate-bot.php).\n\nGET  ?fake_user=X&peer=Y       -> {success, state} | 404 {error} | 400 {error}\nPOST {fake_user, peer, action} -> {success, action, state} | 404/400 {error}\naction in take|release|reset|force (default \"take\").\nErrors: bad input 400, unknown fake user 404, failure 500\n{error:\"Failed to update bot state\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/impersonate-conversations": {
+            "get": {
+                "operationId": "admin.impersonate.conversations",
+                "tags": [
+                    "AdminImpersonationController"
+                ],
+                "summary": "List every active fake user's inbound private conversations",
+                "description": "(replaces public/api/admin/impersonate-conversations.php).\n\nGET -> {success, fake_users:[nickname...], conversations:{nickname:{fake_user,\nage, sex, location, total_messages, senders[], recent_messages[],\nlast_message_time}}}, ordered by most recent message.\nFailure -> 500 {error:\"Failed to fetch conversations\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/impersonate-send": {
+            "post": {
+                "operationId": "admin.impersonate.send",
+                "tags": [
+                    "AdminImpersonationController"
+                ],
+                "summary": "Send a private message as a fake user and silence the bot for that thread",
+                "description": "(replaces public/api/admin/impersonate-send.php).\n\nPOST {impersonate_as, to_username, message?, attachment_id?}. Message is\noptional when an attachment is present. Inserts a private_messages row,\npublishes to Redis for live delivery, and calls BotService::takeOverThread.\nSuccess -> {success, message:\"Message sent successfully\", data}.\nErrors: bad input / non-fake target / recipient offline 400 {error};\nfailure 500 {error:\"Failed to send message\", debug, trace}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/import-fake-users": {
+            "post": {
+                "operationId": "admin.fake-users.import",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST /api/admin/import-fake-users — import fake users.",
+                "description": "Migrated from public/api/admin/import-fake-users.php. Accepts either an\nexport file ({\"fake_users\": [...]}) or a bare array; update_existing opts\nin to overwriting existing users. Success {success, imported, updated,\nskipped, invalid, imported_nicknames, updated_nicknames, skipped_nicknames,\ninvalid_rows}; invalid input / empty set -> 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/inactive-users": {
+            "get": {
+                "operationId": "admin.system.inactive-users",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET /api/admin/inactive-users — paginated list of users who have connected",
+                "description": "before but are not currently in a session.\n\nMigrated from public/api/admin/inactive-users.php. Returns {success, users,\npagination:{page, limit, total, total_pages}}. Errors map to 500\n{\"error\":\"Server error: <msg>\"}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/kick-user": {
+            "post": {
+                "operationId": "admin.kick-user",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/kick-user.php.",
+                "description": "POST {username}: bans the user's session id in Redis for 1 hour, deletes\ntheir sessions row, evicts them from the active-users hash and publishes a\nuser_kicked event. Success -> 200 {success:true, message}. Missing username\n-> 400 {error:'Username required'}; unknown user -> 404\n{error:'User not found'}; failed delete -> 500 {error:'Failed to kick\nuser'}; thrown error -> 500 {error:'Server error: <msg>'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/list-fake-users": {
+            "get": {
+                "operationId": "admin.fake-users.list",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: GET /api/admin/list-fake-users — the full fake-user list.",
+                "description": "Migrated from public/api/admin/list-fake-users.php. Payload {success,\nfake_users}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/list-kicked-users": {
+            "get": {
+                "operationId": "admin.list-kicked-users",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/list-kicked-users.php.",
+                "description": "GET: scans Redis for banned_session:* keys and returns them. 200\n{kicked_sessions:[{session_id, username, reason, kicked_at, expires_in}]}.\nThe legacy file had no try/catch and no success key — preserved as-is.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/messages": {
+            "get": {
+                "operationId": "admin.system.messages",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET /api/admin/messages — paginated moderation view of chat messages.",
+                "description": "Root admins additionally see private messages.\n\nMigrated from public/api/admin/messages.php. Keeps the AdminAuth::\ngetCurrentUser() role check that gates private messages. Returns {success,\nmessages, include_private, chat_mode, pagination:{page, limit, total,\ntotal_pages}}. Errors map to 500 {\"error\":\"Internal server error\"} and are\nlogged.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/notifications": {
+            "get": {
+                "operationId": "admin.notifications.index",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "GET /api/admin/notifications — admin notifications with per-admin read",
+                "description": "state. Query: limit (<=100, default 50), offset, unread_only=true, type.\nRestricted to root/administrator/owner (403 otherwise). Success ->\n{success:true, notifications, unread_count, total, admin}. Replaces the GET\nbranch of public/api/admin/notifications.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "put": {
+                "operationId": "admin.notifications.update",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "PUT /api/admin/notifications — mark a single notification read",
+                "description": "(notification_id), mark all read (mark_all_read) or clear read ones\n(clear_read). Restricted to root/administrator/owner (403 otherwise). Empty\nbody or no actionable field -> 400. Success -> {success, message}. Replaces\nthe PUT branch of public/api/admin/notifications.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "admin.notifications.cleanup",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "DELETE /api/admin/notifications — cleanup old notifications (root only; a",
+                "description": "non-root role -> 403). Success -> {success:true, message}. Replaces the\nDELETE branch of public/api/admin/notifications.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/photos": {
+            "get": {
+                "operationId": "admin.system.photos",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET|POST /api/admin/photos — view uploaded photos (GET) and empty the trash",
+                "description": "(POST).\n\nMigrated from public/api/admin/photos.php.\n- GET action=list (default): {success, photos, pagination:{page, limit,\ntotal, total_pages}}.\n- GET action=by_user (username required): {success, username, photos,\ncount}.\n- POST action=empty_trash: {success, removed}.\n- Invalid action -> 400 {\"error\":\"Invalid action\"}.\nMissing username -> 400 {\"error\":\"Username is required\"}. Other errors map\nto 500 {\"error\":\"Server error\"} (logged as \"Admin photos error: <msg>\").",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.system.photos",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET|POST /api/admin/photos — view uploaded photos (GET) and empty the trash",
+                "description": "(POST).\n\nMigrated from public/api/admin/photos.php.\n- GET action=list (default): {success, photos, pagination:{page, limit,\ntotal, total_pages}}.\n- GET action=by_user (username required): {success, username, photos,\ncount}.\n- POST action=empty_trash: {success, removed}.\n- Invalid action -> 400 {\"error\":\"Invalid action\"}.\nMissing username -> 400 {\"error\":\"Username is required\"}. Other errors map\nto 500 {\"error\":\"Server error\"} (logged as \"Admin photos error: <msg>\").",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/record-snapshot": {
+            "post": {
+                "operationId": "admin.stats.record-snapshot",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "POST /api/admin/record-snapshot — record a real-time activity snapshot.",
+                "description": "Migrated from public/api/admin/record-snapshot.php. No inputs. Success\n200: {success, snapshot}; failure -> 500 {error:'Failed to record snapshot'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/settings": {
+            "get": {
+                "operationId": "admin.settings.show",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "GET /api/admin/settings — the full settings map (minus the admin password",
+                "description": "hash) plus derived helpers: PHP upload limit, embed code/url, bot farewell\ndefaults, LLM provider catalogue, available models, languages, context\nprompt, default model and seed pricing. Success: {success:true, settings}.\nReplaces the GET branch of public/api/admin/settings.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.settings.update",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "POST /api/admin/settings — apply an admin settings update. The whitelist,",
+                "description": "clamping and validation live in SettingsService::updateFromAdmin(); this\naction only translates HTTP to that call and reports ignored/rejected keys.\nEmpty body -> 400 {\"error\":\"Invalid JSON\"}; success -> {success:true,\nmessage, [ignored], [rejected]}. Replaces the POST branch of\npublic/api/admin/settings.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/stats": {
+            "get": {
+                "operationId": "admin.stats.index",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "GET /api/admin/stats — dashboard statistics at a chosen granularity.",
+                "description": "Migrated from public/api/admin/stats.php. Query: granularity\n(summary|hourly|daily|weekly|monthly|yearly, default summary),\nstart_date, end_date, year, limit. When granularity=summary it force-records\na snapshot (ignoring the rate limit) and always triggers on-demand\naggregation. Success 200:\n{success, granularity, data, radio_enabled, chat_mode, photos_enabled}.\nInvalid granularity -> 400 {error:'Invalid granularity'}; failure -> 500\n{error:'Failed to retrieve stats'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/stream": {
+            "get": {
+                "operationId": "admin.stream",
+                "tags": [
+                    "AdminStreamController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/toggle-fake-user": {
+            "post": {
+                "operationId": "admin.fake-users.toggle",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST /api/admin/toggle-fake-user — toggle a fake user active/idle.",
+                "description": "Migrated from public/api/admin/toggle-fake-user.php. Input: id (required).\nSuccess {success, fake_user}; unknown id -> 404; invalid input -> 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/track-artwork-upload": {
+            "post": {
+                "operationId": "admin.system.track-artwork-upload",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "POST /api/admin/track-artwork-upload — upload a manual cover/artist image",
+                "description": "and attach it to a track or artist.\n\nMigrated from public/api/admin/track-artwork-upload.php. Multipart form:\ntype ('track_cover'|'artist_image'), id (int) and a 'file' upload (<= 8MB).\nStores the image via ArtworkService and updates the row. Returns {success,\nurl, thumb}. Validation failures -> 400 {\"error\":\"<msg>\"}; other errors ->\n500 {\"error\":\"Internal server error\"} (logged).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/track-stats": {
+            "get": {
+                "operationId": "admin.stats.track-stats",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "GET|POST /api/admin/track-stats — radio play statistics and metadata editing.",
+                "description": "Migrated from public/api/admin/track-stats.php. POST is an action dispatcher\n(update-track|update-artist|update-album|enrich|enrich-album|\nbulk-genre-tracks|bulk-genre-artist|bulk-genre-reassign|enrich-artist) reading\nthe JSON body; GET dispatches on ?mode\n(summary|log|top|artists|genres|albums|artist|genre-list|all-artists|search|\ngenre|album|track). Success payloads carry {success, ...} shaped per branch.\nInvalidArgumentException -> 400 {error:msg}; not-found -> 404 {error:...};\nfailure -> 500 {error:'Internal server error'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.stats.track-stats",
+                "tags": [
+                    "AdminStatsController"
+                ],
+                "summary": "GET|POST /api/admin/track-stats — radio play statistics and metadata editing.",
+                "description": "Migrated from public/api/admin/track-stats.php. POST is an action dispatcher\n(update-track|update-artist|update-album|enrich|enrich-album|\nbulk-genre-tracks|bulk-genre-artist|bulk-genre-reassign|enrich-artist) reading\nthe JSON body; GET dispatches on ?mode\n(summary|log|top|artists|genres|albums|artist|genre-list|all-artists|search|\ngenre|album|track). Success payloads carry {success, ...} shaped per branch.\nInvalidArgumentException -> 400 {error:msg}; not-found -> 404 {error:...};\nfailure -> 500 {error:'Internal server error'}.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/update-fake-user": {
+            "post": {
+                "operationId": "admin.fake-users.update",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST /api/admin/update-fake-user — update a fake user's profile.",
+                "description": "Migrated from public/api/admin/update-fake-user.php. Input: id (required)\nplus any of nickname, age, sex, location. Renaming rewrites the nickname\nin existing conversations. Success {success, fake_user}; unknown id ->\n404; invalid input / nothing to update -> 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/update-fake-user-bot": {
+            "post": {
+                "operationId": "admin.fake-users.update-bot",
+                "tags": [
+                    "AdminFakeUsersController"
+                ],
+                "summary": "Admin: POST /api/admin/update-fake-user-bot — update a fake user's bot",
+                "description": "(LLM auto-reply) configuration.\n\nMigrated from public/api/admin/update-fake-user-bot.php. Input: id\n(required) plus any of the whitelisted bot_* fields. Prompt fields are\nlimited to 2000 chars, bot_farewell_messages to 4000. Success {success,\nfake_user}; unknown id -> 404; invalid input -> 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/update-settings": {
+            "post": {
+                "operationId": "admin.settings.update-multiple",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "POST /api/admin/update-settings — bulk key/value settings write. Expects",
+                "description": "{\"settings\": {..}}; a missing/non-array \"settings\" -> 400 {success:false,\nerror:\"Invalid request format\"}. Success -> {success:true, message}. Errors\n-> 500 {success:false, error:\"Failed to update settings: ..\"}. Replaces\npublic/api/admin/update-settings.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/update-user": {
+            "post": {
+                "operationId": "admin.users.update",
+                "tags": [
+                    "AdminUsersController"
+                ],
+                "summary": "POST /api/admin/update-user — update an existing user",
+                "description": "(replaces public/api/admin/update-user.php).\n\nRequires manage_users; the caller must be able to manage the target's\nrole, and promoting to root requires create_root_users. Accepts any of\npassword/email/role/is_active/display_name. Success returns the\nUserService::updateUser payload with 200, failure with 400.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/upload-logo": {
+            "post": {
+                "operationId": "admin.settings.upload-logo",
+                "tags": [
+                    "AdminSettingsController"
+                ],
+                "summary": "POST /api/admin/upload-logo — upload a logo or favicon (multipart, field",
+                "description": "\"logo\"; \"type\" is \"logo\"|\"favicon\"). Validates mime + 2MB max, stores the\nfile under public/uploads/logos/, saves the URL to the settings table and\nflushes the settings cache. Success -> {success:true, url, message}.\nMissing file / bad type / too large -> 400; move failure -> 500. Replaces\npublic/api/admin/upload-logo.php.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/url-blacklist": {
+            "get": {
+                "operationId": "admin.url-blacklist",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/url-blacklist.php.",
+                "description": "GET    -> 200 {success:true, patterns:[{id, pattern, description, added_by, added_at}]}\nPOST   -> add {pattern, description?} => 200 {success:true, message:'Pattern added successfully'}\nDELETE -> remove ?id= => 200 {success:true, message:'Pattern deleted successfully'}\nMissing pattern -> 400 {error:'Pattern is required'}; missing id -> 400\n{error:'ID is required'}; PDO unique violation (23505) -> 400\n{error:'Pattern already exists'}; other PDO error -> 500 {error:'Database\nerror'}; other error -> 500 {error:'Internal server error'}. NOTE: the\nlegacy blacklist file invalidates the un-prefixed Redis key\n'url_blacklist_patterns' (no instance prefix) — preserved verbatim.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.url-blacklist",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/url-blacklist.php.",
+                "description": "GET    -> 200 {success:true, patterns:[{id, pattern, description, added_by, added_at}]}\nPOST   -> add {pattern, description?} => 200 {success:true, message:'Pattern added successfully'}\nDELETE -> remove ?id= => 200 {success:true, message:'Pattern deleted successfully'}\nMissing pattern -> 400 {error:'Pattern is required'}; missing id -> 400\n{error:'ID is required'}; PDO unique violation (23505) -> 400\n{error:'Pattern already exists'}; other PDO error -> 500 {error:'Database\nerror'}; other error -> 500 {error:'Internal server error'}. NOTE: the\nlegacy blacklist file invalidates the un-prefixed Redis key\n'url_blacklist_patterns' (no instance prefix) — preserved verbatim.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "admin.url-blacklist",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/url-blacklist.php.",
+                "description": "GET    -> 200 {success:true, patterns:[{id, pattern, description, added_by, added_at}]}\nPOST   -> add {pattern, description?} => 200 {success:true, message:'Pattern added successfully'}\nDELETE -> remove ?id= => 200 {success:true, message:'Pattern deleted successfully'}\nMissing pattern -> 400 {error:'Pattern is required'}; missing id -> 400\n{error:'ID is required'}; PDO unique violation (23505) -> 400\n{error:'Pattern already exists'}; other PDO error -> 500 {error:'Database\nerror'}; other error -> 500 {error:'Internal server error'}. NOTE: the\nlegacy blacklist file invalidates the un-prefixed Redis key\n'url_blacklist_patterns' (no instance prefix) — preserved verbatim.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/url-whitelist": {
+            "get": {
+                "operationId": "admin.url-whitelist",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/url-whitelist.php.",
+                "description": "GET    -> 200 {success:true, patterns:[{id, pattern, description, added_by, added_at}]}\nPOST   -> add {pattern, description?} => 200 {success:true, message:'Pattern added successfully'}\nDELETE -> remove ?id= => 200 {success:true, message:'Pattern deleted successfully'}\nMissing pattern -> 400 {error:'Pattern is required'}; missing id -> 400\n{error:'ID is required'}; PDO unique violation (23505) -> 400\n{error:'Pattern already exists'}; other PDO error -> 500 {error:'Database\nerror'}; other error -> 500 {error:'Internal server error'}. NOTE: unlike\nthe blacklist, the legacy whitelist file invalidates the PREFIXED Redis key\n(getRedisPrefix() . 'url_whitelist_patterns') — preserved verbatim.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin.url-whitelist",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/url-whitelist.php.",
+                "description": "GET    -> 200 {success:true, patterns:[{id, pattern, description, added_by, added_at}]}\nPOST   -> add {pattern, description?} => 200 {success:true, message:'Pattern added successfully'}\nDELETE -> remove ?id= => 200 {success:true, message:'Pattern deleted successfully'}\nMissing pattern -> 400 {error:'Pattern is required'}; missing id -> 400\n{error:'ID is required'}; PDO unique violation (23505) -> 400\n{error:'Pattern already exists'}; other PDO error -> 500 {error:'Database\nerror'}; other error -> 500 {error:'Internal server error'}. NOTE: unlike\nthe blacklist, the legacy whitelist file invalidates the PREFIXED Redis key\n(getRedisPrefix() . 'url_whitelist_patterns') — preserved verbatim.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "admin.url-whitelist",
+                "tags": [
+                    "AdminModerationController"
+                ],
+                "summary": "Replaces public/api/admin/url-whitelist.php.",
+                "description": "GET    -> 200 {success:true, patterns:[{id, pattern, description, added_by, added_at}]}\nPOST   -> add {pattern, description?} => 200 {success:true, message:'Pattern added successfully'}\nDELETE -> remove ?id= => 200 {success:true, message:'Pattern deleted successfully'}\nMissing pattern -> 400 {error:'Pattern is required'}; missing id -> 400\n{error:'ID is required'}; PDO unique violation (23505) -> 400\n{error:'Pattern already exists'}; other PDO error -> 500 {error:'Database\nerror'}; other error -> 500 {error:'Internal server error'}. NOTE: unlike\nthe blacklist, the legacy whitelist file invalidates the PREFIXED Redis key\n(getRedisPrefix() . 'url_whitelist_patterns') — preserved verbatim.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/user-details": {
+            "get": {
+                "operationId": "admin.users.details",
+                "tags": [
+                    "AdminUsersController"
+                ],
+                "summary": "GET /api/admin/user-details — full activity dossier for a chat username",
+                "description": "(replaces public/api/admin/user-details.php).\n\nAuthenticated admins only (no manage_users gate). Reads the user's\nprofile, paginated public messages (with optional ?search), known IP\naddresses, active session and — for holders of view_private_messages —\npaginated private messages. Returns {success, user{...}, pagination{...},\nsearch}. Missing ?username -> 400; DB errors -> 500 \"Server error: ...\".",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/users": {
+            "get": {
+                "operationId": "admin.users.list",
+                "tags": [
+                    "AdminUsersController"
+                ],
+                "summary": "GET /api/admin/users — list all admin/staff users",
+                "description": "(replaces public/api/admin/users.php).\n\nRequires manage_users. Pass ?include_inactive=true to include inactive\naccounts. Returns {success:true, users:[...], count:int} with 200.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/admin/worker-status": {
+            "get": {
+                "operationId": "admin.system.worker-status",
+                "tags": [
+                    "AdminSystemController"
+                ],
+                "summary": "GET /api/admin/worker-status — health of the background worker, its",
+                "description": "supervisor and the periodic-task schedule, for the dashboard.\n\nMigrated from public/api/admin/worker-status.php. Returns the full status\npayload ({success, instance, root, supervisor, daemons, running, wedged,\npid, ..., queue, schedule, schedule_failures}). Errors map to 500\n{\"error\":\"Failed to read worker status\"} and are logged.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/artwork": {
+            "get": {
+                "operationId": "media.artwork",
+                "tags": [
+                    "MediaController"
+                ],
+                "summary": "GET /api/artwork — cover art for a track, or an artist image.",
+                "description": "Replaces public/api/artwork.php. mode=artist returns {success:true} merged\nwith ArtworkService::getArtistImage() (requires artist); otherwise returns\n{success:true} merged with getArtwork() (requires artist or title). Missing\nrequired input -> 400 {error}; any other failure -> 500\n{error:'Internal server error'}. Response carries a 1h public cache header.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/block": {
+            "post": {
+                "operationId": "message-action.block.action",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "POST /api/block — block or unblock another user in DMs.",
+                "description": "Migrated from public/api/block.php (POST branch). Requires\nusername/session_id/target_username and an action of \"block\"|\"unblock\";\nverifies session ownership first. Success:\n{success, action, target_username, blocked}. Errors: invalid/empty body,\nmissing fields, or bad action -> 400, invalid session -> 403\n{\"error\":\"Invalid session\"}, other -> 500.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "get": {
+                "operationId": "message-action.block.list",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "GET /api/block — a user's blocked list, plus optional per-conversation state.",
+                "description": "Migrated from public/api/block.php (GET branch). Requires username; with\nan optional with_user adds i_blocked/is_blocked_between for rendering the\nBlock/Unblock button. Success: {success, blocked_users[, with_user,\ni_blocked, is_blocked_between]}. Errors: missing username -> 400,\nother -> 500.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/check-nickname": {
+            "post": {
+                "operationId": "check-nickname.store",
+                "tags": [
+                    "CheckNicknameController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/cron/cleanup": {
+            "get": {
+                "operationId": "maintenance.cron.cleanup",
+                "tags": [
+                    "MaintenanceController"
+                ],
+                "summary": "GET /api/cron/cleanup?token=… — periodic cleanup of expired data.",
+                "description": "Migrated from public/api/cron/cleanup.php. Simple token-based auth: the\n`token` query param must equal the CRON_TOKEN env var (default\n\"change-me-in-production\"); a mismatch returns 401 {\"error\":\"Unauthorized\"}.\nOn success runs CleanupService::runAll() and returns {success:true,\ntimestamp, results, message}. On failure logs and returns 500\n{success:false, error:\"Cleanup failed\", message}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/edit-message": {
+            "post": {
+                "operationId": "message-action.edit-message",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "POST /api/edit-message — edit your own public message within 10 minutes.",
+                "description": "Migrated from public/api/edit-message.php. Requires\nmessage_id/message/username/sessionId; enforces a 500-char limit, verifies\nownership + the 10-minute window in PostgreSQL, filters the new text, then\nupdates the row, invalidates the Redis message cache/hash and publishes a\nmessage_edited SSE event. Success:\n{success, message, edited_at, timestamp}. Errors: missing fields / too\nlong -> 400, not owner -> 403, window expired -> 403, DB error -> 500\n{\"error\":\"Database error\"}, other -> 500 {\"error\":\"Server error\"}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/health": {
+            "get": {
+                "operationId": "maintenance.health",
+                "tags": [
+                    "MaintenanceController"
+                ],
+                "summary": "GET /api/health — status of Redis, PostgreSQL and PHP.",
+                "description": "Migrated from public/api/health.php. Connects to Redis and PostgreSQL using\nthe same environment-variable config and defaults, runs a COUNT(*) on\nmessages, and reports php version. Any failed service flips the overall\nstatus to \"unhealthy\" and the HTTP status to 503; otherwise 200. Payload:\n{status, timestamp, services{redis{status,message}, postgresql{status,\nmessage[,message_count]}, php{status,version}}}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/heartbeat": {
+            "post": {
+                "operationId": "heartbeat.store",
+                "tags": [
+                    "HeartbeatController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/history": {
+            "get": {
+                "operationId": "history.index",
+                "tags": [
+                    "HistoryController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/link-preview": {
+            "get": {
+                "operationId": "media.link-preview",
+                "tags": [
+                    "MediaController"
+                ],
+                "summary": "GET /api/link-preview — Open Graph metadata for a URL (rich chat previews).",
+                "description": "Replaces public/api/link-preview.php. Validates the url query param\n(required/valid/http(s)/host), applies SSRF protection (403 for\nprivate/reserved IPs), serves a 1h Redis cache when present, fetches the\npage and parses OG/Twitter/<title> meta. Returns\n{title, description, image, domain, url}. Error mapping preserved:\n400 (missing/invalid url, bad scheme, bad host), 403 (forbidden url),\n422 (fetch failed / non-HTML / no preview data).",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/login": {
+            "post": {
+                "operationId": "auth.login",
+                "tags": [
+                    "AuthController"
+                ],
+                "summary": "POST /api/login — authenticate a registered user and bind the chat",
+                "description": "session to their account.\n\nReplaces public/api/login.php. Empty/invalid body -> 400 \"Invalid JSON\";\nmissing username/password/sessionId -> 400; bad credentials -> 401\n\"Invalid username or password\"; otherwise 500. Success (200) returns\n{success, message, user:{id, username, display_name, role}}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/logout": {
+            "post": {
+                "operationId": "auth.logout",
+                "tags": [
+                    "AuthController"
+                ],
+                "summary": "POST /api/logout — end a chat session.",
+                "description": "Replaces public/api/logout.php. Empty/invalid body -> 400 \"Invalid JSON\";\nmissing sessionId -> 400 \"Session ID is required\"; logout failure -> 500\n\"Failed to logout user\"; unexpected error -> 500. Success (200) returns\n{success, message}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/now-playing": {
+            "get": {
+                "operationId": "media.now-playing",
+                "tags": [
+                    "MediaController"
+                ],
+                "summary": "GET /api/now-playing — current radio track, with de-duplicated play",
+                "description": "recording and stored track metadata for the hover card.\n\nReplaces public/api/now-playing.php. Returns {success:true, nowPlaying:{…}}\nwhere nowPlaying gets a `meta` key when a track is active. recordPlay() is\nde-duplicated (inserts only on a real track change) and its failures are\nswallowed with an error_log; when the track just changed the new track is\nenriched (album/genre/release/art). The legacy file flushed the response\n(fastcgi_finish_request) BEFORE enriching so the client poll wasn't blocked;\nunder the Response model the enrichment runs inline before returning — the\npayload is identical, only the timing differs. Failure -> 500\n{success:false, error:'Server error: …'}. No-cache headers preserved.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/private-message": {
+            "post": {
+                "operationId": "message-action.private-message.send",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "POST /api/private-message — send a private (DM) message.",
+                "description": "Migrated from public/api/private-message.php (POST branch). Requires\nfrom_username/to_username/from_session_id and either message or\nattachment_id; filters the body, enforces mutual DM blocks, resolves the\nrecipient's live/fake/last-known session (grace period), stores the row,\npublishes it over Redis, notifies admins for human-answered fake users and\nschedules a bot auto-reply. Success:\n{success, message:\"Private message sent\", data:{...}}. Errors: missing\nfields / no message+attachment / recipient not online -> 400, mutual\nblock -> 403 {\"error\":\"You cannot send messages to this user.\"},\nother -> 500.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "get": {
+                "operationId": "message-action.private-message.list",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "GET /api/private-message — private message history.",
+                "description": "Migrated from public/api/private-message.php (GET branch). Requires\nusername + session_id; with an optional with_user returns that\nconversation (session-scoped for real users, full history for fake users,\nand admin=true returns ALL messages between the pair). Attachments are\nfolded into an `attachment` object per row. Success:\n{success, messages, debug:{username, touser}}. Errors: missing\nusername/session -> 400, other -> 500.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/react": {
+            "post": {
+                "operationId": "message-action.react.toggle",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "POST /api/react — toggle an emoji reaction on a message.",
+                "description": "Migrated from public/api/react.php (POST branch). Requires\nmessage_id/username/session_id (+ emoji); verifies the caller owns the\nsession before toggling. Success: {success:true} merged with the\nReactionService::toggleReaction() result. Errors: invalid/empty body or\nmissing fields -> 400, invalid session -> 403 {\"error\":\"Invalid session\"},\nRuntimeException -> 404, anything else -> 500.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            },
+            "get": {
+                "operationId": "message-action.react.allowed",
+                "tags": [
+                    "MessageActionController"
+                ],
+                "summary": "GET /api/react — the allowed emoji set for the reaction picker.",
+                "description": "Migrated from public/api/react.php (GET branch). Success:\n{success:true, allowed:[...]}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/register": {
+            "post": {
+                "operationId": "auth.register",
+                "tags": [
+                    "AuthController"
+                ],
+                "summary": "POST /api/register — register a nickname for a chat session (with optional",
+                "description": "profile), then rebalance fake users.\n\nReplaces public/api/register.php. Empty/invalid body -> 400 \"Invalid JSON\";\nmissing username/sessionId -> 400; when require_profile is on, missing\nage/location/sex -> 400; out-of-range age -> 400; taken/banned nickname ->\n409; unexpected error -> 500. Success (200) returns {success, message}.",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/send": {
+            "post": {
+                "operationId": "send.store",
+                "tags": [
+                    "SendController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/settings": {
+            "get": {
+                "operationId": "settings.show",
+                "tags": [
+                    "SettingsController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/status": {
+            "get": {
+                "operationId": "status.show",
+                "tags": [
+                    "StatusController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/stream": {
+            "get": {
+                "operationId": "stream.index",
+                "tags": [
+                    "StreamController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/update-profile": {
+            "post": {
+                "operationId": "profile.update",
+                "tags": [
+                    "ProfileController"
+                ],
+                "summary": "POST /api/update-profile — replaces public/api/update-profile.php.",
+                "description": "Verifies the session belongs to the user, optionally updates the\nregistered user's display_name (with the same uniqueness checks and Redis\ncache-busting / pub-sub the legacy performed), then upserts the guest\nprofile row (age/sex/location).\n\nSuccess: 200 {success:true, message:\"Profile updated successfully\"}.\nErrors: 400 (missing username/sessionId, bad age/sex, display-name\nconflicts), 403 (invalid session), 500 (unexpected).",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/upload-photo": {
+            "post": {
+                "operationId": "profile.upload-photo",
+                "tags": [
+                    "ProfileController"
+                ],
+                "summary": "POST /api/upload-photo — replaces public/api/upload-photo.php.",
+                "description": "Accepts a multipart form (username, recipient, sessionId + a \"photo\"\nfile) and hands it to PhotoService::uploadPhoto().\n\nSuccess: 200 {success:true, attachment:<result>, message:\"Photo uploaded successfully\"}.\nErrors: 400 (missing fields / no file, InvalidArgumentException,\nRuntimeException from the service), 500 (any other error, with the\nlegacy debug/file/line diagnostics).",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/user-profile": {
+            "get": {
+                "operationId": "user-profile.show",
+                "tags": [
+                    "UserProfileController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        },
+        "/api/version": {
+            "get": {
+                "operationId": "version.show",
+                "tags": [
+                    "VersionController"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        }
+    }
+}
