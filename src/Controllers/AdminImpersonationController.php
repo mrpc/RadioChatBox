@@ -3,7 +3,6 @@
 namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
-use PDO;
 use RadioChatBox\Http\Validate;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
@@ -221,22 +220,26 @@ final class AdminImpersonationController
                 return Response::json(['error' => 'Either message or attachment is required'], 400);
             }
 
-            $pdo   = Database::getPDO();
+            $db    = Database::getDb();
             $redis = Database::getRedis();
 
             // Verify the impersonation target is a fake user
-            $stmt = $pdo->prepare("SELECT id, nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE");
-            $stmt->execute([$impersonateAs]);
-            $fakeUser = $stmt->fetch(PDO::FETCH_ASSOC);
+            $lookup   = $db->preparedQuery(
+                "SELECT id, nickname FROM fake_users WHERE nickname = ? AND is_active = TRUE",
+                [$impersonateAs]
+            );
+            $fakeUser = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
 
             if (!$fakeUser) {
                 return Response::json(['error' => 'Can only impersonate active fake users'], 400);
             }
 
             // Get recipient's session_id (most recent live session if multiple devices)
-            $stmt = $pdo->prepare("SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1");
-            $stmt->execute([$toUsername]);
-            $recipient = $stmt->fetch(PDO::FETCH_ASSOC);
+            $lookup    = $db->preparedQuery(
+                "SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1",
+                [$toUsername]
+            );
+            $recipient = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
 
             if ($recipient) {
                 $toSessionId = $recipient['session_id'];
@@ -246,7 +249,7 @@ final class AdminImpersonationController
                 // recent known session id from previous messages so the DM reaches them
                 // when they reconnect (same session id persists in localStorage). Mirrors
                 // the logic in public/api/private-message.php.
-                $stmt = $pdo->prepare("
+                $lookup = $db->preparedQuery("
                     SELECT session_id FROM (
                         SELECT to_session_id AS session_id, created_at
                         FROM private_messages WHERE to_username = ?
@@ -256,9 +259,8 @@ final class AdminImpersonationController
                     ) recent
                     ORDER BY created_at DESC
                     LIMIT 1
-                ");
-                $stmt->execute([$toUsername, $toUsername]);
-                $toSessionId = $stmt->fetchColumn();
+                ", [$toUsername, $toUsername]);
+                $toSessionId = $lookup ? $lookup->fetchColumn() : false;
 
                 if (!$toSessionId) {
                     return Response::json(['error' => 'Recipient is not online'], 400);
@@ -277,13 +279,12 @@ final class AdminImpersonationController
             $fakeSessionId = 'fake_' . md5($impersonateAs);
 
             // Store message in database
-            $stmt = $pdo->prepare("
+            $insert = $db->preparedQuery("
                 INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, NOW())
                 RETURNING id, created_at
-            ");
-            $stmt->execute([$impersonateAs, $fakeSessionId, $toUsername, $toSessionId, $message, $attachmentId]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            ", [$impersonateAs, $fakeSessionId, $toUsername, $toSessionId, $message, $attachmentId]);
+            $result = ($insert && $insert->numRows > 0) ? $insert->fields : null;
 
             // Get attachment info if present
             $attachmentData = null;
@@ -355,18 +356,18 @@ final class AdminImpersonationController
         }
 
         try {
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
 
             // Get all active fake users with their profile info
-            $stmt = $pdo->prepare("SELECT id, nickname, age, sex, location FROM fake_users WHERE is_active = TRUE ORDER BY nickname");
-            $stmt->execute();
-            $fakeUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $result = $db->preparedQuery("SELECT id, nickname, age, sex, location FROM fake_users WHERE is_active = TRUE ORDER BY nickname");
+            $fakeUsers = $result ? $result->fetchAll() : [];
 
             // For each fake user, get recent messages TO them
             $conversations = [];
 
             foreach ($fakeUsers as $fakeUser) {
-                $stmt = $pdo->prepare("
+                // Window functions (COUNT/MAX OVER) — kept verbatim via preparedQuery.
+                $result = $db->preparedQuery("
                     SELECT
                         pm.*,
                         COUNT(*) OVER() as total_messages,
@@ -375,9 +376,8 @@ final class AdminImpersonationController
                     WHERE pm.to_username = ?
                     ORDER BY pm.created_at DESC
                     LIMIT 50
-                ");
-                $stmt->execute([$fakeUser['nickname']]);
-                $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                ", [$fakeUser['nickname']]);
+                $messages = $result ? $result->fetchAll() : [];
 
                 if (!empty($messages)) {
                     // Get unique senders with their last message timestamp and online status
@@ -385,9 +385,10 @@ final class AdminImpersonationController
                     foreach ($messages as $msg) {
                         if (!isset($senders[$msg['from_username']])) {
                             // Check if sender is online (has active session)
-                            $sessionStmt = $pdo->prepare("SELECT id FROM sessions WHERE username = ? LIMIT 1");
-                            $sessionStmt->execute([$msg['from_username']]);
-                            $isOnline = $sessionStmt->rowCount() > 0;
+                            $isOnline = $db->queryBuilder()
+                                ->from('sessions')
+                                ->where('username', '=', $msg['from_username'])
+                                ->exists();
 
                             $senders[$msg['from_username']] = [
                                 'username'          => $msg['from_username'],

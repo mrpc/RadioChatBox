@@ -284,6 +284,31 @@ class AdminImpersonationControllerTest extends TestCase
     }
 
     /**
+     * send() as root, impersonating a username that is not an active fake user,
+     * must return 400 "Can only impersonate active fake users". This drives the
+     * converted fake_users lookup (preparedQuery) and stops before any message is
+     * stored, so it exercises the DB path without writing.
+     */
+    public function testSendRejectsNonFakeImpersonationTarget(): void
+    {
+        $this->authAsRoot();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = [
+            'impersonate_as' => 'not_a_fake_' . substr(bin2hex(random_bytes(4)), 0, 8),
+            'to_username'    => 'someone',
+            'message'        => 'hi',
+        ];
+
+        $response = (new AdminImpersonationController())->send();
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            'Can only impersonate active fake users',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
+
+    /**
      * bot() POST action=block is the compound force-stop action: the fake user
      * blocks the peer (mutual DM block) AND the bot is stopped in that thread. With
      * a real fake user it succeeds, leaves a block in place, and marks the thread
