@@ -3,7 +3,6 @@
 namespace RadioChatBox\Controllers;
 
 use InvalidArgumentException;
-use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -166,7 +165,7 @@ final class AdminModerationController
     #[Route('/api/admin/kick-user', methods: 'POST', name: 'admin.kick-user', middleware: [AdminAuthMiddleware::class])]
     public function kickUser(): Response
     {
-        $db    = Database::getPDO();
+        $db    = Database::getDb();
         $redis = Database::getRedis();
 
         try {
@@ -179,9 +178,12 @@ final class AdminModerationController
             $username = $data['username'];
 
             // Get user's IP and session before removing them.
-            $stmt = $db->prepare('SELECT ip_address, session_id FROM sessions WHERE username = ?');
-            $stmt->execute([$username]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            $userRow = $db->queryBuilder()
+                ->from('sessions')
+                ->select(['ip_address', 'session_id'])
+                ->where('username', '=', $username)
+                ->first();
+            $user = ($userRow && $userRow->numRows > 0) ? $userRow->fields : null;
 
             if (!$user) {
                 return Response::json(['error' => 'User not found'], 404);
@@ -196,8 +198,10 @@ final class AdminModerationController
             ]));
 
             // Remove from database.
-            $stmt   = $db->prepare('DELETE FROM sessions WHERE username = ?');
-            $result = $stmt->execute([$username]);
+            $result = $db->queryBuilder()
+                ->from('sessions')
+                ->where('username', '=', $username)
+                ->delete();
 
             if ($result) {
                 // Remove from Redis cache.
@@ -272,14 +276,16 @@ final class AdminModerationController
     #[Route('/api/admin/clear-chat', methods: 'POST', name: 'admin.clear-chat', middleware: [AdminAuthMiddleware::class])]
     public function clearChat(): Response
     {
-        $db    = Database::getPDO();
+        $db    = Database::getDb();
         $redis = Database::getRedis();
 
         try {
             // Soft delete all messages by setting is_deleted = true.
-            $stmt = $db->prepare("UPDATE messages SET is_deleted = true WHERE is_deleted = false");
-            $stmt->execute();
-            $deletedCount = $stmt->rowCount();
+            $result = $db->queryBuilder()
+                ->from('messages')
+                ->where('is_deleted', '=', false)
+                ->update(['is_deleted' => true]);
+            $deletedCount = $result ? $result->getAffectedRows() : 0;
 
             // Clear Redis message cache to remove all messages immediately.
             $prefix = Database::getRedisPrefix();
@@ -324,13 +330,15 @@ final class AdminModerationController
                 return Response::json(['error' => 'Message ID is required'], 400);
             }
 
-            $pdo = Database::getPDO();
+            $db = Database::getDb();
 
             // Mark the message as deleted (soft delete) instead of actually deleting it.
-            $stmt = $pdo->prepare("UPDATE messages SET is_deleted = true WHERE message_id = ?");
-            $stmt->execute([$messageId]);
+            $result = $db->queryBuilder()
+                ->from('messages')
+                ->where('message_id', '=', $messageId)
+                ->update(['is_deleted' => true]);
 
-            if ($stmt->rowCount() === 0) {
+            if (($result ? $result->getAffectedRows() : 0) === 0) {
                 return Response::json(['error' => 'Message not found'], 404);
             }
 
@@ -387,15 +395,15 @@ final class AdminModerationController
     public function urlBlacklist(): Response
     {
         try {
-            $db = Database::getPDO();
+            $db = Database::getDb();
 
             if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-                $stmt = $db->query("
+                $result = $db->query("
             SELECT id, pattern, description, added_by, added_at
             FROM url_blacklist
             ORDER BY added_at DESC
         ");
-                $patterns = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $patterns = $result ? $result->fetchAll() : [];
 
                 return Response::json([
                     'success'  => true,
@@ -412,14 +420,10 @@ final class AdminModerationController
                     return Response::json(['error' => 'Pattern is required'], 400);
                 }
 
-                $stmt = $db->prepare("
-            INSERT INTO url_blacklist (pattern, description, added_by)
-            VALUES (:pattern, :description, 'admin')
-        ");
-
-                $stmt->execute([
+                $db->queryBuilder()->from('url_blacklist')->insert([
                     'pattern'     => $pattern,
                     'description' => $description,
+                    'added_by'    => 'admin',
                 ]);
 
                 // Invalidate Redis cache (legacy uses the un-prefixed key here).
@@ -439,8 +443,7 @@ final class AdminModerationController
                 return Response::json(['error' => 'ID is required'], 400);
             }
 
-            $stmt = $db->prepare("DELETE FROM url_blacklist WHERE id = ?");
-            $stmt->execute([$id]);
+            $db->queryBuilder()->from('url_blacklist')->where('id', '=', $id)->delete();
 
             // Invalidate Redis cache (legacy uses the un-prefixed key here).
             $redis = Database::getRedis();
@@ -450,16 +453,18 @@ final class AdminModerationController
                 'success' => true,
                 'message' => 'Pattern deleted successfully',
             ]);
-        } catch (\PDOException $e) {
-            if ($e->getCode() === '23505') { // Unique violation
+        } catch (\Throwable $e) {
+            // The framework DB layer throws a generic Exception (not PDOException)
+            // whose message carries the driver text; a duplicate pattern still maps
+            // to the legacy 400, DB errors to 'Database error', the rest to 500.
+            $msg       = $e->getMessage();
+            $isDbError = $e instanceof \PDOException || stripos($msg, 'SQL QUERY') !== false;
+            if ($isDbError && (stripos($msg, 'duplicate key') !== false || stripos($msg, 'unique constraint') !== false)) {
                 return Response::json(['error' => 'Pattern already exists'], 400);
             }
 
-            \RadioChatBox\Log::write("URL Blacklist error: " . $e->getMessage());
-            return Response::json(['error' => 'Database error'], 500);
-        } catch (\Throwable $e) {
-            \RadioChatBox\Log::write("URL Blacklist error: " . $e->getMessage());
-            return Response::json(['error' => 'Internal server error'], 500);
+            \RadioChatBox\Log::write("URL Blacklist error: " . $msg);
+            return Response::json(['error' => $isDbError ? 'Database error' : 'Internal server error'], 500);
         }
     }
 
@@ -480,15 +485,15 @@ final class AdminModerationController
     public function urlWhitelist(): Response
     {
         try {
-            $db = Database::getPDO();
+            $db = Database::getDb();
 
             if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-                $stmt = $db->query("
+                $result = $db->query("
             SELECT id, pattern, description, added_by, added_at
             FROM url_whitelist
             ORDER BY added_at DESC
         ");
-                $patterns = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $patterns = $result ? $result->fetchAll() : [];
 
                 return Response::json([
                     'success'  => true,
@@ -505,14 +510,10 @@ final class AdminModerationController
                     return Response::json(['error' => 'Pattern is required'], 400);
                 }
 
-                $stmt = $db->prepare("
-            INSERT INTO url_whitelist (pattern, description, added_by)
-            VALUES (:pattern, :description, 'admin')
-        ");
-
-                $stmt->execute([
+                $db->queryBuilder()->from('url_whitelist')->insert([
                     'pattern'     => $pattern,
                     'description' => $description,
+                    'added_by'    => 'admin',
                 ]);
 
                 // Invalidate Redis cache (legacy uses the prefixed key here).
@@ -533,8 +534,7 @@ final class AdminModerationController
                 return Response::json(['error' => 'ID is required'], 400);
             }
 
-            $stmt = $db->prepare("DELETE FROM url_whitelist WHERE id = ?");
-            $stmt->execute([$id]);
+            $db->queryBuilder()->from('url_whitelist')->where('id', '=', $id)->delete();
 
             // Invalidate Redis cache (legacy uses the prefixed key here).
             $redis  = Database::getRedis();
@@ -545,16 +545,17 @@ final class AdminModerationController
                 'success' => true,
                 'message' => 'Pattern deleted successfully',
             ]);
-        } catch (\PDOException $e) {
-            if ($e->getCode() === '23505') { // Unique violation
+        } catch (\Throwable $e) {
+            // Same duplicate/DB-error mapping as the blacklist: the framework DB
+            // layer throws a generic Exception, so classify by message.
+            $msg       = $e->getMessage();
+            $isDbError = $e instanceof \PDOException || stripos($msg, 'SQL QUERY') !== false;
+            if ($isDbError && (stripos($msg, 'duplicate key') !== false || stripos($msg, 'unique constraint') !== false)) {
                 return Response::json(['error' => 'Pattern already exists'], 400);
             }
 
-            \RadioChatBox\Log::write("URL Whitelist error: " . $e->getMessage());
-            return Response::json(['error' => 'Database error'], 500);
-        } catch (\Throwable $e) {
-            \RadioChatBox\Log::write("URL Whitelist error: " . $e->getMessage());
-            return Response::json(['error' => 'Internal server error'], 500);
+            \RadioChatBox\Log::write("URL Whitelist error: " . $msg);
+            return Response::json(['error' => $isDbError ? 'Database error' : 'Internal server error'], 500);
         }
     }
 }

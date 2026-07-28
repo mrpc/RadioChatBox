@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminModerationController;
+use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -186,5 +187,83 @@ class AdminModerationControllerTest extends TestCase
         $body = json_decode($response->getBody(), true);
         $this->assertArrayHasKey('kicked_sessions', $body);
         $this->assertIsArray($body['kicked_sessions']);
+    }
+
+    // ---------------------------------------------------------------------
+    // DB-path coverage for the Phase-7 conversion (getPDO -> getDb). These run
+    // against the dedicated url_blacklist table / non-existent message ids and
+    // clean up after themselves — they do not touch real chat data.
+    // ---------------------------------------------------------------------
+
+    /**
+     * url-blacklist exercises the converted query()/insert()/delete() path AND
+     * the rewritten duplicate handling: the legacy code caught a PDOException
+     * with code 23505, but the framework DB layer throws a generic Exception, so
+     * the controller now classifies by message text. Insert a unique pattern
+     * (200), insert it again (400 "Pattern already exists"), confirm GET lists it,
+     * then delete it (200). All rows are cleaned up.
+     */
+    public function testUrlBlacklistInsertDuplicateListAndDelete(): void
+    {
+        $pattern = 'phase7-' . bin2hex(random_bytes(5)) . '.example';
+        $pdo     = Database::getPDO();
+
+        try {
+            // First insert succeeds.
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = ['pattern' => $pattern, 'description' => 'phase7 test'];
+            $created = (new AdminModerationController())->urlBlacklist();
+            $this->assertSame(200, $created->getStatusCode());
+            $this->assertTrue(json_decode($created->getBody(), true)['success']);
+
+            // Second insert of the same pattern hits the unique constraint and must
+            // map to the legacy 400 message via the new message-based classifier.
+            $_POST = ['pattern' => $pattern, 'description' => 'dupe'];
+            $dupe  = (new AdminModerationController())->urlBlacklist();
+            $this->assertSame(400, $dupe->getStatusCode());
+            $this->assertSame('Pattern already exists', json_decode($dupe->getBody(), true)['error']);
+
+            // GET lists it (query() path).
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_POST = [];
+            $list  = (new AdminModerationController())->urlBlacklist();
+            $this->assertSame(200, $list->getStatusCode());
+            $patterns = array_column(json_decode($list->getBody(), true)['patterns'], 'pattern');
+            $this->assertContains($pattern, $patterns);
+
+            // DELETE by id (delete() path).
+            $stmt = $pdo->prepare('SELECT id FROM url_blacklist WHERE pattern = ?');
+            $stmt->execute([$pattern]);
+            $id = (int) $stmt->fetchColumn();
+            $this->assertGreaterThan(0, $id);
+
+            $_SERVER['REQUEST_METHOD'] = 'DELETE';
+            $_GET = ['id' => $id];
+            $deleted = (new AdminModerationController())->urlBlacklist();
+            $this->assertSame(200, $deleted->getStatusCode());
+            $this->assertTrue(json_decode($deleted->getBody(), true)['success']);
+
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM url_blacklist WHERE pattern = ?');
+            $stmt->execute([$pattern]);
+            $this->assertSame(0, (int) $stmt->fetchColumn(), 'the pattern must be gone after delete');
+        } finally {
+            $pdo->prepare('DELETE FROM url_blacklist WHERE pattern = ?')->execute([$pattern]);
+        }
+    }
+
+    /**
+     * delete-message on a message id that does not exist must return 404
+     * "Message not found". This pins the converted soft-delete update: when
+     * getAffectedRows() is 0 the controller reports not-found (no row is mutated).
+     */
+    public function testDeleteMessageUnknownIdReturns404(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['message_id' => 'no-such-message-' . bin2hex(random_bytes(4))];
+
+        $response = (new AdminModerationController())->deleteMessage();
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('Message not found', json_decode($response->getBody(), true)['error']);
     }
 }
