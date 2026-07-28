@@ -15,14 +15,10 @@ use Pramnos\Database\Database as PramnosDatabase;
 class TrackStatsService
 {
     private PramnosDatabase $db;
-    private \Redis $redis;
-    private string $prefix;
 
     public function __construct()
     {
         $this->db = Database::getDb();
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
     }
 
     /**
@@ -44,14 +40,12 @@ class TrackStatsService
             return null;
         }
 
-        $lastKey = $this->prefix . 'radio:last_track';
-
         // Atomic de-dup: record only when the track differs from the last one.
-        // GETSET returns the previous value and sets the new one in a single
-        // operation, so concurrent pollers can't both record the same change
-        // (fixes duplicate log rows).
+        // Cache::swap() (native Redis GETSET) returns the previous value and sets
+        // the new one in a single operation, so concurrent pollers can't both
+        // record the same change (fixes duplicate log rows).
         try {
-            $prev = $this->redis->getSet($lastKey, $display);
+            $prev = Cache::store()->swap('radio:last_track', $display);
         } catch (\Throwable $e) {
             $prev = null;
         }
