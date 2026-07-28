@@ -738,6 +738,36 @@ class BotServicePipelineTest extends TestCase
         $this->assertNull($this->threadRow()['farewell_sent_at']);
     }
 
+    /**
+     * The Bot Activity conversation view must show the RECENT messages of a long
+     * thread, not the oldest 200 (which hid new messages, incl. those just sent).
+     */
+    public function testThreadMessagesShowsTheRecentWindowNotTheOldest(): void
+    {
+        $total = 210; // more than the 200-message window
+        $values = [];
+        $params = [];
+        for ($i = 1; $i <= $total; $i++) {
+            $from = $i % 2 === 1 ? $this->peer : $this->nick;
+            $to = $i % 2 === 1 ? $this->nick : $this->peer;
+            $values[] = "(?, ?, ?, ?, ?, NOW() + (? || ' seconds')::interval)";
+            array_push($params, $from, 'sess_' . $from, $to, 'fake_' . md5($this->nick), 'm#' . $i, $i);
+        }
+        $this->pdo->prepare(
+            'INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES ' . implode(',', $values)
+        )->execute($params);
+
+        $bodies = array_column($this->bot->threadMessages($this->nick, $this->peer), 'message');
+
+        $this->assertCount(200, $bodies, 'capped at the 200-message window');
+        $this->assertContains('m#' . $total, $bodies, 'the newest message must be shown');
+        $this->assertNotContains('m#1', $bodies, 'the oldest is outside the window');
+        // Chronological (oldest-first) within the recent window.
+        $this->assertSame('m#' . ($total - 199), $bodies[0]);
+        $this->assertSame('m#' . $total, $bodies[array_key_last($bodies)]);
+    }
+
     public function testAMultiLineReplyIsDeliveredAsSeparateBubblesCountingOneTurn(): void
     {
         $this->incoming('γεια');

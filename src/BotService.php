@@ -1136,7 +1136,7 @@ class BotService
             FROM private_messages
             WHERE (from_username = :fake AND to_username = :peer)
                OR (from_username = :peer2 AND to_username = :fake2)
-            ORDER BY created_at ASC, id ASC
+            ORDER BY created_at DESC, id DESC
             LIMIT :limit
         ');
         $stmt->bindValue(':fake', $fakeNickname);
@@ -1146,10 +1146,12 @@ class BotService
         $stmt->bindValue(':limit', max(1, min(500, $limit)), PDO::PARAM_INT);
         $stmt->execute();
 
-        return array_map(
+        // Fetched newest-first (so a long thread keeps its RECENT messages, not its
+        // oldest), then flipped back to chronological order for display.
+        return array_reverse(array_map(
             static fn (array $row): array => $row + ['is_bot' => $row['from_username'] === $fakeNickname],
             $stmt->fetchAll(PDO::FETCH_ASSOC)
-        );
+        ));
     }
 
     /**

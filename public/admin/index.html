@@ -6291,6 +6291,19 @@
                 currentBotThreadData = data; // kept so the log can be exported
 
                 const state = data.state || {};
+
+                // A taken-over conversation is answered by the admin in Impersonate,
+                // not viewed read-only here. On an explicit "View" (not the 4s
+                // background refresh), go straight to Impersonate for this thread.
+                if (scroll && state.is_taken_over) {
+                    box.style.display = 'none';
+                    box.dataset.loaded = '';
+                    currentBotThread = null;
+                    switchTab('impersonate');
+                    selectSender(fakeUser, peer);
+                    return;
+                }
+
                 const bubbles = data.messages.map(m => {
                     const mine = m.from_username === fakeUser;
                     return `
