@@ -257,7 +257,7 @@ try {
                     LEFT JOIN users u_to ON pm.to_username = u_to.username
                     WHERE ((pm.from_username = ? AND pm.to_username = ?) 
                         OR (pm.from_username = ? AND pm.to_username = ?))
-                    ORDER BY pm.created_at ASC
+                    ORDER BY pm.created_at DESC
                     LIMIT 500
                 ");
                 $stmt->execute([$username, $withUser, $withUser, $username]);
@@ -282,7 +282,7 @@ try {
                         LEFT JOIN users u_to ON pm.to_username = u_to.username
                         WHERE ((pm.from_username = ? AND pm.to_username = ?) 
                             OR (pm.from_username = ? AND pm.to_username = ?))
-                        ORDER BY pm.created_at ASC
+                        ORDER BY pm.created_at DESC
                         LIMIT 500
                     ");
                     $stmt->execute([$username, $withUser, $withUser, $username]);
@@ -301,7 +301,7 @@ try {
                         LEFT JOIN users u_to ON pm.to_username = u_to.username
                         WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?) 
                             OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
-                        ORDER BY pm.created_at ASC
+                        ORDER BY pm.created_at DESC
                         LIMIT 500
                     ");
                     $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
@@ -328,7 +328,15 @@ try {
         }
         
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
+        // The conversation queries fetch the most RECENT 500 (ORDER BY created_at
+        // DESC LIMIT 500) so long threads never hide new messages; the client
+        // expects oldest-first, so flip them back to chronological order. (The
+        // "recent messages" branch below has no with_user and keeps DESC.)
+        if ($withUser) {
+            $messages = array_reverse($messages);
+        }
+
         // Format attachment data for each message
         foreach ($messages as &$message) {
             if ($message['attachment_id']) {
