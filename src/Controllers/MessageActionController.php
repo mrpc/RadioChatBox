@@ -14,7 +14,7 @@ use RadioChatBox\Broadcast;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Database;
-use RadioChatBox\MessageFilter;
+use RadioChatBox\Services\MessageFilter;
 use RadioChatBox\MessageHistory;
 use RadioChatBox\Services\PhotoService;
 use RadioChatBox\Services\ReactionService;

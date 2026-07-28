@@ -7,9 +7,9 @@ use RadioChatBox\Cache;
 use RadioChatBox\Config;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
-use RadioChatBox\LlmProviders;
+use RadioChatBox\Services\LlmProviders;
 use RadioChatBox\Log;
-use RadioChatBox\MessageFilter;
+use RadioChatBox\Services\MessageFilter;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**

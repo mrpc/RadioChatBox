@@ -72,11 +72,11 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use RadioChatBox\Services\BotService;
 use RadioChatBox\JobQueue;
-use RadioChatBox\LlmAccount;
-use RadioChatBox\LlmLog;
-use RadioChatBox\LlmPricing;
+use RadioChatBox\Services\LlmAccount;
+use RadioChatBox\Services\LlmLog;
+use RadioChatBox\Services\LlmPricing;
 use RadioChatBox\Services\LlmService;
-use RadioChatBox\Scheduler;
+use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\WorkerLock;
 use RadioChatBox\WorkerReloader;

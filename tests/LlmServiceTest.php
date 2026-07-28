@@ -6,7 +6,7 @@ use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
-use RadioChatBox\LlmLog;
+use RadioChatBox\Services\LlmLog;
 use RadioChatBox\Services\LlmService;
 
 /**
@@ -273,7 +273,7 @@ class LlmServiceTest extends TestCase
      */
     public function testACallIsCostedWhenItIsLogged(): void
     {
-        $log = new LlmLog(null, new \RadioChatBox\LlmPricing(
+        $log = new LlmLog(null, new \RadioChatBox\Services\LlmPricing(
             ['test-model' => ['cache_hit' => 0.0, 'cache_miss' => 1.0, 'output' => 10.0]]
         ));
 
@@ -302,7 +302,7 @@ class LlmServiceTest extends TestCase
 
     public function testACallWithNoConfiguredPriceIsLeftUncostedRatherThanFree(): void
     {
-        $log = new LlmLog(null, new \RadioChatBox\LlmPricing(
+        $log = new LlmLog(null, new \RadioChatBox\Services\LlmPricing(
             ['other-model' => ['cache_hit' => 1.0, 'cache_miss' => 1.0, 'output' => 1.0]]
         ));
 
@@ -326,7 +326,7 @@ class LlmServiceTest extends TestCase
      */
     public function testTheSummaryCanBeSplitByProvider(): void
     {
-        $log = new LlmLog(null, new \RadioChatBox\LlmPricing([
+        $log = new LlmLog(null, new \RadioChatBox\Services\LlmPricing([
             'cheap' => ['cache_hit' => 0.0, 'cache_miss' => 1.0, 'output' => 1.0],
             'dear' => ['cache_hit' => 0.0, 'cache_miss' => 100.0, 'output' => 100.0],
         ]));

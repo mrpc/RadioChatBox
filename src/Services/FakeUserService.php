@@ -4,7 +4,7 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\LlmProviders;
+use RadioChatBox\Services\LlmProviders;
 use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 

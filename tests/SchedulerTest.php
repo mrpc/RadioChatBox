@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
-use RadioChatBox\Scheduler;
+use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
 
 /**

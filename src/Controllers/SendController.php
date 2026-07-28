@@ -6,7 +6,7 @@ use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ChatService;
-use RadioChatBox\MessageFilter;
+use RadioChatBox\Services\MessageFilter;
 use RuntimeException;
 
 /**

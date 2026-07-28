@@ -4,8 +4,8 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\LlmPricing;
-use RadioChatBox\LlmProviders;
+use RadioChatBox\Services\LlmPricing;
+use RadioChatBox\Services\LlmProviders;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class SettingsService

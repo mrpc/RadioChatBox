@@ -296,7 +296,7 @@ class BotServicePipelineTest extends TestCase
     public function testBothPicksOneProviderStablyPerConversation(): void
     {
         $this->settings->values['bot_llm_provider'] = 'both';
-        $providers = array_keys(\RadioChatBox\LlmProviders::PROVIDERS);
+        $providers = array_keys(\RadioChatBox\Services\LlmProviders::PROVIDERS);
 
         // Same bot+peer always resolves to the same provider (no mid-chat flip).
         $chosen = $this->bot->conversationProvider(['id' => 7], 'nikos');

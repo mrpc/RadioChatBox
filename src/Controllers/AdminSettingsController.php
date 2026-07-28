@@ -11,9 +11,9 @@ use RadioChatBox\Services\BotService;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Installation;
-use RadioChatBox\LlmAccount;
-use RadioChatBox\LlmPricing;
-use RadioChatBox\LlmProviders;
+use RadioChatBox\Services\LlmAccount;
+use RadioChatBox\Services\LlmPricing;
+use RadioChatBox\Services\LlmProviders;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\SettingsService;
 

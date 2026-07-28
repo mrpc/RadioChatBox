@@ -1,7 +1,10 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
+use RadioChatBox\Cache;
+use RadioChatBox\Database;
+use RadioChatBox\Log;
 use RadioChatBox\Services\SettingsService;
 class MessageFilter
 {

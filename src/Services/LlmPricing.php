@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox;
+namespace RadioChatBox\Services;
 
 use RadioChatBox\Services\SettingsService;
 /**

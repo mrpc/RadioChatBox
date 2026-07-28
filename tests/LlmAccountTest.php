@@ -6,7 +6,7 @@ use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
-use RadioChatBox\LlmAccount;
+use RadioChatBox\Services\LlmAccount;
 use RadioChatBox\Services\LlmService;
 use RadioChatBox\Services\SettingsService;
 

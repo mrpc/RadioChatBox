@@ -4,7 +4,7 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\LlmPricing;
+use RadioChatBox\Services\LlmPricing;
 use RadioChatBox\Services\SettingsService;
 
 /**

@@ -3,7 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Scheduler;
+use RadioChatBox\Services\Scheduler;
 
 /**
  * Guards the cron-fallback schedule (app/schedule.php) against the in-worker one.

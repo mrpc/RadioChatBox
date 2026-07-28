@@ -15,7 +15,7 @@ use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\PhotoService;
-use RadioChatBox\Scheduler;
+use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\WorkerLock;
 

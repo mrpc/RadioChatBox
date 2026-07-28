@@ -12,7 +12,7 @@ use RadioChatBox\Services\BlockService;
 use RadioChatBox\Broadcast;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
-use RadioChatBox\MessageFilter;
+use RadioChatBox\Services\MessageFilter;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\PhotoService;
 

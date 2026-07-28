@@ -3,8 +3,8 @@
 namespace RadioChatBox\Services;
 
 use RadioChatBox\Config;
-use RadioChatBox\LlmLog;
-use RadioChatBox\LlmProviders;
+use RadioChatBox\Services\LlmLog;
+use RadioChatBox\Services\LlmProviders;
 use RadioChatBox\Log;
 /**
  * Thin client for the DeepSeek chat completions API.
