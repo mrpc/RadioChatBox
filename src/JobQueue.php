@@ -2,20 +2,28 @@
 
 namespace RadioChatBox;
 
-use Redis;
+use Pramnos\Queue\DelayedQueue;
+use Pramnos\Queue\Drivers\RedisQueueDriver;
 
 /**
- * Minimal delayed job queue on top of Redis.
+ * Delayed job queue for the bot — the "run this later" primitive.
  *
- * The project has no framework queue, so this provides the "run this later"
- * primitive the bot needs: a sorted set holds job ids scored by their run-at
- * timestamp, and a hash holds the payloads. worker.php claims due jobs.
+ * This is a thin application client of the framework delayed-queue capability
+ * ({@see DelayedQueue} backed by {@see RedisQueueDriver}). The app depends on the
+ * capability, not on Redis directly: Redis is one driver of the queue, keyed with
+ * the app's Redis prefix and running over the shared {@see Database::getRedis()}
+ * connection, so the backend is swappable and the sorted-set/hash mechanics live
+ * in the framework, tested once.
  *
- *   <prefix>jobs:delayed  ZSET  jobId => runAt (unix seconds)
- *   <prefix>jobs:data     HASH  jobId => json payload
+ * The Redis layout is unchanged from the previous direct implementation:
  *
- * Claiming is atomic per job: the worker only processes a job if its own ZREM
- * removed it, so multiple workers never run the same job twice.
+ *   <prefix><namespace>:delayed  ZSET  jobId => runAt (unix seconds)
+ *   <prefix><namespace>:data     HASH  jobId => json payload
+ *
+ * so jobs scheduled before the migration are still claimed after it. Claiming is
+ * atomic per job (the framework driver only yields a job whose ZREM it won), so
+ * multiple workers never run the same job twice. The public contract of this
+ * class is unchanged.
  */
 class JobQueue
 {
@@ -24,19 +32,25 @@ class JobQueue
     /** Jobs that fail are retried up to this many times before being dropped. */
     public const MAX_ATTEMPTS = 3;
 
-    private Redis $redis;
-    private string $prefix;
+    private DelayedQueue $queue;
     private string $namespace;
 
     /**
-     * @param string $namespace Key namespace, so a separate queue (or a test)
-     *                          cannot claim or flush the live one
+     * @param string            $namespace Key namespace, so a separate queue (or a
+     *                                     test) cannot claim or flush the live one
+     * @param DelayedQueue|null $queue     Injected queue (test seam); defaults to a
+     *                                     Redis-backed queue on the app connection
      */
-    public function __construct(string $namespace = self::DEFAULT_NAMESPACE)
+    public function __construct(string $namespace = self::DEFAULT_NAMESPACE, ?DelayedQueue $queue = null)
     {
-        $this->redis = Database::getRedis();
-        $this->prefix = Database::getRedisPrefix();
         $this->namespace = $namespace !== '' ? $namespace : self::DEFAULT_NAMESPACE;
+        $this->queue = $queue ?? new DelayedQueue(new RedisQueueDriver(
+            [
+                'prefix'    => Database::getRedisPrefix(),
+                'namespace' => $this->namespace,
+            ],
+            static fn (): \Redis => Database::getRedis()
+        ));
     }
 
     public function getNamespace(): string
@@ -53,23 +67,7 @@ class JobQueue
      */
     public function push(string $type, array $payload, int $delaySeconds = 0): string
     {
-        $jobId = bin2hex(random_bytes(12));
-        $runAt = time() + max(0, $delaySeconds);
-
-        $job = [
-            'id' => $jobId,
-            'type' => $type,
-            'payload' => $payload,
-            'attempts' => (int) ($payload['__attempts'] ?? 0),
-            'created_at' => time(),
-            'run_at' => $runAt,
-        ];
-        unset($job['payload']['__attempts']);
-
-        $this->redis->hSet($this->prefixKey('data'), $jobId, (string) json_encode($job, JSON_UNESCAPED_UNICODE));
-        $this->redis->zAdd($this->prefixKey('delayed'), $runAt, $jobId);
-
-        return $jobId;
+        return $this->queue->push($type, $payload, $delaySeconds);
     }
 
     /**
@@ -79,47 +77,10 @@ class JobQueue
      */
     public function claimDue(int $limit = 20): array
     {
-        $ids = $this->redis->zRangeByScore(
-            $this->prefixKey('delayed'),
-            '0',
-            (string) time(),
-            ['limit' => [0, max(1, $limit)]]
+        return array_map(
+            static fn ($job): array => $job->toArray(),
+            $this->queue->claimDue($limit)
         );
-
-        if (!is_array($ids) || empty($ids)) {
-            return [];
-        }
-
-        $claimed = [];
-
-        foreach ($ids as $jobId) {
-            // Whoever's ZREM returns 1 owns the job.
-            if ((int) $this->redis->zRem($this->prefixKey('delayed'), $jobId) !== 1) {
-                continue;
-            }
-
-            $raw = $this->redis->hGet($this->prefixKey('data'), $jobId);
-            $this->redis->hDel($this->prefixKey('data'), $jobId);
-
-            if (!is_string($raw)) {
-                continue;
-            }
-
-            $job = json_decode($raw, true);
-            if (!is_array($job) || !isset($job['type'])) {
-                continue;
-            }
-
-            $claimed[] = [
-                'id' => (string) ($job['id'] ?? $jobId),
-                'type' => (string) $job['type'],
-                'payload' => is_array($job['payload'] ?? null) ? $job['payload'] : [],
-                'attempts' => (int) ($job['attempts'] ?? 0),
-                'run_at' => (int) ($job['run_at'] ?? time()),
-            ];
-        }
-
-        return $claimed;
     }
 
     /**
@@ -130,19 +91,16 @@ class JobQueue
      */
     public function retry(array $job): bool
     {
-        $attempts = (int) $job['attempts'] + 1;
+        $reserved = new \Pramnos\Queue\ReservedJob(
+            (string) ($job['id'] ?? ''),
+            (string) $job['type'],
+            is_array($job['payload'] ?? null) ? $job['payload'] : [],
+            (int) ($job['attempts'] ?? 0),
+            (int) ($job['run_at'] ?? time())
+        );
 
-        if ($attempts >= self::MAX_ATTEMPTS) {
-            return false;
-        }
-
-        $payload = $job['payload'];
-        $payload['__attempts'] = $attempts;
-
-        // 10s, 20s, ...
-        $this->push((string) $job['type'], $payload, 10 * $attempts);
-
-        return true;
+        // 10s, 20s, ... backoff; dropped once attempts reach MAX_ATTEMPTS.
+        return $this->queue->retry($reserved, self::MAX_ATTEMPTS, 10) !== null;
     }
 
     /**
@@ -150,7 +108,7 @@ class JobQueue
      */
     public function size(): int
     {
-        return (int) $this->redis->zCard($this->prefixKey('delayed'));
+        return $this->queue->size();
     }
 
     /**
@@ -159,15 +117,7 @@ class JobQueue
      */
     public function secondsUntilNext(): ?int
     {
-        $next = $this->redis->zRange($this->prefixKey('delayed'), 0, 0, true);
-
-        if (!is_array($next) || empty($next)) {
-            return null;
-        }
-
-        $runAt = (int) reset($next);
-
-        return max(0, $runAt - time());
+        return $this->queue->secondsUntilNext();
     }
 
     /**
@@ -175,15 +125,6 @@ class JobQueue
      */
     public function flush(): int
     {
-        $count = $this->size();
-        $this->redis->del($this->prefixKey('delayed'));
-        $this->redis->del($this->prefixKey('data'));
-
-        return $count;
-    }
-
-    private function prefixKey(string $key): string
-    {
-        return $this->prefix . $this->namespace . ':' . $key;
+        return $this->queue->flush();
     }
 }
