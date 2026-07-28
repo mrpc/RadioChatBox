@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminStatsController;
+use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -21,12 +22,44 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
  */
 class AdminStatsControllerTest extends TestCase
 {
+    private const ADMIN_ID = 'statsadmin';
+    private ?string $sessionKey = null;
+
     protected function tearDown(): void
     {
+        if ($this->sessionKey !== null) {
+            try {
+                Database::getRedis()->del($this->sessionKey);
+            } catch (\Throwable) {
+                // best effort
+            }
+            $this->sessionKey = null;
+        }
         $_GET = [];
         $_POST = [];
-        unset($_SERVER['REQUEST_METHOD']);
+        unset($_SERVER['REQUEST_METHOD'], $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
         parent::tearDown();
+    }
+
+    /**
+     * Establish an authenticated administrator session so AdminAuth::getCurrentUser()
+     * returns a privileged user; skips the test if Redis is unreachable.
+     */
+    private function authAsAdmin(): void
+    {
+        try {
+            $redis  = Database::getRedis();
+            $prefix = Database::getRedisPrefix();
+            $key    = $prefix . 'admin_session:' . self::ADMIN_ID;
+            $redis->setex($key, 120, json_encode([
+                'username' => self::ADMIN_ID,
+                'role'     => 'administrator',
+            ]));
+            $this->sessionKey = $key;
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ADMIN_ID . ':x';
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -114,5 +147,30 @@ class AdminStatsControllerTest extends TestCase
             'Forbidden: bot activity includes private conversations',
             json_decode($response->getBody(), true)['error']
         );
+    }
+
+    /**
+     * bot-activity view=threads returns the paginated overview: a numeric 'total'
+     * (the full conversation count, so the admin UI can page) alongside the
+     * 'threads' page, and it accepts an offset. Pins the pagination fields ported
+     * from the legacy endpoint. Read-only; safe against the shared dev database.
+     */
+    public function testBotActivityThreadsViewReturnsTotalAndAcceptsOffset(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['view' => 'threads', 'limit' => 10, 'offset' => 0];
+
+        $response = (new AdminStatsController())->botActivity();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertArrayHasKey('total', $body);
+        $this->assertIsInt($body['total']);
+        $this->assertIsArray($body['threads']);
+        // The page can never exceed the requested limit or the reported total.
+        $this->assertLessThanOrEqual(10, count($body['threads']));
+        $this->assertLessThanOrEqual($body['total'], count($body['threads']));
     }
 }

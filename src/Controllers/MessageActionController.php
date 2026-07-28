@@ -7,6 +7,7 @@ use PDO;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
+use RadioChatBox\AdminAuth;
 use RadioChatBox\BlockService;
 use RadioChatBox\BotService;
 use RadioChatBox\ChatService;
@@ -428,6 +429,13 @@ final class MessageActionController
             // Get IP address for violation tracking
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
+            // A banned (IP/nickname) or kicked user cannot communicate with anyone —
+            // enforce it here too, not only on the public chat send path.
+            $banReason = (new ChatService())->communicationBlockReason(trim($fromUsername), $ipAddress, $fromSessionId);
+            if ($banReason !== null) {
+                return Response::json(['error' => $banReason], 403);
+            }
+
             // Filter message for private chat (blocks dangerous content and blacklisted URLs).
             // NOTE: store the RAW (unescaped) text — like public messages — because
             // every renderer HTML-escapes at output time. Escaping here too caused
@@ -634,6 +642,20 @@ final class MessageActionController
             $withUser  = $request->get('with_user', null, 'get');
             $adminMode = $request->get('admin', null, 'get') === 'true';
 
+            // Admin mode returns ALL messages between two users, bypassing the
+            // session isolation that scopes the normal read — so it must be gated
+            // behind an authenticated admin who may already read private messages.
+            // Without this, anyone could read any private conversation.
+            if ($adminMode) {
+                if (!AdminAuth::verify()) {
+                    return Response::json(['error' => 'Unauthorized'], 401);
+                }
+                $adminUser = AdminAuth::getCurrentUser();
+                if (!$adminUser || !in_array($adminUser['role'] ?? '', ['root', 'owner', 'administrator'], true)) {
+                    return Response::json(['error' => 'Forbidden: private conversations require an administrator'], 403);
+                }
+            }
+
             if (empty($username) || empty($sessionId)) {
                 throw new InvalidArgumentException('Username and session ID are required');
             }
@@ -654,7 +676,7 @@ final class MessageActionController
                         LEFT JOIN users u_to ON pm.to_username = u_to.username
                         WHERE ((pm.from_username = ? AND pm.to_username = ?)
                             OR (pm.from_username = ? AND pm.to_username = ?))
-                        ORDER BY pm.created_at ASC
+                        ORDER BY pm.created_at DESC
                         LIMIT 500
                     ");
                     $stmt->execute([$username, $withUser, $withUser, $username]);
@@ -679,7 +701,7 @@ final class MessageActionController
                             LEFT JOIN users u_to ON pm.to_username = u_to.username
                             WHERE ((pm.from_username = ? AND pm.to_username = ?)
                                 OR (pm.from_username = ? AND pm.to_username = ?))
-                            ORDER BY pm.created_at ASC
+                            ORDER BY pm.created_at DESC
                             LIMIT 500
                         ");
                         $stmt->execute([$username, $withUser, $withUser, $username]);
@@ -698,7 +720,7 @@ final class MessageActionController
                             LEFT JOIN users u_to ON pm.to_username = u_to.username
                             WHERE ((pm.from_username = ? AND pm.from_session_id = ? AND pm.to_username = ?)
                                 OR (pm.from_username = ? AND pm.to_username = ? AND pm.to_session_id = ?))
-                            ORDER BY pm.created_at ASC
+                            ORDER BY pm.created_at DESC
                             LIMIT 500
                         ");
                         $stmt->execute([$username, $sessionId, $withUser, $withUser, $username, $sessionId]);
@@ -725,6 +747,14 @@ final class MessageActionController
             }
 
             $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // The conversation queries fetch the most RECENT 500 (ORDER BY created_at
+            // DESC LIMIT 500) so long threads never hide new messages; the client
+            // expects oldest-first, so flip them back to chronological order. (The
+            // "recent messages" branch has no with_user and keeps DESC.)
+            if ($withUser) {
+                $messages = array_reverse($messages);
+            }
 
             // Format attachment data for each message
             foreach ($messages as &$message) {

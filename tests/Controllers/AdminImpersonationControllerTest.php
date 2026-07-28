@@ -5,6 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use RadioChatBox\BlockService;
 use RadioChatBox\Controllers\AdminImpersonationController;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -176,7 +177,8 @@ class AdminImpersonationControllerTest extends TestCase
     /**
      * bot() POST with an unrecognised action returns 400 and the "Unknown action"
      * message (safe: the match falls through to the default before any service
-     * call, so no take/release/force is performed).
+     * call, so no take/release/force/stop/block is performed). The message now
+     * advertises the two force-stop actions added alongside the take-over flow.
      */
     public function testBotPostUnknownActionReturns400(): void
     {
@@ -188,9 +190,31 @@ class AdminImpersonationControllerTest extends TestCase
 
         $this->assertSame(400, $response->getStatusCode());
         $this->assertSame(
-            'Unknown action (expected take, release, reset or force)',
+            'Unknown action (expected take, release, reset, force, stop or block)',
             json_decode($response->getBody(), true)['error']
         );
+    }
+
+    /**
+     * bot() POST action=stop is a recognised action (routed past the match, unlike
+     * an unknown action which 400s). With a fake_user that does not exist,
+     * stopThread returns false before any write, so the controller answers 404
+     * "Fake user not found" — proving the port wired 'stop' in without side effects.
+     */
+    public function testBotStopActionIsRoutedNotRejectedAsUnknown(): void
+    {
+        $this->authAsRoot();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = [
+            'fake_user' => 'nonexistent_' . substr(bin2hex(random_bytes(4)), 0, 8),
+            'peer'      => 'peerx',
+            'action'    => 'stop',
+        ];
+
+        $response = (new AdminImpersonationController())->bot();
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('Fake user not found', json_decode($response->getBody(), true)['error']);
     }
 
     /**
@@ -257,5 +281,56 @@ class AdminImpersonationControllerTest extends TestCase
         $this->assertTrue($body['success']);
         $this->assertIsArray($body['fake_users']);
         $this->assertIsArray($body['conversations']);
+    }
+
+    /**
+     * bot() POST action=block is the compound force-stop action: the fake user
+     * blocks the peer (mutual DM block) AND the bot is stopped in that thread. With
+     * a real fake user it succeeds, leaves a block in place, and marks the thread
+     * ended — the port must wire both halves, not just recognise the action. All
+     * seeded rows (fake user, block, thread) are cleaned up.
+     */
+    public function testBotBlockActionBlocksThePeerAndStopsTheThread(): void
+    {
+        $this->authAsRoot();
+        $pdo    = Database::getPDO();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $fake   = 'blkfake_' . $suffix;
+        $peer   = 'blkpeer_' . $suffix;
+
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, TRUE)')
+            ->execute([$fake]);
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = ['fake_user' => $fake, 'peer' => $peer, 'action' => 'block'];
+
+            $response = (new AdminImpersonationController())->bot();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame('block', $body['action']);
+
+            // The peer is now blocked (mutual)…
+            $this->assertTrue(
+                (new BlockService())->isBlockedBetween($fake, $peer),
+                'block action must leave a DM block in place'
+            );
+            // …and the bot is silenced in this conversation.
+            $stmt = $pdo->prepare(
+                'SELECT farewell_sent_at FROM bot_threads t
+                 JOIN fake_users f ON f.id = t.fake_user_id
+                 WHERE f.nickname = ? AND t.peer_username = ?'
+            );
+            $stmt->execute([$fake, $peer]);
+            $this->assertNotNull($stmt->fetchColumn(), 'block action must also stop the thread');
+        } finally {
+            $pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ? OR blocked_username = ?')
+                ->execute([$fake, $fake]);
+            $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')
+                ->execute([$fake]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
+        }
     }
 }

@@ -4,6 +4,7 @@ namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
+use RadioChatBox\ChatService;
 use RadioChatBox\Controllers\MessageActionController;
 use RadioChatBox\ReactionService;
 
@@ -222,5 +223,56 @@ class MessageActionControllerTest extends TestCase
             'Username and session ID are required',
             json_decode($response->getBody(), true)['error']
         );
+    }
+
+    /**
+     * private-message GET admin=true reads ALL messages between two users,
+     * bypassing session isolation. Without an authenticated admin it must be
+     * refused with 401 Unauthorized BEFORE any query runs — the IDOR gate that
+     * closes anyone reading any private conversation via ?admin=true.
+     */
+    public function testPrivateMessageListAdminModeRequiresAuth(): void
+    {
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+        $_GET = [
+            'username'   => 'someone',
+            'session_id' => 'sess',
+            'with_user'  => 'victim',
+            'admin'      => 'true',
+        ];
+        $response = (new MessageActionController())->privateMessageList();
+
+        $this->assertSame(401, $response->getStatusCode());
+        $this->assertSame('Unauthorized', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * A banned nickname cannot send a DM to anyone: private-message POST enforces
+     * the same communication block as the public chat send path, returning 403
+     * with the ban reason before the message is filtered, stored or published.
+     */
+    public function testPrivateMessageSendRejectsBannedNickname(): void
+    {
+        $chat = new ChatService();
+        $nick = 'dmban_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $chat->banNickname($nick, 'test', 'admin');
+
+        try {
+            $_POST = [
+                'from_username'   => $nick,
+                'to_username'     => 'anybody',
+                'from_session_id' => 'sess',
+                'message'         => 'hello?',
+            ];
+            $response = (new MessageActionController())->privateMessage();
+
+            $this->assertSame(403, $response->getStatusCode());
+            $this->assertSame(
+                'This nickname is not allowed.',
+                json_decode($response->getBody(), true)['error']
+            );
+        } finally {
+            $chat->unbanNickname($nick);
+        }
     }
 }

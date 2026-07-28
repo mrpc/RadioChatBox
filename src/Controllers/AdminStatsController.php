@@ -484,7 +484,11 @@ final class AdminStatsController
                         'enabled' => $settings->get('bot_replies_enabled', 'false') === 'true',
                         // So the panel can show strikes as "2/3" rather than a bare count.
                         'insult_threshold' => $bot->insultBlockThreshold(),
-                        'threads' => $bot->listThreads((int) $req->get('limit', 100, 'get')),
+                        'total' => $bot->countThreads(),
+                        'threads' => $bot->listThreads(
+                            (int) $req->get('limit', 100, 'get'),
+                            (int) $req->get('offset', 0, 'get')
+                        ),
                     ]);
 
                 case 'thread':

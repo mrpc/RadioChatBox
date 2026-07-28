@@ -5262,7 +5262,7 @@
             modal.style.display = 'flex';
 
             try {
-                const res = await fetch(`/api/private-message.php?username=${encodeURIComponent(a)}&with_user=${encodeURIComponent(b)}&session_id=admin&admin=true`, {
+                const res = await fetch(`/api/private-message?username=${encodeURIComponent(a)}&with_user=${encodeURIComponent(b)}&session_id=admin&admin=true`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await res.json();

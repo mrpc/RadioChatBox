@@ -84,11 +84,17 @@ final class AdminImpersonationController
                 'release' => $bot->releaseThread($fakeUser, $peer, false),
                 'reset'   => $bot->releaseThread($fakeUser, $peer, true),
                 'force'   => $bot->forceReply($fakeUser, $peer),
+                // Force-stop: silence the bot in this conversation only (reversible).
+                'stop'    => $bot->stopThread($fakeUser, $peer),
+                // Block: the fake user blocks the peer (mutual DM block). forcePermanent
+                // because a fake user is not a registered account but its block must stick.
+                // Stop the bot here too, so no reply is in flight.
+                'block'   => (new BlockService())->blockUser($fakeUser, $peer, true) && $bot->stopThread($fakeUser, $peer),
                 default   => null,
             };
 
             if ($ok === null) {
-                return Response::json(['error' => 'Unknown action (expected take, release, reset or force)'], 400);
+                return Response::json(['error' => 'Unknown action (expected take, release, reset, force, stop or block)'], 400);
             }
 
             if (!$ok) {
