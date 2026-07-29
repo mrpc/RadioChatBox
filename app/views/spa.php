@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">RadioChatBox - Live Chat</title>
+    <meta name="description" id="meta-description" content="Real-time chat for radio shows">
+    <meta name="keywords" id="meta-keywords" content="radio, chat, live">
+    <meta name="author" id="meta-author" content="">
+    <meta property="og:title" id="og-title" content="RadioChatBox">
+    <meta property="og:description" id="og-description" content="Real-time chat for radio shows">
+    <meta property="og:type" id="og-type" content="website">
+    <meta property="og:image" id="og-image" content="">
+    <link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg">
+    <!-- CSS with automatic cache-busting version based on file modification time -->
+    <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(PUBLIC_PATH . '/css/style.css'); ?>">
+    <!-- Twemoji library for emoji support on older Windows versions -->
+    <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
+    <!-- Custom header scripts will be injected here -->
+    <script id="custom-header-scripts"></script>
+</head>
+<body>
+    <!-- Nickname Selection Modal -->
+    <div id="nickname-modal" class="modal">
+        <div class="modal-content">
+            <h2>Welcome to Live Chat!</h2>
+
+            <!-- Toggle between guest and login -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button id="guest-mode-btn" class="mode-toggle-btn active" style="flex: 1; padding: 10px; border: 2px solid #667eea; background: #667eea; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    Join as Guest
+                </button>
+                <button id="login-mode-btn" class="mode-toggle-btn" style="flex: 1; padding: 10px; border: 2px solid #667eea; background: transparent; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    Login
+                </button>
+            </div>
+
+            <!-- Guest Mode Form -->
+            <div id="guest-form">
+                <p>Please enter your details to get started:</p>
+                <input
+                    type="text"
+                    id="nickname-input"
+                    placeholder="Enter your nickname"
+                    maxlength="50"
+                    autocomplete="off"
+                    required
+                >
+                <div id="profile-fields" style="display: none;">
+                    <select id="age-input" required></select>
+                        <script>
+                        // Populate age select (18-90) for registration
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var ageSelect = document.getElementById('age-input');
+                            if (ageSelect) {
+                                ageSelect.innerHTML = '<option value="">Select Age</option>';
+                                for (var i = 18; i <= 90; i++) {
+                                    ageSelect.innerHTML += '<option value="' + i + '">' + i + '</option>';
+                                }
+                            }
+                        });
+                        </script>
+                    <select id="sex-input" required>
+                        <option value="">Select Sex</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                    <select id="location-input" required>
+                        <option value="">Select Country</option>
+                    </select>
+                </div>
+                <div id="nickname-error" class="error-message"></div>
+                <button id="nickname-submit">Join Chat</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="login-form" style="display: none;">
+                <p>Login with your registered account:</p>
+                <input
+                    type="text"
+                    id="login-username-input"
+                    placeholder="Username"
+                    maxlength="50"
+                    autocomplete="username"
+                    required
+                >
+                <input
+                    type="password"
+                    id="login-password-input"
+                    placeholder="Password"
+                    autocomplete="current-password"
+                    required
+                >
+                <div id="login-error" class="error-message"></div>
+                <button id="login-submit">Login & Join Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Settings Modal -->
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <h2>Profile Settings</h2>
+            <p>Update your profile information:</p>
+
+            <div class="profile-info">
+                <label>Nickname</label>
+                <input
+                    type="text"
+                    id="profile-nickname"
+                    readonly
+                    class="readonly-field"
+                >
+            </div>
+
+            <!-- Display name - always available for authenticated users -->
+            <div id="profile-display-name-field" class="profile-info" style="display: none;">
+                <label>Display Name (Optional)</label>
+                <input
+                    type="text"
+                    id="profile-display-name"
+                    placeholder="Leave empty to use nickname"
+                    maxlength="100"
+                >
+                <small style="color: #999;">This is the name others will see in chat</small>
+            </div>
+
+            <div id="profile-edit-fields" style="display: none;">
+                <div class="profile-info">
+                    <label>Age</label>
+                    <input
+                        type="number"
+                        id="profile-age"
+                        min="18"
+                        max="120"
+                        required
+                    >
+                </div>
+
+                <div class="profile-info">
+                    <label>Sex</label>
+                    <select id="profile-sex" required>
+                        <option value="">Select Sex</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </div>
+
+                <div class="profile-info">
+                    <label>Country</label>
+                    <select id="profile-location" required>
+                        <option value="">Select Country</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="profile-error" class="error-message"></div>
+
+            <div class="modal-buttons">
+                <button id="profile-save-displayname" class="btn-primary" style="display: none;">Save Display Name</button>
+                <button id="profile-save" class="btn-primary" style="display: none;">Save Profile</button>
+                <button id="profile-logout" class="btn-danger">Logout</button>
+                <button id="profile-close" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <!-- Sidebar with active users -->
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <h3>Active Users</h3>
+                <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Toggle sidebar">
+                    <span id="sidebar-toggle-icon">◀</span>
+                </button>
+            </div>
+            <div id="sidebar-content" style="display: flex; flex-direction: column; height: 100%; min-height: 0;">
+                <div id="active-users-count-container">
+                    <span id="active-users-count">0</span> online
+                </div>
+                <div id="active-users-list" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; height: auto;"></div>
+            </div>
+        </div>
+
+        <!-- Main chat area -->
+        <div id="chat-container">
+            <div id="chat-header">
+                <div id="brand-logo-container" style="display: none;">
+                    <img id="brand-logo" src="" alt="Logo" style="max-height: 50px; max-width: 200px; margin-right: 10px;">
+                </div>
+                <img id="now-playing-cover" alt="" title="Now playing — click to enlarge" style="display: none;">
+                <h1><span id="mic-logo" style="display: none;">🎙️ </span>Live Chat <span id="now-playing" class="now-playing" style="display: none;"></span></h1>
+                <div id="user-info">
+                    <button id="sidebar-toggle-mobile" class="icon-button" title="Active Users">
+                        👥
+                    </button>
+                    <span id="current-username"></span>
+                    <button id="conversations-toggle" class="icon-button" title="Private Conversations">
+                        💬
+                        <span id="unread-badge" class="badge" style="display: none;">0</span>
+                    </button>
+                    <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
+                    <button id="change-nickname" class="icon-button" title="Profile & Settings">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M12 1v6m0 6v6m5.2-14.2l-4.2 4.2m0 6l-4.2 4.2M23 12h-6m-6 0H1m14.2 5.2l-4.2-4.2m0-6l-4.2-4.2" />
+                        </svg>
+                    </button>
+                    <button id="admin-panel-btn" class="icon-button" title="Admin Panel" style="display: none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="status">
+                    <span id="status-indicator" class="status-connecting"></span>
+                    <span id="status-text">Connecting...</span>
+                </div>
+            </div>
+
+            <div id="messages-container">
+                <div id="private-chat-header" style="display: none;">
+                    <span id="private-chat-with"></span>
+                    <button id="gallery-btn" class="btn" style="display: none;">🖼️ Gallery</button>
+                    <button id="block-user-btn" class="btn btn-block" style="display: none;">🚫 Block</button>
+                    <button id="back-to-public" class="btn">← Back to Public Chat</button>
+                </div>
+                <div id="messages"></div>
+                <button id="scroll-to-bottom" title="Scroll to bottom">↓</button>
+            </div>
+
+            <div id="conversations-panel" style="display: none;">
+                <div class="conversations-header">
+                    <h3>💬 Private Conversations</h3>
+                    <button id="close-conversations" class="close-btn">✕</button>
+                </div>
+                <div id="conversations-list"></div>
+            </div>
+
+            <div id="chat-input-container">
+                <button id="emoji-button" class="emoji-toggle-btn" title="Emojis">😊</button>
+                <button id="gif-button" class="gif-toggle-btn" title="GIFs" style="display: none;">GIF</button>
+                <button id="photo-button" class="photo-btn" title="Upload Photo" style="display: none;">📷</button>
+                <button id="pin-track-button" class="pin-track-btn" title="Attach the current track to your message" style="display: none;">🎵</button>
+                <input
+                    type="text"
+                    id="message-input"
+                    placeholder="Type your message..."
+                    maxlength="500"
+                    autocomplete="off"
+                    inputmode="text"
+                    data-disable-emoji="true"
+                >
+                <button id="send-button">Send</button>
+                <input type="file" id="photo-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none;">
+            </div>
+
+            <div id="emoji-picker" style="display: none;">
+                <div class="emoji-categories">
+                    <button class="emoji-category active" data-category="smileys">😀</button>
+                    <button class="emoji-category" data-category="gestures">👋</button>
+                    <button class="emoji-category" data-category="hearts">❤️</button>
+                    <button class="emoji-category" data-category="animals">🐶</button>
+                    <button class="emoji-category" data-category="food">🍕</button>
+                    <button class="emoji-category" data-category="activities">⚽</button>
+                    <button class="emoji-category" data-category="travel">✈️</button>
+                    <button class="emoji-category" data-category="objects">💡</button>
+                </div>
+                <div id="emoji-grid"></div>
+            </div>
+
+            <div id="gif-picker" style="display: none;">
+                <div class="gif-search-container">
+                    <input type="text" id="gif-search-input" placeholder="Search GIFs..." autocomplete="off">
+                </div>
+                <div id="gif-grid"></div>
+                <div id="gif-loading" style="display: none;">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/countries.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/countries.js'); ?>"></script>
+    <script src="js/emojis.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/emojis.js'); ?>"></script>
+    <script src="js/analytics.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/analytics.js'); ?>"></script>
+    <script src="js/ads.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/ads.js'); ?>"></script>
+    <script src="js/chat.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/chat.js'); ?>"></script>
+    <!-- Custom body scripts will be injected here -->
+    <script id="custom-body-scripts"></script>
+</body>
+</html>

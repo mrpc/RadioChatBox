@@ -1,0 +1,56 @@
+# RadioChatBox — shared-hosting-portable front controller routing.
+#
+# Everything the app needs to route lives here (no VirtualHost directives
+# required): real files/dirs are served directly, everything else goes to the
+# single front controller (index.php), which decides SPA-vs-API. Works when
+# public/ is the document root AND in a subdirectory install (relative target +
+# the framework strips the front-controller directory from the path).
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Pass the Authorization header through to PHP (CGI/FPM-safe; admin Bearer
+    # auth relies on it). Replaces the VirtualHost mod_rewrite.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Serve existing files and directories as-is: the SPA assets (css/ js/
+    # uploads/ favicon.svg), the admin shell (admin/index.html), the API's
+    # static docs (api/openapi.json, api/docs/) and webhook.php.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Everything else → the front controller. Relative target so a subdirectory
+    # install (docroot mounted at /something/) resolves correctly.
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# index.php serves the SPA shell for "/"; index.html covers static dirs (admin).
+DirectoryIndex index.php index.html
+
+# Compression. text/event-stream is deliberately NOT listed so SSE is never
+# buffered/compressed by the edge.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xml+rss
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# Security headers.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Never serve dotfiles (.env, .htaccess, .git, ...).
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
