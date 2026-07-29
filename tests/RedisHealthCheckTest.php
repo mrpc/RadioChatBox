@@ -6,7 +6,6 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Health\Checks\RedisConnectivityCheck;
 use Pramnos\Health\HealthStatus;
 use Pramnos\Redis\ConnectionManager;
-use RadioChatBox\Config;
 use RadioChatBox\Database;
 
 /**
@@ -23,11 +22,11 @@ class RedisHealthCheckTest extends TestCase
 {
     private function manager(): ConnectionManager
     {
-        $redis = Config::get('redis');
+        $app = ConnectionManager::getInstance();
         return new ConnectionManager([
-            'host'         => $redis['host'],
-            'port'         => $redis['port'],
-            'prefix'       => \Pramnos\Redis\ConnectionManager::getInstance()->prefix(),
+            'host'         => $app->host(),
+            'port'         => $app->port(),
+            'prefix'       => $app->prefix(),
             'timeout'      => 0.5,
             'read_timeout' => 1,
         ]);

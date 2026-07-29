@@ -105,9 +105,8 @@ class ChatServiceTest extends TestCase
         $this->assertEquals($prefix1, $prefix2);
         
         // Prefix should contain the database name
-        $dbConfig = \RadioChatBox\Config::get('database');
-        $dbName = $dbConfig['name'];
-        
+        $dbName = (string) envvar('DB_NAME', 'radiochatbox');
+
         $this->assertStringContainsString($dbName, $prefix1);
         $this->assertEquals("radiochatbox:{$dbName}:", $prefix1);
     }

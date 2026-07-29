@@ -69,18 +69,17 @@ class Database
     public static function getPDO(): PDO
     {
         if (self::$pdo === null) {
-            $config = Config::get('database');
             $dsn = sprintf(
                 'pgsql:host=%s;port=%d;dbname=%s',
-                $config['host'],
-                $config['port'],
-                $config['name']
+                (string) envvar('DB_HOST', 'postgres'),
+                (int) envvar('DB_PORT', 5432),
+                (string) envvar('DB_NAME', 'radiochatbox')
             );
 
             self::$pdo = new PDO(
                 $dsn,
-                $config['user'],
-                $config['password'],
+                (string) envvar('DB_USER', 'radiochatbox'),
+                (string) envvar('DB_PASSWORD', 'radiochatbox_secret'),
                 [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

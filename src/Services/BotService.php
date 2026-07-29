@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Broadcast;
 use RadioChatBox\Cache;
-use RadioChatBox\Config;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Services\LlmProviders;
@@ -554,7 +553,7 @@ class BotService
                         $this->pickBrushOff(),
                         self::resolveEnforceLanguage($fakeUser, (string) $message)
                     ),
-                    (int) (Config::get('chat')['max_message_length'] ?? 500)
+                    (int) envvar('CHAT_MAX_MESSAGE_LENGTH', 500)
                 ), true);
 
                 return false;
@@ -639,7 +638,7 @@ class BotService
             $historyLimit + $summaryState['pending']
         );
 
-        $maxLength = (int) (Config::get('chat')['max_message_length'] ?? 500);
+        $maxLength = (int) envvar('CHAT_MAX_MESSAGE_LENGTH', 500);
         $reply = '';
 
         // Decide the output script from what the peer wrote (auto mode); the model

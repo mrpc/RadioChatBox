@@ -2,7 +2,6 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Config;
 use RadioChatBox\Services\LlmLog;
 use RadioChatBox\Services\LlmProviders;
 /**
@@ -48,7 +47,14 @@ class LlmService
      */
     public function __construct(array $overrides = [])
     {
-        $config = Config::get('llm', []);
+        // Default-provider (DeepSeek) env fallbacks; only applied below when the
+        // resolved provider is the default one.
+        $config = [
+            'api_key'  => (string) envvar('DEEPSEEK_API_KEY', ''),
+            'base_url' => (string) envvar('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
+            'model'    => (string) envvar('DEEPSEEK_MODEL', ''),
+            'timeout'  => (int) envvar('DEEPSEEK_TIMEOUT', 20),
+        ];
 
         $this->provider = LlmProviders::resolve((string) ($overrides['provider'] ?? ''));
         $providerConfig = LlmProviders::config($this->provider);

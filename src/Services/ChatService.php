@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Broadcast;
 use RadioChatBox\Cache;
-use RadioChatBox\Config;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
 use RadioChatBox\MessageHistory;
@@ -114,7 +113,7 @@ class ChatService
      */
     public function getHistory(int $limit = 50): array
     {
-        $limit = min($limit, Config::get('chat')['history_limit']);
+        $limit = min($limit, (int) envvar('CHAT_HISTORY_LIMIT', 100));
         $decodedMessages = $this->messageHistory->recent($limit);
 
         // If the cache is empty, fallback to PostgreSQL

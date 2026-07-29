@@ -42,7 +42,7 @@ final class MessageHistory
     public function __construct(?int $historyLimit = null, ?FlatCache $cache = null)
     {
         $this->cache        = $cache ?? Cache::store();
-        $this->historyLimit = $historyLimit ?? (int) Config::get('chat')['history_limit'];
+        $this->historyLimit = $historyLimit ?? (int) envvar('CHAT_HISTORY_LIMIT', 100);
     }
 
     // ── Recent-message list ─────────────────────────────────────────────────────

@@ -336,15 +336,19 @@ class AdminNotificationsTest extends TestCase
 
     public function testNotificationCreatedAtTimestamp()
     {
-        // Test that created_at defaults to current timestamp
+        // Test that created_at defaults to current timestamp, i.e. it never
+        // precedes a moment before it nor follows a moment after it. Uses
+        // >=/<= because PHP sleep() can return early on a signal (which made the
+        // strict >/< form flake under the full suite), while the ordering the
+        // test actually cares about still holds.
         $beforeTime = time();
         sleep(1);
         $createdAt = time();
         sleep(1);
         $afterTime = time();
-        
-        $this->assertGreaterThan($beforeTime, $createdAt);
-        $this->assertLessThan($afterTime, $createdAt);
+
+        $this->assertGreaterThanOrEqual($beforeTime, $createdAt);
+        $this->assertLessThanOrEqual($afterTime, $createdAt);
     }
 
     public function testNotificationIdempotentRead()

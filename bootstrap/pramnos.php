@@ -4,8 +4,8 @@
  * PramnosFramework coexistence bootstrap.
  *
  * Makes the framework's \Pramnos\Application\Settings available to RadioChatBox,
- * populated from the SAME configuration RadioChatBox\Config already parses from
- * `.env` (via app/settings/settings.php). This is the first foundation step of
+ * populated from the environment (.env loaded here via the native loadDotenv(),
+ * read with envvar()) through app/settings/settings.php. This is the first step of
  * the framework migration (see docs/pramnos-migration/00-overview-and-bc-strategy.md,
  * Phase 1): it introduces the framework *underneath* the app without changing any
  * request-path behaviour.
@@ -33,6 +33,14 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
         static $booted = null;
         if ($booted !== null) {
             return $booted;
+        }
+
+        // Load .env into the environment via the framework's native Dotenv helper
+        // (Symfony Dotenv; server-set vars win, matching the retired Config parser),
+        // so every envvar() read below and across the app sees the same values.
+        // Safe no-op when there is no .env (Docker injects vars directly).
+        if (function_exists('loadDotenv')) {
+            loadDotenv(dirname(__DIR__));
         }
 
         // Route framework logs to <ROOT>/logs and choose the output mode. This is
@@ -67,12 +75,11 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
         // sessions/caches on purpose (per-process ownership uses Installation::id()).
         // Independent of mbstring/Settings.
         if (class_exists(\Pramnos\Redis\ConnectionManager::class)) {
-            $redisConfig = \RadioChatBox\Config::get('redis');
-            $database    = (string) (\RadioChatBox\Config::get('database')['name'] ?? 'radiochatbox');
-            $instance    = preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
+            $database = (string) envvar('DB_NAME', 'radiochatbox');
+            $instance = preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
             \Pramnos\Redis\ConnectionManager::setInstance(new \Pramnos\Redis\ConnectionManager([
-                'host'         => $redisConfig['host'],
-                'port'         => $redisConfig['port'],
+                'host'         => (string) envvar('REDIS_HOST', 'redis'),
+                'port'         => (int) envvar('REDIS_PORT', 6379),
                 'prefix'       => 'radiochatbox:' . $instance . ':',
                 'timeout'      => 0.5,
                 'read_timeout' => 1,

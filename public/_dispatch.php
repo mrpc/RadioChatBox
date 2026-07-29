@@ -24,7 +24,6 @@ use Pramnos\Http\StreamedResponse;
 use Pramnos\Http\Middleware\CorsMiddleware;
 use Pramnos\Http\Middleware\JsonResponseMiddleware;
 use Pramnos\Routing\Router;
-use RadioChatBox\Config;
 
 if (!defined('ROOT')) {
     define('ROOT', dirname(__DIR__)); // public/_dispatch.php -> project root
@@ -45,9 +44,10 @@ $router    = new Router($container);
 $router->loadFromDirectory(ROOT . '/src/Controllers', 'RadioChatBox\\Controllers');
 
 // CORS parity with the legacy CorsHandler: reflect the request Origin against the
-// configured allow-list, credentials on, GET/POST/OPTIONS + Content-Type.
+// configured allow-list (ALLOWED_ORIGINS, comma-separated; '*' by default),
+// credentials on, GET/POST/OPTIONS + Content-Type.
 $router->addGlobalMiddleware(new CorsMiddleware(
-    (array) Config::get('allowed_origins', ['*']),
+    explode(',', (string) envvar('ALLOWED_ORIGINS', '*')),
     ['GET', 'POST', 'OPTIONS'],
     ['Content-Type'],
     true

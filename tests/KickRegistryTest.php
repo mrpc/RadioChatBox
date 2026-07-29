@@ -5,7 +5,6 @@ namespace RadioChatBox\Tests;
 use Pramnos\Cache\Adapter\RedisAdapter;
 use Pramnos\Cache\FlatCache;
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Config;
 use RadioChatBox\KickRegistry;
 
 /**
@@ -24,14 +23,14 @@ class KickRegistryTest extends TestCase
 
     protected function setUp(): void
     {
-        $redis  = Config::get('redis');
+        $app    = \Pramnos\Redis\ConnectionManager::getInstance();
         $prefix = 'kicktest_' . bin2hex(random_bytes(6)) . ':';
         $this->cache = new FlatCache(
             new RedisAdapter(
-                (string) ($redis['host'] ?? '127.0.0.1'),
-                (int) ($redis['port'] ?? 6379),
-                0,
-                $redis['password'] ?? null,
+                $app->host(),
+                $app->port(),
+                $app->database(),
+                $app->password(),
                 $prefix
             ),
             $prefix

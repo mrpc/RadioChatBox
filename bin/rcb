@@ -10,8 +10,8 @@
  * `sessions` table whose columns differ from the framework's (a known schema
  * collision, see docs/pramnos-migration/05-schema-convergence.md). Instead it
  * wires only what console commands need: the framework Settings (loaded from
- * app/settings/settings.php, which mirrors RadioChatBox\Config) and a connected
- * Database, handed to the Application instance the console commands read from.
+ * app/settings/settings.php, which reads the environment via envvar()) and a
+ * connected Database, handed to the Application instance the console commands read from.
  *
  * Usage (inside the app container): php bin/rcb <command>
  *   e.g. php bin/rcb migrate:status

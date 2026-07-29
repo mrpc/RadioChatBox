@@ -3,18 +3,18 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Config;
 
 /**
- * Covers the PramnosFramework coexistence bootstrap (migration Phase 1).
+ * Covers the PramnosFramework coexistence bootstrap (migration Phase 1, updated
+ * for Phase C's native-config move).
  *
- * Why: the first foundation step of adopting the framework is to make its
- * \Pramnos\Application\Settings store available to RadioChatBox, populated from
- * the SAME `.env`-derived configuration RadioChatBox\Config already owns. These
- * tests verify (a) the bootstrap loads the framework safely, (b) the framework
- * ends up seeing exactly the same database/cache values as Config — so the two
- * config planes can never diverge during the bridge phase — and (c) the bootstrap
- * is a safe, idempotent no-op rather than something that can break an endpoint.
+ * Why: the bootstrap makes the framework's \Pramnos\Application\Settings store
+ * available to RadioChatBox, populated from the SAME environment the app reads
+ * with the native envvar() helper (after loadDotenv()). These tests verify
+ * (a) the bootstrap loads the framework safely, (b) the framework ends up seeing
+ * exactly the same database/cache values as envvar() — so the two config planes
+ * can never diverge — and (c) the bootstrap is a safe, idempotent no-op rather
+ * than something that can break an endpoint.
  *
  * The framework core needs the mbstring extension; in environments without it
  * (e.g. an un-provisioned CLI) the framework-dependent assertions are skipped,
@@ -30,24 +30,23 @@ class PramnosBootstrapTest extends TestCase
 
     /**
      * The settings file must be a plain array in the shape the framework expects,
-     * mapping RadioChatBox\Config values onto framework keys (host->hostname,
-     * name->database). This runs without the framework, so it always executes.
+     * mapping the environment onto framework keys (DB_HOST->hostname,
+     * DB_NAME->database). This runs without the framework, so it always executes.
      */
-    public function testSettingsFileMapsConfigOntoFrameworkKeys(): void
+    public function testSettingsFileMapsEnvOntoFrameworkKeys(): void
     {
         $settings = require __DIR__ . '/../app/settings/settings.php';
-        $db = Config::get('database');
 
         $this->assertIsArray($settings);
         $this->assertArrayHasKey('database', $settings);
         $this->assertArrayHasKey('cache', $settings);
 
-        // Framework key <= Config key.
-        $this->assertSame($db['host'], $settings['database']['hostname']);
-        $this->assertSame($db['port'], $settings['database']['port']);
-        $this->assertSame($db['name'], $settings['database']['database']);
-        $this->assertSame($db['user'], $settings['database']['user']);
-        $this->assertSame($db['password'], $settings['database']['password']);
+        // Framework key <= environment value (same default as the app reads).
+        $this->assertSame((string) envvar('DB_HOST', 'postgres'), $settings['database']['hostname']);
+        $this->assertSame((int) envvar('DB_PORT', 5432), $settings['database']['port']);
+        $this->assertSame((string) envvar('DB_NAME', 'radiochatbox'), $settings['database']['database']);
+        $this->assertSame((string) envvar('DB_USER', 'radiochatbox'), $settings['database']['user']);
+        $this->assertSame((string) envvar('DB_PASSWORD', 'radiochatbox_secret'), $settings['database']['password']);
         // PostgreSQL is a first-class framework dialect; the bridge pins it explicitly.
         $this->assertSame('postgresql', $settings['database']['type']);
         $this->assertSame('public', $settings['database']['schema']);
@@ -69,10 +68,10 @@ class PramnosBootstrapTest extends TestCase
 
     /**
      * When the framework is available, the bootstrap loads its Settings store and
-     * the framework sees exactly the same database configuration as Config —
+     * the framework sees exactly the same database configuration as envvar() —
      * proving the two config planes agree.
      */
-    public function testFrameworkSeesSameDatabaseConfigAsConfig(): void
+    public function testFrameworkSeesSameDatabaseConfigAsEnv(): void
     {
         if (!extension_loaded('mbstring') || !class_exists(\Pramnos\Application\Settings::class)) {
             $this->markTestSkipped('PramnosFramework not loadable in this environment (mbstring missing).');
@@ -82,14 +81,13 @@ class PramnosBootstrapTest extends TestCase
         // Idempotent: a second call is still true and does not throw.
         $this->assertTrue(radiochatbox_boot_pramnos());
 
-        $db = Config::get('database');
         $fw = \Pramnos\Application\Settings::getSetting('database');
 
         // getSetting() returns an array-value as an object.
         $this->assertIsObject($fw);
-        $this->assertSame($db['host'], $fw->hostname);
-        $this->assertSame($db['port'], $fw->port);
-        $this->assertSame($db['name'], $fw->database);
+        $this->assertSame((string) envvar('DB_HOST', 'postgres'), $fw->hostname);
+        $this->assertSame((int) envvar('DB_PORT', 5432), $fw->port);
+        $this->assertSame((string) envvar('DB_NAME', 'radiochatbox'), $fw->database);
         $this->assertSame('postgresql', $fw->type);
     }
 
@@ -98,7 +96,7 @@ class PramnosBootstrapTest extends TestCase
      * the same host/port RadioChatBox already uses, under the app's per-database
      * key prefix so framework and app keys never collide.
      */
-    public function testFrameworkSeesSameCacheConfigAsConfig(): void
+    public function testFrameworkSeesSameCacheConfigAsEnv(): void
     {
         if (!extension_loaded('mbstring') || !class_exists(\Pramnos\Application\Settings::class)) {
             $this->markTestSkipped('PramnosFramework not loadable in this environment (mbstring missing).');
@@ -106,13 +104,12 @@ class PramnosBootstrapTest extends TestCase
 
         radiochatbox_boot_pramnos();
 
-        $redis = Config::get('redis');
         $cache = \Pramnos\Application\Settings::getSetting('cache');
 
         $this->assertIsObject($cache);
         $this->assertSame('redis', $cache->method);
-        $this->assertSame($redis['host'], $cache->hostname);
-        $this->assertSame($redis['port'], $cache->port);
+        $this->assertSame((string) envvar('REDIS_HOST', 'redis'), $cache->hostname);
+        $this->assertSame((int) envvar('REDIS_PORT', 6379), $cache->port);
         $this->assertSame(\Pramnos\Redis\ConnectionManager::getInstance()->prefix(), $cache->prefix);
     }
 }

@@ -4,7 +4,6 @@ namespace RadioChatBox\Controllers;
 
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\Config;
 
 /**
  * GET /api/version — the deployed app version plus a server timestamp.
@@ -20,11 +19,32 @@ final class VersionController
         try {
             return Response::json([
                 'success'   => true,
-                'version'   => Config::get('version'),
+                'version'   => $this->version(),
                 'timestamp' => time(),
             ]);
         } catch (\Throwable $e) {
             return Response::json(['success' => false, 'error' => 'Failed to get version'], 500);
         }
+    }
+
+    /**
+     * The deployed version: an explicit APP_VERSION when set, otherwise a
+     * cache-busting stamp derived from the stylesheet's mtime (a new build ships
+     * a new style.css), falling back to the current time. Matches the value the
+     * retired RadioChatBox\Config produced.
+     */
+    private function version(): string
+    {
+        $explicit = envvar('APP_VERSION');
+        if ($explicit !== null && $explicit !== '') {
+            return (string) $explicit;
+        }
+
+        $cssFile = __DIR__ . '/../../public/css/style.css';
+        if (is_file($cssFile)) {
+            return (string) filemtime($cssFile);
+        }
+
+        return (string) time();
     }
 }

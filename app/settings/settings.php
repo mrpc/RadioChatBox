@@ -1,37 +1,32 @@
 <?php
 
 /**
- * PramnosFramework settings file (coexistence bridge).
+ * PramnosFramework settings file.
  *
- * During the framework-integration bridge phase, RadioChatBox\Config remains the
- * single source of truth for configuration parsed from `.env`. This file simply
- * re-expresses that same configuration in the shape PramnosFramework's
- * \Pramnos\Application\Settings expects, so there can never be two divergent
- * config values. Once the app fully adopts the framework, this file becomes the
- * primary source and Config is retired (see docs/pramnos-migration/).
+ * Re-expresses RadioChatBox's environment configuration (loaded from `.env` by
+ * bootstrap/pramnos.php via the native loadDotenv(), read here with envvar())
+ * in the shape \Pramnos\Application\Settings expects, so the framework database
+ * layer and the Redis cache adapter connect to exactly the same place as the
+ * rest of the app. Defaults match the Docker service names.
  *
  * @return array<string,mixed>
  */
 
-$db    = \RadioChatBox\Config::get('database');
-$redis = \RadioChatBox\Config::get('redis');
-
 return [
     'database' => [
-        // Framework key => RadioChatBox\Config key
-        'hostname' => $db['host'],
-        'port'     => $db['port'],
-        'database' => $db['name'],
-        'user'     => $db['user'],
-        'password' => $db['password'],
+        'hostname' => (string) envvar('DB_HOST', 'postgres'),
+        'port'     => (int) envvar('DB_PORT', 5432),
+        'database' => (string) envvar('DB_NAME', 'radiochatbox'),
+        'user'     => (string) envvar('DB_USER', 'radiochatbox'),
+        'password' => (string) envvar('DB_PASSWORD', 'radiochatbox_secret'),
         'type'     => 'postgresql',
         'schema'   => 'public',
         'prefix'   => '',
     ],
     'cache' => [
         'method'   => 'redis',
-        'hostname' => $redis['host'],
-        'port'     => $redis['port'],
+        'hostname' => (string) envvar('REDIS_HOST', 'redis'),
+        'port'     => (int) envvar('REDIS_PORT', 6379),
         'caching'  => true,
         // Keep the exact per-database key namespace RadioChatBox already uses,
         // so framework-cached keys never collide with app keys. bootstrap/pramnos.php
