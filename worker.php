@@ -81,7 +81,21 @@ use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
 use Pramnos\Console\WorkerLock;
 use Pramnos\Console\WorkerReloader;
+use Pramnos\Console\SystemdNotifier;
+use Pramnos\Console\SignalStop;
 use RadioChatBox\Installation;
+
+// Boot the framework: define ROOT, load .env, wire the Redis ConnectionManager and
+// connect the database (same bootstrap the web front controller and bin/rcb use).
+// Without this a directly-run worker cannot read settings — Settings/Database need it.
+if (!defined('ROOT')) {
+    define('ROOT', __DIR__);
+}
+require ROOT . '/bootstrap/pramnos.php';
+if (!radiochatbox_boot_pramnos()) {
+    fwrite(STDERR, "PramnosFramework is not available in this environment.\n");
+    exit(1);
+}
 
 /**
  * Log message with timestamp
@@ -89,30 +103,6 @@ use RadioChatBox\Installation;
 function logMessage(string $message): void
 {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
-}
-
-/**
- * Notify systemd, when running under `Type=notify`. A no-op otherwise, so the
- * worker behaves identically under cron or by hand.
- *
- * Abstract-namespace sockets (NOTIFY_SOCKET starting with '@') are not reachable
- * from PHP streams and are skipped.
- */
-function sdNotify(string $state): void
-{
-    $socket = getenv('NOTIFY_SOCKET');
-
-    if (!is_string($socket) || $socket === '' || $socket[0] === '@') {
-        return;
-    }
-
-    $fp = @stream_socket_client('udg://' . $socket, $errno, $errstr, 1, STREAM_CLIENT_CONNECT);
-    if ($fp === false) {
-        return;
-    }
-
-    @fwrite($fp, $state);
-    fclose($fp);
 }
 
 /**
@@ -166,7 +156,8 @@ function processBatch(
     int $batchSize,
     bool $verbose,
     ?WorkerLock $lock = null,
-    int &$totalProcessed = 0
+    int &$totalProcessed = 0,
+    ?SystemdNotifier $systemd = null
 ): int {
     $jobs = $queue->claimDue($batchSize);
 
@@ -207,7 +198,7 @@ function processBatch(
             'last_job' => $job['type'] . ': ' . mb_substr($result, 0, 120),
             'last_job_at' => time(),
         ]);
-        sdNotify("WATCHDOG=1\n");
+        $systemd?->watchdog();
     }
 
     return count($jobs);
@@ -276,6 +267,8 @@ try {
     // health check also reads (WorkerLock's own default is not installation-scoped).
     $lockPath = (string) ($options['lock'] ?? '');
     $lock = new WorkerLock('worker', $lockPath !== '' ? $lockPath : Installation::lockPath(), $staleAfter);
+    // systemd Type=notify watchdog (a no-op under cron / by hand).
+    $systemd = new SystemdNotifier();
 
     switch ($action) {
         case 'status':
@@ -519,12 +512,12 @@ try {
                 exit($exitCode);
             }
 
-            sdNotify("READY=1\n");
+            $systemd->ready();
 
             try {
                 $bot = new BotService($settings, $queue);
                 $processed = 0;
-                processBatch($bot, $queue, (int) ($options['batch'] ?? 50), $verbose, $lock, $processed);
+                processBatch($bot, $queue, (int) ($options['batch'] ?? 50), $verbose, $lock, $processed, $systemd);
                 logMessage("Processed {$processed} job(s)");
 
                 // With --schedule this one cron line covers the periodic tasks too, so a
@@ -584,16 +577,13 @@ try {
             $totalProcessed = 0;
 
             // Graceful shutdown so systemd restarts / deploys don't cut a job
-            // in half.
-            if (function_exists('pcntl_signal')) {
-                pcntl_async_signals(true);
-                $stop = function (int $signal) use (&$running): void {
-                    logMessage("Received signal {$signal}, finishing current batch...");
-                    $running = false;
-                };
-                pcntl_signal(SIGTERM, $stop);
-                pcntl_signal(SIGINT, $stop);
-            }
+            // in half: the framework SignalStop traps SIGTERM/SIGINT and finishes
+            // the current batch before the loop exits.
+            $signals = new SignalStop([], function (?int $signal) use (&$running): void {
+                logMessage('Received signal ' . ($signal ?? '?') . ', finishing current batch...');
+                $running = false;
+            });
+            $signals->install();
 
             logMessage(sprintf(
                 'Worker started (pid %d, sleep=%ds, batch=%d, max-runtime=%s, lock=%s)',
@@ -604,11 +594,11 @@ try {
                 $lock->getPath()
             ));
 
-            sdNotify("READY=1\n");
+            $systemd->ready();
 
             try {
                 while ($running) {
-                    processBatch($bot, $queue, $batchSize, $verbose, $lock, $totalProcessed);
+                    processBatch($bot, $queue, $batchSize, $verbose, $lock, $totalProcessed, $systemd);
 
                     if ($maxRuntime > 0 && (time() - $startedAt) >= $maxRuntime) {
                         break;
@@ -621,7 +611,7 @@ try {
                         logMessage('Lock taken over by another worker (we stalled past --stale-after) - exiting');
                         break;
                     }
-                    sdNotify("WATCHDOG=1\n");
+                    $systemd->watchdog();
 
                     // The supervisor asks rather than kills, so this is where the
                     // request is honoured: after a batch, with nothing half-done.
@@ -679,7 +669,7 @@ try {
                     sleep($sleep);
                 }
             } finally {
-                sdNotify("STOPPING=1\n");
+                $systemd->stopping();
                 $lock->release();
             }
 
