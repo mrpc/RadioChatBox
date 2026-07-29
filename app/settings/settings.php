@@ -22,6 +22,9 @@ return [
         'type'     => 'postgresql',
         'schema'   => 'public',
         'prefix'   => '',
+        // Session time zone applied by the framework on connect (replaces the
+        // former manual SET in RadioChatBox\Database::getDb()).
+        'timezone' => getenv('TZ') ?: 'Europe/Athens',
     ],
     'cache' => [
         'method'   => 'redis',

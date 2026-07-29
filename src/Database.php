@@ -50,15 +50,13 @@ class Database
                 );
             }
 
+            // The session timezone is applied by the framework on connect, from
+            // the `database.timezone` setting (app/settings/settings.php), so NOW()
+            // and timestamp rendering match the app zone without a manual SET here.
             $db = PramnosDatabase::getInstance();
             if (!$db->connected) {
                 $db->connect();
             }
-
-            // Match the legacy PDO session timezone (see getPDO()) so that NOW()
-            // and timestamp rendering are byte-identical after the convergence.
-            $timezone = getenv('TZ') ?: 'Europe/Athens';
-            $db->statement("SET timezone = '" . str_replace("'", "''", $timezone) . "'");
 
             self::$db = $db;
         }

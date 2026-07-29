@@ -3,18 +3,16 @@
 namespace RadioChatBox;
 
 use Pramnos\Queue\DelayedQueue;
-use Pramnos\Queue\Drivers\RedisQueueDriver;
-use Pramnos\Redis\ConnectionManager;
 
 /**
  * Delayed job queue for the bot — the "run this later" primitive.
  *
  * This is a thin application client of the framework delayed-queue capability
- * ({@see DelayedQueue} backed by {@see RedisQueueDriver}). The app depends on the
- * capability, not on Redis directly: Redis is one driver of the queue, keyed with
- * the app's Redis prefix and running over the shared {@see ConnectionManager}
- * connection, so the backend is swappable and the sorted-set/hash mechanics live
- * in the framework, tested once.
+ * ({@see DelayedQueue}). The driver + connection wiring lives in the framework:
+ * {@see DelayedQueue::redis()} builds a Redis-backed queue for our namespace,
+ * bound to the shared Redis ConnectionManager (its per-install prefix + pooled
+ * connection). The app depends on the capability, not on Redis directly, and this
+ * class keeps only its own policy (attempts, backoff, namespace guard).
  *
  * The Redis layout is unchanged from the previous direct implementation:
  *
@@ -45,13 +43,10 @@ class JobQueue
     public function __construct(string $namespace = self::DEFAULT_NAMESPACE, ?DelayedQueue $queue = null)
     {
         $this->namespace = $namespace !== '' ? $namespace : self::DEFAULT_NAMESPACE;
-        $this->queue = $queue ?? new DelayedQueue(new RedisQueueDriver(
-            [
-                'prefix'    => ConnectionManager::getInstance()->prefix(),
-                'namespace' => $this->namespace,
-            ],
-            static fn (): object => ConnectionManager::getInstance()->connection()
-        ));
+        // The framework builds the Redis-backed queue for our namespace from the
+        // shared ConnectionManager; this class keeps only the app policy below
+        // (attempts, backoff, namespace guard).
+        $this->queue = $queue ?? DelayedQueue::redis($this->namespace);
     }
 
     public function getNamespace(): string

@@ -3,49 +3,31 @@
 namespace RadioChatBox;
 
 use Pramnos\Broadcasting\BroadcastingManager;
-use Pramnos\Broadcasting\Drivers\RedisDriver;
-use Pramnos\Redis\ConnectionManager;
 
 /**
  * Application event-bus (broadcast / pub-sub) accessor.
  *
- * Exposes the framework's {@see BroadcastingManager} configured for RadioChatBox:
- * a Redis-backed driver in production, keyed with the app's Redis prefix and
- * publishing over the shared {@see ConnectionManager} connection. Services and
- * controllers broadcast realtime events through this instead of publishing to
- * Redis themselves, so the transport is uniform, swappable (Redis today;
- * Database/Pusher/Kafka later, by config) and test-doubleable (inject a
- * Null/Log/fake driver via {@see setManager()}).
+ * A thin, app-named handle over the framework's default broadcasting manager
+ * ({@see BroadcastingManager::instance()}) — Redis-backed, bound to the shared
+ * framework {@see \Pramnos\Redis\ConnectionManager} (its per-install prefix and
+ * pooled connection). The framework owns the driver wiring now; this class adds
+ * the app's publish() convenience + a test seam.
  *
- * The driver applies the SAME prefix the SSE edges subscribe with
- * (ConnectionManager::prefix()), so every channel is prefixed consistently — this
- * is deliberately how the two historically-unprefixed publishers get normalized
- * (see docs/pramnos-migration/06 §8.2). Channels are passed UNPREFIXED here
- * (e.g. 'chat:updates'); the driver adds the prefix.
- *
- * The subscribe side lives in the SSE controllers, which build their own
+ * The driver applies the SAME prefix the SSE edges subscribe with, so every
+ * channel is prefixed consistently. Channels are passed UNPREFIXED here (e.g.
+ * 'chat:updates'); the driver adds the prefix — this is deliberately how the two
+ * historically-unprefixed publishers get normalized (see docs/pramnos-migration/06
+ * §8.2). The subscribe side lives in the SSE controllers, which build their own
  * RedisDriver on a dedicated blocking connection (ConnectionManager::newConnection()).
  */
 final class Broadcast
 {
-    private static ?BroadcastingManager $manager = null;
-
     /**
-     * The shared broadcasting manager (lazy). Redis-backed in production.
+     * The shared broadcasting manager (Redis-backed in production).
      */
     public static function manager(): BroadcastingManager
     {
-        if (self::$manager === null) {
-            $connections = ConnectionManager::getInstance();
-            $manager = new BroadcastingManager();
-            $manager->addDriver(new RedisDriver(
-                ['prefix' => $connections->prefix()],
-                static fn (): object => ConnectionManager::getInstance()->connection()
-            ));
-            $manager->setDefault('redis');
-            self::$manager = $manager;
-        }
-        return self::$manager;
+        return BroadcastingManager::instance();
     }
 
     /**
@@ -63,6 +45,6 @@ final class Broadcast
      */
     public static function setManager(?BroadcastingManager $manager): void
     {
-        self::$manager = $manager;
+        BroadcastingManager::setInstance($manager);
     }
 }
