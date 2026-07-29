@@ -8,8 +8,8 @@ use RadioChatBox\Installation;
 /**
  * RadioChatBox daemon orchestrator (migration Phase 3).
  *
- * Replaces the bespoke src/DaemonSupervisor by subclassing PramnosFramework's
- * DaemonOrchestrator, which provides the reconcile loop, crash respawn,
+ * Subclasses PramnosFramework's DaemonOrchestrator (which replaced the app's
+ * former bespoke supervisor), providing the reconcile loop, crash respawn,
  * heartbeat-staleness restart, /proc dedup, flock singleton guard, graceful
  * `.stop` handling and git-HEAD redeploy restart.
  *

@@ -87,6 +87,15 @@ class AdminSystemControllerTest extends TestCase
         $this->assertArrayHasKey('queue', $body);
         $this->assertArrayHasKey('size', $body['queue']);
         $this->assertIsArray($body['schedule']);
+
+        // Supervisor health now comes from the framework daemon orchestrator's
+        // status() (replaces the retired DaemonSupervisor). The frontend reads
+        // exactly these keys.
+        $this->assertArrayHasKey('supervisor', $body);
+        $this->assertIsBool($body['supervisor']['running']);
+        $this->assertArrayHasKey('pid', $body['supervisor']);
+        $this->assertArrayHasKey('heartbeat_age_seconds', $body['supervisor']);
+        $this->assertIsArray($body['daemons']);
     }
 
     /**

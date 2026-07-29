@@ -11,7 +11,7 @@ use RadioChatBox\AdminAuth;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\ArtworkService;
 use RadioChatBox\Services\ChatService;
-use RadioChatBox\DaemonSupervisor;
+use RadioChatBox\Console\RadioChatBoxDaemons;
 use RadioChatBox\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;
@@ -168,10 +168,11 @@ final class AdminSystemController
             }
 
             // The supervisor is what restarts a dead worker, so "worker stopped"
-            // and "nothing is watching it" are different problems.
-            $supervisor      = new DaemonSupervisor();
-            $supervisorState = $supervisor->ownLock()->readState();
-            $supervisorAge   = $supervisor->ownLock()->heartbeatAge($supervisorState);
+            // and "nothing is watching it" are different problems. Its health comes
+            // from the framework daemon orchestrator (the process `rcb daemons`
+            // runs) — reading its own lock/state, so this reflects the supervisor
+            // that is actually running.
+            $supervisor = (new RadioChatBoxDaemons())->status();
 
             return Response::json([
                 'success'  => true,
@@ -179,11 +180,11 @@ final class AdminSystemController
                 'instance' => Installation::id(),
                 'root'     => Installation::root(),
                 'supervisor' => [
-                    'running'               => $supervisorState !== null && $supervisor->ownLock()->isHeldByAnother(),
-                    'pid'                   => $supervisorState['pid'] ?? null,
-                    'heartbeat_age_seconds' => $supervisorAge,
+                    'running'               => $supervisor['running'],
+                    'pid'                   => $supervisor['pid'],
+                    'heartbeat_age_seconds' => $supervisor['heartbeat_age_seconds'],
                 ],
-                'daemons'               => $supervisor->status(),
+                'daemons'               => $supervisor['daemons'],
                 'running'               => $running,
                 'wedged'                => $wedged,
                 'pid'                   => $state['pid'] ?? null,
