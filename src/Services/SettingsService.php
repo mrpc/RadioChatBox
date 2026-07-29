@@ -375,6 +375,34 @@ class SettingsService
     }
 
     /**
+     * A stamp that moves whenever the settings are saved, for a long-running
+     * worker to notice a change and rebuild what it derived from settings.
+     *
+     * Written by invalidateCache(), which every admin save goes through. When it
+     * is missing (a fresh Redis, or a direct database edit) the table's own
+     * last-modified time is used instead, so a change is never missed.
+     */
+    public function versionStamp(): string
+    {
+        try {
+            $stamp = FlatCache::default()->get(self::VERSION_KEY);
+            if (is_string($stamp) && $stamp !== '') {
+                return $stamp;
+            }
+        } catch (\Throwable) {
+            // Fall through to the database.
+        }
+
+        try {
+            $max = $this->db->queryBuilder()->from('settings')->max('updated_at');
+
+            return (string) ($max ?: 'none');
+        } catch (\Throwable) {
+            return 'unknown';
+        }
+    }
+
+    /**
      * Update multiple settings at once
      */
     public function setMultiple(array $settings): bool

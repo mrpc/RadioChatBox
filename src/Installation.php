@@ -63,6 +63,25 @@ class Installation
     }
 
     /**
+     * The lock path a per-installation worker owns: `logs/<name>-<id>.lock`,
+     * falling back to the system temp directory when logs/ is not writable.
+     *
+     * Single source of truth so the worker and the dashboard health check agree
+     * on which file to write and read. Scoped by installation (not by database):
+     * two copies of the code can share a database name, and under the temp
+     * fallback one installation's lock would otherwise silently keep the other's
+     * worker from ever starting.
+     *
+     * Note for systemd units: with `PrivateTmp=true` the temp fallback is not
+     * shared, so keep logs/ writable (or pass --lock) if the worker is also
+     * started from cron or by hand.
+     */
+    public static function lockPath(string $name = 'worker'): string
+    {
+        return \Pramnos\Console\WorkerLock::defaultPath($name . '-' . self::id(), self::root() . '/logs');
+    }
+
+    /**
      * Forget the cached identity. Only needed by tests.
      */
     public static function reset(): void

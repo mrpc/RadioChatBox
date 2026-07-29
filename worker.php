@@ -35,8 +35,9 @@
  *   run-task    - Run one periodic task now, by name.
  *   flush   - Drop every scheduled job (cancels pending bot replies).
  *
- * `run` and `once` hold a single-instance lock with a heartbeat (src/WorkerLock.php,
- * plain PHP - no flock), so a second worker exits instead of doubling up and no
+ * `run` and `once` hold a single-instance lock with a heartbeat (framework
+ * Pramnos\Console\WorkerLock, plain PHP - no flock), so a second worker exits
+ * instead of doubling up and no
  * `flock(1)` wrapper is needed in the crontab. A lock left behind by a killed or
  * wedged worker is taken over automatically (dead pid, or no heartbeat for
  * --stale-after seconds), and `status` reports the heartbeat so a worker that is
@@ -78,8 +79,9 @@ use RadioChatBox\Services\LlmPricing;
 use RadioChatBox\Services\LlmService;
 use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
-use RadioChatBox\WorkerLock;
-use RadioChatBox\WorkerReloader;
+use Pramnos\Console\WorkerLock;
+use Pramnos\Console\WorkerReloader;
+use RadioChatBox\Installation;
 
 /**
  * Log message with timestamp
@@ -270,7 +272,10 @@ try {
     $settings = new SettingsService();
     $queue = new JobQueue();
     $staleAfter = max(10, (int) ($options['stale-after'] ?? WorkerLock::DEFAULT_STALE_AFTER));
-    $lock = new WorkerLock('worker', (string) ($options['lock'] ?? ''), $staleAfter);
+    // An explicit --lock wins; otherwise the per-installation path the dashboard
+    // health check also reads (WorkerLock's own default is not installation-scoped).
+    $lockPath = (string) ($options['lock'] ?? '');
+    $lock = new WorkerLock('worker', $lockPath !== '' ? $lockPath : Installation::lockPath(), $staleAfter);
 
     switch ($action) {
         case 'status':
@@ -560,7 +565,13 @@ try {
             $scheduler = $withSchedule ? new Scheduler($settings) : null;
 
             // A daemon otherwise runs the code and the configuration it started with.
-            $reloader = new WorkerReloader();
+            // Watch the app's own code and lockfile; the settings stamp comes from
+            // SettingsService (Redis version key, falling back to the DB).
+            $reloader = new WorkerReloader(
+                Installation::root(),
+                ['src', 'worker.php', 'composer.lock'],
+                fn (): string => $settings->versionStamp()
+            );
             $reloader->baseline();
             // Off by default: in production the supervisor owns restarts (it watches
             // the deployed commit), and mtimes change on every editor save. This is the

@@ -19,7 +19,7 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\PhotoService;
 use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
-use RadioChatBox\WorkerLock;
+use Pramnos\Console\WorkerLock;
 
 /**
  * Admin "system" resource controller — infrastructure, moderation views and
@@ -134,7 +134,7 @@ final class AdminSystemController
     {
         try {
             $settings = new SettingsService();
-            $lock     = new WorkerLock();
+            $lock     = new WorkerLock('worker', Installation::lockPath());
             $queue    = new JobQueue();
 
             $state        = $lock->readState();

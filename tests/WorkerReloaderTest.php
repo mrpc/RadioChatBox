@@ -3,16 +3,19 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Pramnos\Database\Database;
+use Pramnos\Console\WorkerReloader;
+use RadioChatBox\Installation;
 use RadioChatBox\Services\SettingsService;
-use RadioChatBox\WorkerReloader;
 
 /**
- * Covers keeping a long-running worker current.
+ * Covers the application side of keeping a long-running worker current, now that
+ * the WorkerReloader primitive lives in the framework.
  *
- * A PHP daemon runs the code and the configuration it started with: settings can be
- * adopted in place, code cannot be reloaded at all and the process has to exit for a
- * supervisor to replace it. Both signals are checked here.
+ * The framework class fingerprints code and detects a supervisor; this suite
+ * covers what RadioChatBox supplies to it — the per-installation lock path, the
+ * settings-version stamp resolver (Redis version key, falling back to the DB),
+ * and that a reloader wired the way worker.php wires it notices a saved setting
+ * and watches worker.php itself.
  */
 class WorkerReloaderTest extends TestCase
 {
@@ -39,45 +42,52 @@ class WorkerReloaderTest extends TestCase
         @rmdir($this->root);
     }
 
+    /** The RadioChatBox watched set, as worker.php wires it. */
+    private function reloader(): WorkerReloader
+    {
+        return new WorkerReloader(
+            $this->root,
+            ['src', 'worker.php', 'composer.lock'],
+            fn (): string => (new SettingsService())->versionStamp()
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Lock path (single source of truth: worker + dashboard must agree)
+    // ------------------------------------------------------------------
+
+    /**
+     * The lock path is scoped by installation id and named for the worker, so two
+     * checkouts sharing a database (or the temp fallback) never share a lock.
+     */
+    public function testLockPathIsInstallationScoped(): void
+    {
+        $path = Installation::lockPath('worker');
+
+        $this->assertSame('worker-' . Installation::id() . '.lock', basename($path));
+        $this->assertStringEndsWith('.lock', $path);
+    }
+
+    /**
+     * lockPath() defaults to the 'worker' name — the same file the dashboard's
+     * `new WorkerLock('worker', Installation::lockPath())` health check reads.
+     */
+    public function testLockPathDefaultsToTheWorkerName(): void
+    {
+        $this->assertSame(Installation::lockPath('worker'), Installation::lockPath());
+    }
+
     // ------------------------------------------------------------------
     // Code
     // ------------------------------------------------------------------
 
-    public function testAnUnchangedTreeKeepsItsFingerprint(): void
-    {
-        $reloader = new WorkerReloader($this->root);
-        $first = $reloader->codeFingerprint();
-
-        $this->assertSame($first, $reloader->codeFingerprint());
-        $this->assertFalse($reloader->codeChanged(), 'the first check establishes the baseline');
-        $this->assertFalse($reloader->codeChanged());
-    }
-
-    public function testAnEditedFileIsNoticed(): void
-    {
-        $reloader = new WorkerReloader($this->root);
-        $reloader->baseline();
-
-        // A deploy changes size and mtime; either is enough.
-        file_put_contents($this->root . '/src/Thing.php', "<?php // one, edited\n");
-        touch($this->root . '/src/Thing.php', time() + 5);
-
-        $this->assertTrue($reloader->codeChanged());
-    }
-
-    public function testANewFileIsNoticed(): void
-    {
-        $reloader = new WorkerReloader($this->root);
-        $reloader->baseline();
-
-        file_put_contents($this->root . '/src/Another.php', "<?php // two\n");
-
-        $this->assertTrue($reloader->codeChanged(), 'a new class is a code change too');
-    }
-
+    /**
+     * worker.php is in the watched set, so editing the worker script itself is a
+     * code change that triggers a reload.
+     */
     public function testTheWorkerScriptItselfIsWatched(): void
     {
-        $reloader = new WorkerReloader($this->root);
+        $reloader = $this->reloader();
         $reloader->baseline();
 
         file_put_contents($this->root . '/worker.php', "<?php // worker, edited\n");
@@ -86,100 +96,69 @@ class WorkerReloaderTest extends TestCase
         $this->assertTrue($reloader->codeChanged());
     }
 
+    /**
+     * Files outside the watched set (logs, notes, uploads) do not trigger a reload.
+     */
     public function testFilesOutsideTheWatchedSetAreIgnored(): void
     {
-        $reloader = new WorkerReloader($this->root);
+        $reloader = $this->reloader();
         $reloader->baseline();
 
-        // Logs, caches and uploads change constantly; restarting for those would mean
-        // never staying up.
         file_put_contents($this->root . '/src/notes.txt', 'not code');
-        mkdir($this->root . '/src/nested');
-        file_put_contents($this->root . '/src/nested/Deep.php', "<?php\n");
 
         $this->assertFalse($reloader->codeChanged());
 
-        unlink($this->root . '/src/nested/Deep.php');
-        rmdir($this->root . '/src/nested');
         unlink($this->root . '/src/notes.txt');
     }
 
     // ------------------------------------------------------------------
-    // Is anybody going to restart us?
+    // Settings-version stamp
     // ------------------------------------------------------------------
 
     /**
-     * "Exit and let the supervisor restart me" is only a reload when a supervisor
-     * exists. Run by hand - which is how it actually was - exiting would just stop the
-     * worker, so this decides between exiting and respawning.
+     * versionStamp() returns the Redis version key written by invalidateCache().
      */
-    public function testSupervisionIsDetectedFromTheEnvironment(): void
-    {
-        // systemd sets INVOCATION_ID for every unit, NOTIFY_SOCKET under Type=notify;
-        // supervisord sets SUPERVISOR_ENABLED; Docker's policy is invisible from
-        // inside, hence the explicit marker.
-        foreach (['INVOCATION_ID', 'NOTIFY_SOCKET', 'SUPERVISOR_ENABLED', 'WORKER_SUPERVISED'] as $marker) {
-            $this->assertTrue(WorkerReloader::isSupervised([$marker => 'set']), $marker);
-        }
-    }
-
-    public function testAnUnsupervisedProcessIsRecognised(): void
-    {
-        $this->assertFalse(WorkerReloader::isSupervised([]));
-        // Empty is not set: an exported-but-blank variable must not read as supervised.
-        $this->assertFalse(WorkerReloader::isSupervised(['INVOCATION_ID' => '', 'NOTIFY_SOCKET' => '   ']));
-    }
-
-    public function testNonStringEnvironmentEntriesAreIgnored(): void
-    {
-        // $_SERVER holds argv as an array, which used to raise a conversion warning.
-        $this->assertFalse(WorkerReloader::isSupervised(['argv' => ['a', 'b'], 'INVOCATION_ID' => null]));
-    }
-
-    // ------------------------------------------------------------------
-    // Settings
-    // ------------------------------------------------------------------
-
-    public function testASavedSettingIsNoticedOnce(): void
+    public function testVersionStampComesFromTheCachedStamp(): void
     {
         $settings = new SettingsService();
-        $reloader = new WorkerReloader($this->root);
+        $settings->invalidateCache();
+
+        $stamp = $settings->versionStamp();
+        $this->assertNotSame('', $stamp);
+        $this->assertNotSame('unknown', $stamp);
+        // A second read without a save returns the same stamp.
+        $this->assertSame($stamp, $settings->versionStamp());
+    }
+
+    /**
+     * Without the cached stamp (a fresh Redis, or a setting edited straight in
+     * SQL), versionStamp() falls back to the settings table's last-modified time.
+     */
+    public function testVersionStampFallsBackToTheDatabase(): void
+    {
+        $cm = \Pramnos\Redis\ConnectionManager::getInstance();
+        $cm->connection()->del($cm->prefix() . SettingsService::VERSION_KEY);
+
+        $version = (new SettingsService())->versionStamp();
+
+        $this->assertNotSame('', $version);
+        $this->assertNotSame('unknown', $version);
+    }
+
+    /**
+     * A reloader wired with the settings resolver notices a saved setting exactly
+     * once: the change is consumed, so it does not repeat on every tick.
+     */
+    public function testASavedSettingIsNoticedOnce(): void
+    {
+        $reloader = $this->reloader();
         $reloader->baseline();
 
         $this->assertFalse($reloader->settingsChanged(), 'nothing has changed yet');
 
-        $settings->invalidateCache();
+        (new SettingsService())->invalidateCache();
 
         $this->assertTrue($reloader->settingsChanged());
-        // Regression: the worker used to call invalidateCache() on detecting a change,
-        // which bumped the stamp again - so it saw its own write and reported a change
-        // on every single tick, forever.
         $this->assertFalse($reloader->settingsChanged(), 'a consumed change must not repeat');
-    }
-
-    public function testEachSaveIsNoticedSeparately(): void
-    {
-        $settings = new SettingsService();
-        $reloader = new WorkerReloader($this->root);
-        $reloader->baseline();
-
-        $settings->invalidateCache();
-        $this->assertTrue($reloader->settingsChanged());
-
-        usleep(1000);
-        $settings->invalidateCache();
-        $this->assertTrue($reloader->settingsChanged());
-    }
-
-    public function testTheVersionFallsBackToTheDatabaseWithoutTheCachedStamp(): void
-    {
-        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
-        $redis->del(\Pramnos\Redis\ConnectionManager::getInstance()->prefix() . SettingsService::VERSION_KEY);
-
-        $version = (new WorkerReloader($this->root))->settingsVersion();
-
-        // A fresh Redis, or a setting edited straight in SQL, must still be detectable.
-        $this->assertNotSame('', $version);
-        $this->assertNotSame('unknown', $version);
     }
 }
