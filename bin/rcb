@@ -44,6 +44,12 @@ $application = Application::getInstance();
 $application->database = $database;
 $application->settings = $settings;
 
+// Auto-run any pending (post-baseline) migrations on every console execution,
+// as declared in app/app.php. The fingerprint fast-path makes this a no-op when
+// the schema is current; the explicit `migrate` command still handles the full
+// baseline (fresh installs / CI), which auto-run deliberately skips via cutoff.
+$application->migrate();
+
 $console = new \Pramnos\Console\Application();
 // Register RadioChatBox's own console commands (the framework's daemon
 // orchestrator is abstract; each app registers its concrete subclass).

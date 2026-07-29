@@ -26,6 +26,13 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Project root — every real entry point (public/_dispatch.php, bin/rcb) defines
+// it, and the framework Application (resolved via app/app.php) needs it too, so
+// the test process defines it before anything constructs an Application.
+if (!defined('ROOT')) {
+    define('ROOT', dirname(__DIR__));
+}
+
 if (($_ENV['APP_ENV'] ?? getenv('APP_ENV')) !== 'testing') {
     return;
 }

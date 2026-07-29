@@ -17,12 +17,11 @@
 
 declare(strict_types=1);
 
+use Pramnos\Application\Application;
 use Pramnos\Application\Container;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Http\StreamedResponse;
-use Pramnos\Http\Middleware\CorsMiddleware;
-use Pramnos\Http\Middleware\JsonResponseMiddleware;
 use Pramnos\Routing\Router;
 
 if (!defined('ROOT')) {
@@ -39,20 +38,27 @@ if (!radiochatbox_boot_pramnos()) {
     return;
 }
 
+// The app descriptor (app/app.php) is the single source of framework wiring:
+// identity, global middleware and migrations. Resolving it here gives the
+// attribute-routing front controller the same declarative config the console
+// uses, without adopting the full init()/exec() request lifecycle.
+$app = Application::getInstance();
+
+// Auto-run any pending (post-baseline) migrations on every request. The
+// framework fingerprint fast-path makes this a single indexed lookup when the
+// schema is up to date, and migrate() never throws (failures are logged).
+$app->migrate();
+
 $container = new Container();
 $router    = new Router($container);
 $router->loadFromDirectory(ROOT . '/src/Controllers', 'RadioChatBox\\Controllers');
 
-// CORS parity with the legacy CorsHandler: reflect the request Origin against the
-// configured allow-list (ALLOWED_ORIGINS, comma-separated; '*' by default),
-// credentials on, GET/POST/OPTIONS + Content-Type.
-$router->addGlobalMiddleware(new CorsMiddleware(
-    explode(',', (string) envvar('ALLOWED_ORIGINS', '*')),
-    ['GET', 'POST', 'OPTIONS'],
-    ['Content-Type'],
-    true
-));
-$router->addGlobalMiddleware(JsonResponseMiddleware::class);
+// Global HTTP middleware exactly as declared in app/app.php (CORS + JSON
+// shaping). Passed through verbatim — instances or class-strings — so the
+// front controller no longer hard-codes the stack.
+foreach ($app->getMiddleware() as $middleware) {
+    $router->addGlobalMiddleware($middleware);
+}
 
 $request = Request::getInstance();
 
