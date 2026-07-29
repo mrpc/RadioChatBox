@@ -9,8 +9,8 @@ use PHPUnit\Framework\TestCase;
  *
  * public/index.php must stay a THIN front controller (define paths, autoload,
  * hand off to the out-of-web-root kernel bootstrap/http.php) — no routing or
- * business logic in the web root — and the SPA shell must render from its
- * out-of-public template with working asset cache-busting.
+ * business logic in the web root — and the SPA shell (public/spa.php, alongside
+ * its assets) must render with working asset cache-busting.
  */
 class FrontControllerTest extends TestCase
 {
@@ -45,7 +45,7 @@ class FrontControllerTest extends TestCase
     }
 
     /**
-     * The SPA shell renders from app/views/spa.php with cache-busted asset URLs
+     * The SPA shell renders from public/spa.php with cache-busted asset URLs
      * derived from the real files under PUBLIC_PATH (the only dynamic bit of the
      * otherwise-static page).
      */
@@ -56,7 +56,7 @@ class FrontControllerTest extends TestCase
         }
 
         ob_start();
-        require __DIR__ . '/../app/views/spa.php';
+        require __DIR__ . '/../public/spa.php';
         $html = (string) ob_get_clean();
 
         $this->assertStringContainsString('<title id="page-title">RadioChatBox', $html);

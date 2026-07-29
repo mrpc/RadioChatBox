@@ -14,7 +14,7 @@
  *  - run pending migrations (fingerprint fast-path; never throws);
  *  - dispatch attribute-routed controllers in src/Controllers through the
  *    framework Router + the middleware declared in app/app.php;
- *  - for an unmatched non-API GET, render the SPA shell (app/views/spa.php);
+ *  - for an unmatched non-API GET, render the SPA shell (public/spa.php);
  *    an unmatched /api/* path (or any other unmatched request) is a 404 JSON.
  *
  * Expects ROOT, PUBLIC_PATH defined and vendor/autoload.php already loaded.
@@ -84,7 +84,7 @@ $isApi  = $path === 'api' || str_starts_with($path, 'api/');
 if ($method === 'GET' && !$isApi) {
     http_response_code(200);
     header('Content-Type: text/html; charset=utf-8');
-    require ROOT . '/app/views/spa.php'; // uses PUBLIC_PATH for asset cache-busting
+    require PUBLIC_PATH . '/spa.php'; // the SPA shell, alongside its css/js assets
     return;
 }
 
