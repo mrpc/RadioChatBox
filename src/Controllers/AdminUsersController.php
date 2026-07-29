@@ -7,6 +7,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Database;
+use RadioChatBox\Http\Validate;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\UserService;
 
@@ -59,9 +60,19 @@ final class AdminUsersController
             return Response::json(['error' => 'Invalid JSON'], 400);
         }
 
-        // Validate required fields.
-        if (empty($input['username']) || empty($input['password']) || empty($input['role'])) {
-            return Response::json(['error' => 'Missing required fields: username, password, role'], 400);
+        // Validate required fields — one combined message regardless of which is
+        // missing, preserving the legacy 400 body.
+        $missing = 'Missing required fields: username, password, role';
+        if ($error = Validate::check($input, [
+            'username' => 'required',
+            'password' => 'required',
+            'role'     => 'required',
+        ], [
+            'username.required' => $missing,
+            'password.required' => $missing,
+            'role.required'     => $missing,
+        ])) {
+            return $error;
         }
 
         $userService = new UserService();

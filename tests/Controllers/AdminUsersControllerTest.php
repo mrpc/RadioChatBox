@@ -200,4 +200,26 @@ class AdminUsersControllerTest extends TestCase
         $this->assertSame(401, $response->getStatusCode());
         $this->assertSame('Unauthorized', json_decode($response->getBody(), true)['error']);
     }
+
+    /**
+     * create() with a non-empty body missing a required field returns the legacy
+     * 400 {"error":"Missing required fields: username, password, role"} (now via
+     * the shared Validate helper) — one combined message regardless of which
+     * field is absent. No user is created (validation precedes the service call).
+     */
+    public function testCreateRejectsMissingRequiredFields(): void
+    {
+        $this->authAsRoot();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        // Non-empty body (so it is not the "Invalid JSON" guard) but password/role absent.
+        $_POST = ['username' => 'someone'];
+
+        $response = (new AdminUsersController())->create();
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            'Missing required fields: username, password, role',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
 }

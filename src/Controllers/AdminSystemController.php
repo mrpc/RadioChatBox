@@ -8,6 +8,7 @@ use Pramnos\Http\Response;
 use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\ArtworkService;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\DaemonSupervisor;
@@ -510,8 +511,17 @@ final class AdminSystemController
             $type = $_POST['type'] ?? '';          // 'track_cover' | 'artist_image'
             $id   = (int) ($_POST['id'] ?? 0);
 
-            if ($id <= 0 || !in_array($type, ['track_cover', 'artist_image'], true)) {
-                throw new InvalidArgumentException('Valid type and id are required');
+            // type must be one of the two kinds and id a positive integer — one
+            // combined message regardless of which fails (legacy 400 body).
+            $invalid = 'Valid type and id are required';
+            if ($error = Validate::check($_POST, [
+                'type' => 'required|in:track_cover,artist_image',
+                'id'   => 'required|integer|min:1',
+            ], [
+                'type.required' => $invalid, 'type.in'      => $invalid,
+                'id.required'   => $invalid, 'id.integer'   => $invalid, 'id.min' => $invalid,
+            ])) {
+                return $error;
             }
             if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
                 throw new InvalidArgumentException('No file uploaded');

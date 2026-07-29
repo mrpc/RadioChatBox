@@ -172,4 +172,24 @@ class AdminStatsControllerTest extends TestCase
         $this->assertLessThanOrEqual(10, count($body['threads']));
         $this->assertLessThanOrEqual($body['total'], count($body['threads']));
     }
+
+    /**
+     * bot-activity view=thread requires both fake_user and peer; missing either
+     * yields the legacy 400 {"error":"fake_user and peer are required"} (now via
+     * the shared Validate helper) before any thread lookup.
+     */
+    public function testBotActivityThreadRequiresFakeUserAndPeer(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['view' => 'thread', 'fake_user' => '', 'peer' => ''];
+
+        $response = (new AdminStatsController())->botActivity();
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            'fake_user and peer are required',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
 }

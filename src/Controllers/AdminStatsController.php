@@ -7,6 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Services\LlmAccount;
 use RadioChatBox\Services\LlmLog;
@@ -495,8 +496,13 @@ final class AdminStatsController
                     $fakeUser = trim((string) $req->get('fake_user', '', 'get'));
                     $peer     = trim((string) $req->get('peer', '', 'get'));
 
-                    if ($fakeUser === '' || $peer === '') {
-                        return Response::json(['error' => 'fake_user and peer are required'], 400);
+                    $required = 'fake_user and peer are required';
+                    if ($error = Validate::check(
+                        ['fake_user' => $fakeUser, 'peer' => $peer],
+                        ['fake_user' => 'required', 'peer' => 'required'],
+                        ['fake_user.required' => $required, 'peer.required' => $required]
+                    )) {
+                        return $error;
                     }
 
                     return Response::json([
