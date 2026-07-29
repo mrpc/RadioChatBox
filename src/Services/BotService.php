@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
@@ -887,7 +887,7 @@ class BotService
             'type' => 'private',
         ];
 
-        Broadcast::publish('chat:private_messages', 'private', $messageData);
+        BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', $messageData);
 
         $this->db->preparedQuery('
             UPDATE bot_threads

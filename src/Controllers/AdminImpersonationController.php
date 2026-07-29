@@ -9,7 +9,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\BlockService;
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Database;
 use RadioChatBox\Services\MessageFilter;
@@ -304,7 +304,7 @@ final class AdminImpersonationController
                 'type'          => 'private',
             ];
 
-            Broadcast::publish('chat:private_messages', 'private', $messageData);
+            BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', $messageData);
 
             // The admin is now speaking as this fake user: silence the bot for this
             // conversation, including any reply that is already queued or generated.

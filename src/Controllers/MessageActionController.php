@@ -10,7 +10,7 @@ use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\BlockService;
 use RadioChatBox\Cache;
 use RadioChatBox\Services\BotService;
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Database;
@@ -233,7 +233,7 @@ final class MessageActionController
                 'edited_at'  => $editedAtIso,
                 'timestamp'  => $timestamp,
             ];
-            Broadcast::publish('chat:updates', 'message_edited', $editEvent);
+            BroadcastingManager::instance()->broadcast('chat:updates', 'message_edited', $editEvent);
 
             return Response::json([
                 'success'   => true,
@@ -551,7 +551,7 @@ final class MessageActionController
                 'type' => 'private'
             ];
 
-            Broadcast::publish('chat:private_messages', 'private', $messageData);
+            BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', $messageData);
 
             // If message was sent to a fake user, create admin notification —
             // UNLESS an AI bot is going to answer it. A bot handles its own
@@ -586,7 +586,7 @@ final class MessageActionController
                             'message_id' => $result['id'],
                             'timestamp' => time()
                         ];
-                        Broadcast::publish('chat:admin_notifications', 'fake_user_dm', $notificationData);
+                        BroadcastingManager::instance()->broadcast('chat:admin_notifications', 'fake_user_dm', $notificationData);
                     } catch (\Exception $e) {
                         // Log error but don't fail the message send
                         \Pramnos\Logs\Logger::log("Failed to create admin notification: " . $e->getMessage(), 'radiochatbox');

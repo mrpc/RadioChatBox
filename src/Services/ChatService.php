@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
@@ -97,7 +97,7 @@ class ChatService
         ]);
 
         // Publish to subscribers
-        Broadcast::publish(self::PUBSUB_CHANNEL, 'message', $messageData);
+        BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL, 'message', $messageData);
 
         // Store in PostgreSQL (for persistence) - user data already fetched
         $this->storeMessageInDB($messageData);
@@ -1399,7 +1399,7 @@ class ChatService
             $users = $this->getAllUsers();
             $count = count($users);
 
-            Broadcast::publish(self::USER_UPDATE_CHANNEL, 'user_list', [
+            BroadcastingManager::instance()->broadcast(self::USER_UPDATE_CHANNEL, 'user_list', [
                 'count' => $count,
                 'users' => $users,
             ]);

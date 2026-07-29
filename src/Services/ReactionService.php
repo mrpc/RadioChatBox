@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -249,7 +249,7 @@ class ReactionService
             foreach ($reactions as $r) {
                 $counts[$r['emoji']] = $r['count'];
             }
-            Broadcast::publish(self::PUBSUB_CHANNEL, 'reaction', [
+            BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL, 'reaction', [
                 'type' => 'reaction',
                 'message_id' => $messageId,
                 'counts' => $counts,

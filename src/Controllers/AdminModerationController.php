@@ -6,7 +6,7 @@ use InvalidArgumentException;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Cache;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
@@ -205,7 +205,7 @@ final class AdminModerationController
                 // Notify clients that user was kicked. (Historically published to an
                 // UNPREFIXED channel — now normalized to the prefixed channel the SSE
                 // edge subscribes to; see docs/pramnos-migration/06 §8.2.)
-                Broadcast::publish('chat:user_updates', 'user_kicked', [
+                BroadcastingManager::instance()->broadcast('chat:user_updates', 'user_kicked', [
                     'type'      => 'user_kicked',
                     'username'  => $username,
                     'timestamp' => time(),
@@ -266,7 +266,7 @@ final class AdminModerationController
                 'timestamp' => time(),
             ];
 
-            Broadcast::publish('chat:updates', 'clear', $clearEvent);
+            BroadcastingManager::instance()->broadcast('chat:updates', 'clear', $clearEvent);
 
             return Response::json([
                 'success'       => true,
@@ -323,7 +323,7 @@ final class AdminModerationController
                 'timestamp'  => time(),
             ];
 
-            Broadcast::publish('chat:updates', 'message_deleted', $deleteEvent);
+            BroadcastingManager::instance()->broadcast('chat:updates', 'message_deleted', $deleteEvent);
 
             return Response::json([
                 'success' => true,

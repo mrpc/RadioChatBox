@@ -5,7 +5,7 @@ namespace RadioChatBox\Controllers;
 use RadioChatBox\Http\Validate;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\Broadcast;
+use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\PhotoService;
@@ -150,13 +150,13 @@ final class ProfileController
                     usleep(100000); // 100ms
 
                     // Publish a history refresh event to all connected clients
-                    Broadcast::publish('chat:updates', 'refresh_history', [
+                    BroadcastingManager::instance()->broadcast('chat:updates', 'refresh_history', [
                         'type'   => 'refresh_history',
                         'reason' => 'display_name_changed',
                     ]);
 
                     // Publish user list update event (to refresh display names in user list)
-                    Broadcast::publish('chat:user_updates', 'display_name_changed', [
+                    BroadcastingManager::instance()->broadcast('chat:user_updates', 'display_name_changed', [
                         'type'         => 'display_name_changed',
                         'username'     => $username,
                         'display_name' => $finalDisplayName,
