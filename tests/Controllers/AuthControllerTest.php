@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests\Controllers;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AuthController;
@@ -81,7 +83,7 @@ class AuthControllerTest extends TestCase
      */
     public function testLoginSuccessLinksSessionToUserViaUpsert(): void
     {
-        $pdo      = Database::getPDO();
+        $pdo      = TestDatabase::connection();
         $username = 'authctl_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $password = 'testpass123';
         $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);

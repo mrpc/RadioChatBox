@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\UserService;
 use RadioChatBox\Database;
@@ -33,7 +35,7 @@ class UserServiceTest extends TestCase
 
     protected function tearDown(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         foreach (array_unique($this->created) as $username) {
             $pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$username]);
         }

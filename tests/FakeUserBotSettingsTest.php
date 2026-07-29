@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
@@ -23,7 +25,7 @@ class FakeUserBotSettingsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
         $this->service = new FakeUserService();
 
         $this->pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute(['BotOverrideTest']);

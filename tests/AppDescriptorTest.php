@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Application\Application;
 use Pramnos\Http\Middleware\CorsMiddleware;
@@ -95,7 +97,7 @@ class AppDescriptorTest extends TestCase
         $app->migrate();
         $app->migrate(); // idempotent per instance — must not throw or change anything
 
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $columns = $pdo->query(
             "SELECT column_name FROM information_schema.columns
              WHERE table_schema = 'public' AND table_name = 'sessions'"

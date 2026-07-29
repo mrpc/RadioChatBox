@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Cache;
 use RadioChatBox\Services\StatsService;
@@ -25,7 +27,7 @@ class StatsServiceRealTimeTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         try {
-            self::$pdo = Database::getPDO();
+            self::$pdo = TestDatabase::connection();
             self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
             self::$prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
             self::$service = new StatsService();

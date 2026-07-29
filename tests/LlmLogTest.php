@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Services\LlmLog;
@@ -28,7 +30,7 @@ class LlmLogTest extends TestCase
     {
         parent::setUp();
 
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
         $stmt->execute(['bot_llm_log_enabled']);
         $value = $stmt->fetchColumn();
@@ -48,7 +50,7 @@ class LlmLogTest extends TestCase
 
     protected function tearDown(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $pdo->prepare('DELETE FROM bot_llm_log WHERE provider = ? OR fake_nickname = ?')
             ->execute([$this->provider, $this->nick]);
 
@@ -183,7 +185,7 @@ class LlmLogTest extends TestCase
         $this->log->record($this->entry());
 
         // Back-dated row (should be pruned) inserted directly.
-        Database::getPDO()->prepare(
+        TestDatabase::connection()->prepare(
             "INSERT INTO bot_llm_log (fake_nickname, provider, model, finish_reason, created_at)
              VALUES (?, ?, 'test-model', 'stop', NOW() - INTERVAL '10 days')"
         )->execute([$this->nick, $this->provider]);

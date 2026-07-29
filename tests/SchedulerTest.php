@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
@@ -21,7 +23,7 @@ class SchedulerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
         $this->pdo->exec("DELETE FROM scheduled_tasks WHERE task LIKE 'test_%'");
     }
 

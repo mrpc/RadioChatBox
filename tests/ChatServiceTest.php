@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
@@ -166,7 +168,7 @@ class ChatServiceTest extends TestCase
         // rather than letting the log surface as unexpected test output.
         $this->expectAppLogMatches('/Registration blocked/');
 
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create two different sessions with same username
         $username = 'phpunit_pm_test_' . uniqid();
@@ -210,7 +212,7 @@ class ChatServiceTest extends TestCase
 
     public function testPrivateMessageConversationSessionScoped()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         $user1 = 'user1_' . uniqid();
         $user2 = 'user2_' . uniqid();
@@ -250,7 +252,7 @@ class ChatServiceTest extends TestCase
         // rather than letting the log surface as unexpected test output.
         $this->expectAppLogMatches('/Registration blocked/');
 
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         $username = 'legacy_user_' . uniqid();
         $oldSession = 'old_session_' . uniqid();
@@ -294,7 +296,7 @@ class ChatServiceTest extends TestCase
 
     public function testPrivateMessageDisplayNameSnapshotStored()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $userService = new \RadioChatBox\Services\UserService();
         
         // Create two test users with display names
@@ -400,7 +402,7 @@ class ChatServiceTest extends TestCase
         $this->expectAppLogMatches('/Registration blocked/');
 
         // Ensure 'admin' user exists (from init.sql)
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $stmt = $pdo->prepare("SELECT id FROM users WHERE username = 'admin'");
         $stmt->execute();
         $adminUser = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -424,7 +426,7 @@ class ChatServiceTest extends TestCase
 
     public function testAuthenticatedUserCanUseTheirRegisteredUsername()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test user
         $testUsername = 'testuser_' . uniqid();
@@ -469,7 +471,7 @@ class ChatServiceTest extends TestCase
 
     public function testAuthenticatedUserCanHaveMultipleSessions()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test user
         $testUsername = 'testuser_multi_' . uniqid();
@@ -535,7 +537,7 @@ class ChatServiceTest extends TestCase
         // rather than letting the log surface as unexpected test output.
         $this->expectAppLogMatches('/Registration blocked/');
 
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test fake user
         $fakeNickname = 'fakeuser_' . uniqid();
@@ -558,7 +560,7 @@ class ChatServiceTest extends TestCase
 
     public function testGuestCannotCheckAvailabilityOfFakeUserNickname()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test fake user
         $fakeNickname = 'fakeuser_avail_' . uniqid();
@@ -581,7 +583,7 @@ class ChatServiceTest extends TestCase
 
     public function testRegisterUserPopulatesUserActivityTable()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $username = 'phpunit_activity_' . uniqid() . '_' . time();
         $sessionId = 'session_activity_' . uniqid();
         $ipAddress = '192.168.1.100';
@@ -610,7 +612,7 @@ class ChatServiceTest extends TestCase
 
     public function testRegisterUserUpdatesUserActivityIPAddress()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $username = 'phpunit_ip_update_' . uniqid() . '_' . time();
         $sessionId = 'session_ip_' . uniqid();
         $ipAddress1 = '192.168.1.101';
@@ -641,7 +643,7 @@ class ChatServiceTest extends TestCase
 
     public function testRegisterAuthenticatedUserSetsUserIdInActivity()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test user
         $testUsername = 'phpunit_auth_' . uniqid() . '_' . time();
@@ -704,7 +706,7 @@ class ChatServiceTest extends TestCase
 
     public function testMessagesIncludeDisplayName()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $userService = new \RadioChatBox\Services\UserService();
         
         // Create a test user with display name
@@ -779,7 +781,7 @@ class ChatServiceTest extends TestCase
 
     public function testDisplayNameSnapshotStoredInDatabase()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $userService = new \RadioChatBox\Services\UserService();
         
         // Create a test user with display name

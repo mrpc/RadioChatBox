@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
@@ -22,7 +24,7 @@ class ChatServiceCacheTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         try {
-            self::$pdo = Database::getPDO();
+            self::$pdo = TestDatabase::connection();
             self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
             self::$prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
             self::$service = new ChatService();

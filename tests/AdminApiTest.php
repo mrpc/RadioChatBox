@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 
@@ -18,7 +20,7 @@ class AdminApiTest extends TestCase
     
     protected function setUp(): void
     {
-        $this->db = Database::getPDO();
+        $this->db = TestDatabase::connection();
     }
 
     /**

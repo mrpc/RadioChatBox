@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Services\UserService;
@@ -23,7 +25,7 @@ class LoginTest extends TestCase
     {
         // Cleanup test sessions
         try {
-            $pdo = Database::getPDO();
+            $pdo = TestDatabase::connection();
             $stmt = $pdo->prepare("DELETE FROM sessions WHERE session_id = :session_id");
             $stmt->execute(['session_id' => $this->sessionId]);
         } catch (\Exception $e) {
@@ -76,7 +78,7 @@ class LoginTest extends TestCase
 
     public function testLoginApiSuccessWithValidCredentials()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test user
         $testUsername = 'logintest_' . uniqid();
@@ -128,7 +130,7 @@ class LoginTest extends TestCase
 
     public function testLoginAllowsUserToJoinChat()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test user
         $testUsername = 'chatlogin_' . uniqid();
@@ -182,7 +184,7 @@ class LoginTest extends TestCase
 
     public function testLoginWithEmail()
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         
         // Create a test user with email
         $testUsername = 'emailtest_' . uniqid();
@@ -265,7 +267,7 @@ class LoginTest extends TestCase
                     $body = ['error' => 'Invalid username or password'];
                 } else {
                     // Link the session to this authenticated user
-                    $pdo = Database::getPDO();
+                    $pdo = TestDatabase::connection();
                     $ipAddress = '127.0.0.1';
                     
                     $stmt = $pdo->prepare(

@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests\Controllers;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Database;
@@ -21,7 +23,7 @@ class SendControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
         $stmt->execute(['chat_mode']);
         $v = $stmt->fetchColumn();
@@ -30,7 +32,7 @@ class SendControllerTest extends TestCase
 
     protected function tearDown(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         if ($this->prevChatMode === null) {
             $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['chat_mode']);
         } else {
@@ -54,7 +56,7 @@ class SendControllerTest extends TestCase
 
     public function testPublicChatDisabledReturns429(): void
     {
-        Database::getPDO()->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+        TestDatabase::connection()->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
             ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value')
             ->execute(['chat_mode', 'private']);
         (new SettingsService())->invalidateCache();

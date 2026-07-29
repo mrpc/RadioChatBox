@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Services\MessageFilter;
@@ -21,7 +23,7 @@ class MessageFilterTest extends TestCase
      */
     protected function setUp(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
         $stmt->execute(['gif_enabled']);
         $value = $stmt->fetchColumn();
@@ -42,7 +44,7 @@ class MessageFilterTest extends TestCase
      */
     protected function tearDown(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         if ($this->previousGifEnabled === null) {
             $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['gif_enabled']);
         } else {
@@ -127,7 +129,7 @@ class MessageFilterTest extends TestCase
         // suite (the regex permits, but does not require, any output).
         $this->expectOutputRegex('/.*/s');
 
-        $pdo    = Database::getPDO();
+        $pdo    = TestDatabase::connection();
         $redis  = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         $ip     = '203.0.113.77';

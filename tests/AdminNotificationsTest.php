@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use PDO;
@@ -16,7 +18,7 @@ class AdminNotificationsTest extends TestCase
     protected function tearDown(): void
     {
         Mockery::close();
-        Database::setPDO(null);
+        TestDatabase::setConnection(null);
         parent::tearDown();
     }
 
@@ -38,10 +40,10 @@ class AdminNotificationsTest extends TestCase
             ->with("SELECT create_fake_user_dm_notification(?, ?, ?, ?)")
             ->andReturn($mockStmt);
 
-        Database::setPDO($mockPdo);
+        TestDatabase::setConnection($mockPdo);
 
         // Simulate the function call
-        $stmt = Database::getPDO()->prepare("SELECT create_fake_user_dm_notification(?, ?, ?, ?)");
+        $stmt = TestDatabase::connection()->prepare("SELECT create_fake_user_dm_notification(?, ?, ?, ?)");
         $stmt->execute(['sender123', 'FakeUser1', 'Hello fake user!', 42]);
         $notificationId = $stmt->fetchColumn();
 
@@ -66,10 +68,10 @@ class AdminNotificationsTest extends TestCase
             ->with("SELECT mark_notification_read(?, ?)")
             ->andReturn($mockStmt);
 
-        Database::setPDO($mockPdo);
+        TestDatabase::setConnection($mockPdo);
 
         // Simulate marking notification as read
-        $stmt = Database::getPDO()->prepare("SELECT mark_notification_read(?, ?)");
+        $stmt = TestDatabase::connection()->prepare("SELECT mark_notification_read(?, ?)");
         $stmt->execute([123, 'admin']);
         $success = $stmt->fetchColumn();
 
@@ -94,10 +96,10 @@ class AdminNotificationsTest extends TestCase
             ->with("SELECT mark_all_notifications_read(?)")
             ->andReturn($mockStmt);
 
-        Database::setPDO($mockPdo);
+        TestDatabase::setConnection($mockPdo);
 
         // Simulate marking all notifications as read
-        $stmt = Database::getPDO()->prepare("SELECT mark_all_notifications_read(?)");
+        $stmt = TestDatabase::connection()->prepare("SELECT mark_all_notifications_read(?)");
         $stmt->execute(['admin']);
         $count = $stmt->fetchColumn();
 
@@ -122,10 +124,10 @@ class AdminNotificationsTest extends TestCase
             ->with("SELECT get_unread_notification_count(?)")
             ->andReturn($mockStmt);
 
-        Database::setPDO($mockPdo);
+        TestDatabase::setConnection($mockPdo);
 
         // Simulate getting unread count
-        $stmt = Database::getPDO()->prepare("SELECT get_unread_notification_count(?)");
+        $stmt = TestDatabase::connection()->prepare("SELECT get_unread_notification_count(?)");
         $stmt->execute(['admin']);
         $count = $stmt->fetchColumn();
 

@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Services\ChatService;
@@ -20,7 +22,7 @@ class DisplayNameUniquenessTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
         $this->redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         $this->chatService = new ChatService();
         

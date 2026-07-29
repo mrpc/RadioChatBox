@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 
@@ -19,7 +21,7 @@ class StatsServiceTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         try {
-            self::$pdo = Database::getPDO();
+            self::$pdo = TestDatabase::connection();
             self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         } catch (\Exception $e) {
             self::markTestSkipped('Database connection not available: ' . $e->getMessage());

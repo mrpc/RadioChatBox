@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests\Controllers;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
@@ -317,7 +319,7 @@ class AdminImpersonationControllerTest extends TestCase
     public function testBotBlockActionBlocksThePeerAndStopsTheThread(): void
     {
         $this->authAsRoot();
-        $pdo    = Database::getPDO();
+        $pdo    = TestDatabase::connection();
         $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
         $fake   = 'blkfake_' . $suffix;
         $peer   = 'blkpeer_' . $suffix;

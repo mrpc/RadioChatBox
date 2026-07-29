@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
@@ -34,7 +36,7 @@ class PhotoServiceTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
 
         $suffix = substr(bin2hex(random_bytes(5)), 0, 8);
         $this->id = 'phototest_' . $suffix;

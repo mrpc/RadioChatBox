@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ReactionService;
 use RadioChatBox\Database;
@@ -17,7 +19,7 @@ class ReactionServiceTest extends TestCase
     protected function setUp(): void
     {
         $this->service = new ReactionService();
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
 
         // Create a dedicated public message to react to (FK target).
         $this->messageId = 'msg_test_' . bin2hex(random_bytes(6));

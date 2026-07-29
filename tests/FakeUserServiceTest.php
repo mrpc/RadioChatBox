@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use Mockery;
@@ -170,7 +172,7 @@ class FakeUserServiceTest extends TestCase
 
     public function testExportOmitsRuntimeStateAndKeepsBotSettings(): void
     {
-        $pdo = \RadioChatBox\Database::getPDO();
+        $pdo = TestDatabase::connection();
         $service = new \RadioChatBox\Services\FakeUserService();
         $nick = 'exp_' . substr(bin2hex(random_bytes(5)), 0, 8);
 
@@ -211,7 +213,7 @@ class FakeUserServiceTest extends TestCase
 
     public function testImportIsAdditiveAndNeverOverwrites(): void
     {
-        $pdo = \RadioChatBox\Database::getPDO();
+        $pdo = TestDatabase::connection();
         $service = new \RadioChatBox\Services\FakeUserService();
         $suffix = substr(bin2hex(random_bytes(5)), 0, 8);
         $existing = 'imp_exist_' . $suffix;
@@ -259,7 +261,7 @@ class FakeUserServiceTest extends TestCase
 
     public function testImportUpdatesExistingUsersOnlyWhenAsked(): void
     {
-        $pdo = \RadioChatBox\Database::getPDO();
+        $pdo = TestDatabase::connection();
         $service = new \RadioChatBox\Services\FakeUserService();
         $nick = 'upd_' . substr(bin2hex(random_bytes(5)), 0, 8);
 
@@ -297,7 +299,7 @@ class FakeUserServiceTest extends TestCase
      */
     public function testRotationSparesBotsInLiveConversations(): void
     {
-        $pdo = \RadioChatBox\Database::getPDO();
+        $pdo = TestDatabase::connection();
         $service = new \RadioChatBox\Services\FakeUserService();
 
         $suffix = substr(bin2hex(random_bytes(5)), 0, 8);

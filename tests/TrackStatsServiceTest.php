@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Services\TrackStatsService;
@@ -37,7 +39,7 @@ class TrackStatsServiceTest extends TestCase
 
     protected function tearDown(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $like = '%' . $this->suffix . '%';
         // Children before parents.
         $pdo->prepare(

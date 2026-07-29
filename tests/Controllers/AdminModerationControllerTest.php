@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests\Controllers;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
@@ -206,7 +208,7 @@ class AdminModerationControllerTest extends TestCase
     public function testUrlBlacklistInsertDuplicateListAndDelete(): void
     {
         $pattern = 'phase7-' . bin2hex(random_bytes(5)) . '.example';
-        $pdo     = Database::getPDO();
+        $pdo     = TestDatabase::connection();
 
         try {
             // First insert succeeds.

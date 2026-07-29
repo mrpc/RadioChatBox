@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\UserService;
@@ -17,7 +19,7 @@ class SessionUserIdTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        self::$pdo = Database::getPDO();
+        self::$pdo = TestDatabase::connection();
         self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         
         // Clean up test data

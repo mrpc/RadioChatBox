@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests\Controllers;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\ProfileController;
@@ -143,7 +145,7 @@ class ProfileControllerTest extends TestCase
      */
     public function testUpdateProfilePersistsProfileViaUpsert(): void
     {
-        $pdo       = Database::getPDO();
+        $pdo       = TestDatabase::connection();
         $username  = 'profctl_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $this->seedSession($pdo, $username, $sessionId, null);
@@ -188,7 +190,7 @@ class ProfileControllerTest extends TestCase
      */
     public function testUpdateProfileDisplayNameCollidingWithUsernameReturns400(): void
     {
-        $pdo      = Database::getPDO();
+        $pdo      = TestDatabase::connection();
         $username = 'profconf_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $created  = (new UserService())->createUser($username, 'testpass123', 'simple_user', null, null);
         $this->assertTrue($created['success'] ?? false, 'seed user must be created');

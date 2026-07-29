@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
@@ -14,7 +16,7 @@ class ProfileRegistrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
         $stmt->execute(['require_profile']);
         $value = $stmt->fetchColumn();
@@ -23,7 +25,7 @@ class ProfileRegistrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        $pdo = Database::getPDO();
+        $pdo = TestDatabase::connection();
         if ($this->previousRequireProfile === null) {
             $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['require_profile']);
         } else {
@@ -43,7 +45,7 @@ class ProfileRegistrationTest extends TestCase
      */
     public function testProfileRequiredWhenSettingEnabled()
     {
-        Database::getPDO()->prepare(
+        TestDatabase::connection()->prepare(
             'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
              ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
         )->execute(['require_profile', 'true']);

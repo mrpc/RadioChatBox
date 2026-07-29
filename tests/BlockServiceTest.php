@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BlockService;
 use RadioChatBox\Database;
@@ -17,7 +19,7 @@ class BlockServiceTest extends TestCase
     protected function setUp(): void
     {
         $this->service = new BlockService();
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
         $this->cleanup();
     }
 

@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PDO;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -48,7 +50,7 @@ class AdminSettingsUpdateTest extends TestCase
     protected function setUp(): void
     {
         $this->settings = new SettingsService();
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
 
         // These tests write to the real settings table; remember what to restore.
         foreach (array_merge(self::BOT_KEYS, ['max_photo_size_mb', 'page_title']) as $key) {

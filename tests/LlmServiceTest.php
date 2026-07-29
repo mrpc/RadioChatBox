@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BotService;
@@ -24,7 +26,7 @@ class LlmServiceTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->pdo = Database::getPDO();
+        $this->pdo = TestDatabase::connection();
     }
 
     protected function tearDown(): void

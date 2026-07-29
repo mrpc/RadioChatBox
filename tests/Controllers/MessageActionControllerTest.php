@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Tests\Controllers;
 
+use Pramnos\Framework\Testing\TestDatabase;
+
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Services\ChatService;
@@ -292,7 +294,7 @@ class MessageActionControllerTest extends TestCase
      */
     public function testEditMessageUpdatesAnOwnedRecentMessage(): void
     {
-        $pdo       = Database::getPDO();
+        $pdo       = TestDatabase::connection();
         $username  = 'editor_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $messageId = 'msg_' . bin2hex(random_bytes(6));
@@ -362,7 +364,7 @@ class MessageActionControllerTest extends TestCase
      */
     public function testPrivateMessageListReturnsConversationChronologically(): void
     {
-        $pdo       = Database::getPDO();
+        $pdo       = TestDatabase::connection();
         $me        = 'me_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $peer      = 'peer_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
