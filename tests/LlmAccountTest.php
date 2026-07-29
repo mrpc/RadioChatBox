@@ -109,8 +109,6 @@ class LlmAccountTest extends TestCase
     {
         $account = $this->account(['/user/balance' => new \RuntimeException('HTTP 401: bad key')]);
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $this->assertNull($account->balance(true));
     }
@@ -162,8 +160,6 @@ class LlmAccountTest extends TestCase
     {
         $account = $this->account(['/models' => new \RuntimeException('network down')]);
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $result = $account->models(true);
 

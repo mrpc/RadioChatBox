@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use RuntimeException;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -49,13 +48,13 @@ class StatsService
             )->fetchColumn();
 
             if (!$exists) {
-                Log::write('Statistics tables not found, creating automatically...');
+                \Pramnos\Logs\Logger::log('Statistics tables not found, creating automatically...', 'radiochatbox');
                 $this->createStatsTables();
             }
 
             $this->tablesChecked = true;
         } catch (\Exception $e) {
-            Log::write('Failed to check/create stats tables: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Failed to check/create stats tables: ' . $e->getMessage(), 'radiochatbox');
             throw new RuntimeException('Statistics tables not available');
         }
     }
@@ -167,7 +166,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            Log::write("Failed to aggregate hourly stats: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to aggregate hourly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -191,7 +190,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            Log::write("Failed to aggregate daily stats: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to aggregate daily stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -215,7 +214,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            Log::write("Failed to aggregate weekly stats: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to aggregate weekly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -239,7 +238,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            Log::write("Failed to aggregate monthly stats: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to aggregate monthly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -263,7 +262,7 @@ class StatsService
             
             return true;
         } catch (\Exception $e) {
-            Log::write("Failed to aggregate yearly stats: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to aggregate yearly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -612,7 +611,7 @@ class StatsService
                 );
             }
         } catch (\Exception $e) {
-            Log::write("StatsService: Error querying real-time messages: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("StatsService: Error querying real-time messages: " . $e->getMessage(), 'radiochatbox');
         }
         
         // Count registered and guest users active today from sessions
@@ -638,7 +637,7 @@ class StatsService
                 (int)($realTimeUsers['guest_users'] ?? 0)
             );
         } catch (\Exception $e) {
-            Log::write("StatsService: Error querying real-time users: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("StatsService: Error querying real-time users: " . $e->getMessage(), 'radiochatbox');
         }
 
         $summary = [

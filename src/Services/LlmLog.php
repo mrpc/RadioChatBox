@@ -3,7 +3,6 @@
 namespace RadioChatBox\Services;
 
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use RadioChatBox\Services\SettingsService;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -86,7 +85,7 @@ class LlmLog
                 'currency'      => $pricing->getCurrency(),
             ]);
         } catch (\Throwable $e) {
-            Log::write('LlmLog::record failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmLog::record failed: ' . $e->getMessage(), 'radiochatbox');
         }
     }
 

@@ -8,7 +8,6 @@ use RadioChatBox\Config;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Services\LlmProviders;
-use RadioChatBox\Log;
 use RadioChatBox\Services\MessageFilter;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -581,7 +580,7 @@ class BotService
 
             return true;
         } catch (\Throwable $e) {
-            Log::write('BotService::onIncomingMessage failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BotService::onIncomingMessage failed: ' . $e->getMessage(), 'radiochatbox');
 
             return false;
         }
@@ -722,12 +721,12 @@ class BotService
         // with a casual denial instead, and the incident is recorded so it shows up
         // in Bot Activity rather than passing silently.
         if (self::revealsBotIdentity($reply)) {
-            Log::write(sprintf(
+            \Pramnos\Logs\Logger::log(sprintf(
                 'BotService: discarded a reply that revealed the bot (%s -> %s): %s',
                 $fakeUser['nickname'],
                 $peer,
                 $reply
-            ));
+            ), 'radiochatbox');
             $this->recordThreadError(
                 $fakeUserId,
                 $peer,
@@ -1487,13 +1486,13 @@ class BotService
             ]
         );
 
-        Log::write(sprintf(
+        \Pramnos\Logs\Logger::log(sprintf(
             'BotService: %s blocked %s after %d abusive message(s)%s',
             $nickname,
             $peer,
             $strikes,
             $blocked ? '' : ' (the block itself failed)'
-        ));
+        ), 'radiochatbox');
 
         return true;
     }
@@ -2100,7 +2099,7 @@ class BotService
 
             return trim((string) $filtered['filtered']);
         } catch (\Throwable $e) {
-            Log::write('BotService: message filter failed, sending unfiltered: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BotService: message filter failed, sending unfiltered: ' . $e->getMessage(), 'radiochatbox');
 
             return $text;
         }
@@ -2438,7 +2437,7 @@ class BotService
         } catch (\Throwable $e) {
             // A failed summary must not cost the user their reply: keep the
             // messages in the history instead.
-            Log::write('BotService: summary failed, continuing without it: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BotService: summary failed, continuing without it: ' . $e->getMessage(), 'radiochatbox');
 
             return ['summary' => $summary, 'pending' => count($dropped)];
         }
@@ -2510,7 +2509,7 @@ class BotService
 
             $canon = self::sanitizeReply($result['text'], 1500);
         } catch (\Throwable $e) {
-            Log::write('BotService: self-facts update failed, continuing: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BotService: self-facts update failed, continuing: ' . $e->getMessage(), 'radiochatbox');
 
             return;
         }
@@ -2579,7 +2578,7 @@ class BotService
                 $facts['seconds_since_last_message'] = (int) $gap;
             }
         } catch (\Throwable $e) {
-            Log::write('BotService: could not load peer facts: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BotService: could not load peer facts: ' . $e->getMessage(), 'radiochatbox');
         }
 
         return $facts;
@@ -2719,7 +2718,7 @@ class BotService
                 WHERE fake_user_id = ? AND peer_username = ?
             ', [mb_substr($message, 0, 500), $fakeUserId, $peer]);
         } catch (\Throwable $e) {
-            Log::write('BotService: failed to record thread error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BotService: failed to record thread error: ' . $e->getMessage(), 'radiochatbox');
         }
     }
 

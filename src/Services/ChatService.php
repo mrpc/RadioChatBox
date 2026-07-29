@@ -7,7 +7,6 @@ use RadioChatBox\Cache;
 use RadioChatBox\Config;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
-use RadioChatBox\Log;
 use RadioChatBox\MessageHistory;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -210,7 +209,7 @@ class ChatService
             // Return in chronological order (oldest first) to match getHistory() behavior
             return array_reverse($messages);
         } catch (\Throwable $e) {
-            Log::write("Failed to load history from DB: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to load history from DB: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -266,7 +265,7 @@ class ChatService
             // Return in chronological order (oldest first)
             return array_reverse($messages);
         } catch (\Throwable $e) {
-            Log::write("Failed to load paginated history: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to load paginated history: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -318,7 +317,7 @@ class ChatService
             }
         } catch (\Throwable $e) {
             // Use defaults if unable to fetch from database
-            Log::write("Failed to get rate limit settings: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get rate limit settings: " . $e->getMessage(), 'radiochatbox');
         }
 
         $key = self::RATE_LIMIT_PREFIX . $ipAddress;
@@ -361,13 +360,13 @@ class ChatService
                 // Clear violation counter
                 Cache::store()->delete($key);
                 
-                Log::write("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})");
+                \Pramnos\Logs\Logger::log("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})", 'radiochatbox');
             } else {
                 $remaining = $threshold - $violations;
-                Log::write("Violation tracked for {$ipAddress}: {$violationType} (violations: {$violations}, {$remaining} more until auto-ban)");
+                \Pramnos\Logs\Logger::log("Violation tracked for {$ipAddress}: {$violationType} (violations: {$violations}, {$remaining} more until auto-ban)", 'radiochatbox');
             }
         } catch (\Exception $e) {
-            Log::write("Failed to track violation: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to track violation: " . $e->getMessage(), 'radiochatbox');
         }
     }
     
@@ -401,12 +400,12 @@ class ChatService
             );
 
             if (!$result) {
-                Log::write("Failed to store message in database - execute returned false. Errors: " . json_encode($this->db->getError()));
+                \Pramnos\Logs\Logger::log("Failed to store message in database - execute returned false. Errors: " . json_encode($this->db->getError()), 'radiochatbox');
             }
         } catch (\Throwable $e) {
             // Log error with full details but don't fail the request
-            Log::write("Failed to store message in database (PDOException): " . $e->getMessage() . " | Code: " . $e->getCode());
-            Log::write("Message ID: " . ($messageData['id'] ?? 'null'));
+            \Pramnos\Logs\Logger::log("Failed to store message in database (PDOException): " . $e->getMessage() . " | Code: " . $e->getCode(), 'radiochatbox');
+            \Pramnos\Logs\Logger::log("Message ID: " . ($messageData['id'] ?? 'null'), 'radiochatbox');
         }
     }
     
@@ -456,9 +455,9 @@ class ChatService
                 return $replyData;
             }
         } catch (\Throwable $e) {
-            Log::write("Failed to get reply message data: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get reply message data: " . $e->getMessage(), 'radiochatbox');
         } catch (\Exception $e) {
-            Log::write("Redis error in getReplyMessageData: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Redis error in getReplyMessageData: " . $e->getMessage(), 'radiochatbox');
         }
 
         return null;
@@ -498,7 +497,7 @@ class ChatService
 
             return $userData;
         } catch (\Throwable $e) {
-            Log::write("Failed to get user data for username: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get user data for username: " . $e->getMessage(), 'radiochatbox');
             return ['user_id' => null, 'display_name' => null];
         }
     }
@@ -548,7 +547,7 @@ class ChatService
 
             return ($result && $result->numRows > 0);
         } catch (\Throwable $e) {
-            Log::write("Failed to check session authentication: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to check session authentication: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -620,7 +619,7 @@ class ChatService
         
         // Check if session is banned (from being kicked)
         if ((new KickRegistry())->isKicked($sessionId)) {
-            Log::write("Registration blocked: session {$sessionId} is banned (kicked user)");
+            \Pramnos\Logs\Logger::log("Registration blocked: session {$sessionId} is banned (kicked user)", 'radiochatbox');
             return false;
         }
         
@@ -639,7 +638,7 @@ class ChatService
         if ($registeredUser !== null) {
             // This is a registered username - verify session is authenticated as this user
             if (!$this->isSessionAuthenticatedAsUser($username, $sessionId)) {
-                Log::write("Registration blocked: username '{$username}' is a registered account and session {$sessionId} is not authenticated as this user");
+                \Pramnos\Logs\Logger::log("Registration blocked: username '{$username}' is a registered account and session {$sessionId} is not authenticated as this user", 'radiochatbox');
                 return false;
             }
             // Authenticated users are allowed to have multiple sessions (different devices)
@@ -653,7 +652,7 @@ class ChatService
             $userWithDisplayName = ($result && $result->numRows > 0) ? $result->fields : null;
 
             if ($userWithDisplayName !== null) {
-                Log::write("Registration blocked: username '{$username}' conflicts with a registered user's display name");
+                \Pramnos\Logs\Logger::log("Registration blocked: username '{$username}' conflicts with a registered user's display name", 'radiochatbox');
                 return false;
             }
             
@@ -666,7 +665,7 @@ class ChatService
 
             if ($fakeUser !== null) {
                 // Guests cannot use fake user nicknames
-                Log::write("Registration blocked: username '{$username}' is a fake user nickname");
+                \Pramnos\Logs\Logger::log("Registration blocked: username '{$username}' is a fake user nickname", 'radiochatbox');
                 return false;
             }
             // For non-registered usernames, enforce one session per username
@@ -678,7 +677,7 @@ class ChatService
 
             if ($existingUser && $existingUser['session_id'] !== $sessionId) {
                 // Username is taken by another active session
-                Log::write("Registration blocked: username '{$username}' is already taken by another user");
+                \Pramnos\Logs\Logger::log("Registration blocked: username '{$username}' is already taken by another user", 'radiochatbox');
                 return false;
             }
         }
@@ -739,7 +738,7 @@ class ChatService
             
             return true;
         } catch (\Throwable $e) {
-            Log::write("Failed to register user: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to register user: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -761,7 +760,7 @@ class ChatService
 
             return $result !== false;
         } catch (\Throwable $e) {
-            Log::write("Failed to logout user: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to logout user: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -793,7 +792,7 @@ class ChatService
 
             return $result !== false;
         } catch (\Throwable $e) {
-            Log::write("Failed to update heartbeat: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to update heartbeat: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -819,7 +818,7 @@ class ChatService
             // Actually publish the update
             $this->publishUserUpdate();
         } catch (\Exception $e) {
-            Log::write("Failed to throttle user update: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to throttle user update: " . $e->getMessage(), 'radiochatbox');
         }
     }
 
@@ -843,7 +842,7 @@ class ChatService
             $result = ($stmt && $stmt->numRows > 0) ? $stmt->fields : null;
             return $result ?: null;
         } catch (\Throwable $e) {
-            Log::write("Failed to get session info: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get session info: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
     }
@@ -875,7 +874,7 @@ class ChatService
 
             return $stmt->fetchAll();
         } catch (\Throwable $e) {
-            Log::write("Failed to get active users: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get active users: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -891,7 +890,7 @@ class ChatService
             $stmt = $this->db->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
         } catch (\Throwable $e) {
-            Log::write("Failed to get active user count: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get active user count: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -950,7 +949,7 @@ class ChatService
         try {
             Cache::store()->delete('chat:all_users');
         } catch (\Exception $e) {
-            Log::write("Failed to invalidate user list cache: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to invalidate user list cache: " . $e->getMessage(), 'radiochatbox');
         }
     }
 
@@ -988,7 +987,7 @@ class ChatService
             
             return true;
         } catch (\Throwable $e) {
-            Log::write("Failed to remove user: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to remove user: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1016,9 +1015,9 @@ class ChatService
             // Run the cleanup
             $this->db->statement("SELECT cleanup_inactive_sessions()");
         } catch (\Throwable $e) {
-            Log::write("Failed to cleanup inactive sessions: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to cleanup inactive sessions: " . $e->getMessage(), 'radiochatbox');
         } catch (\Exception $e) {
-            Log::write("Failed to check cleanup rate limit: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to check cleanup rate limit: " . $e->getMessage(), 'radiochatbox');
         }
     }
 
@@ -1050,7 +1049,7 @@ class ChatService
             
             return in_array($ipAddress, $bannedIPs, true);
         } catch (\Throwable $e) {
-            Log::write("Failed to check IP ban: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to check IP ban: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1123,7 +1122,7 @@ class ChatService
             
             return in_array(strtolower($nickname), $bannedNicknames, true);
         } catch (\Throwable $e) {
-            Log::write("Failed to check nickname ban: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to check nickname ban: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1200,7 +1199,7 @@ class ChatService
 
             return $result ? $result->fetchAll() : [];
         } catch (\Throwable $e) {
-            Log::write("Failed to get all messages: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get all messages: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -1222,7 +1221,7 @@ class ChatService
             }
             return (int)$stmt->fetchColumn();
         } catch (\Throwable $e) {
-            Log::write("Failed to get messages count: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get messages count: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -1236,7 +1235,7 @@ class ChatService
             $stmt = $this->db->query('SELECT COUNT(*) FROM sessions');
             return (int)$stmt->fetchColumn();
         } catch (\Throwable $e) {
-            Log::write("Failed to get active users count: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get active users count: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -1271,7 +1270,7 @@ class ChatService
 
             return $result !== false;
         } catch (\Throwable $e) {
-            Log::write("Failed to ban IP: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to ban IP: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1291,7 +1290,7 @@ class ChatService
 
             return $result !== false;
         } catch (\Throwable $e) {
-            Log::write("Failed to unban IP: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to unban IP: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1325,7 +1324,7 @@ class ChatService
 
             return $result !== false;
         } catch (\Throwable $e) {
-            Log::write("Failed to ban nickname: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to ban nickname: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1345,7 +1344,7 @@ class ChatService
 
             return $result !== false;
         } catch (\Throwable $e) {
-            Log::write("Failed to unban nickname: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to unban nickname: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -1363,7 +1362,7 @@ class ChatService
             );
             return $stmt->fetchAll();
         } catch (\Throwable $e) {
-            Log::write("Failed to get banned IPs: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get banned IPs: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -1381,7 +1380,7 @@ class ChatService
             );
             return $stmt->fetchAll();
         } catch (\Throwable $e) {
-            Log::write("Failed to get banned nicknames: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get banned nicknames: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -1406,7 +1405,7 @@ class ChatService
                 'users' => $users,
             ]);
         } catch (\Exception $e) {
-            Log::write("Failed to publish user update: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to publish user update: " . $e->getMessage(), 'radiochatbox');
         }
     }
     
@@ -1421,7 +1420,7 @@ class ChatService
 
             return $result ? $result['setting_value'] : $default;
         } catch (\Throwable $e) {
-            Log::write("Failed to get setting: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get setting: " . $e->getMessage(), 'radiochatbox');
             return $default;
         }
     }
@@ -1446,7 +1445,7 @@ class ChatService
 
             return $settings;
         } catch (\Throwable $e) {
-            Log::write("Failed to get settings: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get settings: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }

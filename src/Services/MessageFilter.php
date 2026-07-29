@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use RadioChatBox\Services\SettingsService;
 class MessageFilter
 {
@@ -331,7 +330,7 @@ class MessageFilter
 
             return $patterns;
         } catch (\Exception $e) {
-            Log::write("Error fetching URL whitelist: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Error fetching URL whitelist: " . $e->getMessage(), 'radiochatbox');
             $patterns = [];
             return $patterns;
         }
@@ -406,7 +405,7 @@ class MessageFilter
                 'message' => $message
             ];
         } catch (\Exception $e) {
-            Log::write("Error checking URL blacklist: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Error checking URL blacklist: " . $e->getMessage(), 'radiochatbox');
             return [
                 'found' => false,
                 'message' => $message
@@ -451,17 +450,17 @@ class MessageFilter
                     // Invalidate cache
                     Cache::store()->delete('banned_ips');
 
-                    Log::write("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})");
+                    \Pramnos\Logs\Logger::log("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})", 'radiochatbox');
                 }
 
                 // Clear violation counter
                 Cache::store()->delete($key);
             } else {
                 $remaining = 3 - $violations;
-                Log::write("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)");
+                \Pramnos\Logs\Logger::log("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)", 'radiochatbox');
             }
         } catch (\Exception $e) {
-            Log::write("Failed to track spam violation: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to track spam violation: " . $e->getMessage(), 'radiochatbox');
         }
     }
     

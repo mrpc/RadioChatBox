@@ -3,7 +3,6 @@
 namespace RadioChatBox\Services;
 
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\Services\TrackStatsService;
 use RadioChatBox\Services\RadioStatusService;
@@ -256,7 +255,7 @@ class Scheduler
         } catch (\Throwable $e) {
             $status = 'failed';
             $error = $e->getMessage();
-            Log::write("Scheduler: task {$name} failed: " . $error);
+            \Pramnos\Logs\Logger::log("Scheduler: task {$name} failed: " . $error, 'radiochatbox');
         }
 
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
@@ -353,7 +352,7 @@ class Scheduler
                 ]
             );
         } catch (\Throwable $e) {
-            Log::write('Scheduler::record failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Scheduler::record failed: ' . $e->getMessage(), 'radiochatbox');
         }
     }
 }

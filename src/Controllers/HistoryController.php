@@ -40,7 +40,7 @@ final class HistoryController
                 'messages' => $history,
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

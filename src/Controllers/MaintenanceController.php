@@ -132,7 +132,7 @@ final class MaintenanceController
                 'message' => 'Cleanup completed successfully',
             ]);
         } catch (\Exception $e) {
-            \RadioChatBox\Log::write('Cleanup cron error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Cleanup cron error: ' . $e->getMessage(), 'radiochatbox');
 
             return Response::json([
                 'success' => false,

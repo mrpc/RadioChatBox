@@ -47,12 +47,14 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
         if (!defined('DS')) {
             define('DS', DIRECTORY_SEPARATOR);
         }
-        // Logger runs in FILE mode here: RadioChatBox\Log already emits to STDERR
-        // via error_log(), so the Logger only needs to add the LogViewer-readable
-        // file. PRAMNOS_LOG_MODE can still override for special deployments.
+        // The framework Logger is now the ONLY logging path (RadioChatBox\Log was
+        // retired): it writes both the LogViewer-readable channel file AND STDERR
+        // (what `docker logs` shows and the test-suite historically observed), i.e.
+        // OUTPUT_BOTH by default. PRAMNOS_LOG_MODE overrides (phpunit.xml pins
+        // "file" so the suite stays quiet).
         if (class_exists(\Pramnos\Logs\Logger::class)) {
             $mode = getenv('PRAMNOS_LOG_MODE');
-            \Pramnos\Logs\Logger::setOutputMode($mode !== false && $mode !== '' ? $mode : \Pramnos\Logs\Logger::OUTPUT_FILE);
+            \Pramnos\Logs\Logger::setOutputMode($mode !== false && $mode !== '' ? $mode : \Pramnos\Logs\Logger::OUTPUT_BOTH);
         }
 
         // Configure the framework's central Redis connection manager from

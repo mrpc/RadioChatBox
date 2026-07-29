@@ -3,7 +3,6 @@
 namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
-use RadioChatBox\Log;
 /**
  * Fetches album cover art and artist images for tracks and stores them locally.
  *
@@ -459,7 +458,7 @@ class ArtworkService
                 'thumb' => is_file($thumbDisk) ? $this->webBase . '/' . $this->thumbName($file) : $this->webBase . '/' . $file,
             ];
         } catch (\Throwable $e) {
-            Log::write('ArtworkService::saveUploadedImage failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('ArtworkService::saveUploadedImage failed: ' . $e->getMessage(), 'radiochatbox');
             return ['full' => null, 'thumb' => null];
         }
     }

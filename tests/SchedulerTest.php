@@ -165,11 +165,8 @@ class SchedulerTest extends TestCase
             }
         }]);
 
-        // The scheduler logs each failure; allow that output (as the other
-        // failure tests do) so the strict-output suite does not flag it risky.
-        $this->expectOutputRegex('/./');
-        error_log('');
-
+        // The scheduler logs each failure to the "radiochatbox" channel (file-only
+        // under test — see phpunit.xml), so nothing surfaces as process output.
         $scheduler->run('test_flaky');            // failure → failures = 1
         $this->backdate('test_flaky', 3600);
         $scheduler->run('test_flaky');            // failure → failures = 2
@@ -217,8 +214,6 @@ class SchedulerTest extends TestCase
             },
         ]);
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $results = $scheduler->runDue(null, 5);
 
@@ -238,8 +233,6 @@ class SchedulerTest extends TestCase
 
     public function testAnUnknownTaskFailsLoudlyRatherThanSilently(): void
     {
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $result = (new Scheduler())->run('no_such_task');
 

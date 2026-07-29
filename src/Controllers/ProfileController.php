@@ -186,7 +186,7 @@ final class ProfileController
                 'message' => 'Profile updated successfully',
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write("Error updating profile: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Error updating profile: " . $e->getMessage(), 'radiochatbox');
             return Response::json([
                 'success' => false,
                 'error'   => 'Failed to update profile',
@@ -246,7 +246,7 @@ final class ProfileController
         } catch (\RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Exception $e) {
-            \RadioChatBox\Log::write("Photo upload error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Photo upload error: " . $e->getMessage(), 'radiochatbox');
             return Response::json([
                 'error' => 'Failed to upload photo',
                 'debug' => $e->getMessage(),

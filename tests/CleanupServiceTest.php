@@ -6,6 +6,7 @@ use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\CleanupService;
 use RadioChatBox\Database;
+use RadioChatBox\Tests\Support\CapturesAppLog;
 
 /**
  * Covers the housekeeping the worker now runs on a schedule.
@@ -18,6 +19,8 @@ use RadioChatBox\Database;
  */
 class CleanupServiceTest extends TestCase
 {
+    use CapturesAppLog;
+
     private PDO $pdo;
     private CleanupService $cleanup;
 
@@ -31,13 +34,13 @@ class CleanupServiceTest extends TestCase
     protected function tearDown(): void
     {
         $this->removeFixtures();
+        $this->verifyAndStopAppLogCapture();
     }
 
     public function testAnOldDeletedMessageIsPurged(): void
     {
-        // The service reports what it did through error_log, which PHPUnit attributes
-        // to the test.
-        $this->expectOutputRegex('/Purged/');
+        // The service reports what it did on the app log channel; capture and assert it.
+        $this->expectAppLogMatches('/Purged/');
 
         $this->insertMessage('cleanuptest_old_deleted', 40, true);
         $this->insertMessage('cleanuptest_new_deleted', 2, true);
@@ -52,7 +55,7 @@ class CleanupServiceTest extends TestCase
 
     public function testTheCutoffIsRespected(): void
     {
-        $this->expectOutputRegex('/Purged/');
+        $this->expectAppLogMatches('/Purged/');
         $this->insertMessage('cleanuptest_20_days', 20, true);
 
         $this->assertSame(0, $this->cleanup->purgeOldDeletedMessages(30));
@@ -65,7 +68,7 @@ class CleanupServiceTest extends TestCase
 
     public function testOldMessagesAreArchivedAndRemoved(): void
     {
-        $this->expectOutputRegex('/Archived/');
+        $this->expectAppLogMatches('/Archived/');
         $this->insertMessage('cleanuptest_ancient', 120, false);
 
         $archived = $this->cleanup->archiveOldMessages(90);

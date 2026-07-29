@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\Services\LlmService;
 /**
@@ -136,7 +135,7 @@ class LlmAccount
         try {
             $response = $this->adminClient()->get($path);
         } catch (\Throwable $e) {
-            Log::write('LlmAccount::providerCosts failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmAccount::providerCosts failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }
@@ -223,7 +222,7 @@ class LlmAccount
         try {
             $response = $this->llm->get((string) $this->providerConfig['balance_path']);
         } catch (\Throwable $e) {
-            Log::write('LlmAccount::balance failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmAccount::balance failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }
@@ -284,7 +283,7 @@ class LlmAccount
         try {
             $response = $this->llm->get((string) $this->providerConfig['models_path']);
         } catch (\Throwable $e) {
-            Log::write('LlmAccount::models failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmAccount::models failed: ' . $e->getMessage(), 'radiochatbox');
 
             return $fallback;
         }
@@ -341,7 +340,7 @@ class LlmAccount
                 'topped_up_balance' => $balance['topped_up'],
             ]);
         } catch (\Throwable $e) {
-            Log::write('LlmAccount::snapshot failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmAccount::snapshot failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }
@@ -402,7 +401,7 @@ class LlmAccount
                 ->orderBy('created_at', 'asc')
                 ->getAll();
         } catch (\Throwable $e) {
-            Log::write('LlmAccount::realSpend failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmAccount::realSpend failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }

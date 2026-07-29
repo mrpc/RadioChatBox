@@ -5,7 +5,6 @@ namespace RadioChatBox\Services;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\LlmProviders;
-use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**
@@ -577,7 +576,7 @@ class FakeUserService
             }
         } catch (\Exception $e) {
             // If radio service fails, fall back to minimum_users
-            Log::write("Failed to get radio listeners for fake user balancing: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to get radio listeners for fake user balancing: " . $e->getMessage(), 'radiochatbox');
         }
         
         // If radio listeners not available, fall back to minimum_users setting.

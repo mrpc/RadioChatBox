@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**
@@ -63,7 +62,7 @@ class BlockService
                 ->value('id');
             return $id === null ? null : (int)$id;
         } catch (\Throwable $e) {
-            Log::write('BlockService::resolveUserId failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BlockService::resolveUserId failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
     }
@@ -121,7 +120,7 @@ class BlockService
             $this->invalidate($blockerUsername, $blockedUsername);
             return true;
         } catch (\Throwable $e) {
-            Log::write('BlockService::blockUser failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BlockService::blockUser failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -148,7 +147,7 @@ class BlockService
             $this->invalidate($blockerUsername, $blockedUsername);
             return true;
         } catch (\Throwable $e) {
-            Log::write('BlockService::unblockUser failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BlockService::unblockUser failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -185,7 +184,7 @@ class BlockService
             $rows = $outgoing->union($incoming)->getAll();
             $related = array_column($rows, 'other');
         } catch (\Throwable $e) {
-            Log::write('BlockService::getRelatedUsernames failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BlockService::getRelatedUsernames failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
 
@@ -221,7 +220,7 @@ class BlockService
                 ->orderBy('created_at', 'desc')
                 ->pluck('blocked_username');
         } catch (\Throwable $e) {
-            Log::write('BlockService::getBlockedUsers failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BlockService::getBlockedUsers failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -240,7 +239,7 @@ class BlockService
                 ->whereRaw('(expires_at IS NULL OR expires_at > NOW())')
                 ->exists();
         } catch (\Throwable $e) {
-            Log::write('BlockService::hasBlocked failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('BlockService::hasBlocked failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }

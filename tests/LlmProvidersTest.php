@@ -307,8 +307,6 @@ class LlmProvidersTest extends TestCase
             "Unsupported parameter: 'max_completion_tokens' is not supported"
         );
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $result = $llm->chat('sys', [['role' => 'user', 'content' => 'hi']]);
 
@@ -325,8 +323,6 @@ class LlmProvidersTest extends TestCase
             "Unsupported value: 'temperature' does not support 1.0 with this model"
         );
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $llm->chat('sys', [['role' => 'user', 'content' => 'hi']]);
 

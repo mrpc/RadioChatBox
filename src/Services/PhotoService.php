@@ -8,7 +8,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class PhotoService
@@ -45,7 +44,7 @@ class PhotoService
         if (!is_dir($this->uploadDir)) {
             @mkdir($this->uploadDir, 0755, true);
             if (!is_dir($this->uploadDir)) {
-                Log::write("Failed to create upload directory: {$this->uploadDir}");
+                \Pramnos\Logs\Logger::log("Failed to create upload directory: {$this->uploadDir}", 'radiochatbox');
             }
         }
     }
@@ -250,7 +249,7 @@ class PhotoService
 
         $count = count($ids);
         if ($count > 0) {
-            Log::write("Cleanup: soft-deleted {$count} expired photos (files kept until the trash is emptied)");
+            \Pramnos\Logs\Logger::log("Cleanup: soft-deleted {$count} expired photos (files kept until the trash is emptied)", 'radiochatbox');
         }
 
         return $count;
@@ -283,7 +282,7 @@ class PhotoService
         }
 
         if ($count > 0) {
-            Log::write("Emptied photo trash: permanently removed {$count} photos");
+            \Pramnos\Logs\Logger::log("Emptied photo trash: permanently removed {$count} photos", 'radiochatbox');
         }
 
         return $count;

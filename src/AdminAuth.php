@@ -36,7 +36,7 @@ class AdminAuth
         // Rate limiting: Check for failed attempts
         $ipAddress = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         if (!self::checkRateLimit($ipAddress)) {
-            Log::write("Admin auth rate limit exceeded for IP: {$ipAddress}");
+            \Pramnos\Logs\Logger::log("Admin auth rate limit exceeded for IP: {$ipAddress}", 'radiochatbox');
             return false;
         }
         
@@ -53,7 +53,7 @@ class AdminAuth
             $isValid = self::authenticateDatabase($username, $password);
         } else {
             // Legacy password-only format - no longer supported
-            Log::write("Admin auth failed: Legacy password-only authentication is deprecated");
+            \Pramnos\Logs\Logger::log("Admin auth failed: Legacy password-only authentication is deprecated", 'radiochatbox');
             $isValid = false;
         }
         
@@ -89,7 +89,7 @@ class AdminAuth
             return false;
             
         } catch (\Exception $e) {
-            Log::write("AdminAuth::authenticateDatabase error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("AdminAuth::authenticateDatabase error: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -112,7 +112,7 @@ class AdminAuth
                 'authenticated_at' => time(),
             ], 86400);
         } catch (\Exception $e) {
-            Log::write("AdminAuth::setCurrentUser error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("AdminAuth::setCurrentUser error: " . $e->getMessage(), 'radiochatbox');
         }
     }
 
@@ -128,7 +128,7 @@ class AdminAuth
         try {
             Cache::store()->delete("admin_session:{$username}");
         } catch (\Exception $e) {
-            Log::write("AdminAuth::destroySession error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("AdminAuth::destroySession error: " . $e->getMessage(), 'radiochatbox');
         }
     }
     
@@ -192,13 +192,13 @@ class AdminAuth
                     }
                 }
             } catch (\Exception $e) {
-                Log::write("AdminAuth::getCurrentUser database lookup error: " . $e->getMessage());
+                \Pramnos\Logs\Logger::log("AdminAuth::getCurrentUser database lookup error: " . $e->getMessage(), 'radiochatbox');
             }
             
             return null;
             
         } catch (\Exception $e) {
-            Log::write("AdminAuth::getCurrentUser error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("AdminAuth::getCurrentUser error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
     }
@@ -248,7 +248,7 @@ class AdminAuth
             return $attempts < 5;
         } catch (\Exception $e) {
             // If Redis fails, allow the attempt but log it
-            Log::write("Admin auth rate limit check failed: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Admin auth rate limit check failed: " . $e->getMessage(), 'radiochatbox');
             return true;
         }
     }
@@ -262,7 +262,7 @@ class AdminAuth
             // Atomic sliding-window counter (Redis INCRBY + 15-minute expiry).
             Cache::store()->increment("admin_auth_attempts:{$ipAddress}", 1, 900);
         } catch (\Exception $e) {
-            Log::write("Failed to record admin auth attempt: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to record admin auth attempt: " . $e->getMessage(), 'radiochatbox');
         }
     }
     
@@ -274,7 +274,7 @@ class AdminAuth
         try {
             Cache::store()->delete("admin_auth_attempts:{$ipAddress}");
         } catch (\Exception $e) {
-            Log::write("Failed to clear admin auth attempts: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to clear admin auth attempts: " . $e->getMessage(), 'radiochatbox');
         }
     }
     

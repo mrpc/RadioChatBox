@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Broadcast;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**
@@ -169,7 +168,7 @@ class ReactionService
                 $counts[$row['message_id']][$row['emoji']] = (int)$row['cnt'];
             }
         } catch (\Throwable $e) {
-            Log::write('ReactionService::attachToMessages counts failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('ReactionService::attachToMessages counts failed: ' . $e->getMessage(), 'radiochatbox');
         }
 
         // Current user's own reactions.
@@ -186,7 +185,7 @@ class ReactionService
                     $mine[$row['message_id']][$row['emoji']] = true;
                 }
             } catch (\Throwable $e) {
-                Log::write('ReactionService::attachToMessages mine failed: ' . $e->getMessage());
+                \Pramnos\Logs\Logger::log('ReactionService::attachToMessages mine failed: ' . $e->getMessage(), 'radiochatbox');
             }
         }
 
@@ -233,7 +232,7 @@ class ReactionService
                 ->where('message_id', '=', $messageId)
                 ->exists();
         } catch (\Throwable $e) {
-            Log::write('ReactionService::messageExists failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('ReactionService::messageExists failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
     }
@@ -256,7 +255,7 @@ class ReactionService
                 'counts' => $counts,
             ]);
         } catch (\Exception $e) {
-            Log::write('ReactionService::publishUpdate failed: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('ReactionService::publishUpdate failed: ' . $e->getMessage(), 'radiochatbox');
         }
     }
 }

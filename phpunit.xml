@@ -13,6 +13,9 @@
   </coverage>
   <php>
     <env name="APP_ENV" value="testing"/>
+    <!-- Keep the Logger file-only under test so log lines don't hit STDERR and
+         trip beStrictAboutOutputDuringTests (production defaults to OUTPUT_BOTH). -->
+    <env name="PRAMNOS_LOG_MODE" value="file"/>
   </php>
   <source>
     <include>

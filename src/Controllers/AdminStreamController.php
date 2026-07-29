@@ -85,7 +85,7 @@ final class AdminStreamController
                     $sse->event('reconnect', ['reason' => 'timeout']);
                 }
             } catch (\Throwable $e) {
-                \RadioChatBox\Log::write('Admin stream error: ' . $e->getMessage());
+                \Pramnos\Logs\Logger::log('Admin stream error: ' . $e->getMessage(), 'radiochatbox');
                 if (!connection_aborted()) {
                     $sse->event('error', ['error' => 'Stream error']);
                 }

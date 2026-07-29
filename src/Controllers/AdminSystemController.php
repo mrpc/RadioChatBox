@@ -203,7 +203,7 @@ final class AdminSystemController
                 'schedule_failures'  => count(array_filter($tasks, static fn (array $t): bool => $t['last_status'] === 'failed')),
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('worker-status error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('worker-status error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to read worker status'], 500);
         }
     }
@@ -234,7 +234,7 @@ final class AdminSystemController
                 'users'   => $allUsers,
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -349,7 +349,7 @@ final class AdminSystemController
                 ],
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -435,7 +435,7 @@ final class AdminSystemController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('Admin photos error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Admin photos error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Server error'], 500);
         }
     }
@@ -488,7 +488,7 @@ final class AdminSystemController
                 'expires_in'    => 24 * 60 * 60,
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('Error creating session token: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Error creating session token: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to create session token'], 500);
         }
     }
@@ -551,7 +551,7 @@ final class AdminSystemController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

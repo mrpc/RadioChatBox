@@ -97,7 +97,7 @@ final class MessageActionController
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 404);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -117,7 +117,7 @@ final class MessageActionController
                 'allowed' => ReactionService::getAllowedEmojis(),
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -242,10 +242,10 @@ final class MessageActionController
                 'timestamp' => $timestamp,
             ]);
         } catch (\PDOException $e) {
-            \RadioChatBox\Log::write('Edit message DB error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Edit message DB error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Database error'], 500);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('Edit message error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Edit message error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Server error'], 500);
         }
     }
@@ -322,7 +322,7 @@ final class MessageActionController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -366,7 +366,7 @@ final class MessageActionController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -589,7 +589,7 @@ final class MessageActionController
                         Broadcast::publish('chat:admin_notifications', 'fake_user_dm', $notificationData);
                     } catch (\Exception $e) {
                         // Log error but don't fail the message send
-                        \RadioChatBox\Log::write("Failed to create admin notification: " . $e->getMessage());
+                        \Pramnos\Logs\Logger::log("Failed to create admin notification: " . $e->getMessage(), 'radiochatbox');
                     }
                 }
 
@@ -616,7 +616,7 @@ final class MessageActionController
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -790,7 +790,7 @@ final class MessageActionController
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }

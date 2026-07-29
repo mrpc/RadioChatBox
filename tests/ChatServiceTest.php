@@ -5,14 +5,22 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
+use RadioChatBox\Tests\Support\CapturesAppLog;
 
 class ChatServiceTest extends TestCase
 {
+    use CapturesAppLog;
+
     private ChatService $chatService;
-    
+
     protected function setUp(): void
     {
         $this->chatService = new ChatService();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->verifyAndStopAppLogCapture();
     }
 
     public function testChatServiceUsesRedisPrefixForKeys()
@@ -108,7 +116,7 @@ class ChatServiceTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         // Try to register with an admin username
         $result = $this->chatService->registerUser(
@@ -124,7 +132,7 @@ class ChatServiceTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         $username = 'phpunit_test_' . uniqid() . '_' . time();
         $sessionId1 = 'session1_' . uniqid();
@@ -157,7 +165,7 @@ class ChatServiceTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         $pdo = Database::getPDO();
         
@@ -241,7 +249,7 @@ class ChatServiceTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         $pdo = Database::getPDO();
         
@@ -390,7 +398,7 @@ class ChatServiceTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         // Ensure 'admin' user exists (from init.sql)
         $pdo = Database::getPDO();
@@ -526,7 +534,7 @@ class ChatServiceTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         $pdo = Database::getPDO();
         

@@ -5,7 +5,6 @@ namespace RadioChatBox\Services;
 use RadioChatBox\Config;
 use RadioChatBox\Services\LlmLog;
 use RadioChatBox\Services\LlmProviders;
-use RadioChatBox\Log;
 /**
  * Thin client for the DeepSeek chat completions API.
  *
@@ -367,7 +366,7 @@ class LlmService
                 throw $e;
             }
 
-            Log::write('LlmService: retrying without the parameter the API rejected: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('LlmService: retrying without the parameter the API rejected: ' . $e->getMessage(), 'radiochatbox');
 
             return $this->post('/chat/completions', $retry);
         }

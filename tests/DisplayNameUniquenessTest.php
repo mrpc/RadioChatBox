@@ -5,9 +5,12 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Database;
 use RadioChatBox\Services\ChatService;
+use RadioChatBox\Tests\Support\CapturesAppLog;
 
 class DisplayNameUniquenessTest extends TestCase
 {
+    use CapturesAppLog;
+
     private $pdo;
     private $redis;
     private $chatService;
@@ -55,12 +58,14 @@ class DisplayNameUniquenessTest extends TestCase
         // Clean up test data
         $stmt = $this->pdo->prepare("DELETE FROM sessions WHERE username LIKE 'testuser_%' OR username LIKE 'guest_%'");
         $stmt->execute();
-        
+
         $stmt = $this->pdo->prepare("DELETE FROM users WHERE username LIKE 'testuser_%'");
         $stmt->execute();
-        
+
         $stmt = $this->pdo->prepare("DELETE FROM fake_users WHERE nickname LIKE 'fakeuser_test_%'");
         $stmt->execute();
+
+        $this->verifyAndStopAppLogCapture();
     }
 
     public function testDisplayNameCannotConflictWithUsername()
@@ -144,7 +149,7 @@ class DisplayNameUniquenessTest extends TestCase
     {
         // Rejected registrations are audit-logged by ChatService; assert that
         // rather than letting the log surface as unexpected test output.
-        $this->expectOutputRegex('/Registration blocked/');
+        $this->expectAppLogMatches('/Registration blocked/');
 
         // Set a display name for our test user
         $displayName = 'MyDisplayName_' . uniqid();

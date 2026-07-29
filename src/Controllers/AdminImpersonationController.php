@@ -107,7 +107,7 @@ final class AdminImpersonationController
                 'state'   => $bot->getThreadState($fakeUser, $peer),
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('impersonate-bot error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('impersonate-bot error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to update bot state'], 500);
         }
     }
@@ -173,7 +173,7 @@ final class AdminImpersonationController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -316,11 +316,11 @@ final class AdminImpersonationController
                 );
             } catch (\Exception $e) {
                 // Never fail the admin's message because of bot bookkeeping.
-                \RadioChatBox\Log::write('Failed to stop bot on impersonation: ' . $e->getMessage());
+                \Pramnos\Logs\Logger::log('Failed to stop bot on impersonation: ' . $e->getMessage(), 'radiochatbox');
             }
 
             // Log impersonation for audit
-            \RadioChatBox\Log::write("IMPERSONATION: Admin {$currentUser['username']} sent message as {$impersonateAs} to {$toUsername}");
+            \Pramnos\Logs\Logger::log("IMPERSONATION: Admin {$currentUser['username']} sent message as {$impersonateAs} to {$toUsername}", 'radiochatbox');
 
             return Response::json([
                 'success' => true,
@@ -328,7 +328,7 @@ final class AdminImpersonationController
                 'data'    => $messageData,
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('Impersonate send error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Impersonate send error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json([
                 'error' => 'Failed to send message',
                 'debug' => $e->getMessage(),
@@ -442,7 +442,7 @@ final class AdminImpersonationController
                 }, []),
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('Impersonate conversations error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Impersonate conversations error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to fetch conversations'], 500);
         }
     }

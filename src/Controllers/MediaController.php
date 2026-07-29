@@ -69,7 +69,7 @@ final class MediaController
             return Response::json(['error' => $e->getMessage()], 400)
                 ->withHeader('Cache-Control', 'public, max-age=3600');
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500)
                 ->withHeader('Cache-Control', 'public, max-age=3600');
         }
@@ -213,7 +213,7 @@ final class MediaController
             try {
                 $newTrackId = (new TrackStatsService())->recordPlay($now);
             } catch (\Exception $e) {
-                \RadioChatBox\Log::write('Track play recording failed: ' . $e->getMessage());
+                \Pramnos\Logs\Logger::log('Track play recording failed: ' . $e->getMessage(), 'radiochatbox');
             }
 
             // Attach stored metadata for the current track (for the hover card).
@@ -232,7 +232,7 @@ final class MediaController
                     // Pass the feed so any feed-provided album/cover art is used.
                     (new TrackStatsService())->enrichTrack($newTrackId, $now);
                 } catch (\Exception $e) {
-                    \RadioChatBox\Log::write('Inline track enrichment failed: ' . $e->getMessage());
+                    \Pramnos\Logs\Logger::log('Inline track enrichment failed: ' . $e->getMessage(), 'radiochatbox');
                 }
             }
 

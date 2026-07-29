@@ -5,7 +5,6 @@ namespace RadioChatBox\Services;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 /**
  * User Service - Admin User Management with RBAC
  * 
@@ -106,8 +105,8 @@ class UserService
             // inspect the driver error text: PostgreSQL reports a unique violation
             // (SQLSTATE 23505) as "duplicate key value violates unique constraint".
             if ($result === false) {
-                Log::write("UserService::createUser error: "
-                    . (string) ($this->db->getError()['message'] ?? 'insert failed'));
+                \Pramnos\Logs\Logger::log("UserService::createUser error: "
+                    . (string) ($this->db->getError()['message'] ?? 'insert failed'), 'radiochatbox');
                 return ['success' => false, 'error' => 'Database error'];
             }
 
@@ -130,7 +129,7 @@ class UserService
                 || stripos($msg, 'unique constraint') !== false) {
                 return ['success' => false, 'error' => 'Username already exists'];
             }
-            Log::write("UserService::createUser error: " . $msg);
+            \Pramnos\Logs\Logger::log("UserService::createUser error: " . $msg, 'radiochatbox');
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -201,7 +200,7 @@ class UserService
             ];
 
         } catch (\Throwable $e) {
-            Log::write("UserService::updateUser error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::updateUser error: " . $e->getMessage(), 'radiochatbox');
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -238,7 +237,7 @@ class UserService
             return ['success' => true];
 
         } catch (\Throwable $e) {
-            Log::write("UserService::deleteUser error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::deleteUser error: " . $e->getMessage(), 'radiochatbox');
             return ['success' => false, 'error' => 'Database error'];
         }
     }
@@ -261,7 +260,7 @@ class UserService
                 return $cached;
             }
         } catch (\Exception $e) {
-            Log::write("UserService::getAllUsers Redis error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::getAllUsers Redis error: " . $e->getMessage(), 'radiochatbox');
             // Continue to database query if Redis fails
         }
         
@@ -291,13 +290,13 @@ class UserService
             try {
                 Cache::store()->set($cacheKey, $users, 300);
             } catch (\Exception $e) {
-                Log::write("UserService::getAllUsers cache set error: " . $e->getMessage());
+                \Pramnos\Logs\Logger::log("UserService::getAllUsers cache set error: " . $e->getMessage(), 'radiochatbox');
             }
             
             return $users;
 
         } catch (\Throwable $e) {
-            Log::write("UserService::getAllUsers error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::getAllUsers error: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
     }
@@ -321,7 +320,7 @@ class UserService
             return $user ? $this->sanitizeUser($user) : null;
 
         } catch (\Throwable $e) {
-            Log::write("UserService::getUserById error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::getUserById error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
     }
@@ -345,7 +344,7 @@ class UserService
             return $user ? $this->sanitizeUser($user) : null;
 
         } catch (\Throwable $e) {
-            Log::write("UserService::getUserByUsername error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::getUserByUsername error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
     }
@@ -388,7 +387,7 @@ class UserService
             return $this->sanitizeUser($user);
             
         } catch (\Throwable $e) {
-            Log::write("UserService::authenticate error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::authenticate error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
     }
@@ -443,7 +442,7 @@ class UserService
             $qb = $this->db->queryBuilder()->from('users');
             $qb->where('id', '=', $userId)->update(['last_login' => $qb->raw('CURRENT_TIMESTAMP')]);
         } catch (\Throwable $e) {
-            Log::write("UserService::updateLastLogin error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::updateLastLogin error: " . $e->getMessage(), 'radiochatbox');
         }
     }
     
@@ -481,7 +480,7 @@ class UserService
             // Note: Individual user_data:{username} caches will expire naturally in 5 minutes
             // or can be cleared per-user if we know which user was updated
         } catch (\Exception $e) {
-            Log::write("UserService::clearUsersCache error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::clearUsersCache error: " . $e->getMessage(), 'radiochatbox');
         }
     }
     
@@ -510,7 +509,7 @@ class UserService
             // Clear new user_data cache (includes both user_id and display_name)
             Cache::store()->delete("user_data:{$username}");
         } catch (\Exception $e) {
-            Log::write("UserService::clearUserDataCache error: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("UserService::clearUserDataCache error: " . $e->getMessage(), 'radiochatbox');
         }
     }
 

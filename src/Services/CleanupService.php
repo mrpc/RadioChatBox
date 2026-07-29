@@ -7,7 +7,6 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\Cache;
 use RadioChatBox\Database;
-use RadioChatBox\Log;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class CleanupService
@@ -35,12 +34,12 @@ class CleanupService
             // Invalidate cache if any bans were removed
             if ($count > 0) {
                 Cache::store()->delete('banned_ips');
-                Log::write("Cleanup: Removed {$count} expired IP bans");
+                \Pramnos\Logs\Logger::log("Cleanup: Removed {$count} expired IP bans", 'radiochatbox');
             }
 
             return $count;
         } catch (\Throwable $e) {
-            Log::write("Failed to cleanup expired bans: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to cleanup expired bans: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -58,12 +57,12 @@ class CleanupService
             $count = $result ? $result->getAffectedRows() : 0;
 
             if ($count > 0) {
-                Log::write("Cleanup: Removed {$count} stale sessions");
+                \Pramnos\Logs\Logger::log("Cleanup: Removed {$count} stale sessions", 'radiochatbox');
             }
 
             return $count;
         } catch (\Throwable $e) {
-            Log::write("Failed to cleanup stale sessions: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to cleanup stale sessions: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -85,12 +84,12 @@ class CleanupService
             $count = $result ? $result->getAffectedRows() : 0;
 
             if ($count > 0) {
-                Log::write("Cleanup: Purged {$count} old deleted messages (>{$daysOld} days)");
+                \Pramnos\Logs\Logger::log("Cleanup: Purged {$count} old deleted messages (>{$daysOld} days)", 'radiochatbox');
             }
 
             return $count;
         } catch (\Throwable $e) {
-            Log::write("Failed to purge deleted messages: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to purge deleted messages: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -126,12 +125,12 @@ class CleanupService
                     ->whereRaw('is_deleted = FALSE')
                     ->delete();
 
-                Log::write("Cleanup: Archived {$archived} old messages (>{$daysOld} days)");
+                \Pramnos\Logs\Logger::log("Cleanup: Archived {$archived} old messages (>{$daysOld} days)", 'radiochatbox');
             }
 
             return $archived;
         } catch (\Throwable $e) {
-            Log::write("Failed to archive old messages: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to archive old messages: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -165,11 +164,11 @@ class CleanupService
                 ->delete();
             $count = $result ? $result->getAffectedRows() : 0;
             if ($count > 0) {
-                Log::write("Cleanup: Removed {$count} expired DM blocks");
+                \Pramnos\Logs\Logger::log("Cleanup: Removed {$count} expired DM blocks", 'radiochatbox');
             }
             return $count;
         } catch (\Throwable $e) {
-            Log::write("Failed to cleanup expired DM blocks: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to cleanup expired DM blocks: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }
@@ -183,7 +182,7 @@ class CleanupService
             $photoService = new \RadioChatBox\Services\PhotoService();
             return $photoService->cleanupExpiredPhotos();
         } catch (\Exception $e) {
-            Log::write("Failed to cleanup expired photos: " . $e->getMessage());
+            \Pramnos\Logs\Logger::log("Failed to cleanup expired photos: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
     }

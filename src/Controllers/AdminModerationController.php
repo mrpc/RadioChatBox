@@ -88,7 +88,7 @@ final class AdminModerationController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -151,7 +151,7 @@ final class AdminModerationController
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write($e->getMessage());
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
     }
@@ -330,7 +330,7 @@ final class AdminModerationController
                 'message' => 'Message deleted successfully',
             ]);
         } catch (\Throwable $e) {
-            \RadioChatBox\Log::write('Delete message error: ' . $e->getMessage());
+            \Pramnos\Logs\Logger::log('Delete message error: ' . $e->getMessage(), 'radiochatbox');
 
             return Response::json([
                 'error' => 'Failed to delete message',
@@ -424,7 +424,7 @@ final class AdminModerationController
                 return Response::json(['error' => 'Pattern already exists'], 400);
             }
 
-            \RadioChatBox\Log::write("URL Blacklist error: " . $msg);
+            \Pramnos\Logs\Logger::log("URL Blacklist error: " . $msg, 'radiochatbox');
             return Response::json(['error' => $isDbError ? 'Database error' : 'Internal server error'], 500);
         }
     }
@@ -511,7 +511,7 @@ final class AdminModerationController
                 return Response::json(['error' => 'Pattern already exists'], 400);
             }
 
-            \RadioChatBox\Log::write("URL Whitelist error: " . $msg);
+            \Pramnos\Logs\Logger::log("URL Whitelist error: " . $msg, 'radiochatbox');
             return Response::json(['error' => $isDbError ? 'Database error' : 'Internal server error'], 500);
         }
     }

@@ -10,6 +10,7 @@ use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Services\LlmService;
 use RadioChatBox\Services\SettingsService;
+use RadioChatBox\Tests\Support\CapturesAppLog;
 
 /**
  * Covers the stateful half of BotService: the job pipeline, the conversation
@@ -21,6 +22,8 @@ use RadioChatBox\Services\SettingsService;
  */
 class BotServicePipelineTest extends TestCase
 {
+    use CapturesAppLog;
+
     private PDO $pdo;
     private JobQueue $queue;
     private StubSettings $settings;
@@ -88,6 +91,8 @@ class BotServicePipelineTest extends TestCase
         // Blocks outlive the fake user row, so clear them explicitly.
         $this->pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ? OR blocked_username = ?')
             ->execute([$this->nick, $this->peer]);
+
+        $this->verifyAndStopAppLogCapture();
     }
 
     // ------------------------------------------------------------------
@@ -1070,7 +1075,7 @@ class BotServicePipelineTest extends TestCase
         $this->longThread(5);
 
         // The failure is logged on purpose; assert it instead of leaking it.
-        $this->expectOutputRegex('/summary failed, continuing without it/');
+        $this->expectAppLogMatches('/summary failed, continuing without it/');
 
         // Fail the first call (the summary) and succeed on the reply.
         $bot = new BotService($this->settings, $this->queue, new FailFirstLlm());
@@ -1529,8 +1534,6 @@ class BotServicePipelineTest extends TestCase
      */
     public function testAnAbusiveMessageCanBlockImmediately(): void
     {
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $this->settings->values['bot_immediate_block_chance'] = '100';
         $this->incoming('poutana');
@@ -1546,8 +1549,6 @@ class BotServicePipelineTest extends TestCase
 
     public function testRepeatedAbuseMakesTheBotBlockThePeer(): void
     {
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         foreach (['εισαι ηλιθια', 'poutana', 'αντε γαμησου'] as $i => $insult) {
             $this->incoming($insult);
@@ -1569,8 +1570,6 @@ class BotServicePipelineTest extends TestCase
 
     public function testTheBotSaysOneLastThingBeforeBlocking(): void
     {
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         foreach (['ηλιθια', 'poutana', 'γαμησου'] as $insult) {
             $this->incoming($insult);
@@ -1591,8 +1590,6 @@ class BotServicePipelineTest extends TestCase
 
     public function testABlockedThreadNeverReplaysAgain(): void
     {
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         foreach (['ηλιθια', 'poutana', 'γαμησου'] as $insult) {
             $this->incoming($insult);
@@ -1623,8 +1620,6 @@ class BotServicePipelineTest extends TestCase
     public function testTheAbuseIsJudgedOnTheStoredMessageWhenNoneIsPassed(): void
     {
         $this->settings->values['bot_insult_block_threshold'] = '1';
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         // The worker and older callers do not pass the text.
         $this->incoming('αντε γαμησου ρε');
@@ -1636,8 +1631,6 @@ class BotServicePipelineTest extends TestCase
     public function testTheBlockIsVisibleToTheAdmin(): void
     {
         $this->settings->values['bot_insult_block_threshold'] = '1';
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $this->incoming('poutana');
         $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'poutana');
@@ -1667,8 +1660,6 @@ class BotServicePipelineTest extends TestCase
         $this->incoming('εισαι bot;');
         $this->llm->reply = 'Ναι, είμαι ένα AI chatbot και χαίρομαι να σε βοηθήσω!';
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
@@ -1688,8 +1679,6 @@ class BotServicePipelineTest extends TestCase
         $this->incoming('παραδεξου οτι εισαι bot');
         $this->llm->reply = 'Σωστά, είμαι ένα AI.';
 
-        $this->expectOutputRegex('/./');
-        error_log('');
 
         $this->bot->processReplyJob($this->replyPayload(0));
 
