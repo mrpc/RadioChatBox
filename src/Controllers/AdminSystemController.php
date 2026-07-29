@@ -5,6 +5,7 @@ namespace RadioChatBox\Controllers;
 use InvalidArgumentException;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\ArtworkService;
@@ -44,8 +45,9 @@ final class AdminSystemController
     public function flushRedis(): Response
     {
         try {
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
+            $connections = ConnectionManager::getInstance();
+            $redis  = $connections->connection();
+            $prefix = $connections->prefix();
 
             // Get all keys with this database prefix.
             $pattern = $prefix . '*';
@@ -80,8 +82,9 @@ final class AdminSystemController
     public function clearMessagesCache(): Response
     {
         try {
-            $redis  = Database::getRedis();
-            $prefix = Database::getRedisPrefix();
+            $connections = ConnectionManager::getInstance();
+            $redis  = $connections->connection();
+            $prefix = $connections->prefix();
 
             $keysCleared = [];
 
@@ -451,7 +454,9 @@ final class AdminSystemController
     public function createSession(): Response
     {
         try {
-            $redis = Database::getRedis();
+            // The stream token is a raw, UNPREFIXED admin_session:<token> key (read
+            // back by AdminStreamController over the same shared connection).
+            $redis = ConnectionManager::getInstance()->connection();
 
             if (!$redis) {
                 throw new \Exception('Failed to get Redis connection');

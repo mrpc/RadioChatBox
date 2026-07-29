@@ -5,6 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Sse\SseWriter;
 use Pramnos\Http\StreamedResponse;
+use Pramnos\Redis\ConnectionManager;
 use RadioChatBox\Controllers\AdminStreamController;
 
 /**
@@ -46,5 +47,43 @@ class AdminStreamControllerTest extends TestCase
         $out = ob_get_clean();
 
         $this->assertSame("event: error\ndata: {\"error\":\"Unauthorized\"}\n\n", $out);
+    }
+
+    /**
+     * Regression for the #14 ConnectionManager migration of the SSE stream token:
+     * a token minted the way AdminSystemController::createSession() writes it — a
+     * raw, UNPREFIXED admin_session:<token> JSON entry on the shared framework
+     * connection — must be resolvable by AdminStreamController's authenticator,
+     * which now reads it over that same ConnectionManager connection. This pins
+     * both the keyspace (unprefixed) and the connection source across the two
+     * sides; if either drifts, the query-param SSE auth silently breaks.
+     */
+    public function testResolvesStreamTokenMintedOnTheSharedConnection(): void
+    {
+        $redis = ConnectionManager::getInstance()->connection();
+        $token = 'test-stream-token-' . bin2hex(random_bytes(8));
+        $key   = 'admin_session:' . $token;
+        $redis->setex($key, 3600, (string) json_encode([
+            'username'   => 'streamadmin',
+            'role'       => 'administrator',
+            'expires_at' => time() + 3600,
+            'created_at' => time(),
+        ]));
+
+        try {
+            $_GET['session_token'] = $token;
+
+            $method = new \ReflectionMethod(AdminStreamController::class, 'authenticate');
+            $method->setAccessible(true);
+            $resolved = $method->invoke(new AdminStreamController());
+
+            $this->assertSame(
+                ['username' => 'streamadmin', 'role' => 'administrator'],
+                $resolved
+            );
+        } finally {
+            $redis->del($key);
+            unset($_GET['session_token']);
+        }
     }
 }

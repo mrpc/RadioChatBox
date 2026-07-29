@@ -7,6 +7,7 @@ use Pramnos\Broadcasting\SubscriptionOptions;
 use Pramnos\Http\Request;
 use Pramnos\Http\Sse\SseWriter;
 use Pramnos\Http\StreamedResponse;
+use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Database;
@@ -53,8 +54,8 @@ final class AdminStreamController
                 $sse->event('notification_count', ['unread_count' => (int) ($result ? $result->fetchColumn() : 0)]);
 
                 $driver = new RedisDriver(
-                    ['prefix' => Database::getRedisPrefix()],
-                    static fn () => Database::getRedisForSubscribe()
+                    ['prefix' => ConnectionManager::getInstance()->prefix()],
+                    static fn () => ConnectionManager::getInstance()->newConnection()
                 );
 
                 $driver->subscribe(
@@ -113,7 +114,10 @@ final class AdminStreamController
             return null;
         }
 
-        $tokenData = Database::getRedis()->get('admin_session:' . $token);
+        // The SSE stream-token lives under an UNPREFIXED admin_session:<token> key
+        // (raw, non-cache; minted by AdminSystemController::createSession) — read it
+        // over the shared connection, which applies no key prefix.
+        $tokenData = ConnectionManager::getInstance()->connection()->get('admin_session:' . $token);
         if (!$tokenData) {
             return null;
         }

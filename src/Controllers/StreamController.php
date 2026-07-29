@@ -6,9 +6,9 @@ use Pramnos\Broadcasting\Drivers\RedisDriver;
 use Pramnos\Http\Request;
 use Pramnos\Http\Sse\SseWriter;
 use Pramnos\Http\StreamedResponse;
+use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ChatService;
-use RadioChatBox\Database;
 use RadioChatBox\Services\ReactionService;
 
 /**
@@ -35,7 +35,7 @@ final class StreamController
         $username    = $username !== '' ? $username : null;
         $chatService = new ChatService();
         $chatMode    = $chatService->getSetting('chat_mode', 'public');
-        $prefix      = Database::getRedisPrefix();
+        $prefix      = ConnectionManager::getInstance()->prefix();
 
         $publicMode  = $chatMode === 'public' || $chatMode === 'both';
         $privateMode = $chatMode === 'private' || $chatMode === 'both';
@@ -50,7 +50,7 @@ final class StreamController
 
         // Reuse RadioChatBox's dedicated subscribe connection + key prefix; the
         // driver prefixes channels on subscribe and strips the prefix on delivery.
-        $driver = new RedisDriver(['prefix' => $prefix], static fn () => Database::getRedisForSubscribe());
+        $driver = new RedisDriver(['prefix' => $prefix], static fn () => ConnectionManager::getInstance()->newConnection());
 
         return StreamedResponse::sse(function (SseWriter $sse) use ($username, $chatService, $chatMode, $publicMode, $driver, $channels) {
             $sse->comment('SSE connection established');
