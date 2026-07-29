@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\SettingsService;
 class MessageFilter
@@ -313,7 +313,7 @@ class MessageFilter
         }
         
         try {
-            $cachedData = Cache::store()->get('url_whitelist_patterns');
+            $cachedData = FlatCache::default()->get('url_whitelist_patterns');
 
             if ($cachedData !== null) {
                 $patterns = $cachedData;
@@ -325,7 +325,7 @@ class MessageFilter
                     ->pluck('pattern');
 
                 // Store in cache (5 minutes)
-                Cache::store()->set('url_whitelist_patterns', $patterns, 300);
+                FlatCache::default()->set('url_whitelist_patterns', $patterns, 300);
             }
 
             return $patterns;
@@ -367,7 +367,7 @@ class MessageFilter
     {
         try {
             // Try the cache first
-            $cachedData = Cache::store()->get('url_blacklist_patterns');
+            $cachedData = FlatCache::default()->get('url_blacklist_patterns');
 
             if ($cachedData !== null) {
                 $blacklist = $cachedData;
@@ -378,7 +378,7 @@ class MessageFilter
                     ->pluck('pattern');
 
                 // Store in cache (5 minutes)
-                Cache::store()->set('url_blacklist_patterns', $blacklist, 300);
+                FlatCache::default()->set('url_blacklist_patterns', $blacklist, 300);
             }
 
             $originalMessage = $message;
@@ -422,7 +422,7 @@ class MessageFilter
             // Atomic sliding-window counter via the Cache capability (Redis INCRBY
             // + 1h expiry); returns the new post-increment count.
             $key = "violations:spam_url:{$ipAddress}";
-            $violations = Cache::store()->increment($key, 1, 3600);
+            $violations = FlatCache::default()->increment($key, 1, 3600);
 
             // Auto-ban after 3 spam URL attempts
             if ($violations >= 3) {
@@ -448,13 +448,13 @@ class MessageFilter
                     ]);
 
                     // Invalidate cache
-                    Cache::store()->delete('banned_ips');
+                    FlatCache::default()->delete('banned_ips');
 
                     \Pramnos\Logs\Logger::log("Auto-banned IP {$ipAddress} for spam URL violations (count: {$violations})", 'radiochatbox');
                 }
 
                 // Clear violation counter
-                Cache::store()->delete($key);
+                FlatCache::default()->delete($key);
             } else {
                 $remaining = 3 - $violations;
                 \Pramnos\Logs\Logger::log("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)", 'radiochatbox');

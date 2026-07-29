@@ -3,7 +3,7 @@
 namespace RadioChatBox\Services;
 
 use RadioChatBox\AdminAuth;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 /**
  * User Service - Admin User Management with RBAC
@@ -254,7 +254,7 @@ class UserService
         $cacheKey = 'users:list:' . ($includeInactive ? 'all' : 'active');
 
         try {
-            $cached = Cache::store()->get($cacheKey);
+            $cached = FlatCache::default()->get($cacheKey);
 
             if (is_array($cached)) {
                 return $cached;
@@ -288,7 +288,7 @@ class UserService
             
             // Cache the results for 5 minutes
             try {
-                Cache::store()->set($cacheKey, $users, 300);
+                FlatCache::default()->set($cacheKey, $users, 300);
             } catch (\Exception $e) {
                 \Pramnos\Logs\Logger::log("UserService::getAllUsers cache set error: " . $e->getMessage(), 'radiochatbox');
             }
@@ -466,16 +466,16 @@ class UserService
     {
         try {
             // Clear both active and all users cache
-            Cache::store()->delete('users:list:active');
-            Cache::store()->delete('users:list:all');
+            FlatCache::default()->delete('users:list:active');
+            FlatCache::default()->delete('users:list:all');
 
             // Clear all display-name-related caches so an updated name shows
             // everywhere. (chat:messages / chat:messages:hash are the message-history
             // Redis structures — deleting the key forces getHistory() to rebuild from
             // the DB; the structures themselves are re-modeled in Phase 8 Step 4.)
-            Cache::store()->delete('chat:all_users'); // Combined user list
-            Cache::store()->delete('chat:messages'); // Message history
-            Cache::store()->delete('chat:messages:hash'); // Message hash for replies
+            FlatCache::default()->delete('chat:all_users'); // Combined user list
+            FlatCache::default()->delete('chat:messages'); // Message history
+            FlatCache::default()->delete('chat:messages:hash'); // Message hash for replies
 
             // Note: Individual user_data:{username} caches will expire naturally in 5 minutes
             // or can be cleared per-user if we know which user was updated
@@ -505,9 +505,9 @@ class UserService
     {
         try {
             // Clear legacy display_name cache (write-less; kept for safety)
-            Cache::store()->delete("display_name:{$username}");
+            FlatCache::default()->delete("display_name:{$username}");
             // Clear new user_data cache (includes both user_id and display_name)
-            Cache::store()->delete("user_data:{$username}");
+            FlatCache::default()->delete("user_data:{$username}");
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("UserService::clearUserDataCache error: " . $e->getMessage(), 'radiochatbox');
         }

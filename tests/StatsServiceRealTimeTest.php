@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Services\StatsService;
 use RadioChatBox\Database;
 
@@ -56,7 +56,7 @@ class StatsServiceRealTimeTest extends TestCase
     {
         try {
             // Clear Redis stats cache (don't add prefix - Redis client handles it)
-            Cache::store()->delete('stats:summary');
+            FlatCache::default()->delete('stats:summary');
             
             // Clean up test messages and sessions from today
             self::$pdo->exec("DELETE FROM messages WHERE created_at >= CURRENT_DATE AND message LIKE '%Test message%'");
@@ -97,7 +97,7 @@ class StatsServiceRealTimeTest extends TestCase
     public function testRealTimeFallbackLogicWorks()
     {
         // Clear Redis cache to force fresh query
-        Cache::store()->delete('stats:summary');
+        FlatCache::default()->delete('stats:summary');
         
         $summary = self::$service->getSummary();
         
@@ -135,7 +135,7 @@ class StatsServiceRealTimeTest extends TestCase
         
         try {
             // Clear Redis cache to force fresh query
-            Cache::store()->delete('stats:summary');
+            FlatCache::default()->delete('stats:summary');
             
             $summary = self::$service->getSummary();
             
@@ -156,7 +156,7 @@ class StatsServiceRealTimeTest extends TestCase
     public function testCacheWorksOnSecondCall()
     {
         // First call - miss cache
-        Cache::store()->delete('stats:summary');
+        FlatCache::default()->delete('stats:summary');
         $summary1 = self::$service->getSummary();
         
         // Second call - should hit cache

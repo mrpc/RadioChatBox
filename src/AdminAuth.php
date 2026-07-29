@@ -2,6 +2,8 @@
 
 namespace RadioChatBox;
 
+use Pramnos\Cache\FlatCache;
+
 use RadioChatBox\Services\UserService;
 class AdminAuth
 {
@@ -106,7 +108,7 @@ class AdminAuth
             // Cache the authenticated user's info for 24h so getCurrentUser() skips
             // a DB role lookup per request. This is a cache, not a login session —
             // auth itself is the per-request Bearer check in verify().
-            Cache::store()->set("admin_session:{$username}", [
+            FlatCache::default()->set("admin_session:{$username}", [
                 'username' => $username,
                 'role' => $role,
                 'authenticated_at' => time(),
@@ -126,7 +128,7 @@ class AdminAuth
     public static function destroySession(string $username): void
     {
         try {
-            Cache::store()->delete("admin_session:{$username}");
+            FlatCache::default()->delete("admin_session:{$username}");
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("AdminAuth::destroySession error: " . $e->getMessage(), 'radiochatbox');
         }
@@ -168,7 +170,7 @@ class AdminAuth
             
             // The identifier could be either username or email
             // First try to look up directly in case it's a username with active session
-            $sessionData = Cache::store()->get("admin_session:{$identifier}");
+            $sessionData = FlatCache::default()->get("admin_session:{$identifier}");
             if (is_array($sessionData)) {
                 return $sessionData;
             }
@@ -186,7 +188,7 @@ class AdminAuth
                 if ($user) {
                     $actualUsername = $user['username'];
                     // Try to get session with the actual username
-                    $sessionData = Cache::store()->get("admin_session:{$actualUsername}");
+                    $sessionData = FlatCache::default()->get("admin_session:{$actualUsername}");
                     if (is_array($sessionData)) {
                         return $sessionData;
                     }
@@ -242,7 +244,7 @@ class AdminAuth
     private static function checkRateLimit(string $ipAddress): bool
     {
         try {
-            $attempts = Cache::store()->counter("admin_auth_attempts:{$ipAddress}");
+            $attempts = FlatCache::default()->counter("admin_auth_attempts:{$ipAddress}");
 
             // Allow max 5 attempts per 15 minutes
             return $attempts < 5;
@@ -260,7 +262,7 @@ class AdminAuth
     {
         try {
             // Atomic sliding-window counter (Redis INCRBY + 15-minute expiry).
-            Cache::store()->increment("admin_auth_attempts:{$ipAddress}", 1, 900);
+            FlatCache::default()->increment("admin_auth_attempts:{$ipAddress}", 1, 900);
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to record admin auth attempt: " . $e->getMessage(), 'radiochatbox');
         }
@@ -272,7 +274,7 @@ class AdminAuth
     private static function clearFailedAttempts(string $ipAddress): void
     {
         try {
-            Cache::store()->delete("admin_auth_attempts:{$ipAddress}");
+            FlatCache::default()->delete("admin_auth_attempts:{$ipAddress}");
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to clear admin auth attempts: " . $e->getMessage(), 'radiochatbox');
         }

@@ -8,7 +8,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\BotService;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\Services\LlmAccount;
@@ -280,7 +280,7 @@ final class AdminSettingsController
 
             // Invalidate settings cache (routed through Cache so the instance
             // prefix matches SettingsService — the bare key missed it before).
-            Cache::store()->delete('settings:all');
+            FlatCache::default()->delete('settings:all');
 
             return Response::json([
                 'success' => true,

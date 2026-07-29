@@ -5,7 +5,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -33,7 +33,7 @@ class CleanupService
 
             // Invalidate cache if any bans were removed
             if ($count > 0) {
-                Cache::store()->delete('banned_ips');
+                FlatCache::default()->delete('banned_ips');
                 \Pramnos\Logs\Logger::log("Cleanup: Removed {$count} expired IP bans", 'radiochatbox');
             }
 

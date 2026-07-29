@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\LlmProviders;
 use Pramnos\Database\Database as PramnosDatabase;
@@ -621,7 +621,7 @@ class FakeUserService
     private function getJitteredTarget(int $minUsers): int
     {
         try {
-            $cached = Cache::store()->get('fake_users:jitter_target');
+            $cached = FlatCache::default()->get('fake_users:jitter_target');
             if ($cached !== null) {
                 [$base, $target] = array_map('intval', explode(':', (string) $cached) + [0, 0]);
                 if ($base === $minUsers) {
@@ -644,7 +644,7 @@ class FakeUserService
 
         try {
             // Refresh roughly every 3 minutes for a natural drift.
-            Cache::store()->set('fake_users:jitter_target', $minUsers . ':' . $target, 180);
+            FlatCache::default()->set('fake_users:jitter_target', $minUsers . ':' . $target, 180);
         } catch (\Exception $e) {
             // Non-fatal: without caching it just recomputes next call.
         }

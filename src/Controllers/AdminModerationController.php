@@ -7,7 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use Pramnos\Broadcasting\BroadcastingManager;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
@@ -390,7 +390,7 @@ final class AdminModerationController
                 ]);
 
                 // Invalidate the cached blacklist patterns.
-                Cache::store()->delete('url_blacklist_patterns');
+                FlatCache::default()->delete('url_blacklist_patterns');
 
                 return Response::json([
                     'success' => true,
@@ -408,7 +408,7 @@ final class AdminModerationController
             $db->queryBuilder()->from('url_blacklist')->where('id', '=', $id)->delete();
 
             // Invalidate the cached blacklist patterns.
-            Cache::store()->delete('url_blacklist_patterns');
+            FlatCache::default()->delete('url_blacklist_patterns');
 
             return Response::json([
                 'success' => true,
@@ -478,7 +478,7 @@ final class AdminModerationController
                 ]);
 
                 // Invalidate the cached whitelist patterns.
-                Cache::store()->delete('url_whitelist_patterns');
+                FlatCache::default()->delete('url_whitelist_patterns');
 
                 return Response::json([
                     'success' => true,
@@ -496,7 +496,7 @@ final class AdminModerationController
             $db->queryBuilder()->from('url_whitelist')->where('id', '=', $id)->delete();
 
             // Invalidate the cached whitelist patterns.
-            Cache::store()->delete('url_whitelist_patterns');
+            FlatCache::default()->delete('url_whitelist_patterns');
 
             return Response::json([
                 'success' => true,

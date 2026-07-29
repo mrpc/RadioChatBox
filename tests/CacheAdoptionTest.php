@@ -5,7 +5,6 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Cache\Adapter\ArrayAdapter;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Cache;
 use RadioChatBox\Services\RadioStatusService;
 
 /**
@@ -18,7 +17,7 @@ class CacheAdoptionTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Cache::setStore(null); // reset to the real (Redis-backed) store
+        FlatCache::setDefault(null); // reset to the real (Redis-backed) store
     }
 
     private function arrayStore(string $prefix = 'rcb:'): FlatCache
@@ -32,11 +31,11 @@ class CacheAdoptionTest extends TestCase
      */
     public function testCacheStoreRoundTripsArraysAndColonKeys(): void
     {
-        Cache::setStore($this->arrayStore());
+        FlatCache::setDefault($this->arrayStore());
 
-        Cache::store()->set('radio:now_playing', ['active' => true, 'title' => 'X'], 10);
+        FlatCache::default()->set('radio:now_playing', ['active' => true, 'title' => 'X'], 10);
 
-        $this->assertSame(['active' => true, 'title' => 'X'], Cache::store()->get('radio:now_playing'));
+        $this->assertSame(['active' => true, 'title' => 'X'], FlatCache::default()->get('radio:now_playing'));
     }
 
     /**
@@ -45,8 +44,8 @@ class CacheAdoptionTest extends TestCase
     public function testSetStoreOverridesSharedInstance(): void
     {
         $store = $this->arrayStore('x:');
-        Cache::setStore($store);
-        $this->assertSame($store, Cache::store());
+        FlatCache::setDefault($store);
+        $this->assertSame($store, FlatCache::default());
     }
 
     /**
@@ -55,7 +54,7 @@ class CacheAdoptionTest extends TestCase
      */
     public function testNowPlayingWithoutUrlReturnsInactiveWithoutCaching(): void
     {
-        Cache::setStore($this->arrayStore());
+        FlatCache::setDefault($this->arrayStore());
 
         $result = (new RadioStatusService())->getNowPlaying();
 
@@ -66,7 +65,7 @@ class CacheAdoptionTest extends TestCase
     // ---------------------------------------------------------------------
     // Atomic-counter capability (Phase 8 Step 2). The rate-limit, login-attempt,
     // spam-violation and bot-reply-epoch counters route through
-    // Cache::store()->increment/counter/delete. Verified here over ArrayAdapter
+    // FlatCache::default()->increment/counter/delete. Verified here over ArrayAdapter
     // (the AbstractAdapter fallback); production uses the RedisAdapter's native
     // INCRBY, exercised end-to-end by MessageFilterTest's auto-ban test.
     // ---------------------------------------------------------------------
@@ -78,12 +77,12 @@ class CacheAdoptionTest extends TestCase
      */
     public function testCounterIncrementAccumulatesAndCounterReads(): void
     {
-        Cache::setStore($this->arrayStore());
+        FlatCache::setDefault($this->arrayStore());
 
-        $this->assertSame(0, Cache::store()->counter('admin_auth_attempts:1.2.3.4'), 'absent counter reads 0');
-        $this->assertSame(1, Cache::store()->increment('admin_auth_attempts:1.2.3.4', 1, 900));
-        $this->assertSame(2, Cache::store()->increment('admin_auth_attempts:1.2.3.4', 1, 900));
-        $this->assertSame(2, Cache::store()->counter('admin_auth_attempts:1.2.3.4'));
+        $this->assertSame(0, FlatCache::default()->counter('admin_auth_attempts:1.2.3.4'), 'absent counter reads 0');
+        $this->assertSame(1, FlatCache::default()->increment('admin_auth_attempts:1.2.3.4', 1, 900));
+        $this->assertSame(2, FlatCache::default()->increment('admin_auth_attempts:1.2.3.4', 1, 900));
+        $this->assertSame(2, FlatCache::default()->counter('admin_auth_attempts:1.2.3.4'));
     }
 
     /**
@@ -92,12 +91,12 @@ class CacheAdoptionTest extends TestCase
      */
     public function testCounterDeleteResetsIt(): void
     {
-        Cache::setStore($this->arrayStore());
+        FlatCache::setDefault($this->arrayStore());
 
-        Cache::store()->increment('violations:spam_url:9.9.9.9', 3);
-        $this->assertSame(3, Cache::store()->counter('violations:spam_url:9.9.9.9'));
+        FlatCache::default()->increment('violations:spam_url:9.9.9.9', 3);
+        $this->assertSame(3, FlatCache::default()->counter('violations:spam_url:9.9.9.9'));
 
-        Cache::store()->delete('violations:spam_url:9.9.9.9');
-        $this->assertSame(0, Cache::store()->counter('violations:spam_url:9.9.9.9'));
+        FlatCache::default()->delete('violations:spam_url:9.9.9.9');
+        $this->assertSame(0, FlatCache::default()->counter('violations:spam_url:9.9.9.9'));
     }
 }

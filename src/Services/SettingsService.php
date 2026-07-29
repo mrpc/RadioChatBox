@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\LlmPricing;
 use RadioChatBox\Services\LlmProviders;
@@ -164,7 +164,7 @@ class SettingsService
     public function getAll(): array
     {
         // Try cache first
-        $cached = Cache::store()->get(self::SETTINGS_CACHE_KEY);
+        $cached = FlatCache::default()->get(self::SETTINGS_CACHE_KEY);
         if ($cached !== null) {
             return $cached;
         }
@@ -181,7 +181,7 @@ class SettingsService
         }
 
         // Cache for future requests
-        Cache::store()->set(self::SETTINGS_CACHE_KEY, $settings, self::CACHE_TTL);
+        FlatCache::default()->set(self::SETTINGS_CACHE_KEY, $settings, self::CACHE_TTL);
 
         return $settings;
     }
@@ -234,7 +234,7 @@ class SettingsService
 
         if ($result !== false) {
             // Invalidate cache
-            Cache::store()->delete(self::SETTINGS_CACHE_KEY);
+            FlatCache::default()->delete(self::SETTINGS_CACHE_KEY);
         }
 
         return $result !== false;
@@ -367,12 +367,12 @@ class SettingsService
      */
     public function invalidateCache(): void
     {
-        Cache::store()->delete(self::SETTINGS_CACHE_KEY);
-        Cache::store()->delete(self::RATE_LIMIT_CACHE_KEY);
+        FlatCache::default()->delete(self::SETTINGS_CACHE_KEY);
+        FlatCache::default()->delete(self::RATE_LIMIT_CACHE_KEY);
 
         // Tell the long-running workers to rebuild what they derived from settings;
         // clearing the cache alone would not reach a client built at startup.
-        Cache::store()->set(self::VERSION_KEY, (string) microtime(true));
+        FlatCache::default()->set(self::VERSION_KEY, (string) microtime(true));
     }
 
     /**
@@ -406,7 +406,7 @@ class SettingsService
             $this->db->commitTransaction();
 
             // Invalidate cache
-            Cache::store()->delete(self::SETTINGS_CACHE_KEY);
+            FlatCache::default()->delete(self::SETTINGS_CACHE_KEY);
 
             return true;
         } catch (\Exception $e) {

@@ -2,6 +2,8 @@
 
 namespace RadioChatBox;
 
+use Pramnos\Cache\FlatCache;
+
 use RadioChatBox\Services\SettingsService;
 /**
  * Keeps a long-running worker current, because a PHP daemon otherwise runs the code
@@ -142,7 +144,7 @@ class WorkerReloader
     public function settingsVersion(): string
     {
         try {
-            $stamp = Cache::store()->get(SettingsService::VERSION_KEY);
+            $stamp = FlatCache::default()->get(SettingsService::VERSION_KEY);
             if (is_string($stamp) && $stamp !== '') {
                 return $stamp;
             }

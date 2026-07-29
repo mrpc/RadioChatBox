@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Controllers\AdminStatsController;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -30,7 +30,7 @@ class AdminStatsControllerTest extends TestCase
     {
         if ($this->sessionKey !== null) {
             try {
-                Cache::store()->delete($this->sessionKey);
+                FlatCache::default()->delete($this->sessionKey);
             } catch (\Throwable) {
                 // best effort
             }
@@ -50,7 +50,7 @@ class AdminStatsControllerTest extends TestCase
     {
         try {
             $key = 'admin_session:' . self::ADMIN_ID;
-            Cache::store()->set($key, [
+            FlatCache::default()->set($key, [
                 'username' => self::ADMIN_ID,
                 'role'     => 'administrator',
             ], 120);

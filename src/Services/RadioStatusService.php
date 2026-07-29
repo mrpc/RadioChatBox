@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 class RadioStatusService
 {
     private SettingsService $settings;
@@ -33,14 +33,14 @@ class RadioStatusService
         }
 
         // Check cache first (RedisStore serialises, so the array round-trips as-is).
-        $cached = Cache::store()->get(self::CACHE_KEY);
+        $cached = FlatCache::default()->get(self::CACHE_KEY);
         if (is_array($cached)) {
             return $cached;
         }
 
         $parsed = $this->fetchAndParse($url);
         // Cache parsed result briefly.
-        Cache::store()->set(self::CACHE_KEY, $parsed, self::CACHE_TTL);
+        FlatCache::default()->set(self::CACHE_KEY, $parsed, self::CACHE_TTL);
         return $parsed;
     }
 

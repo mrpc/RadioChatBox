@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminSettingsController;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
@@ -30,7 +30,7 @@ class AdminSettingsControllerTest extends TestCase
     {
         if ($this->sessionKey !== null) {
             try {
-                Cache::store()->delete($this->sessionKey);
+                FlatCache::default()->delete($this->sessionKey);
             } catch (\Throwable) {
                 // best effort
             }
@@ -49,7 +49,7 @@ class AdminSettingsControllerTest extends TestCase
     {
         try {
             $key = 'admin_session:' . self::ADMIN_ID;
-            Cache::store()->set($key, ['username' => self::ADMIN_ID, 'role' => $role], 120);
+            FlatCache::default()->set($key, ['username' => self::ADMIN_ID, 'role' => $role], 120);
             $this->sessionKey = $key;
             $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . self::ADMIN_ID . ':x';
         } catch (\Throwable $e) {

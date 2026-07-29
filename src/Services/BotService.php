@@ -3,7 +3,7 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Broadcasting\BroadcastingManager;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Services\LlmProviders;
@@ -1187,8 +1187,8 @@ class BotService
         $epochs = 0;
         foreach ($peers as $peer) {
             $epochKey = $this->epochKey($fakeUserId, (string) $peer);
-            if (Cache::store()->counter($epochKey) > 0) {
-                Cache::store()->delete($epochKey);
+            if (FlatCache::default()->counter($epochKey) > 0) {
+                FlatCache::default()->delete($epochKey);
                 $epochs++;
             }
         }
@@ -2731,12 +2731,12 @@ class BotService
     {
         // Atomic monotonic counter (Redis INCRBY) so any reply job queued under an
         // older epoch becomes a no-op; refreshed 7-day TTL.
-        return Cache::store()->increment($this->epochKey($fakeUserId, $peer), 1, self::EPOCH_TTL);
+        return FlatCache::default()->increment($this->epochKey($fakeUserId, $peer), 1, self::EPOCH_TTL);
     }
 
     private function currentEpoch(int $fakeUserId, string $peer): int
     {
-        return Cache::store()->counter($this->epochKey($fakeUserId, $peer));
+        return FlatCache::default()->counter($this->epochKey($fakeUserId, $peer));
     }
 
     private function randomBetween(int $min, int $max): int

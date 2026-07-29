@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RuntimeException;
 use Pramnos\Database\Database as PramnosDatabase;
@@ -86,7 +86,7 @@ class StatsService
         // Rate limiting: don't record more than once per 5 minutes
         if (!$ignoreRateLimit) {
             $lastSnapshotKey = 'stats:last_snapshot_time';
-            $lastSnapshot = Cache::store()->get($lastSnapshotKey);
+            $lastSnapshot = FlatCache::default()->get($lastSnapshotKey);
 
             if ($lastSnapshot !== null) {
                 $now = time();
@@ -94,7 +94,7 @@ class StatsService
                 // If less than 5 minutes have passed, skip recording
                 if (($now - (int) $lastSnapshot) < 300) {
                     // Return cached snapshot instead of recording
-                    $cached = Cache::store()->get('stats:latest_snapshot');
+                    $cached = FlatCache::default()->get('stats:latest_snapshot');
                     if ($cached !== null) {
                         return $cached;
                     }
@@ -103,7 +103,7 @@ class StatsService
             }
 
             // Update last snapshot time
-            Cache::store()->set($lastSnapshotKey, time(), 3600);
+            FlatCache::default()->set($lastSnapshotKey, time(), 3600);
         }
         $this->ensureTablesExist();
         
@@ -139,7 +139,7 @@ class StatsService
         ];
 
         // Cache latest snapshot for 5 minutes
-        Cache::store()->set('stats:latest_snapshot', $snapshot, 300);
+        FlatCache::default()->set('stats:latest_snapshot', $snapshot, 300);
 
         return $snapshot;
     }
@@ -162,7 +162,7 @@ class StatsService
             $this->db->preparedQuery("SELECT aggregate_hourly_stats(:hour)", ['hour' => $hourTimestamp]);
             
             // Invalidate cache
-            Cache::store()->delete('stats:hourly:latest');
+            FlatCache::default()->delete('stats:hourly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -186,7 +186,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_daily_stats(:date)", ['date' => $date]);
             
-            Cache::store()->delete('stats:daily:latest');
+            FlatCache::default()->delete('stats:daily:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -210,7 +210,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_weekly_stats(:date)", ['date' => $date]);
             
-            Cache::store()->delete('stats:weekly:latest');
+            FlatCache::default()->delete('stats:weekly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -234,7 +234,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_monthly_stats(:date)", ['date' => $date]);
             
-            Cache::store()->delete('stats:monthly:latest');
+            FlatCache::default()->delete('stats:monthly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -258,7 +258,7 @@ class StatsService
         try {
             $this->db->preparedQuery("SELECT aggregate_yearly_stats(:year)", ['year' => $year]);
             
-            Cache::store()->delete('stats:yearly:latest');
+            FlatCache::default()->delete('stats:yearly:latest');
             
             return true;
         } catch (\Exception $e) {
@@ -278,7 +278,7 @@ class StatsService
     public function getHourlyStats(?string $startDate = null, ?string $endDate = null, int $limit = 168): array
     {
         $cacheKey = "stats:hourly:{$startDate}:{$endDate}:{$limit}";
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
@@ -293,7 +293,7 @@ class StatsService
         $results = $qb->orderBy('stat_hour', 'desc')->limit($limit)->getAll();
 
         // Cache for 10 minutes
-        Cache::store()->set($cacheKey, $results, 600);
+        FlatCache::default()->set($cacheKey, $results, 600);
 
         return $results;
     }
@@ -309,7 +309,7 @@ class StatsService
     public function getDailyStats(?string $startDate = null, ?string $endDate = null, int $limit = 90): array
     {
         $cacheKey = "stats:daily:{$startDate}:{$endDate}:{$limit}";
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
@@ -324,7 +324,7 @@ class StatsService
         $results = $qb->orderBy('stat_date', 'desc')->limit($limit)->getAll();
 
         // Cache for 1 hour
-        Cache::store()->set($cacheKey, $results, 3600);
+        FlatCache::default()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -340,7 +340,7 @@ class StatsService
     public function getWeeklyStats(?int $year = null, int $limit = 52): array
     {
         $cacheKey = "stats:weekly:{$year}:{$limit}";
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
@@ -390,7 +390,7 @@ class StatsService
         $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
-        Cache::store()->set($cacheKey, $results, 3600);
+        FlatCache::default()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -406,7 +406,7 @@ class StatsService
     public function getMonthlyStats(?int $year = null, int $limit = 24): array
     {
         $cacheKey = "stats:monthly:{$year}:{$limit}";
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
@@ -453,7 +453,7 @@ class StatsService
         $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
-        Cache::store()->set($cacheKey, $results, 3600);
+        FlatCache::default()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -468,7 +468,7 @@ class StatsService
     public function getYearlyStats(int $limit = 10): array
     {
         $cacheKey = "stats:yearly:{$limit}";
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
@@ -513,7 +513,7 @@ class StatsService
         $results = array_slice($results, 0, max(1, $limit));
 
         // Cache for 1 hour
-        Cache::store()->set($cacheKey, $results, 3600);
+        FlatCache::default()->set($cacheKey, $results, 3600);
 
         return $results;
     }
@@ -533,7 +533,7 @@ class StatsService
         $this->ensureTablesExist();
         
         $cacheKey = 'stats:summary';
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         
         // Use cache if available - real-time checks happen at cache creation time
         // Cache is short-lived (30s) to ensure frequent updates
@@ -650,7 +650,7 @@ class StatsService
         ];
 
         // Cache for 30 seconds - short TTL ensures real-time updates show up quickly
-        Cache::store()->set($cacheKey, $summary, 30);
+        FlatCache::default()->set($cacheKey, $summary, 30);
 
         return $summary;
     }
@@ -920,20 +920,20 @@ class StatsService
         
         // Check if hourly aggregation is needed (run every 70 minutes max)
         $lastHourlyKey = 'stats:last_hourly_aggregation';
-        $lastHourly = Cache::store()->get($lastHourlyKey);
+        $lastHourly = FlatCache::default()->get($lastHourlyKey);
         
         if ($lastHourly === null || ($now - (int)$lastHourly) > 4200) { // 70 minutes
             $results['hourly'] = $this->aggregateHourlyStats();
-            Cache::store()->set($lastHourlyKey, $now, 86400); // Remember for 24 hours
+            FlatCache::default()->set($lastHourlyKey, $now, 86400); // Remember for 24 hours
         }
         
         // Check if daily aggregation is needed (run every 25 hours max)
         $lastDailyKey = 'stats:last_daily_aggregation';
-        $lastDaily = Cache::store()->get($lastDailyKey);
+        $lastDaily = FlatCache::default()->get($lastDailyKey);
         
         if ($lastDaily === null || ($now - (int)$lastDaily) > 90000) { // 25 hours
             $results['daily'] = $this->aggregateDailyStats();
-            Cache::store()->set($lastDailyKey, $now, 604800); // Remember for 7 days
+            FlatCache::default()->set($lastDailyKey, $now, 604800); // Remember for 7 days
         }
         
         return $results;

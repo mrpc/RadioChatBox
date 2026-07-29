@@ -3,7 +3,7 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Broadcasting\BroadcastingManager;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
 use RadioChatBox\MessageHistory;
@@ -283,7 +283,7 @@ class ChatService
         try {
             // Rate-limit *settings* are a recomputable cache (the per-IP counters
             // below are state and stay on raw Redis).
-            $cached = Cache::store()->get('settings:rate_limit');
+            $cached = FlatCache::default()->get('settings:rate_limit');
 
             if (is_array($cached)) {
                 $rateLimitMessages = $cached['messages'] ?? 10;
@@ -309,7 +309,7 @@ class ChatService
                     : 60;
 
                 // Cache for 5 minutes
-                Cache::store()->set('settings:rate_limit', [
+                FlatCache::default()->set('settings:rate_limit', [
                     'messages' => $rateLimitMessages,
                     'window' => $rateLimitWindow,
                 ], 300);
@@ -321,14 +321,14 @@ class ChatService
 
         $key = self::RATE_LIMIT_PREFIX . $ipAddress;
 
-        if (Cache::store()->counter($key) >= $rateLimitMessages) {
+        if (FlatCache::default()->counter($key) >= $rateLimitMessages) {
             // Track repeated violations for auto-ban
             $this->trackViolation($ipAddress, 'rate_limit');
             return false;
         }
 
         // Atomic sliding-window counter (Redis INCRBY + window expiry).
-        Cache::store()->increment($key, 1, $rateLimitWindow);
+        FlatCache::default()->increment($key, 1, $rateLimitWindow);
 
         return true;
     }
@@ -341,7 +341,7 @@ class ChatService
         try {
             $key = "violations:{$violationType}:{$ipAddress}";
             // Atomic sliding-window counter; returns the new post-increment count.
-            $violations = Cache::store()->increment($key, 1, 3600);
+            $violations = FlatCache::default()->increment($key, 1, 3600);
 
             // Auto-ban thresholds
             $thresholds = [
@@ -357,7 +357,7 @@ class ChatService
                 $this->banIP($ipAddress, $reason, 'system', 1); // 1 day ban
 
                 // Clear violation counter
-                Cache::store()->delete($key);
+                FlatCache::default()->delete($key);
                 
                 \Pramnos\Logs\Logger::log("Auto-banned IP {$ipAddress} for {$violationType} violations (count: {$violations})", 'radiochatbox');
             } else {
@@ -474,7 +474,7 @@ class ChatService
         try {
             // Check Redis cache first (cache both fields together)
             $cacheKey = 'user_data:' . $username;
-            $cached = Cache::store()->get($cacheKey);
+            $cached = FlatCache::default()->get($cacheKey);
             if ($cached !== null) {
                 return $cached;
             }
@@ -492,7 +492,7 @@ class ChatService
             ];
 
             // Cache result for 5 minutes
-            Cache::store()->set($cacheKey, $userData, 300);
+            FlatCache::default()->set($cacheKey, $userData, 300);
 
             return $userData;
         } catch (\Throwable $e) {
@@ -804,7 +804,7 @@ class ChatService
     {
         try {
             $rateLimitKey = 'user_update:last_publish';
-            $lastPublish = Cache::store()->get($rateLimitKey);
+            $lastPublish = FlatCache::default()->get($rateLimitKey);
 
             if ($lastPublish !== null) {
                 // Published recently, skip it
@@ -812,7 +812,7 @@ class ChatService
             }
 
             // Set rate limit lock for 10 seconds
-            Cache::store()->set($rateLimitKey, time(), 10);
+            FlatCache::default()->set($rateLimitKey, time(), 10);
 
             // Actually publish the update
             $this->publishUserUpdate();
@@ -904,7 +904,7 @@ class ChatService
     {
         // PERFORMANCE OPTIMIZATION: Cache combined user list
         $cacheKey = 'chat:all_users';
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
 
         if ($cached !== null) {
             return $cached;
@@ -934,7 +934,7 @@ class ChatService
         $allUsers = array_merge($realUsers, $formattedFakeUsers);
 
         // Cache for 30 seconds (short TTL because user list changes frequently)
-        Cache::store()->set($cacheKey, $allUsers, 30);
+        FlatCache::default()->set($cacheKey, $allUsers, 30);
 
         return $allUsers;
     }
@@ -946,7 +946,7 @@ class ChatService
     private function invalidateUserListCache(): void
     {
         try {
-            Cache::store()->delete('chat:all_users');
+            FlatCache::default()->delete('chat:all_users');
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to invalidate user list cache: " . $e->getMessage(), 'radiochatbox');
         }
@@ -1001,7 +1001,7 @@ class ChatService
         try {
             // PERFORMANCE OPTIMIZATION: Rate limit cleanup to max once per 30 seconds
             $rateLimitKey = 'cleanup:last_run';
-            $lastRun = Cache::store()->get($rateLimitKey);
+            $lastRun = FlatCache::default()->get($rateLimitKey);
 
             if ($lastRun !== null) {
                 // Cleanup was run recently, skip it
@@ -1009,7 +1009,7 @@ class ChatService
             }
 
             // Set rate limit lock for 30 seconds
-            Cache::store()->set($rateLimitKey, time(), 30);
+            FlatCache::default()->set($rateLimitKey, time(), 30);
 
             // Run the cleanup
             $this->db->statement("SELECT cleanup_inactive_sessions()");
@@ -1029,7 +1029,7 @@ class ChatService
         try {
                         // Try cache first
             $cacheKey = 'banned_ips';
-            $cached = Cache::store()->get($cacheKey);
+            $cached = FlatCache::default()->get($cacheKey);
             
             if ($cached !== null) {
                 $bannedIPs = $cached;
@@ -1043,7 +1043,7 @@ class ChatService
                 $bannedIPs = array_map(fn($r) => reset($r), $rows);
                 
                 // Cache for 5 minutes
-                Cache::store()->set($cacheKey, $bannedIPs, 300);
+                FlatCache::default()->set($cacheKey, $bannedIPs, 300);
             }
             
             return in_array($ipAddress, $bannedIPs, true);
@@ -1105,7 +1105,7 @@ class ChatService
         try {
             // Try cache first
             $cacheKey = 'banned_nicknames';
-            $cached = Cache::store()->get($cacheKey);
+            $cached = FlatCache::default()->get($cacheKey);
             
             if ($cached !== null) {
                 $bannedNicknames = $cached;
@@ -1116,7 +1116,7 @@ class ChatService
                 $bannedNicknames = array_map(fn($r) => reset($r), $rows);
                 
                 // Cache for 5 minutes
-                Cache::store()->set($cacheKey, $bannedNicknames, 300);
+                FlatCache::default()->set($cacheKey, $bannedNicknames, 300);
             }
             
             return in_array(strtolower($nickname), $bannedNicknames, true);
@@ -1264,7 +1264,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                Cache::store()->delete('banned_ips');
+                FlatCache::default()->delete('banned_ips');
             }
 
             return $result !== false;
@@ -1284,7 +1284,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                Cache::store()->delete('banned_ips');
+                FlatCache::default()->delete('banned_ips');
             }
 
             return $result !== false;
@@ -1318,7 +1318,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                Cache::store()->delete('banned_nicknames');
+                FlatCache::default()->delete('banned_nicknames');
             }
 
             return $result !== false;
@@ -1338,7 +1338,7 @@ class ChatService
 
             // Invalidate Redis cache
             if ($result) {
-                Cache::store()->delete('banned_nicknames');
+                FlatCache::default()->delete('banned_nicknames');
             }
 
             return $result !== false;

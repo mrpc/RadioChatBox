@@ -41,7 +41,7 @@ final class MessageHistory
 
     public function __construct(?int $historyLimit = null, ?FlatCache $cache = null)
     {
-        $this->cache        = $cache ?? Cache::store();
+        $this->cache        = $cache ?? FlatCache::default();
         $this->historyLimit = $historyLimit ?? (int) envvar('CHAT_HISTORY_LIMIT', 100);
     }
 

@@ -31,7 +31,7 @@ final class KickRegistry
 
     public function __construct(?FlatCache $cache = null)
     {
-        $this->cache = $cache ?? Cache::store();
+        $this->cache = $cache ?? FlatCache::default();
     }
 
     private function key(string $sessionId): string

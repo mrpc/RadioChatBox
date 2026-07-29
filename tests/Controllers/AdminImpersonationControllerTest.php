@@ -9,7 +9,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Services\BlockService;
 use RadioChatBox\Controllers\AdminImpersonationController;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
@@ -38,7 +38,7 @@ class AdminImpersonationControllerTest extends TestCase
     {
         if ($this->sessionKey !== null) {
             try {
-                Cache::store()->delete($this->sessionKey);
+                FlatCache::default()->delete($this->sessionKey);
             } catch (\Throwable $e) {
                 // best effort cleanup
             }
@@ -61,7 +61,7 @@ class AdminImpersonationControllerTest extends TestCase
     {
         try {
             $key = 'admin_session:' . self::ROOT_ID;
-            Cache::store()->set($key, [
+            FlatCache::default()->set($key, [
                 'username' => self::ROOT_ID,
                 'role'     => 'root',
             ], 120);

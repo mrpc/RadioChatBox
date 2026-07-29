@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 /**
  * Fetches album cover art and artist images for tracks and stores them locally.
  *
@@ -51,7 +51,7 @@ class ArtworkService
         $cacheKey = 'artwork:' . md5(mb_strtolower($query));
 
         // Positive cache
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if (is_array($cached)) {
             // Verify the cover file still exists; if deleted, fall through.
             if (empty($cached['cover']) || $this->webPathExists($cached['cover'])) {
@@ -65,12 +65,12 @@ class ArtworkService
         $result = $this->lookupAndStore($artist, $title, $query);
 
         if ($result['cover'] !== null || $result['artist_image'] !== null) {
-            Cache::store()->set($cacheKey, $result, self::POSITIVE_TTL);
+            FlatCache::default()->set($cacheKey, $result, self::POSITIVE_TTL);
         } elseif (($result['source'] ?? null) === null) {
             // Genuine no-match from every provider → cache negative briefly.
             // If a provider DID match but the image failed to download (e.g. the
             // uploads dir isn't writable), don't cache — so it retries once fixed.
-            Cache::store()->set($cacheKey, 0, self::NEGATIVE_TTL);
+            FlatCache::default()->set($cacheKey, 0, self::NEGATIVE_TTL);
         }
 
         return $result;
@@ -85,9 +85,9 @@ class ArtworkService
         }
         $cacheKey = 'artwork:artist:' . md5(mb_strtolower($artist));
         if ($force) {
-            Cache::store()->delete($cacheKey);
+            FlatCache::default()->delete($cacheKey);
         }
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if (is_array($cached) && (empty($cached['artist_image']) || $this->webPathExists($cached['artist_image']))) {
             return $cached + ['artist_image' => null, 'artist_image_thumb' => null, 'source' => null];
         }
@@ -108,9 +108,9 @@ class ArtworkService
 
         $result = ['artist_image' => $image, 'artist_image_thumb' => $thumb, 'source' => $source];
         if ($image === null) {
-            Cache::store()->set($cacheKey, 0, self::NEGATIVE_TTL);
+            FlatCache::default()->set($cacheKey, 0, self::NEGATIVE_TTL);
         } else {
-            Cache::store()->set($cacheKey, $result, self::POSITIVE_TTL);
+            FlatCache::default()->set($cacheKey, $result, self::POSITIVE_TTL);
         }
         return $result;
     }

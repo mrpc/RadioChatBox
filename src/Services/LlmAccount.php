@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\Services\LlmService;
@@ -441,7 +441,7 @@ class LlmAccount
     {
         // FlatCache serialises, so the array round-trips as-is; a miss (or Redis
         // being unavailable) returns null and the caller falls back to source.
-        $value = Cache::store()->get($key);
+        $value = FlatCache::default()->get($key);
 
         return is_array($value) ? $value : null;
     }
@@ -452,6 +452,6 @@ class LlmAccount
     private function cacheSet(string $key, array $value, int $ttl): void
     {
         // Caching is an optimisation; FlatCache no-ops gracefully without Redis.
-        Cache::store()->set($key, $value, $ttl);
+        FlatCache::default()->set($key, $value, $ttl);
     }
 }

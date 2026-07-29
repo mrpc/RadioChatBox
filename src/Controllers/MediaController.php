@@ -9,7 +9,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ArtworkService;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\RadioStatusService;
 use RadioChatBox\Services\TrackStatsService;
@@ -121,7 +121,7 @@ final class MediaController
         // Check cache first
         $cacheKey = 'link_preview:' . md5($url);
         try {
-            $cached = Cache::store()->get($cacheKey);
+            $cached = FlatCache::default()->get($cacheKey);
             if ($cached !== null) {
                 return Response::json($cached);
             }
@@ -178,7 +178,7 @@ final class MediaController
 
         // Cache the result for 1 hour
         try {
-            Cache::store()->set($cacheKey, $preview, 3600);
+            FlatCache::default()->set($cacheKey, $preview, 3600);
         } catch (\Exception $e) {
             // Cache backend unavailable — return uncached
         }

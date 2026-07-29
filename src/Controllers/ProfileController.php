@@ -6,7 +6,7 @@ use RadioChatBox\Http\Validate;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use Pramnos\Broadcasting\BroadcastingManager;
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use RadioChatBox\Services\PhotoService;
 
@@ -140,11 +140,11 @@ final class ProfileController
                     // Cache capability applies the instance prefix). chat:messages /
                     // chat:messages:hash are the message-history Redis structures —
                     // deleting the key forces a rebuild (re-modeled in Step 4).
-                    Cache::store()->delete('display_name:' . $username); // legacy
-                    Cache::store()->delete('user_data:' . $username);
-                    Cache::store()->delete('chat:messages'); // message history
-                    Cache::store()->delete('chat:all_users'); // combined user list
-                    Cache::store()->delete('chat:messages:hash'); // reply hash
+                    FlatCache::default()->delete('display_name:' . $username); // legacy
+                    FlatCache::default()->delete('user_data:' . $username);
+                    FlatCache::default()->delete('chat:messages'); // message history
+                    FlatCache::default()->delete('chat:all_users'); // combined user list
+                    FlatCache::default()->delete('chat:messages:hash'); // reply hash
 
                     // Small delay to ensure database commit and cache clear complete
                     usleep(100000); // 100ms

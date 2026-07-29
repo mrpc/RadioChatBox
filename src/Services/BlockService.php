@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -46,7 +46,7 @@ class BlockService
     private function invalidate(string ...$usernames): void
     {
         foreach ($usernames as $username) {
-            Cache::store()->delete($this->relatedCacheKey($username));
+            FlatCache::default()->delete($this->relatedCacheKey($username));
         }
     }
 
@@ -162,7 +162,7 @@ class BlockService
     {
         $cacheKey = $this->relatedCacheKey($username);
 
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if (is_array($cached)) {
             return $cached;
         }
@@ -188,7 +188,7 @@ class BlockService
             return [];
         }
 
-        Cache::store()->set($cacheKey, $related, self::CACHE_TTL);
+        FlatCache::default()->set($cacheKey, $related, self::CACHE_TTL);
 
         return $related;
     }

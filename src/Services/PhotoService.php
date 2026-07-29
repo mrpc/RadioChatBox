@@ -6,7 +6,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -131,7 +131,7 @@ class PhotoService
         ]);
 
         // Invalidate user cache
-        Cache::store()->delete("user_attachments:{$username}");
+        FlatCache::default()->delete("user_attachments:{$username}");
 
         return [
             'attachment_id' => $attachmentId,
@@ -152,7 +152,7 @@ class PhotoService
         $cacheKey = "attachment:{$attachmentId}";
 
         // Try cache first (FlatCache applies the prefix + serialisation).
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if (is_array($cached)) {
             return $cached;
         }
@@ -167,7 +167,7 @@ class PhotoService
 
         if ($result) {
             // Cache the result
-            Cache::store()->set($cacheKey, $result, self::CACHE_TTL_ATTACHMENT);
+            FlatCache::default()->set($cacheKey, $result, self::CACHE_TTL_ATTACHMENT);
             return $result;
         }
         
@@ -182,7 +182,7 @@ class PhotoService
         $cacheKey = "user_attachments:{$username}";
 
         // Try cache first.
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if (is_array($cached)) {
             return $cached;
         }
@@ -196,7 +196,7 @@ class PhotoService
             ->getAll();
 
         // Cache the result
-        Cache::store()->set($cacheKey, $result, self::CACHE_TTL_USER_ATTACHMENTS);
+        FlatCache::default()->set($cacheKey, $result, self::CACHE_TTL_USER_ATTACHMENTS);
         
         return $result;
     }
@@ -244,7 +244,7 @@ class PhotoService
         $ids = $result ? array_column($result->fetchAll(), 'attachment_id') : [];
 
         foreach ($ids as $id) {
-            Cache::store()->delete("attachment:{$id}");
+            FlatCache::default()->delete("attachment:{$id}");
         }
 
         $count = count($ids);
@@ -277,7 +277,7 @@ class PhotoService
                 ->from('attachments')
                 ->where('attachment_id', '=', $photo['attachment_id'])
                 ->delete();
-            Cache::store()->delete("attachment:{$photo['attachment_id']}");
+            FlatCache::default()->delete("attachment:{$photo['attachment_id']}");
             $count++;
         }
 
@@ -421,7 +421,7 @@ class PhotoService
         $cacheKey = "setting:{$key}";
 
         // Try cache first.
-        $cached = Cache::store()->get($cacheKey);
+        $cached = FlatCache::default()->get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
@@ -435,7 +435,7 @@ class PhotoService
         $value = $result !== null ? $result : $default;
         
         // Cache the result
-        Cache::store()->set($cacheKey, $value, self::CACHE_TTL_SETTINGS);
+        FlatCache::default()->set($cacheKey, $value, self::CACHE_TTL_SETTINGS);
         
         return $value;
     }

@@ -2,7 +2,7 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Cache;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -47,7 +47,7 @@ class TrackStatsService
         // the new one in a single operation, so concurrent pollers can't both
         // record the same change (fixes duplicate log rows).
         try {
-            $prev = Cache::store()->swap('radio:last_track', $display);
+            $prev = FlatCache::default()->swap('radio:last_track', $display);
         } catch (\Throwable $e) {
             $prev = null;
         }
