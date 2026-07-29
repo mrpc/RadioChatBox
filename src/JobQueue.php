@@ -4,6 +4,7 @@ namespace RadioChatBox;
 
 use Pramnos\Queue\DelayedQueue;
 use Pramnos\Queue\Drivers\RedisQueueDriver;
+use Pramnos\Redis\ConnectionManager;
 
 /**
  * Delayed job queue for the bot — the "run this later" primitive.
@@ -11,7 +12,7 @@ use Pramnos\Queue\Drivers\RedisQueueDriver;
  * This is a thin application client of the framework delayed-queue capability
  * ({@see DelayedQueue} backed by {@see RedisQueueDriver}). The app depends on the
  * capability, not on Redis directly: Redis is one driver of the queue, keyed with
- * the app's Redis prefix and running over the shared {@see Database::getRedis()}
+ * the app's Redis prefix and running over the shared {@see ConnectionManager}
  * connection, so the backend is swappable and the sorted-set/hash mechanics live
  * in the framework, tested once.
  *
@@ -46,10 +47,10 @@ class JobQueue
         $this->namespace = $namespace !== '' ? $namespace : self::DEFAULT_NAMESPACE;
         $this->queue = $queue ?? new DelayedQueue(new RedisQueueDriver(
             [
-                'prefix'    => Database::getRedisPrefix(),
+                'prefix'    => ConnectionManager::getInstance()->prefix(),
                 'namespace' => $this->namespace,
             ],
-            static fn (): \Redis => Database::getRedis()
+            static fn (): object => ConnectionManager::getInstance()->connection()
         ));
     }
 

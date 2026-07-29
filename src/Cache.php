@@ -4,16 +4,18 @@ namespace RadioChatBox;
 
 use Pramnos\Cache\Adapter\RedisAdapter;
 use Pramnos\Cache\FlatCache;
+use Pramnos\Redis\ConnectionManager;
 
 /**
  * Application cache accessor.
  *
  * Exposes the framework's backend-agnostic flat-key PSR-16 {@see FlatCache}
- * configured for RadioChatBox: a Redis-backed adapter in production, keyed with
- * the app's Redis prefix, keeping colon-namespaced keys verbatim (e.g.
- * "radio:now_playing"). Services should cache through this instead of touching
- * Database::getRedis() directly, so cache access is uniform, swappable (any
- * adapter) and test-doubleable (inject an ArrayAdapter-backed FlatCache).
+ * configured for RadioChatBox: a Redis-backed adapter in production, sharing the
+ * framework Redis {@see ConnectionManager}'s host/port/prefix (set up in
+ * bootstrap/pramnos.php), keeping colon-namespaced keys verbatim (e.g.
+ * "radio:now_playing"). Services cache through this instead of opening Redis
+ * themselves, so cache access is uniform, swappable (any adapter) and
+ * test-doubleable (inject an ArrayAdapter-backed FlatCache).
  *
  * As of Phase 8 this accessor also exposes the atomic counter capability
  * (increment/decrement/counter/swap) and the structured operations (hash/list/
@@ -34,14 +36,14 @@ final class Cache
     public static function store(): FlatCache
     {
         if (self::$store === null) {
-            $redis  = (array) Config::get('redis');
-            $prefix = Database::getRedisPrefix();
+            $manager = ConnectionManager::getInstance();
+            $prefix  = $manager->prefix();
             self::$store = new FlatCache(
                 new RedisAdapter(
-                    (string) ($redis['host'] ?? '127.0.0.1'),
-                    (int) ($redis['port'] ?? 6379),
-                    0,
-                    $redis['password'] ?? null,
+                    $manager->host(),
+                    $manager->port(),
+                    $manager->database(),
+                    $manager->password(),
                     $prefix
                 ),
                 $prefix

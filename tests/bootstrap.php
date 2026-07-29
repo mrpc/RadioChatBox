@@ -15,6 +15,13 @@
  * production connection. A failure here is reported but not fatal — a database
  * that already has the schema (but isn't yet tracked) simply reports "nothing
  * to do" once baselined.
+ *
+ * We also run the app's framework bootstrap here so the PHPUnit process shares
+ * the SAME framework state as a real request — most importantly the Redis
+ * {@see \Pramnos\Redis\ConnectionManager} singleton (host/port/per-install
+ * prefix). Without it the Cache/Broadcast/JobQueue accessors would fall back to
+ * the manager's default (empty-prefix) config, and test helpers seeding through
+ * the same accessors would land on a different keyspace than the code reads.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -30,3 +37,8 @@ $output = (string) shell_exec(
 );
 
 fwrite(STDERR, "[tests] migrate:\n" . trim($output) . "\n");
+
+// Configure framework state (ConnectionManager, Logger, Settings) exactly as an
+// HTTP request or the console does, so tests exercise the real wiring.
+require $root . '/bootstrap/pramnos.php';
+radiochatbox_boot_pramnos();
