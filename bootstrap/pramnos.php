@@ -100,6 +100,19 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
 
         try {
             $booted = (bool) \Pramnos\Application\Settings::loadSettings($settingsFile);
+
+            // Connect the framework database once, here, so every caller can use
+            // \Pramnos\Database\Database::getInstance() directly and get a
+            // connected handle (the session timezone is applied on connect from
+            // the `database.timezone` setting). Idempotent: getInstance() is a
+            // per-process singleton and connect() is a no-op once connected.
+            if ($booted) {
+                $db = \Pramnos\Database\Database::getInstance();
+                if (!$db->connected) {
+                    $db->connect();
+                }
+                \Pramnos\Application\Settings::setDatabase($db);
+            }
         } catch (\Throwable $e) {
             // Never let framework bootstrap take down the app during the bridge phase.
             error_log('PramnosFramework bootstrap skipped: ' . $e->getMessage());

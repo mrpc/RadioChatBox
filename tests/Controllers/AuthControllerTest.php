@@ -7,7 +7,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AuthController;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\UserService;
 
 /**

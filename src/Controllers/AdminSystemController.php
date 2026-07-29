@@ -12,7 +12,7 @@ use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\ArtworkService;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Console\RadioChatBoxDaemons;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -252,7 +252,7 @@ final class AdminSystemController
     #[Route('/api/admin/inactive-users', methods: 'GET', name: 'admin.system.inactive-users', middleware: [AdminAuthMiddleware::class])]
     public function inactiveUsers(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             $request = Request::getInstance();
@@ -541,7 +541,7 @@ final class AdminSystemController
                 throw new \RuntimeException('Invalid image or storage failed');
             }
 
-            $db = Database::getDb();
+            $db = Database::getInstance();
             if ($type === 'track_cover') {
                 $db->queryBuilder()->from('tracks')
                     ->where('id', '=', $id)

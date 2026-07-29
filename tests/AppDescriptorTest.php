@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Application\Application;
 use Pramnos\Http\Middleware\CorsMiddleware;
 use Pramnos\Http\Middleware\JsonResponseMiddleware;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * Covers the #12 app descriptor + auto-migration wiring.

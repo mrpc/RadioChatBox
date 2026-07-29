@@ -5,7 +5,7 @@ namespace RadioChatBox\Controllers;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * GET /api/user-profile?username=… — a user's public profile (age/sex/location
@@ -26,7 +26,7 @@ final class UserProfileController
         }
 
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             $userRow = $db->queryBuilder()
                 ->from('users')

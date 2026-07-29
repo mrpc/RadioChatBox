@@ -3,7 +3,7 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\SettingsService;
 class MessageFilter
 {
@@ -319,7 +319,7 @@ class MessageFilter
                 $patterns = $cachedData;
             } else {
                 // Cache miss - fetch from database
-                $patterns = Database::getDb()->queryBuilder()
+                $patterns = Database::getInstance()->queryBuilder()
                     ->from('url_whitelist')
                     ->orderBy('pattern')
                     ->pluck('pattern');
@@ -373,7 +373,7 @@ class MessageFilter
                 $blacklist = $cachedData;
             } else {
                 // Cache miss - fetch from database
-                $blacklist = Database::getDb()->queryBuilder()
+                $blacklist = Database::getInstance()->queryBuilder()
                     ->from('url_blacklist')
                     ->pluck('pattern');
 
@@ -426,7 +426,7 @@ class MessageFilter
 
             // Auto-ban after 3 spam URL attempts
             if ($violations >= 3) {
-                $db = Database::getDb();
+                $db = Database::getInstance();
 
                 // Check if already banned
                 $alreadyBanned = $db->queryBuilder()

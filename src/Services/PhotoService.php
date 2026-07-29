@@ -7,7 +7,6 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class PhotoService
@@ -33,7 +32,7 @@ class PhotoService
 
     public function __construct()
     {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
         $this->uploadDir = __DIR__ . '/../../public/uploads/photos';
         
         // Get max size from settings (default 5MB)

@@ -6,7 +6,7 @@ use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ChatService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\UserService;
 
@@ -66,7 +66,7 @@ final class AuthController
             }
 
             // Link the session to this authenticated user
-            $db = Database::getDb();
+            $db = Database::getInstance();
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
             // Create or update session with user_id (upsert with NOW() expressions

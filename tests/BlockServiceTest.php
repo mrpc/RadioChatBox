@@ -6,7 +6,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BlockService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 class BlockServiceTest extends TestCase
 {

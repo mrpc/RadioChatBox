@@ -2,6 +2,8 @@
 
 namespace RadioChatBox;
 
+use Pramnos\Database\Database;
+
 use Pramnos\Cache\FlatCache;
 
 use RadioChatBox\Services\UserService;
@@ -178,7 +180,7 @@ class AdminAuth
             // If not found, look up the identifier in database to get the actual username
             // This handles the case where someone logged in with email instead of username
             try {
-                $lookup = Database::getDb()->queryBuilder()
+                $lookup = Database::getInstance()->queryBuilder()
                     ->from('users')
                     ->select(['username'])
                     ->whereRaw('username = %s OR email = %s', [$identifier, $identifier])

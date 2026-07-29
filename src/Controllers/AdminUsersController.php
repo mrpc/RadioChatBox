@@ -6,7 +6,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\UserService;
@@ -306,7 +306,7 @@ final class AdminUsersController
     #[Route('/api/admin/user-details', methods: 'GET', name: 'admin.users.details', middleware: [AdminAuthMiddleware::class])]
     public function details(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             $request  = Request::getInstance();

@@ -4,7 +4,7 @@ namespace RadioChatBox\Services;
 
 use RadioChatBox\AdminAuth;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 /**
  * User Service - Admin User Management with RBAC
  * 
@@ -53,7 +53,7 @@ class UserService
     
     public function __construct()
     {
-        $this->db = Database::getDb();
+        $this->db = Database::getInstance();
     }
     
     /**

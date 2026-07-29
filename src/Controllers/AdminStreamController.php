@@ -10,7 +10,7 @@ use Pramnos\Http\StreamedResponse;
 use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * GET /api/admin/stream — the admin Server-Sent Events feed (notifications).
@@ -47,7 +47,7 @@ final class AdminStreamController
 
             try {
                 // Initial unread notification count for this admin (stored fn).
-                $result = Database::getDb()->preparedQuery(
+                $result = Database::getInstance()->preparedQuery(
                     'SELECT get_unread_notification_count(?)',
                     [$currentUser['username']]
                 );

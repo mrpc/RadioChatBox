@@ -9,7 +9,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\BotService;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\Services\LlmAccount;
 use RadioChatBox\Services\LlmPricing;
@@ -45,7 +45,7 @@ final class AdminSettingsController
     #[Route('/api/admin/settings', methods: 'GET', name: 'admin.settings.show', middleware: [AdminAuthMiddleware::class])]
     public function show(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             $result = $db->query("SELECT setting_key, setting_value FROM settings ORDER BY setting_key");
@@ -137,7 +137,7 @@ final class AdminSettingsController
     #[Route('/api/admin/settings', methods: 'POST', name: 'admin.settings.update', middleware: [AdminAuthMiddleware::class])]
     public function update(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             // The framework Request has already decoded the JSON body into $_POST.
@@ -223,7 +223,7 @@ final class AdminSettingsController
     #[Route('/api/admin/upload-logo', methods: 'POST', name: 'admin.settings.upload-logo', middleware: [AdminAuthMiddleware::class])]
     public function uploadLogo(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             if (!isset($_FILES['logo'])) {
@@ -308,7 +308,7 @@ final class AdminSettingsController
         }
 
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
             $request = Request::getInstance();
 
             $limitRaw = $request->get('limit', null, 'get');
@@ -398,7 +398,7 @@ final class AdminSettingsController
         }
 
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             // The framework Request has already decoded the JSON body into $_POST.
             $input = $_POST;
@@ -480,7 +480,7 @@ final class AdminSettingsController
         }
 
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             $result = $db->query("SELECT cleanup_old_notifications()");
             $count = $result ? $result->fetchColumn() : 0;

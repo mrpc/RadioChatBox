@@ -3,7 +3,6 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
 use RadioChatBox\Services\LlmPricing;
 use RadioChatBox\Services\LlmProviders;
 use Pramnos\Database\Database as PramnosDatabase;
@@ -146,7 +145,7 @@ class SettingsService
 
     public function __construct()
     {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
     }
 
     /**

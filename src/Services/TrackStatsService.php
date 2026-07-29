@@ -3,7 +3,6 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
 /**
@@ -20,7 +19,7 @@ class TrackStatsService
 
     public function __construct()
     {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
     }
 
     /**

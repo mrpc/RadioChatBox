@@ -9,7 +9,7 @@ use Pramnos\Routing\Attributes\Route;
 use Pramnos\Broadcasting\BroadcastingManager;
 use Pramnos\Cache\FlatCache;
 use RadioChatBox\Services\ChatService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\KickRegistry;
 use RadioChatBox\MessageHistory;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -169,7 +169,7 @@ final class AdminModerationController
     #[Route('/api/admin/kick-user', methods: 'POST', name: 'admin.kick-user', middleware: [AdminAuthMiddleware::class])]
     public function kickUser(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             $data = $_POST;
@@ -247,7 +247,7 @@ final class AdminModerationController
     #[Route('/api/admin/clear-chat', methods: 'POST', name: 'admin.clear-chat', middleware: [AdminAuthMiddleware::class])]
     public function clearChat(): Response
     {
-        $db = Database::getDb();
+        $db = Database::getInstance();
 
         try {
             // Soft delete all messages by setting is_deleted = true.
@@ -299,7 +299,7 @@ final class AdminModerationController
                 return Response::json(['error' => 'Message ID is required'], 400);
             }
 
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             // Mark the message as deleted (soft delete) instead of actually deleting it.
             $result = $db->queryBuilder()
@@ -358,7 +358,7 @@ final class AdminModerationController
     public function urlBlacklist(): Response
     {
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $result = $db->query("
@@ -446,7 +446,7 @@ final class AdminModerationController
     public function urlWhitelist(): Response
     {
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $result = $db->query("

@@ -2,7 +2,6 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Database;
 use RadioChatBox\Services\SettingsService;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -28,7 +27,7 @@ class LlmLog
 
     public function __construct(?SettingsService $settings = null, ?LlmPricing $pricing = null)
     {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
         $this->settings = $settings ?? new SettingsService();
         $this->pricing = $pricing;
     }

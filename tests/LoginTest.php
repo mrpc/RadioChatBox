@@ -5,7 +5,6 @@ namespace RadioChatBox\Tests;
 use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Database;
 use RadioChatBox\Services\UserService;
 
 /**
@@ -32,7 +31,6 @@ class LoginTest extends TestCase
             // Ignore cleanup errors
         }
         
-        Database::reset();
         parent::tearDown();
     }
 

@@ -3,7 +3,7 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\Services\LlmService;
 /**
@@ -332,7 +332,7 @@ class LlmAccount
         }
 
         try {
-            Database::getDb()->queryBuilder()->from('bot_llm_balance')->insert([
+            Database::getInstance()->queryBuilder()->from('bot_llm_balance')->insert([
                 'provider'          => $this->provider,
                 'currency'          => $balance['currency'],
                 'total_balance'     => $balance['total'],
@@ -351,7 +351,7 @@ class LlmAccount
     private function snapshotIsDue(): bool
     {
         try {
-            $last = Database::getDb()->queryBuilder()
+            $last = Database::getInstance()->queryBuilder()
                 ->from('bot_llm_balance')
                 ->where('provider', '=', $this->provider)
                 ->max('created_at');
@@ -393,7 +393,7 @@ class LlmAccount
         }
 
         try {
-            $rows = Database::getDb()->queryBuilder()
+            $rows = Database::getInstance()->queryBuilder()
                 ->from('bot_llm_balance')
                 ->select(['created_at', 'currency', 'total_balance'])
                 ->whereRaw('created_at > NOW() - make_interval(hours => %s)', [max(1, $hours)])

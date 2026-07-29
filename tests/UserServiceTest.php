@@ -6,7 +6,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\UserService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * Integration tests for UserService against the real (shared) database.

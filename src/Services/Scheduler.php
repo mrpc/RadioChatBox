@@ -2,7 +2,6 @@
 
 namespace RadioChatBox\Services;
 
-use RadioChatBox\Database;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\Services\TrackStatsService;
 use RadioChatBox\Services\RadioStatusService;
@@ -116,7 +115,7 @@ class Scheduler
         ?array $runners = null,
         ?callable $clock = null
     ) {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
         $this->settings = $settings ?? new SettingsService();
         $this->runners = $runners;
         $this->clock = $clock ?? static fn (): int => time();

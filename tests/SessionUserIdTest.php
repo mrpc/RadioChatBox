@@ -7,7 +7,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\UserService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * Test that sessions are properly linked to user accounts

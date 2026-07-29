@@ -10,7 +10,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ArtworkService;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\RadioStatusService;
 use RadioChatBox\Services\TrackStatsService;
 

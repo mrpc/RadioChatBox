@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use Pramnos\Broadcasting\BroadcastingManager;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
 use RadioChatBox\KickRegistry;
 use RadioChatBox\MessageHistory;
 use Pramnos\Database\Database as PramnosDatabase;
@@ -19,7 +18,7 @@ class ChatService
 
     public function __construct()
     {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
         $this->messageHistory = new MessageHistory();
     }
 

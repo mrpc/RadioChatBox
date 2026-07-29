@@ -7,7 +7,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Cache\FlatCache;
 use RadioChatBox\Services\StatsService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * Integration tests for real-time stats fallback functionality

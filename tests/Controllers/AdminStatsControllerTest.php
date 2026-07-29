@@ -7,7 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Cache\FlatCache;
 use RadioChatBox\Controllers\AdminStatsController;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**

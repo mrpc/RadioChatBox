@@ -11,7 +11,7 @@ use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\BlockService;
 use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Services\BotService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\MessageFilter;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\PhotoService;
@@ -221,7 +221,7 @@ final class AdminImpersonationController
                 return Response::json(['error' => 'Either message or attachment is required'], 400);
             }
 
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             // Verify the impersonation target is a fake user
             $lookup   = $db->preparedQuery(
@@ -355,7 +355,7 @@ final class AdminImpersonationController
         }
 
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             // Get all active fake users with their profile info
             $result = $db->preparedQuery("SELECT id, nickname, age, sex, location FROM fake_users WHERE is_active = TRUE ORDER BY nickname");

@@ -6,7 +6,6 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
 use Pramnos\Database\Database as PramnosDatabase;
 
 class CleanupService
@@ -15,7 +14,7 @@ class CleanupService
 
     public function __construct()
     {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
     }
 
     /**

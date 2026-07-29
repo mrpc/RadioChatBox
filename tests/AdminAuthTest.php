@@ -5,7 +5,6 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\UserService;
-use RadioChatBox\Database;
 use Mockery;
 
 /**
@@ -25,7 +24,6 @@ class AdminAuthTest extends TestCase
 
     protected function tearDown(): void
     {
-        Database::reset();
         Mockery::close();
         parent::tearDown();
     }

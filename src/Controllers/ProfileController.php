@@ -7,7 +7,7 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use Pramnos\Broadcasting\BroadcastingManager;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\PhotoService;
 
 /**
@@ -72,7 +72,7 @@ final class ProfileController
         }
 
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             // Verify session belongs to user
             $sessionOwned = $db->queryBuilder()

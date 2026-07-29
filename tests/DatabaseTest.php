@@ -4,31 +4,31 @@ namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Database\Database as PramnosDatabase;
-use RadioChatBox\Database;
 
 /**
- * Covers RadioChatBox\Database — the app's single connection seam onto the
- * framework database layer. (Raw-PDO seeding for tests lives in the framework's
- * init-less Pramnos\Framework\Testing\TestDatabase helper, not here.)
+ * Verifies the app's database wiring after RadioChatBox\Database was retired:
+ * the bootstrap (radiochatbox_boot_pramnos, run by the test bootstrap) connects
+ * the framework database once, so callers use Pramnos\Database\Database::getInstance()
+ * directly and get a connected, per-process singleton — no app DB seam needed.
  */
 class DatabaseTest extends TestCase
 {
     /**
-     * getDb() returns the framework database layer, booted and connected.
+     * The framework database is booted and connected by the app bootstrap.
      */
-    public function testGetDbReturnsConnectedFrameworkDatabase(): void
+    public function testFrameworkDatabaseIsBootedAndConnected(): void
     {
-        $db = Database::getDb();
+        $db = PramnosDatabase::getInstance();
 
         $this->assertInstanceOf(PramnosDatabase::class, $db);
-        $this->assertTrue($db->connected, 'getDb() must return a connected instance');
+        $this->assertTrue($db->connected, 'the bootstrap must leave the framework DB connected');
     }
 
     /**
-     * getDb() is a per-process singleton (mirrors the persistent connection).
+     * getInstance() is a per-process singleton (the persistent connection).
      */
-    public function testGetDbReturnsSameInstance(): void
+    public function testGetInstanceReturnsSameConnection(): void
     {
-        $this->assertSame(Database::getDb(), Database::getDb());
+        $this->assertSame(PramnosDatabase::getInstance(), PramnosDatabase::getInstance());
     }
 }

@@ -3,7 +3,7 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\SettingsService;
 use RadioChatBox\WorkerReloader;
 

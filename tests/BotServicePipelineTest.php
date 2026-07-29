@@ -8,7 +8,7 @@ use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BlockService;
 use RadioChatBox\Services\BotService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Services\LlmService;
 use RadioChatBox\Services\SettingsService;

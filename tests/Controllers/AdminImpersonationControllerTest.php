@@ -10,7 +10,7 @@ use Pramnos\Http\Response;
 use RadioChatBox\Services\BlockService;
 use RadioChatBox\Controllers\AdminImpersonationController;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**

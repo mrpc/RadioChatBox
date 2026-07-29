@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * Regression for the impersonation/DM conversation view hiding recent messages.

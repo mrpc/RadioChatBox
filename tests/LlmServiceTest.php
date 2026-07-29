@@ -7,7 +7,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use RadioChatBox\Services\BotService;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\LlmLog;
 use RadioChatBox\Services\LlmService;
 

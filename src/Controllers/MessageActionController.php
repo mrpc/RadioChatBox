@@ -13,7 +13,7 @@ use RadioChatBox\Services\BotService;
 use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\MessageFilter;
 use RadioChatBox\MessageHistory;
 use RadioChatBox\Services\PhotoService;
@@ -169,7 +169,7 @@ final class MessageActionController
             $username  = $data['username'];
             $sessionId = $data['sessionId'];
 
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             // Fetch the original message and verify ownership + timing in one query
             // (timezone math + dollar-quoted literals — kept verbatim).
@@ -389,7 +389,7 @@ final class MessageActionController
     public function privateMessage(): Response
     {
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             $input = $_POST;
             if (empty($input)) {
@@ -636,7 +636,7 @@ final class MessageActionController
     public function privateMessageList(): Response
     {
         try {
-            $db = Database::getDb();
+            $db = Database::getInstance();
 
             $request   = Request::getInstance();
             $username  = $request->get('username', '', 'get');

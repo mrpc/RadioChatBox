@@ -2,6 +2,8 @@
 
 namespace RadioChatBox;
 
+use Pramnos\Database\Database;
+
 use Pramnos\Cache\FlatCache;
 
 use RadioChatBox\Services\SettingsService;
@@ -153,7 +155,7 @@ class WorkerReloader
         }
 
         try {
-            $max = Database::getDb()->queryBuilder()->from('settings')->max('updated_at');
+            $max = Database::getInstance()->queryBuilder()->from('settings')->max('updated_at');
 
             return (string) ($max ?: 'none');
         } catch (\Throwable) {

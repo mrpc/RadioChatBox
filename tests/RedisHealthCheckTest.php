@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Health\Checks\RedisConnectivityCheck;
 use Pramnos\Health\HealthStatus;
 use Pramnos\Redis\ConnectionManager;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 
 /**
  * Integration test for Redis health reporting after the migration to the

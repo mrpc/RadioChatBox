@@ -4,7 +4,6 @@ namespace RadioChatBox\Services;
 
 use Pramnos\Broadcasting\BroadcastingManager;
 use Pramnos\Cache\FlatCache;
-use RadioChatBox\Database;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Services\LlmProviders;
 use RadioChatBox\Services\MessageFilter;
@@ -397,7 +396,7 @@ class BotService
         ?JobQueue $queue = null,
         ?LlmService $llm = null
     ) {
-        $this->db = Database::getDb();
+        $this->db = PramnosDatabase::getInstance();
         $this->settings = $settings ?? new SettingsService();
         $this->queue = $queue ?? new JobQueue();
         // Built from the settings on first use unless one was injected.

@@ -5,7 +5,7 @@ namespace RadioChatBox\Tests;
 use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Database;
+use Pramnos\Database\Database;
 use RadioChatBox\Services\LlmLog;
 use RadioChatBox\Services\SettingsService;
 
