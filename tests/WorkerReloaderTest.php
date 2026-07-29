@@ -173,8 +173,8 @@ class WorkerReloaderTest extends TestCase
 
     public function testTheVersionFallsBackToTheDatabaseWithoutTheCachedStamp(): void
     {
-        $redis = Database::getRedis();
-        $redis->del(Database::getRedisPrefix() . SettingsService::VERSION_KEY);
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $redis->del(\Pramnos\Redis\ConnectionManager::getInstance()->prefix() . SettingsService::VERSION_KEY);
 
         $version = (new WorkerReloader($this->root))->settingsVersion();
 

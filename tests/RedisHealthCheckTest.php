@@ -27,7 +27,7 @@ class RedisHealthCheckTest extends TestCase
         return new ConnectionManager([
             'host'         => $redis['host'],
             'port'         => $redis['port'],
-            'prefix'       => Database::getRedisPrefix(),
+            'prefix'       => \Pramnos\Redis\ConnectionManager::getInstance()->prefix(),
             'timeout'      => 0.5,
             'read_timeout' => 1,
         ]);

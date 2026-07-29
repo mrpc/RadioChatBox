@@ -108,8 +108,8 @@ class JobQueueTest extends TestCase
         $reserved = new \Pramnos\Queue\ReservedJob('a', 'reply', ['k' => 'v'], 1, time());
         $newId = (new \Pramnos\Queue\DelayedQueue(
             new \Pramnos\Queue\Drivers\RedisQueueDriver(
-                ['prefix' => Database::getRedisPrefix(), 'namespace' => $this->namespace],
-                static fn (): \Redis => Database::getRedis()
+                ['prefix' => \Pramnos\Redis\ConnectionManager::getInstance()->prefix(), 'namespace' => $this->namespace],
+                static fn (): \Redis => \Pramnos\Redis\ConnectionManager::getInstance()->connection()
             )
         ))->retry($reserved, JobQueue::MAX_ATTEMPTS, 0);
 
@@ -150,8 +150,8 @@ class JobQueueTest extends TestCase
         $queue = new JobQueue($this->namespace);
         $id = $queue->push('reply', ['x' => 1], 0);
 
-        $redis  = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
+        $redis  = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
 
         $this->assertGreaterThan(
             0,

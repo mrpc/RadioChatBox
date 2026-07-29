@@ -58,14 +58,20 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
         // Configure the framework's central Redis connection manager from
         // RadioChatBox's own config, so the cache/broadcasting/queue drivers,
         // the health check and the app's state repositories all share one
-        // connection source (with the app's tight local-Redis timeouts). Keys are
-        // prefixed per-install. Independent of mbstring/Settings.
+        // connection source (with the app's tight local-Redis timeouts). The
+        // ConnectionManager owns the per-install key prefix from here on (its
+        // ->prefix()), so the app reads it there rather than from Database.
+        // Keyed by DATABASE name: two installs pointed at one database share
+        // sessions/caches on purpose (per-process ownership uses Installation::id()).
+        // Independent of mbstring/Settings.
         if (class_exists(\Pramnos\Redis\ConnectionManager::class)) {
             $redisConfig = \RadioChatBox\Config::get('redis');
+            $database    = (string) (\RadioChatBox\Config::get('database')['name'] ?? 'radiochatbox');
+            $instance    = preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
             \Pramnos\Redis\ConnectionManager::setInstance(new \Pramnos\Redis\ConnectionManager([
                 'host'         => $redisConfig['host'],
                 'port'         => $redisConfig['port'],
-                'prefix'       => \RadioChatBox\Database::getRedisPrefix(),
+                'prefix'       => 'radiochatbox:' . $instance . ':',
                 'timeout'      => 0.5,
                 'read_timeout' => 1,
             ]));

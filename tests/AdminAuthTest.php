@@ -14,16 +14,11 @@ use Mockery;
 class AdminAuthTest extends TestCase
 {
     private $mockUserService;
-    private $mockRedis;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
-        // Mock Redis
-        $this->mockRedis = Mockery::mock('Redis');
-        Database::setRedis($this->mockRedis);
-        
+
         // Mock UserService (we'll need to inject this somehow)
         $this->mockUserService = Mockery::mock(UserService::class);
     }

@@ -29,7 +29,7 @@ class TrackStatsServiceTest extends TestCase
         // Clear the Redis "last track" pointer so the first recordPlay is not
         // deduped against whatever real track played last.
         try {
-            Database::getRedis()->del(Database::getRedisPrefix() . 'radio:last_track');
+            \Pramnos\Redis\ConnectionManager::getInstance()->connection()->del(\Pramnos\Redis\ConnectionManager::getInstance()->prefix() . 'radio:last_track');
         } catch (\Throwable) {
             // Non-fatal in the test environment.
         }

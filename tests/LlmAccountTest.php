@@ -43,9 +43,9 @@ class LlmAccountTest extends TestCase
 
     private function clearLlmCache(): void
     {
-        $redis = Database::getRedis();
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
 
-        foreach ($redis->keys(Database::getRedisPrefix() . 'llm:*') ?: [] as $key) {
+        foreach ($redis->keys(\Pramnos\Redis\ConnectionManager::getInstance()->prefix() . 'llm:*') ?: [] as $key) {
             $redis->del($key);
         }
     }

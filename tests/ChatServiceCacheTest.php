@@ -23,8 +23,8 @@ class ChatServiceCacheTest extends TestCase
     {
         try {
             self::$pdo = Database::getPDO();
-            self::$redis = Database::getRedis();
-            self::$prefix = Database::getRedisPrefix();
+            self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+            self::$prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
             self::$service = new ChatService();
         } catch (\Exception $e) {
             self::markTestSkipped('Database connection not available: ' . $e->getMessage());

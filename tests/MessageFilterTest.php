@@ -128,8 +128,8 @@ class MessageFilterTest extends TestCase
         $this->expectOutputRegex('/.*/s');
 
         $pdo    = Database::getPDO();
-        $redis  = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
+        $redis  = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         $ip     = '203.0.113.77';
         $pattern = 'spamdomain-' . bin2hex(random_bytes(4)) . '.example';
 

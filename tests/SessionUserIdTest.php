@@ -18,7 +18,7 @@ class SessionUserIdTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         self::$pdo = Database::getPDO();
-        self::$redis = Database::getRedis();
+        self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         
         // Clean up test data
         self::$pdo->exec("DELETE FROM sessions WHERE username LIKE 'testsession%'");

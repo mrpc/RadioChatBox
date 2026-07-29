@@ -34,8 +34,8 @@ class BlockServiceTest extends TestCase
         $stmt->execute([$this->blocker, $this->blocked, $this->blocker, $this->blocked]);
 
         // Clear cached related-sets so each test sees fresh state.
-        $redis = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         $redis->del($prefix . 'dm_blocks:related:' . strtolower($this->blocker));
         $redis->del($prefix . 'dm_blocks:related:' . strtolower($this->blocked));
     }
@@ -120,8 +120,8 @@ class BlockServiceTest extends TestCase
         $stmt->execute([$this->blocker, $this->blocked]);
 
         // Bust the cache so the next check hits the DB.
-        $redis = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         $redis->del($prefix . 'dm_blocks:related:' . strtolower($this->blocker));
 
         $this->assertFalse($this->service->isBlockedBetween($this->blocker, $this->blocked));

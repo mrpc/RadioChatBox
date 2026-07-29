@@ -18,7 +18,7 @@ class DisplayNameUniquenessTest extends TestCase
     protected function setUp(): void
     {
         $this->pdo = Database::getPDO();
-        $this->redis = Database::getRedis();
+        $this->redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         $this->chatService = new ChatService();
         
         // Create a test authenticated user

@@ -288,7 +288,7 @@ class DaemonSupervisorTest extends TestCase
 
         $this->assertStringNotContainsString(
             Installation::id(),
-            \RadioChatBox\Database::getRedisPrefix(),
+            \Pramnos\Redis\ConnectionManager::getInstance()->prefix(),
             'changing the Redis prefix would orphan sessions, caches and history'
         );
     }

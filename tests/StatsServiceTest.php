@@ -20,7 +20,7 @@ class StatsServiceTest extends TestCase
     {
         try {
             self::$pdo = Database::getPDO();
-            self::$redis = Database::getRedis();
+            self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         } catch (\Exception $e) {
             self::markTestSkipped('Database connection not available: ' . $e->getMessage());
         }

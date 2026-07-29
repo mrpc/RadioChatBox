@@ -10,7 +10,7 @@ use RadioChatBox\Broadcast;
 /**
  * Covers the RadioChatBox\Broadcast event-bus seam introduced in Phase 8 Step 1,
  * through which every realtime publisher now routes (replacing the raw
- * Database::getRedis()->publish() calls).
+ * \Pramnos\Redis\ConnectionManager::getInstance()->connection()->publish() calls).
  *
  * The seam must forward (channel, event, payload) verbatim to the configured
  * driver and pass channels UNPREFIXED — the driver applies the Redis prefix, so

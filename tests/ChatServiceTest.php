@@ -17,8 +17,8 @@ class ChatServiceTest extends TestCase
 
     public function testChatServiceUsesRedisPrefixForKeys()
     {
-        $redis = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         
         // Verify prefix format
         $this->assertStringStartsWith('radiochatbox:', $prefix);
@@ -66,8 +66,8 @@ class ChatServiceTest extends TestCase
 
     public function testRedisPrefixIsolation()
     {
-        $redis = Database::getRedis();
-        $prefix = Database::getRedisPrefix();
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         
         // Create a test key with prefix
         $testKey = $prefix . 'test:isolation';
@@ -90,10 +90,10 @@ class ChatServiceTest extends TestCase
     public function testMultipleInstancesHaveDifferentPrefixes()
     {
         // This test verifies that the prefix is based on database name
-        $prefix1 = Database::getRedisPrefix();
+        $prefix1 = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         
         // The prefix should be consistent
-        $prefix2 = Database::getRedisPrefix();
+        $prefix2 = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         $this->assertEquals($prefix1, $prefix2);
         
         // Prefix should contain the database name

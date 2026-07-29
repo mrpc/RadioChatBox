@@ -17,7 +17,6 @@ class AdminNotificationsTest extends TestCase
     {
         Mockery::close();
         Database::setPDO(null);
-        Database::setRedis(null);
         parent::tearDown();
     }
 

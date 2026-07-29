@@ -119,8 +119,8 @@ class BotServicePipelineTest extends TestCase
     {
         // Jobs are scheduled in the future; claimDue() only returns due ones, so
         // pull them by rewriting their score to now.
-        $redis = Database::getRedis();
-        $key = Database::getRedisPrefix() . $this->queue->getNamespace() . ':delayed';
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $key = \Pramnos\Redis\ConnectionManager::getInstance()->prefix() . $this->queue->getNamespace() . ':delayed';
         foreach ($redis->zRange($key, 0, -1) as $jobId) {
             $redis->zAdd($key, time() - 1, $jobId);
         }
@@ -417,8 +417,8 @@ class BotServicePipelineTest extends TestCase
 
     private function currentEpoch(): int
     {
-        $key = Database::getRedisPrefix() . 'bot:epoch:' . $this->fakeUserId . ':' . md5($this->peer);
-        $value = Database::getRedis()->get($key);
+        $key = \Pramnos\Redis\ConnectionManager::getInstance()->prefix() . 'bot:epoch:' . $this->fakeUserId . ':' . md5($this->peer);
+        $value = \Pramnos\Redis\ConnectionManager::getInstance()->connection()->get($key);
 
         return $value === false ? 0 : (int) $value;
     }

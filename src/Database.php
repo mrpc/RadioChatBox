@@ -2,14 +2,25 @@
 
 namespace RadioChatBox;
 
-use Redis;
 use PDO;
 use Pramnos\Database\Database as PramnosDatabase;
 
+/**
+ * RadioChatBox's connection seam for the relational database.
+ *
+ * Two handles onto the SAME PostgreSQL database live here: the framework
+ * {@see getDb()} (QueryBuilder / prepared-statement engine, the Phase-7 target)
+ * and the legacy {@see getPDO()} still used by not-yet-converged call sites.
+ *
+ * Redis is NOT owned here anymore: connections, the per-install key prefix and
+ * the blocking subscribe connection all come from the framework Redis
+ * {@see \Pramnos\Redis\ConnectionManager} (configured in bootstrap/pramnos.php),
+ * which the Cache/Broadcast/JobQueue capabilities and the state repositories
+ * share. This class is a pure database seam.
+ */
 class Database
 {
     private static ?PDO $pdo = null;
-    private static ?Redis $redis = null;
     private static ?PramnosDatabase $db = null;
 
     /**
@@ -91,75 +102,10 @@ class Database
         return self::$pdo;
     }
 
-    public static function getRedis(): Redis
-    {
-        if (self::$redis === null) {
-            $config = Config::get('redis');
-            self::$redis = new Redis();
-            
-            // Set connection timeout to 0.5 seconds (500ms)
-            // Redis should be local/same-datacenter, if it takes longer something is wrong
-            self::$redis->connect($config['host'], $config['port'], 0.5);
-            
-            // Set read/write timeout to 1 second for normal operations
-            // Most Redis operations should complete in milliseconds
-            self::$redis->setOption(Redis::OPT_READ_TIMEOUT, 1);
-        }
-
-        return self::$redis;
-    }
-    
-    /**
-     * Get a new Redis connection for subscribe operations
-     * Subscribe blocks the connection, so we need a dedicated instance
-     */
-    public static function getRedisForSubscribe(): Redis
-    {
-        $config = Config::get('redis');
-        $redis = new Redis();
-        
-        // Set connection timeout to 0.5 seconds (500ms)
-        $redis->connect($config['host'], $config['port'], 0.5);
-        
-        // Set initial read timeout to 30 seconds instead of infinite
-        // This prevents indefinite hangs if Redis becomes unresponsive
-        // stream.php can override this if needed for specific use cases
-        $redis->setOption(Redis::OPT_READ_TIMEOUT, 30);
-        
-        return $redis;
-    }
-    
-    /**
-     * Get Redis key prefix based on database name
-     * This ensures multiple instances don't interfere with each other
-     */
-    public static function getRedisPrefix(): string
-    {
-        return 'radiochatbox:' . self::getInstanceName() . ':';
-    }
-
-    /**
-     * Which *data* this installation owns, for the Redis key prefix.
-     *
-     * Keyed by database, because that is what the data belongs to: two installations
-     * pointed at one database share sessions and caches on purpose.
-     *
-     * For anything a process owns - lock files, daemon ids, log lines - use
-     * Installation::id() instead: that is per directory, and two copies can perfectly
-     * well use the same database name.
-     */
-    public static function getInstanceName(): string
-    {
-        // Straight from this installation's configuration - nothing to pass in.
-        $database = (string) (Config::get('database')['name'] ?? 'radiochatbox');
-
-        return preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
-    }
-    
     // ========================================================================
     // TEST HELPER METHODS - Only use in tests!
     // ========================================================================
-    
+
     /**
      * Set a mock PDO instance for testing
      * @param PDO|null $pdo Mock PDO instance
@@ -167,15 +113,6 @@ class Database
     public static function setPDO(?PDO $pdo): void
     {
         self::$pdo = $pdo;
-    }
-    
-    /**
-     * Set a mock Redis instance for testing
-     * @param Redis|null $redis Mock Redis instance
-     */
-    public static function setRedis(?Redis $redis): void
-    {
-        self::$redis = $redis;
     }
 
     /**
@@ -193,7 +130,6 @@ class Database
     public static function reset(): void
     {
         self::$pdo = null;
-        self::$redis = null;
         self::$db = null;
     }
 }

@@ -28,7 +28,7 @@ class StatsServiceComputeMethodsTest extends TestCase
     {
         try {
             self::$pdo = Database::getPDO();
-            self::$redis = Database::getRedis();
+            self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         } catch (\Exception $e) {
             self::markTestSkipped('Database connection not available: ' . $e->getMessage());
         }
@@ -339,8 +339,8 @@ class StatsServiceComputeMethodsTest extends TestCase
         ]);
 
         // Redis caches these lists for an hour.
-        $redis = \RadioChatBox\Database::getRedis();
-        foreach ($redis->keys(\RadioChatBox\Database::getRedisPrefix() . 'stats:*') ?: [] as $key) {
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        foreach ($redis->keys(\Pramnos\Redis\ConnectionManager::getInstance()->prefix() . 'stats:*') ?: [] as $key) {
             $redis->del($key);
         }
         foreach ($redis->keys('stats:*') ?: [] as $key) {

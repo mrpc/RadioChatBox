@@ -189,8 +189,8 @@ class SettingsServiceTest extends TestCase
         $this->assertEquals($testValue, $retrieved);
         
         // Verify the cache key exists in Redis with proper prefix
-        $redis = \RadioChatBox\Database::getRedis();
-        $prefix = \RadioChatBox\Database::getRedisPrefix();
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        $prefix = \Pramnos\Redis\ConnectionManager::getInstance()->prefix();
         $cacheKey = $prefix . 'settings:all';
         
         $exists = $redis->exists($cacheKey);

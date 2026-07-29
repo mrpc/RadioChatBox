@@ -34,7 +34,9 @@ return [
         'port'     => $redis['port'],
         'caching'  => true,
         // Keep the exact per-database key namespace RadioChatBox already uses,
-        // so framework-cached keys never collide with app keys.
-        'prefix'   => \RadioChatBox\Database::getRedisPrefix(),
+        // so framework-cached keys never collide with app keys. bootstrap/pramnos.php
+        // configures the Redis ConnectionManager (the prefix owner) before it loads
+        // these settings, so we read the prefix from there.
+        'prefix'   => \Pramnos\Redis\ConnectionManager::getInstance()->prefix(),
     ],
 ];

@@ -113,6 +113,6 @@ class PramnosBootstrapTest extends TestCase
         $this->assertSame('redis', $cache->method);
         $this->assertSame($redis['host'], $cache->hostname);
         $this->assertSame($redis['port'], $cache->port);
-        $this->assertSame(\RadioChatBox\Database::getRedisPrefix(), $cache->prefix);
+        $this->assertSame(\Pramnos\Redis\ConnectionManager::getInstance()->prefix(), $cache->prefix);
     }
 }

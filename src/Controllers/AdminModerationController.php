@@ -440,7 +440,7 @@ final class AdminModerationController
      * {error:'Pattern already exists'}; other PDO error -> 500 {error:'Database
      * error'}; other error -> 500 {error:'Internal server error'}. NOTE: unlike
      * the blacklist, the legacy whitelist file invalidates the PREFIXED Redis key
-     * (getRedisPrefix() . 'url_whitelist_patterns') — preserved verbatim.
+     * ('url_whitelist_patterns', which Cache prefixes) — preserved verbatim.
      */
     #[Route('/api/admin/url-whitelist', methods: ['GET', 'POST', 'DELETE'], name: 'admin.url-whitelist', middleware: [AdminAuthMiddleware::class])]
     public function urlWhitelist(): Response
