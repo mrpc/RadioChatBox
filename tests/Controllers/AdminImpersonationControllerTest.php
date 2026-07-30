@@ -359,4 +359,49 @@ class AdminImpersonationControllerTest extends TestCase
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }
     }
+
+    /**
+     * send() happy path: root impersonates an active fake user and DMs a live
+     * recipient. The message is stored (INSERT ... RETURNING), the {success:true,
+     * data:{...}} envelope is returned and the bot is taken over in that thread.
+     * All seeded rows (fake user, recipient session, DM) are cleaned up.
+     */
+    public function testSendAsFakeUserStoresPrivateMessage(): void
+    {
+        $this->authAsRoot();
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $fake   = 'sndfake_' . $suffix;
+        $peer   = 'sndpeer_' . $suffix;
+        $peerSess = 'sess_' . $suffix;
+
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')
+            ->execute([$fake]);
+        $pdo->prepare(
+            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+             VALUES (?, ?, ?, NOW(), NOW())'
+        )->execute([$peer, $peerSess, '127.0.0.1']);
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = ['impersonate_as' => $fake, 'to_username' => $peer, 'message' => 'ping ' . $suffix];
+
+            $response = (new AdminImpersonationController())->send();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame($fake, $body['data']['from_username']);
+
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM private_messages WHERE from_username = ? AND to_username = ?');
+            $stmt->execute([$fake, $peer]);
+            $this->assertSame(1, (int) $stmt->fetchColumn(), 'the impersonated DM must be stored');
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$fake]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$peer]);
+            $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')
+                ->execute([$fake]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
+        }
+    }
 }

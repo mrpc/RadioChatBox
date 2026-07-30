@@ -222,4 +222,62 @@ class AdminUsersControllerTest extends TestCase
             json_decode($response->getBody(), true)['error']
         );
     }
+
+    /**
+     * Full admin-user lifecycle as root: create (201) -> list/details/current
+     * (200 shapes) -> update password+display_name (200) -> delete (200). Drives
+     * the success branch of every action the RBAC-only tests skip. The created
+     * row is removed afterwards.
+     */
+    public function testUserLifecycleAsRoot(): void
+    {
+        $this->authAsRoot();
+        $username = 'lc_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = ['username' => $username, 'password' => 'sup3rsecret!', 'role' => 'moderator', 'email' => $username . '@x.test'];
+            $created = (new AdminUsersController())->create();
+            $this->assertSame(201, $created->getStatusCode());
+            $createdBody = json_decode($created->getBody(), true);
+            $this->assertTrue($createdBody['success']);
+            $userId = (int) $createdBody['user']['id'];
+            $this->assertGreaterThan(0, $userId);
+
+            // list()
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_POST = [];
+            $list = (new AdminUsersController())->list();
+            $this->assertSame(200, $list->getStatusCode());
+            $this->assertContains($username, array_column(json_decode($list->getBody(), true)['users'], 'username'));
+
+            // details()
+            $_GET = ['username' => $username];
+            $details = (new AdminUsersController())->details();
+            $this->assertSame(200, $details->getStatusCode());
+            $this->assertTrue(json_decode($details->getBody(), true)['success']);
+
+            // current() resolves the acting root session.
+            $current = (new AdminUsersController())->current();
+            $this->assertSame(200, $current->getStatusCode());
+
+            // update()
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_GET = [];
+            $_POST = ['user_id' => $userId, 'display_name' => 'Renamed', 'password' => 'anotherStrong1!'];
+            $updated = (new AdminUsersController())->update();
+            $this->assertSame(200, $updated->getStatusCode());
+            $this->assertTrue(json_decode($updated->getBody(), true)['success']);
+
+            // delete()
+            $_SERVER['REQUEST_METHOD'] = 'DELETE';
+            $_POST = ['user_id' => $userId];
+            $deleted = (new AdminUsersController())->delete();
+            $this->assertSame(200, $deleted->getStatusCode());
+            $this->assertTrue(json_decode($deleted->getBody(), true)['success']);
+        } finally {
+            Database::getInstance()->queryBuilder()->from('users')
+                ->where('username', '=', $username)->delete();
+        }
+    }
 }

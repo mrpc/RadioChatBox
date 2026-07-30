@@ -233,4 +233,46 @@ class AdminSystemControllerTest extends TestCase
         $this->assertSame(400, $response->getStatusCode());
         $this->assertSame('No file uploaded', json_decode($response->getBody(), true)['error']);
     }
+
+    /**
+     * POST /api/admin/create-session mints a stream token and stores it in Redis
+     * with a 24h TTL. Asserts the {success, session_token, expires_in} envelope
+     * and that the token key really exists, then deletes it so nothing leaks.
+     */
+    public function testCreateSessionMintsToken(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+
+        $response = (new AdminSystemController())->createSession();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertSame(24 * 60 * 60, $body['expires_in']);
+
+        $token = $body['session_token'];
+        $redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
+        try {
+            $this->assertTrue((bool) $redis->exists('admin_session:' . $token), 'the token must be stored');
+        } finally {
+            $redis->del('admin_session:' . $token);
+        }
+    }
+
+    /**
+     * GET /api/admin/clear-messages-cache clears the recent-message Redis keys and
+     * returns {success:true, keys_cleared:[...]}. The cache is a lazy rebuild of
+     * the DB history, so clearing it is non-destructive.
+     */
+    public function testClearMessagesCacheReturnsSuccess(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+
+        $response = (new AdminSystemController())->clearMessagesCache();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertIsArray($body['keys_cleared']);
+    }
 }
