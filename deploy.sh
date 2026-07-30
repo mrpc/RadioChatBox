@@ -78,7 +78,7 @@ git reset --hard origin/main || error "Failed to pull latest code"
 # Run database migrations via the tracked runner (skipped by default).
 # The runner records applied migrations in schemaversion, so this is safe to run
 # repeatedly. On an existing pre-squash database, baseline it once first (see
-# docs/pramnos-migration/) so the CreateSchema baseline is marked applied.
+# docs/ARCHITECTURE.md §3) so the CreateSchema baseline is marked applied.
 if [ "$RUN_MIGRATIONS" = "true" ]; then
     log "Running database migrations (radiochatbox.php migrate)..."
     php radiochatbox.php migrate --path=app/migrations || warning "Migrations failed"

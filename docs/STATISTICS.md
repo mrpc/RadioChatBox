@@ -365,4 +365,4 @@ Potential improvements:
 
 ## API Reference
 
-See [docs/openapi.yaml](openapi.yaml) for complete API specification (to be updated with stats endpoints).
+See the generated OpenAPI spec at [`public/api/openapi.json`](../public/api/openapi.json) (browsable at `/api/docs/`).

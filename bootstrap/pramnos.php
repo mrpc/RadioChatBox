@@ -5,10 +5,10 @@
  *
  * Makes the framework's \Pramnos\Application\Settings available to RadioChatBox,
  * populated from the environment (.env loaded here via the native loadDotenv(),
- * read with envvar()) through app/settings/settings.php. This is the first step of
- * the framework migration (see docs/pramnos-migration/00-overview-and-bc-strategy.md,
- * Phase 1): it introduces the framework *underneath* the app without changing any
- * request-path behaviour.
+ * read with envvar()) through app/settings/settings.php. It also wires the Redis
+ * ConnectionManager, the logger, and a connected Database — the framework
+ * *underneath* the app. See docs/ARCHITECTURE.md for why the app boots this way
+ * (console-safe, no Application::init()).
  *
  * It is deliberately a SAFE NO-OP when the framework cannot load in the current
  * environment (e.g. the `mbstring` extension is missing), so requiring this file

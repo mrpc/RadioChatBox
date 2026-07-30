@@ -9,7 +9,7 @@
  * call Application::init(), because init() runs web-oriented steps — notably
  * session start and SessionTrackingMiddleware, which would write to the
  * `sessions` table whose columns differ from the framework's (a known schema
- * collision, see docs/pramnos-migration/05-schema-convergence.md). Instead it
+ * collision, see docs/ARCHITECTURE.md §3). Instead it
  * wires only what console commands need: the framework Settings and a connected
  * Database on the Application instance the commands resolve via getInstance().
  *

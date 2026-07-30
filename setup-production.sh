@@ -166,7 +166,7 @@ EOF
             if [ "$REIMPORT" = "y" ] || [ "$REIMPORT" = "Y" ]; then
                 echo "Existing tables found. The schema is managed by migrations now:"
                 echo "  baseline this database once, then run: php radiochatbox.php migrate --path=app/migrations"
-                echo "  (see docs/pramnos-migration/). Skipping destructive re-import."
+                echo "  (see docs/ARCHITECTURE.md §3). Skipping destructive re-import."
             else
                 echo "Skipping schema import."
             fi

@@ -204,7 +204,7 @@ final class AdminModerationController
             if ($result) {
                 // Notify clients that user was kicked. (Historically published to an
                 // UNPREFIXED channel — now normalized to the prefixed channel the SSE
-                // edge subscribes to; see docs/pramnos-migration/06 §8.2.)
+                // edge subscribes to, via the BroadcastingManager's ConnectionManager prefix.)
                 BroadcastingManager::instance()->broadcast('chat:user_updates', 'user_kicked', [
                     'type'      => 'user_kicked',
                     'username'  => $username,

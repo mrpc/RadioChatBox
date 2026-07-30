@@ -22,13 +22,13 @@ return [
     // migrations (auth/authserver/messaging/queue/...) should run here.
     'features'  => [],
 
-    // Global HTTP middleware, applied by public/_dispatch.php around every route.
+    // Global HTTP middleware, applied by bootstrap/http.php around every route.
     // CORS reflects the request Origin against ALLOWED_ORIGINS (comma-separated;
     // '*' by default); JSON response shaping matches the legacy behaviour. NOTE:
     // NO SessionTrackingMiddleware — RadioChatBox owns its own `sessions` table
     // (username/session_id/last_heartbeat), which is incompatible with the
     // framework's legacy sessions schema, so session tracking is deliberately
-    // NOT wired (see docs/pramnos-migration/05-schema-convergence.md).
+    // NOT wired (see docs/ARCHITECTURE.md §3).
     'middleware' => [
         new \Pramnos\Http\Middleware\CorsMiddleware(
             explode(',', (string) envvar('ALLOWED_ORIGINS', '*')),

@@ -235,7 +235,8 @@ The system supports four hierarchical roles with different permission levels:
 - **[STATISTICS_QUICKSTART.md](STATISTICS_QUICKSTART.md)** - Quick setup for statistics
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
-- **[openapi.yaml](docs/openapi.yaml)** - Complete API specification
+- **[public/api/openapi.json](public/api/openapi.json)** - OpenAPI 3.0 spec, auto-generated from the `#[Route]` attributes (browsable at `/api/docs/`)
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Structural & schema decisions (why RCB diverges from classic MVC)
 - **[EMOJI_SUPPORT.md](docs/EMOJI_SUPPORT.md)** - Emoji rendering documentation
 
 ### Project Structure
@@ -256,7 +257,7 @@ radiochatbox/
 ├── database/            # Database schema
 │   └── init.sql         # Complete schema
 ├── docs/                # API documentation
-│   └── openapi.yaml     # OpenAPI 3.0 specification
+│   └── *.md             # ARCHITECTURE, DAEMONS, BOT_REPLIES, STATISTICS, ...
 ├── tests/               # PHPUnit tests
 ├── docker-compose.yml   # Docker orchestration
 └── .env.example         # Environment template
@@ -285,7 +286,7 @@ RadioChatBox uses SSE for real-time updates instead of WebSockets:
 
 ## 🔌 API Documentation
 
-Full API documentation is available in OpenAPI 3.0 format: [`docs/openapi.yaml`](docs/openapi.yaml)
+Full API documentation is generated from the `#[Route]` attributes into [`public/api/openapi.json`](public/api/openapi.json) (regenerate with `radiochatbox.php api:docs`); browse it at `/api/docs/`.
 
 ### Quick Reference
 
