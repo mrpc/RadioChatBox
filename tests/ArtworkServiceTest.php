@@ -153,6 +153,77 @@ class ArtworkServiceTest extends TestCase
     }
 
     /**
+     * getDeepMeta parses a full Deezer match: track/album/artist ids + link, the
+     * album title, and the album-detail call's genre + release date, while
+     * downloading the cover and artist image. All faked; files cleaned up.
+     */
+    public function testGetDeepMetaParsesDeezerMatchAndAlbumDetails(): void
+    {
+        $jpeg = $this->jpegBytes();
+        Client::fake([
+            '*api.deezer.com/album/*'  => ClientResponse::make([
+                'release_date' => '2020-05-01',
+                'genres'       => ['data' => [['name' => 'Rock']]],
+                'link'         => 'https://deezer.test/album/456',
+            ]),
+            '*api.deezer.com/search*'  => ClientResponse::make(['data' => [[
+                'id'     => 123,
+                'link'   => 'https://deezer.test/track/123',
+                'album'  => ['id' => 456, 'title' => 'Album X', 'cover_xl' => 'https://img.test/cover.jpg'],
+                'artist' => ['id' => 789, 'name' => 'Deep Artist', 'picture_xl' => 'https://img.test/artist.jpg'],
+            ]]]),
+            '*img.test*' => ClientResponse::make($jpeg),
+        ]);
+
+        $meta = (new ArtworkService())->getDeepMeta('Deep Artist ' . uniqid(), 'Deep Song');
+
+        $this->assertSame('deezer', $meta['source']);
+        $this->assertSame('Album X', $meta['album_title']);
+        $this->assertSame('Rock', $meta['genre']);
+        $this->assertSame('2020-05-01', $meta['release_date']);
+        $this->assertSame('123', $meta['track_external_id']);
+        $this->assertSame('456', $meta['album_external_id']);
+        $this->assertNotNull($meta['cover']);
+        if (!empty($meta['cover'])) {
+            $this->written[] = $meta['cover'];
+        }
+        if (!empty($meta['artist_image'])) {
+            $this->written[] = $meta['artist_image'];
+        }
+    }
+
+    /**
+     * getAlbumMeta searches Deezer for the album, fetches its details (genre,
+     * release date, link, cover) and stores the cover. All faked.
+     */
+    public function testGetAlbumMetaResolvesAndStores(): void
+    {
+        $jpeg = $this->jpegBytes();
+        Client::fake([
+            '*api.deezer.com/search/album*' => ClientResponse::make(['data' => [['id' => 999]]]),
+            '*api.deezer.com/album/*'       => ClientResponse::make([
+                'release_date' => '2018-03-10',
+                'genres'       => ['data' => [['name' => 'Jazz']]],
+                'link'         => 'https://deezer.test/album/999',
+                'cover_xl'     => 'https://img.test/albumcover.jpg',
+            ]),
+            '*img.test*' => ClientResponse::make($jpeg),
+        ]);
+
+        $meta = (new ArtworkService())->getAlbumMeta('Album Artist ' . uniqid(), 'Great Album');
+
+        $this->assertSame('deezer', $meta['source']);
+        $this->assertSame('999', $meta['external_id']);
+        $this->assertSame('Jazz', $meta['genre']);
+        $this->assertSame('2018-03-10', $meta['release_date']);
+        $this->assertSame('https://deezer.test/album/999', $meta['external_url']);
+        $this->assertNotNull($meta['cover']);
+        if (!empty($meta['cover'])) {
+            $this->written[] = $meta['cover'];
+        }
+    }
+
+    /**
      * storeImageFromUrl downloads raw bytes from a feed cover URL and stores a
      * local JPEG + thumbnail.
      */
