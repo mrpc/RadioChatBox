@@ -196,6 +196,36 @@ class BotCommandsTest extends TestCase
         $this->assertStringContainsString('LLM calls', $tester->getDisplay());
     }
 
+    /**
+     * bot:log renders the per-call listing when the log has entries: seed one
+     * recorded call and assert its line (nickname + tokens) appears, covering the
+     * entry-rendering loop the empty-log path skips.
+     */
+    public function testBotLogRendersRecordedEntries(): void
+    {
+        $nick = 'bloglog_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        (new \RadioChatBox\Services\LlmLog(new SettingsService()))->record([
+            'fake_nickname' => $nick,
+            'peer_username' => 'peer',
+            'model'         => 'test-model',
+            'finish_reason' => 'stop',
+            'duration_ms'   => 120,
+            'usage'         => ['prompt_tokens' => 10, 'completion_tokens' => 5],
+            'reasoning'     => false,
+        ]);
+
+        try {
+            $tester = $this->tester(new BotLog());
+            $this->assertSame(Command::SUCCESS, $tester->execute([]));
+            $display = $tester->getDisplay();
+            $this->assertStringContainsString($nick, $display);
+            $this->assertStringContainsString('tokens:', $display);
+        } finally {
+            \Pramnos\Framework\Testing\TestDatabase::connection()
+                ->prepare('DELETE FROM bot_llm_log WHERE fake_nickname = ?')->execute([$nick]);
+        }
+    }
+
     /** bot:run-task runs a known task; an unknown task name fails with the list. */
     public function testBotRunTaskKnownAndUnknown(): void
     {
