@@ -3,48 +3,47 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Pramnos\Cache\FlatCache;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientResponse;
 use RadioChatBox\Services\RadioStatusService;
+use RadioChatBox\Services\SettingsService;
 use ReflectionMethod;
 
 /**
- * Covers the now-playing feed parser. The HTTP fetch is driven through a
- * file:// URL pointing at a temp JSON fixture (curl reads it directly), so the
- * full Icecast/Shoutcast heuristic in fetchAndParse runs without a live radio
- * server. The pure title helpers are exercised via reflection. No shared state
- * (settings/cache) is touched.
+ * Covers the now-playing feed parser. The HTTP fetch is faked through the
+ * framework HTTP client ({@see Client::fake()}) so the full Icecast/Shoutcast
+ * heuristic in fetchAndParse — and getNowPlaying end to end — runs
+ * deterministically without a live radio server. No shared state (cache) is left
+ * behind: fakes are reset and the now-playing cache is cleared in tearDown.
  */
 class RadioStatusServiceTest extends TestCase
 {
-    /** @var string[] temp fixture files to remove */
-    private array $tmp = [];
-
     protected function tearDown(): void
     {
-        foreach ($this->tmp as $f) {
-            if (is_file($f)) {
-                @unlink($f);
-            }
+        Client::resetFakes();
+        try {
+            FlatCache::default()->delete('radio:now_playing');
+        } catch (\Throwable) {
+            // best effort
         }
-        $this->tmp = [];
+        parent::tearDown();
     }
 
-    /** Parse a payload by writing it to a temp file and passing a file:// URL. */
+    /** Parse a payload by faking the HTTP response and driving fetchAndParse. */
     private function parse(array $payload): array
     {
-        $file = tempnam(sys_get_temp_dir(), 'radio') . '.json';
-        file_put_contents($file, json_encode($payload));
-        $this->tmp[] = $file;
+        Client::fake(['*' => ClientResponse::make($payload)]);
 
         $m = new ReflectionMethod(RadioStatusService::class, 'fetchAndParse');
         $m->setAccessible(true);
 
-        return $m->invoke(new RadioStatusService(), 'file://' . $file);
+        return $m->invoke(new RadioStatusService(), 'https://radio.test/status-json.xsl');
     }
 
     /**
-     * An Icecast feed ({icestats:{source:{title,listeners,album,art}}}) is parsed:
-     * the bracketed bitrate is stripped, the "Artist - Title" is split, and the
-     * listener count, album and cover art are surfaced.
+     * An Icecast feed ({icestats:{source:{title,listeners}}}) is parsed: the
+     * bracketed bitrate is stripped and the "Artist - Title" is split.
      */
     public function testIcecastSourceIsParsed(): void
     {
@@ -90,13 +89,11 @@ class RadioStatusServiceTest extends TestCase
     }
 
     /**
-     * An AzuraCast-style now_playing.song object supplies artist/title/album
-     * directly.
+     * An AzuraCast-style now_playing.song object supplies the album and cover art
+     * picked up by the rich-feed scan (songtitle drives display/active).
      */
     public function testNowPlayingObjectSuppliesAlbumAndCover(): void
     {
-        // songtitle drives display/active; the now_playing.song object supplies the
-        // album and cover art picked up by the rich-feed scan.
         $res = $this->parse([
             'songtitle'   => 'Daft Punk - One More Time',
             'listeners'   => 3,
@@ -127,19 +124,63 @@ class RadioStatusServiceTest extends TestCase
     }
 
     /**
+     * A non-2xx response (server error) is treated as no data — httpGet returns
+     * null and fetchAndParse yields the inactive envelope.
+     */
+    public function testHttpErrorIsInactive(): void
+    {
+        Client::fake(['*' => ClientResponse::make('nope', 503)]);
+        $m = new ReflectionMethod(RadioStatusService::class, 'fetchAndParse');
+        $m->setAccessible(true);
+        $res = $m->invoke(new RadioStatusService(), 'https://radio.test/down');
+
+        $this->assertFalse($res['active']);
+    }
+
+    /**
      * Non-JSON content also yields the inactive envelope (json_decode miss).
      */
     public function testNonJsonIsInactive(): void
     {
-        $file = tempnam(sys_get_temp_dir(), 'radio') . '.json';
-        file_put_contents($file, 'this is not json');
-        $this->tmp[] = $file;
-
+        Client::fake(['*' => ClientResponse::make('this is not json')]);
         $m = new ReflectionMethod(RadioStatusService::class, 'fetchAndParse');
         $m->setAccessible(true);
-        $res = $m->invoke(new RadioStatusService(), 'file://' . $file);
+        $res = $m->invoke(new RadioStatusService(), 'https://radio.test/html');
 
         $this->assertFalse($res['active']);
+    }
+
+    /**
+     * getNowPlaying end to end: with a configured status URL and a faked feed it
+     * returns the parsed now-playing and caches it (the second call returns the
+     * cached array without re-fetching). The setting is snapshotted/restored.
+     */
+    public function testGetNowPlayingEndToEndWithConfiguredUrl(): void
+    {
+        $settings = new SettingsService();
+        $previous = (string) $settings->get('radio_status_url', '');
+
+        try {
+            $settings->setMultiple(['radio_status_url' => 'https://radio.test/status-json.xsl']);
+            FlatCache::default()->delete('radio:now_playing');
+
+            Client::fake(['*' => ClientResponse::make(['icestats' => ['source' => [
+                'title'     => 'Pink Floyd - Time',
+                'listeners' => 5,
+            ]]])]);
+
+            $result = (new RadioStatusService())->getNowPlaying();
+            $this->assertTrue($result['active']);
+            $this->assertSame('Pink Floyd - Time', $result['display']);
+            $this->assertSame(5, $result['listeners']);
+
+            // Second call is served from cache even with the fake removed.
+            Client::resetFakes();
+            $cached = (new RadioStatusService())->getNowPlaying();
+            $this->assertSame('Pink Floyd - Time', $cached['display']);
+        } finally {
+            $settings->setMultiple(['radio_status_url' => $previous]);
+        }
     }
 
     /**

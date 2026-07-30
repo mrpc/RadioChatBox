@@ -3,6 +3,8 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientException;
 class RadioStatusService
 {
     private SettingsService $settings;
@@ -244,24 +246,24 @@ class RadioStatusService
 
     private function httpGet(string $url): ?string
     {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2); // seconds
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3); // total seconds
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'RadioChatBox/1.0');
-
-        $resp = curl_exec($ch);
-        $err = curl_error($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($resp === false || $code >= 400) {
+        // Fetch through the framework HTTP client (curl underneath, same TLS
+        // verification + redirect following). Behaviour matches the former raw
+        // curl: a transport error or any >= 400 status yields null; this also makes
+        // the fetch fakeable in tests via Client::fake().
+        try {
+            $response = Client::get($url)
+                ->connectTimeout(2)
+                ->timeout(3)
+                ->userAgent('RadioChatBox/1.0')
+                ->send();
+        } catch (ClientException) {
             return null;
         }
-        return is_string($resp) ? $resp : null;
+
+        if ($response->status() >= 400) {
+            return null;
+        }
+
+        return $response->body();
     }
 }
