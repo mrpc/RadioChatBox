@@ -14,7 +14,7 @@ use RadioChatBox\Services\SettingsService;
  * The framework class fingerprints code and detects a supervisor; this suite
  * covers what RadioChatBox supplies to it — the per-installation lock path, the
  * settings-version stamp resolver (Redis version key, falling back to the DB),
- * and that a reloader wired the way bot:worker wires it notices a saved setting
+ * and that a reloader wired the way bot:start wires it notices a saved setting
  * and watches the command's own directory.
  */
 class WorkerReloaderTest extends TestCase
@@ -45,7 +45,7 @@ class WorkerReloaderTest extends TestCase
         @rmdir($this->root);
     }
 
-    /** The RadioChatBox watched set, as bot:worker wires it. */
+    /** The RadioChatBox watched set, as bot:start wires it. */
     private function reloader(): WorkerReloader
     {
         return new WorkerReloader(
@@ -86,7 +86,7 @@ class WorkerReloaderTest extends TestCase
 
     /**
      * The command directory (src/ConsoleCommands) is in the watched set, so editing the
-     * bot:worker command is a code change that triggers a reload.
+     * bot:start command is a code change that triggers a reload.
      */
     public function testTheCommandDirectoryIsWatched(): void
     {

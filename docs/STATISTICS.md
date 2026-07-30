@@ -69,10 +69,10 @@ psql -U radiochatbox -d radiochatbox < database/migrations/006_add_statistics_ta
 
 The statistics system works **best** with periodic cron jobs for reliable data collection:
 
-The primary path is the in-worker scheduler (`bot:worker --schedule`, under the
-daemon orchestrator). For hosts without the worker daemon, wire the framework cron
+The primary path is the `stats:start` worker (under the daemon orchestrator,
+`daemons:start`). For hosts without the worker daemon, wire the framework cron
 scheduler to system cron instead — ONE line runs whatever is due (snapshots +
-aggregations), so never combine it with the worker's own scheduler:
+aggregations), so never combine it with the worker daemons:
 
 ```bash
 # Add to crontab (edit with: crontab -e)

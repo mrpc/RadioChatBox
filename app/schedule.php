@@ -5,7 +5,8 @@
  * (migration Phase 4).
  *
  * The PRIMARY scheduler is the in-worker one (src/Services/Scheduler.php), driven
- * by `radiochatbox.php bot:worker --schedule` under the daemon orchestrator. It is kept because
+ * by the per-feature workers (stats:start / tracker:start / maintenance:start /
+ * bot:start) under the daemon orchestrator. This cron path is kept because
  * cron cannot express sub-minute cadences: `track_poll` runs every 30s so short
  * songs are not missed — the finest a per-minute `schedule:run` cron can do is
  * every minute (declared below with that caveat).

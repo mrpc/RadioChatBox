@@ -18,14 +18,14 @@ use Pramnos\Database\Database as PramnosDatabase;
  *                              └─ queues a `bot_reply` job after a short
  *                                 "reading" delay
  *
- *   bot:worker       ──▶ processReplyJob()
+ *   bot:start       ──▶ processReplyJob()
  *                              ├─ budget exhausted → queue the hardcoded
  *                              │  farewell, no LLM call at all
  *                              └─ otherwise call the LLM, then queue a
  *                                 `bot_deliver` job after a typing delay
  *                                 (~1.5s per word)
  *
- *   bot:worker       ──▶ processDeliverJob()
+ *   bot:start       ──▶ processDeliverJob()
  *                              └─ INSERT into private_messages + publish to
  *                                 Redis so the client sees it in real time
  *
@@ -585,7 +585,7 @@ class BotService
     }
 
     // ========================================================================
-    // JOB HANDLERS (called by bot:worker)
+    // JOB HANDLERS (called by bot:start)
     // ========================================================================
 
     /**

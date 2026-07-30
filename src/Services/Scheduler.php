@@ -22,9 +22,10 @@ use Pramnos\Database\Database as PramnosDatabase;
  * application is broken - and if the worker is the broken part, backups must not stop
  * with it.
  *
- * Opt-in (`radiochatbox.php bot:worker --schedule`), so an existing crontab keeps working
- * untouched until it is removed by hand. Running both is safe but pointless: each
- * task records its own last run and will not run twice within its interval.
+ * Driven by the per-feature workers (each runs its own task group; see
+ * src/ConsoleCommands) under the daemon orchestrator, or by `schedule:run` from
+ * cron. Running both is pointless (not both at once): each task records its own
+ * last run and will not run twice within its interval.
  *
  * Cadence is either a plain interval ('every' seconds) or calendar-aligned
  * ('at_hour'/'at_minute' UTC), because "aggregate yesterday" means a time of day, not

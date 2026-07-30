@@ -21,7 +21,7 @@ public/api/private-message.php
   (reading delay: 2-8s by default)  ── nothing blocks the HTTP response
         │
         ▼
-bot:worker  →  BotService::processReplyJob()
+bot:start  →  BotService::processReplyJob()
   ├─ message budget spent?  → ask the LLM for a CLOSING message
   │                           (falls back to a random canned goodbye on failure)
   └─ otherwise             → ask the LLM for a normal reply
@@ -29,7 +29,7 @@ bot:worker  →  BotService::processReplyJob()
         │  reply text is sanitised, then a `bot_deliver` job is queued
         │  with a typing delay of ~1.5s per word
         ▼
-bot:worker  →  BotService::processDeliverJob()
+bot:start  →  BotService::processDeliverJob()
   INSERT INTO private_messages + PUBLISH to Redis
   → the recipient's SSE stream shows the message
 ```
