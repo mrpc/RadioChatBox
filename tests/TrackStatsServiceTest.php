@@ -246,6 +246,76 @@ class TrackStatsServiceTest extends TestCase
         $this->assertTrue($this->service->updateArtistMeta($artistId, ['genre' => 'Funk ' . $this->suffix]));
     }
 
+    /** A valid in-memory JPEG for faked image downloads. */
+    private function jpeg(): string
+    {
+        $im = imagecreatetruecolor(60, 60);
+        imagefilledrectangle($im, 0, 0, 60, 60, imagecolorallocate($im, 90, 30, 150));
+        ob_start();
+        imagejpeg($im);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($im);
+        return $bytes;
+    }
+
+    /**
+     * enrichAlbum fills missing album metadata (genre/release/external ids) and
+     * refreshes the cover from a faked Deezer album lookup, then persists it.
+     */
+    public function testEnrichAlbumFillsMetadataFromDeezer(): void
+    {
+        // Seed a track + album (no genre/release) to enrich.
+        $trackId = (int) $this->service->recordPlay($this->nowPlaying('A'));
+        $this->service->updateTrackMeta($trackId, ['album_title' => 'Bare Album ' . $this->suffix]);
+        $albumId = (int) $this->service->getAlbumsByArtist($this->artist())[0]['album_id'];
+
+        Client::fake([
+            '*api.deezer.com/search/album*' => ClientResponse::make(['data' => [['id' => 777]]]),
+            '*api.deezer.com/album/*'       => ClientResponse::make([
+                'release_date' => '2015-09-09',
+                'genres'       => ['data' => [['name' => 'Soul ' . $this->suffix]]],
+                'link'         => 'https://deezer.test/album/777',
+                'cover_xl'     => 'https://img.test/albumcover.jpg',
+            ]),
+            '*img.test*' => ClientResponse::make($this->jpeg()),
+        ]);
+
+        $this->assertTrue($this->service->enrichAlbum($albumId));
+
+        $album = $this->service->getAlbumDetail($albumId)['album'];
+        $this->assertSame('Soul ' . $this->suffix, $album['genre']);
+        $this->assertSame('2015-09-09', substr((string) $album['release_date'], 0, 10));
+    }
+
+    /**
+     * ensureArtistImage looks up and stores an artist photo when missing, updating
+     * the artist row's image_file. Driven by a faked Deezer artist search.
+     */
+    public function testEnsureArtistImageStoresPhoto(): void
+    {
+        $this->service->recordPlay($this->nowPlaying('A')); // creates the artist row
+
+        Client::fake([
+            '*api.deezer.com/search/artist*' => ClientResponse::make(['data' => [
+                ['picture_xl' => 'https://img.test/artist.jpg'],
+            ]]),
+            '*img.test*' => ClientResponse::make($this->jpeg()),
+        ]);
+
+        $file = $this->service->ensureArtistImage($this->artist(), true);
+
+        $this->assertNotNull($file);
+        $this->assertSame($file, $this->service->getArtistRowByName($this->artist())['image_file']);
+
+        // Clean up the stored artist image + thumb.
+        $disk = dirname(__DIR__) . '/public' . $file;
+        foreach ([$disk, preg_replace('/\.jpg$/i', '_thumb.jpg', $disk)] as $f) {
+            if (is_file($f)) {
+                @unlink($f);
+            }
+        }
+    }
+
     /**
      * enrichTrack with a feed that carries the album title and cover URL: the
      * external providers are faked to return no match, so the feed values win —
