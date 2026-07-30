@@ -2,6 +2,8 @@
 
 namespace RadioChatBox\Services;
 
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientException;
 use RadioChatBox\Services\LlmLog;
 use RadioChatBox\Services\LlmProviders;
 /**
@@ -463,36 +465,37 @@ class LlmService
             }
         }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $this->baseUrl . $path);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        // Send through the framework HTTP client (curl underneath, same TLS
+        // verification). Behaviour matches the former raw curl: a transport error
+        // throws "LLM request failed: …", a non-2xx throws with the provider's
+        // error message, and lastStatus tracks the HTTP code. Routing through
+        // Client also makes the provider call fakeable in tests via Client::fake().
+        $request = (new Client())
+            ->make($method, $this->baseUrl . $path)
+            ->connectTimeout(5)
+            ->timeout($this->timeout)
+            ->userAgent('RadioChatBox/1.0')
+            ->header('Accept', 'application/json')
+            ->bearerToken($this->apiKey);
+
         if ($body !== null) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            $request = $request->body($body, 'application/json');
+        } else {
+            $request = $request->header('Content-Type', 'application/json');
         }
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'RadioChatBox/1.0');
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $this->apiKey,
-        ]);
 
-        $raw = curl_exec($ch);
-        $curlError = curl_error($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        try {
+            $response = $request->send();
+        } catch (ClientException $e) {
+            $this->lastStatus = null;
+            throw new \RuntimeException('LLM request failed: ' . ($e->getMessage() ?: 'unknown cURL error'));
+        }
 
+        $status = $response->status();
         $this->lastStatus = $status ?: null;
+        $raw = $response->body();
 
-        if ($raw === false || $curlError !== '') {
-            throw new \RuntimeException('LLM request failed: ' . ($curlError ?: 'unknown cURL error'));
-        }
-
-        $decoded = json_decode((string) $raw, true);
+        $decoded = json_decode($raw, true);
 
         if ($status < 200 || $status >= 300) {
             $message = $decoded['error']['message'] ?? substr((string) $raw, 0, 300);

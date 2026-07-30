@@ -6,6 +6,9 @@ use Pramnos\Framework\Testing\TestDatabase;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientException;
+use Pramnos\Http\ClientResponse;
 use RadioChatBox\Services\BotService;
 use Pramnos\Database\Database;
 use RadioChatBox\Services\LlmLog;
@@ -31,7 +34,75 @@ class LlmServiceTest extends TestCase
 
     protected function tearDown(): void
     {
+        Client::resetFakes();
         $this->pdo->prepare("DELETE FROM bot_llm_log WHERE fake_nickname LIKE 'llmtest%'")->execute();
+    }
+
+    /** A real LlmService (not the request()-overriding double) pointed at a fake host. */
+    private function fakedLlm(): LlmService
+    {
+        return (new LlmService([
+            'provider' => 'deepseek',
+            'api_key'  => 'test-key',
+            'base_url' => 'https://llm.test/v1',
+            'model'    => 'test-model',
+        ]))->withLogContext(['fake_nickname' => 'llmtest_' . uniqid(), 'peer_username' => 'peer']);
+    }
+
+    /**
+     * chat() end to end through the real request() (framework HTTP client, faked):
+     * a well-formed completion is fetched, decoded and returned as {text,
+     * finish_reason, usage}. This exercises the Client-based transport that the
+     * request()-overriding test double bypasses.
+     */
+    public function testChatFetchesACompletionThroughTheHttpClient(): void
+    {
+        Client::fake(['*llm.test*' => ClientResponse::make([
+            'choices' => [['message' => ['content' => '  hi there  '], 'finish_reason' => 'stop']],
+            'usage'   => ['total_tokens' => 12],
+        ])]);
+
+        $result = $this->fakedLlm()->chat('sys', [['role' => 'user', 'content' => 'geia']]);
+
+        $this->assertSame('hi there', $result['text']);
+        $this->assertSame('stop', $result['finish_reason']);
+        $this->assertSame(12, $result['usage']['total_tokens']);
+    }
+
+    /**
+     * A non-2xx provider response surfaces as a RuntimeException carrying the HTTP
+     * status and the provider's error message (the request() error branch).
+     */
+    public function testChatSurfacesAnHttpErrorFromTheProvider(): void
+    {
+        Client::fake(['*llm.test*' => ClientResponse::make(['error' => ['message' => 'invalid api key']], 401)]);
+
+        try {
+            $this->fakedLlm()->chat('sys', [['role' => 'user', 'content' => 'geia']]);
+            $this->fail('an HTTP error must not be returned as a completion');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('HTTP 401', $e->getMessage());
+            $this->assertStringContainsString('invalid api key', $e->getMessage());
+        }
+    }
+
+    /**
+     * A transport error (ClientException from the HTTP client) surfaces as
+     * "LLM request failed: …" (the request() catch branch).
+     */
+    public function testChatSurfacesATransportError(): void
+    {
+        Client::fake(['*llm.test*' => static function (): ClientResponse {
+            throw new ClientException('connection refused', 7);
+        }]);
+
+        try {
+            $this->fakedLlm()->chat('sys', [['role' => 'user', 'content' => 'geia']]);
+            $this->fail('a transport error must propagate as a failure');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('LLM request failed', $e->getMessage());
+            $this->assertStringContainsString('connection refused', $e->getMessage());
+        }
     }
 
     // ------------------------------------------------------------------
