@@ -59,6 +59,64 @@ class AdminUsersControllerTest extends TestCase
         }
     }
 
+    /** Fake a non-root administrator session (has manage_users, lacks root powers). */
+    private function authAsAdministrator(): void
+    {
+        try {
+            $key = 'admin_session:usersctladmin';
+            FlatCache::default()->set($key, ['username' => 'usersctladmin', 'role' => 'administrator'], 120);
+            $this->sessionKey = $key;
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer usersctladmin:x';
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * create() with role=root as a plain administrator is refused with 403
+     * "Only root users can create other root users" (the create_root_users gate).
+     */
+    public function testCreateRootAsAdministratorForbidden(): void
+    {
+        $this->authAsAdministrator();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['username' => 'wouldberoot_' . substr(bin2hex(random_bytes(3)), 0, 6), 'password' => 'Str0ngPass!', 'role' => 'root'];
+
+        $response = (new AdminUsersController())->create();
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame(
+            'Only root users can create other root users',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
+
+    /**
+     * update() promoting a user to root as a plain administrator is refused with
+     * 403 "Only root users can assign root role".
+     */
+    public function testUpdateToRootAsAdministratorForbidden(): void
+    {
+        $this->authAsAdministrator();
+        $target = 'tgt_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $res = (new \RadioChatBox\Services\UserService())->createUser($target, 'Str0ngPass!', 'moderator');
+        $userId = (int) $res['user']['id'];
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = ['user_id' => $userId, 'role' => 'root'];
+            $response = (new AdminUsersController())->update();
+
+            $this->assertSame(403, $response->getStatusCode());
+            $this->assertSame(
+                'Only root users can assign root role',
+                json_decode($response->getBody(), true)['error']
+            );
+        } finally {
+            Database::getInstance()->queryBuilder()->from('users')->where('username', '=', $target)->delete();
+        }
+    }
+
     /**
      * The AdminAuthMiddleware guarding the routes must short-circuit an
      * unauthenticated request with a 401 {"error":"Unauthorized"} and never
