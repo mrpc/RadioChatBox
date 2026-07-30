@@ -365,14 +365,12 @@ On Windows: `dockertest.bat` (same, with `--coverage`).
 ./dockerbash                            # interactive shell
 ./dockerbash -c "php -v"                # single command
 
-./radiochatbox daemon status            # php daemon.php status (supervisor + workers)
-./radiochatbox bot status               # php worker.php status
-./radiochatbox bot schedule             # the periodic tasks and when they last ran
-./radiochatbox stats snapshot           # php stats-cron.php snapshot
-./radiochatbox psql -c 'SELECT 1'       # psql on the app database
-./radiochatbox redis ping               # redis-cli
-./radiochatbox migrate                  # apply every migration in database/migrations
-./radiochatbox composer install         # composer inside the container
+./radiochatbox list                     # every console command
+./radiochatbox bot:status               # worker health (queue + schedule)
+./radiochatbox bot:schedule             # the periodic tasks and when they last ran
+./radiochatbox daemons:start --once     # one supervisor reconciliation cycle
+./radiochatbox schedule:run             # run due periodic tasks (cron fallback)
+./radiochatbox migrate --path=app/migrations   # apply pending migrations
 ./radiochatbox php -r 'echo PHP_EOL;'   # anything else runs in the app container
 ```
 

@@ -69,12 +69,14 @@ psql -U radiochatbox -d radiochatbox < database/migrations/006_add_statistics_ta
 
 The statistics system works **best** with periodic cron jobs for reliable data collection:
 
-```bash
-# Make the cron script executable
-chmod +x stats-cron.sh
+The primary path is the in-worker scheduler (`bot:worker --schedule`, under the
+daemon orchestrator). For hosts without the worker daemon, wire the framework cron
+scheduler to system cron instead — ONE line runs whatever is due (snapshots +
+aggregations), so never combine it with the worker's own scheduler:
 
+```bash
 # Add to crontab (edit with: crontab -e)
-*/15 * * * * /path/to/radiochatbox/stats-cron.sh >> /var/log/radiochatbox-stats.log 2>&1
+* * * * * cd /path/to/radiochatbox && php radiochatbox.php schedule:run >> logs/schedule.log 2>&1
 ```
 
 **Recommended Schedule**: Every 15 minutes
