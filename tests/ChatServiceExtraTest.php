@@ -203,12 +203,36 @@ class ChatServiceExtraTest extends TestCase
     public function testHistoryReadersReturnPostedMessage(): void
     {
         $this->service->registerUser($this->user, $this->session, $this->ip);
-        $this->service->postMessage($this->user, 'history ' . $this->suffix, $this->ip, $this->session);
+        $parent = $this->service->postMessage($this->user, 'history ' . $this->suffix, $this->ip, $this->session);
+        // A reply, so the history rows include one carrying reply_data (the reply
+        // branch of both readers).
+        $this->service->postMessage(
+            $this->user,
+            'reply ' . $this->suffix,
+            $this->ip,
+            $this->session,
+            $parent['id']
+        );
 
-        $recent = array_column($this->service->getHistory(100), 'message');
-        $this->assertContains('history ' . $this->suffix, $recent);
+        $history = $this->service->getHistory(100);
+        $this->assertContains('history ' . $this->suffix, array_column($history, 'message'));
+        $this->assertReplyDataPresent($history, 'reply ' . $this->suffix);
 
-        $paged = array_column($this->service->getHistoryWithOffset(100, 0), 'message');
-        $this->assertContains('history ' . $this->suffix, $paged);
+        $paged = $this->service->getHistoryWithOffset(100, 0);
+        $this->assertContains('history ' . $this->suffix, array_column($paged, 'message'));
+        $this->assertReplyDataPresent($paged, 'reply ' . $this->suffix);
+    }
+
+    /** Assert the message with $text in $rows carries a quoted reply_data. */
+    private function assertReplyDataPresent(array $rows, string $text): void
+    {
+        foreach ($rows as $row) {
+            if (($row['message'] ?? null) === $text) {
+                $this->assertArrayHasKey('reply_data', $row, 'a reply must carry reply_data');
+                $this->assertSame($this->user, $row['reply_data']['username']);
+                return;
+            }
+        }
+        $this->fail("reply message '{$text}' not found in history");
     }
 }
