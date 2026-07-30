@@ -1,34 +1,35 @@
 <?php
 
 /**
- * PHPUnit bootstrap.
+ * PHPUnit bootstrap — dedicated, isolated test database.
  *
- * The suite runs against a real PostgreSQL database, so its schema has to exist
- * and be current or tests fail with cryptic "relation/column does not exist"
- * errors. We build/verify it through PramnosFramework's tracked migration
- * runner (the single CreateSchema baseline migration in app/Migrations), the
- * same path `radiochatbox migrate` uses.
+ * The suite runs against a REAL PostgreSQL + Redis, but never against the
+ * development database. Every database consumer (the framework
+ * {@see \Pramnos\Application\Settings} store, the tracked migration runner,
+ * {@see \Pramnos\Framework\Testing\TestDatabase}, and the Redis key prefix in
+ * bootstrap/pramnos.php) keys off the DB_NAME environment variable, so
+ * redirecting that ONE variable to a dedicated `<db>_test` database isolates the
+ * whole suite from dev data.
  *
- * The runner records applied migrations in `schemaversion`, so this is a no-op
- * once the schema is present and builds it from scratch on a fresh database. It
- * only runs when APP_ENV=testing (set in phpunit.xml), so it can never touch a
- * production connection. A failure here is reported but not fatal — a database
- * that already has the schema (but isn't yet tracked) simply reports "nothing
- * to do" once baselined.
+ * On every run the primary process DROPs and re-CREATEs that test database and
+ * rebuilds its schema from the single tracked baseline migration
+ * (app/Migrations) — so tests always see a pristine, deterministic schema with
+ * no accumulated data. The Redis keyspace under the (now `_test`) prefix is
+ * flushed for the same reason. This is what makes coverage deterministic: with a
+ * clean database and Redis each run, a test covers the same lines every time
+ * (the residual non-determinism from live external HTTP is handled separately by
+ * the injectable HTTP client).
  *
- * We also run the app's framework bootstrap here so the PHPUnit process shares
- * the SAME framework state as a real request — most importantly the Redis
- * {@see \Pramnos\Redis\ConnectionManager} singleton (host/port/per-install
- * prefix). Without it the Cache/Broadcast/JobQueue accessors would fall back to
- * the manager's default (empty-prefix) config, and test helpers seeding through
- * the same accessors would land on a different keyspace than the code reads.
+ * Only runs when APP_ENV=testing (set in phpunit.xml), and refuses to proceed
+ * unless the target name differs from the dev database and contains "test", so
+ * it can never build or drop a production/development connection.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
 
-// Project root — every real entry point (public/index.php, radiochatbox.php) defines
-// it, and the framework Application (resolved via app/app.php) needs it too, so
-// the test process defines it before anything constructs an Application.
+// Project root — every real entry point (public/index.php, radiochatbox.php)
+// defines it, and the framework Application needs it, so define it before
+// anything constructs an Application.
 if (!defined('ROOT')) {
     define('ROOT', dirname(__DIR__));
 }
@@ -38,14 +39,104 @@ if (($_ENV['APP_ENV'] ?? getenv('APP_ENV')) !== 'testing') {
 }
 
 $root = dirname(__DIR__);
-$output = (string) shell_exec(
-    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php')
-    . ' migrate --path=app/Migrations 2>&1'
-);
 
-fwrite(STDERR, "[tests] migrate:\n" . trim($output) . "\n");
+// Load .env in case a non-Docker runner relies on it for the DB_* connection
+// parameters (Docker injects them directly into the container environment).
+if (function_exists('loadDotenv')) {
+    loadDotenv($root);
+}
 
-// Configure framework state (ConnectionManager, Logger, Settings) exactly as an
+// ---------------------------------------------------------------------------
+// Resolve the dedicated test database and redirect every consumer onto it.
+// ---------------------------------------------------------------------------
+$dbHost = (string) (getenv('DB_HOST') ?: 'postgres');
+$dbPort = (int) (getenv('DB_PORT') ?: 5432);
+$dbUser = (string) (getenv('DB_USER') ?: 'radiochatbox');
+$dbPass = (string) (getenv('DB_PASSWORD') ?: 'radiochatbox_secret');
+$devDb  = (string) (getenv('DB_NAME') ?: 'radiochatbox');
+
+$testDb = (string) (getenv('TEST_DB_NAME') ?: $devDb . '_test');
+// Only a safe (quoted-identifier-free) name may be interpolated into the DDL below.
+$testDb = preg_replace('/[^A-Za-z0-9_]/', '', $testDb);
+
+if ($testDb === $devDb || stripos($testDb, 'test') === false) {
+    fwrite(STDERR, "[tests] refusing to run: test DB name '{$testDb}' must differ from the dev DB and contain 'test'.\n");
+    exit(1);
+}
+
+// The migrate subprocess, the framework Settings store, TestDatabase and the
+// Redis prefix all read DB_NAME; setting it here (before any of them run, and
+// respected by loadDotenv/envvar because an already-set variable wins) points
+// them all at the isolated database.
+putenv("DB_NAME={$testDb}");
+$_ENV['DB_NAME'] = $_SERVER['DB_NAME'] = $testDb;
+
+// ---------------------------------------------------------------------------
+// Rebuild the test database — primary process only. A cross-process lock keeps a
+// second `dockertest` (or a RunInSeparateProcess subprocess) from racing on the
+// DROP/CREATE + migrate.
+// ---------------------------------------------------------------------------
+$lockHandle = fopen(sys_get_temp_dir() . '/rcb-phpunit-bootstrap.lock', 'c');
+$primary    = $lockHandle !== false && flock($lockHandle, LOCK_EX | LOCK_NB);
+if ($primary) {
+    // Hold the lock for the whole process so subprocesses see it as taken.
+    $GLOBALS['RCB_BOOTSTRAP_LOCK'] = $lockHandle;
+
+    try {
+        $admin = new PDO(
+            "pgsql:host={$dbHost};port={$dbPort};dbname=postgres",
+            $dbUser,
+            $dbPass,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        // Evict any lingering connections (e.g. a previous run's persistent PDO)
+        // before dropping, then rebuild a pristine database.
+        $admin->exec(
+            'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '
+            . $admin->quote($testDb) . ' AND pid <> pg_backend_pid()'
+        );
+        $admin->exec("DROP DATABASE IF EXISTS \"{$testDb}\"");
+        $admin->exec("CREATE DATABASE \"{$testDb}\"");
+        $admin = null;
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "[tests] test database setup failed: {$e->getMessage()}\n");
+        exit(1);
+    }
+
+    // Build the schema from the tracked baseline migration. The subprocess
+    // inherits DB_NAME={$testDb} from putenv() above, so it migrates the fresh
+    // test database (never the dev one).
+    $output = (string) shell_exec(
+        escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php')
+        . ' migrate --path=app/Migrations 2>&1'
+    );
+    fwrite(STDERR, "[tests] migrate ({$testDb}):\n" . trim($output) . "\n");
+}
+
+// ---------------------------------------------------------------------------
+// Boot the framework against the test database (Settings, the Database handle
+// and the Redis prefix all key off the now-redirected DB_NAME), exactly as an
 // HTTP request or the console does, so tests exercise the real wiring.
+// ---------------------------------------------------------------------------
 require $root . '/bootstrap/pramnos.php';
 radiochatbox_boot_pramnos();
+
+// Flush the test Redis keyspace so cache/session/rate-limit state never leaks in
+// from a previous run. The prefix is now `<...>_test:`-scoped, so this only ever
+// clears test keys — never the dev keyspace. Primary process only.
+if ($primary && class_exists(\Pramnos\Redis\ConnectionManager::class)) {
+    try {
+        $cm     = \Pramnos\Redis\ConnectionManager::getInstance();
+        $redis  = $cm->connection();
+        $prefix = $cm->prefix();
+        $keys   = $redis->keys($prefix . '*');
+        if (is_array($keys) && $keys !== []) {
+            // The raw connection returns fully-prefixed key names; delete them as-is.
+            foreach (array_chunk($keys, 500) as $chunk) {
+                $redis->del($chunk);
+            }
+        }
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "[tests] warning: could not flush test Redis keyspace: {$e->getMessage()}\n");
+    }
+}
