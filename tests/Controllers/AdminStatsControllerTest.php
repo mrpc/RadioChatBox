@@ -8,7 +8,9 @@ use Pramnos\Http\Response;
 use Pramnos\Cache\FlatCache;
 use RadioChatBox\Controllers\AdminStatsController;
 use Pramnos\Database\Database;
+use Pramnos\Framework\Testing\TestDatabase;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
+use RadioChatBox\Services\TrackStatsService;
 
 /**
  * Covers the migrated AdminStats resource controller (replaced
@@ -25,6 +27,7 @@ class AdminStatsControllerTest extends TestCase
 {
     private const ADMIN_ID = 'statsadmin';
     private ?string $sessionKey = null;
+    private string $suffix = '';
 
     protected function tearDown(): void
     {
@@ -39,7 +42,42 @@ class AdminStatsControllerTest extends TestCase
         $_GET = [];
         $_POST = [];
         unset($_SERVER['REQUEST_METHOD'], $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+
+        if ($this->suffix !== '') {
+            $pdo  = TestDatabase::connection();
+            $like = '%' . $this->suffix . '%';
+            $pdo->prepare('DELETE FROM track_plays WHERE track_id IN (SELECT id FROM tracks WHERE display LIKE ?)')->execute([$like]);
+            $pdo->prepare('DELETE FROM tracks WHERE display LIKE ?')->execute([$like]);
+            $pdo->prepare('DELETE FROM artists WHERE name LIKE ?')->execute([$like]);
+            $pdo->prepare('DELETE FROM albums WHERE title LIKE ?')->execute([$like]);
+            $this->suffix = '';
+        }
+
         parent::tearDown();
+    }
+
+    /** Seed one track (with a genre + album) tagged for this run; returns its id. */
+    private function seedTrack(): int
+    {
+        $this->suffix = $this->suffix ?: substr(bin2hex(random_bytes(5)), 0, 10);
+        try {
+            \Pramnos\Redis\ConnectionManager::getInstance()->connection()->del(
+                \Pramnos\Redis\ConnectionManager::getInstance()->prefix() . 'radio:last_track'
+            );
+        } catch (\Throwable) {
+            // non-fatal
+        }
+        $service = new TrackStatsService();
+        $trackId = (int) $service->recordPlay([
+            'active'  => true,
+            'artist'  => 'Artist ' . $this->suffix,
+            'title'   => 'Title ' . $this->suffix,
+            'display' => 'Artist ' . $this->suffix . ' - Title ' . $this->suffix,
+            'listeners' => 7,
+        ]);
+        $service->updateTrackMeta($trackId, ['genre' => 'Rock ' . $this->suffix, 'album_title' => 'Album ' . $this->suffix]);
+
+        return $trackId;
     }
 
     /**
@@ -191,5 +229,121 @@ class AdminStatsControllerTest extends TestCase
             'fake_user and peer are required',
             json_decode($response->getBody(), true)['error']
         );
+    }
+
+    // ── Happy paths (seeded track; cleaned up in tearDown) ─────────────────────
+
+    private function body(Response $r): array
+    {
+        return json_decode($r->getBody(), true) ?: [];
+    }
+
+    /** stats(): the summary granularity returns success. */
+    public function testStatsSummaryReturnsData(): void
+    {
+        $this->authAsAdmin();
+        $_GET['granularity'] = 'summary';
+        $r = (new AdminStatsController())->stats();
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertTrue($this->body($r)['success']);
+    }
+
+    /** stats(): a time granularity (daily) returns rows without error. */
+    public function testStatsDailyReturnsData(): void
+    {
+        $this->authAsAdmin();
+        $_GET['granularity'] = 'daily';
+        $r = (new AdminStatsController())->stats();
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertTrue($this->body($r)['success']);
+    }
+
+    /** trackStats() GET: every read-only report mode returns success. */
+    public function testTrackStatsGetReportModes(): void
+    {
+        $this->seedTrack();
+        foreach (['summary', 'log', 'top', 'artists', 'genres', 'albums', 'genre-list', 'all-artists'] as $mode) {
+            $_GET = ['mode' => $mode];
+            $r = (new AdminStatsController())->trackStats();
+            $this->assertSame(200, $r->getStatusCode(), "mode {$mode} must return 200");
+            $this->assertTrue($this->body($r)['success'], "mode {$mode} must be success");
+        }
+    }
+
+    /** trackStats() GET: the parameterised lookups (artist/track/genre/album/search). */
+    public function testTrackStatsGetLookups(): void
+    {
+        $trackId = $this->seedTrack();
+        $service = new TrackStatsService();
+        $albumId = (int) ($service->getAlbumsByArtist('Artist ' . $this->suffix)[0]['album_id'] ?? 0);
+
+        $cases = [
+            ['mode' => 'artist', 'artist' => 'Artist ' . $this->suffix],
+            ['mode' => 'track', 'track_id' => (string) $trackId],
+            ['mode' => 'genre', 'genre' => 'Rock ' . $this->suffix],
+            ['mode' => 'album', 'album_id' => (string) $albumId],
+            ['mode' => 'search', 'q' => 'Title ' . $this->suffix],
+        ];
+        foreach ($cases as $get) {
+            $_GET = $get;
+            $r = (new AdminStatsController())->trackStats();
+            $this->assertSame(200, $r->getStatusCode(), "mode {$get['mode']} must return 200");
+            $this->assertTrue($this->body($r)['success']);
+        }
+    }
+
+    /** trackStats() POST: metadata update + the three bulk-genre operations. */
+    public function testTrackStatsPostUpdateAndBulk(): void
+    {
+        $trackId = $this->seedTrack();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+
+        foreach ([
+            ['action' => 'update-track', 'track_id' => $trackId, 'genre' => 'Pop ' . $this->suffix],
+            ['action' => 'bulk-genre-tracks', 'track_ids' => [$trackId], 'genre' => 'Jazz ' . $this->suffix],
+            ['action' => 'bulk-genre-artist', 'artist' => 'Artist ' . $this->suffix, 'genre' => 'Blues ' . $this->suffix],
+            ['action' => 'bulk-genre-reassign', 'from' => 'Blues ' . $this->suffix, 'to' => 'Soul ' . $this->suffix],
+        ] as $post) {
+            $_POST = $post;
+            $r = (new AdminStatsController())->trackStats();
+            $this->assertSame(200, $r->getStatusCode(), "action {$post['action']} must return 200");
+            $this->assertTrue($this->body($r)['success']);
+        }
+    }
+
+    /** botActivity(): the privileged threads + calls views return success. */
+    public function testBotActivityViewsReturnData(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+
+        foreach (['threads', 'log', 'summary'] as $view) {
+            $_GET = ['view' => $view];
+            $r = (new AdminStatsController())->botActivity();
+            $this->assertSame(200, $r->getStatusCode(), "view {$view} must return 200");
+            $this->assertTrue($this->body($r)['success']);
+        }
+    }
+
+    /** botLlmStats(): renders the LLM usage rollup for a privileged admin. */
+    public function testBotLlmStatsReturnsData(): void
+    {
+        $this->authAsAdmin();
+        $r = (new AdminStatsController())->botLlmStats();
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertTrue($this->body($r)['success']);
+    }
+
+    /** aggregate() + recordSnapshot(): the write endpoints succeed for an admin. */
+    public function testAggregateAndRecordSnapshot(): void
+    {
+        $this->authAsAdmin();
+
+        $_GET['granularity'] = 'daily';
+        $agg = (new AdminStatsController())->aggregate();
+        $this->assertSame(200, $agg->getStatusCode());
+
+        $snap = (new AdminStatsController())->recordSnapshot();
+        $this->assertSame(200, $snap->getStatusCode());
     }
 }

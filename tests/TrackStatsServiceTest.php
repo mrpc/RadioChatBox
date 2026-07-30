@@ -47,6 +47,7 @@ class TrackStatsServiceTest extends TestCase
         )->execute([$like]);
         $pdo->prepare('DELETE FROM tracks WHERE display LIKE ?')->execute([$like]);
         $pdo->prepare('DELETE FROM artists WHERE name LIKE ?')->execute([$like]);
+        $pdo->prepare('DELETE FROM albums WHERE title LIKE ?')->execute([$like]);
         parent::tearDown();
     }
 
@@ -142,5 +143,103 @@ class TrackStatsServiceTest extends TestCase
         $this->assertIsArray($summary);
         $this->assertSame(2, (int) $summary['plays']);
         $this->assertSame(2, (int) $summary['tracks']);
+    }
+
+    /** The artist name used by nowPlaying(), for the query helpers below. */
+    private function artist(): string
+    {
+        return 'Artist ' . $this->suffix;
+    }
+
+    /**
+     * updateTrackMeta sets the genre, creates + links an album (album_title) and
+     * stores release/url; getTrackById, getCurrentTrackMeta, getAlbumsByArtist and
+     * getAlbumDetail read them back.
+     */
+    public function testTrackAndAlbumMetadataUpdates(): void
+    {
+        $trackId = (int) $this->service->recordPlay($this->nowPlaying('A'));
+        $genre   = 'Rock ' . $this->suffix;
+
+        $this->assertTrue($this->service->updateTrackMeta($trackId, [
+            'genre'        => $genre,
+            'album_title'  => 'Album ' . $this->suffix,
+            'release_date' => '2020-01-01',
+            'external_url' => 'https://example.com/t',
+        ]));
+
+        $track = $this->service->getTrackById($trackId);
+        $this->assertSame($genre, $track['genre']);
+        $this->assertNotNull($track['album_id'], 'album must be created and linked');
+
+        $meta = $this->service->getCurrentTrackMeta($this->nowPlaying('A')['display']);
+        $this->assertIsArray($meta);
+        $this->assertSame($genre, $meta['genre']);
+        $this->assertSame('Album ' . $this->suffix, $meta['album']);
+
+        $albums = $this->service->getAlbumsByArtist($this->artist());
+        $this->assertNotEmpty($albums);
+        $albumId = (int) $albums[0]['album_id'];
+        $this->assertIsArray($this->service->getAlbumDetail($albumId));
+        $this->assertTrue($this->service->updateAlbumMeta($albumId, ['genre' => $genre]));
+    }
+
+    /**
+     * The all-time top-N aggregations (artists / genres / albums) include a
+     * just-recorded, genre- and album-tagged play.
+     */
+    public function testTopAggregations(): void
+    {
+        $trackId = (int) $this->service->recordPlay($this->nowPlaying('A'));
+        $genre   = 'Rock ' . $this->suffix;
+        $this->service->updateTrackMeta($trackId, ['genre' => $genre, 'album_title' => 'Album ' . $this->suffix]);
+
+        $from = (new \DateTimeImmutable('-1 hour'))->format('Y-m-d H:i:s');
+        $to   = (new \DateTimeImmutable('+1 hour'))->format('Y-m-d H:i:s');
+
+        $this->assertContains($this->artist(), array_column($this->service->getTopArtists($from, $to, 500), 'artist'));
+        $this->assertContains($genre, array_column($this->service->getTopGenres($from, $to, 500), 'genre'));
+        // Albums aggregate is keyed by album title.
+        $this->assertNotEmpty($this->service->getTopAlbums($from, $to, 500));
+    }
+
+    /**
+     * The discovery/read helpers return the seeded track and artist without error.
+     */
+    public function testDiscoveryQueries(): void
+    {
+        $trackId = (int) $this->service->recordPlay($this->nowPlaying('A'));
+        $genre   = 'Rock ' . $this->suffix;
+        $this->service->updateTrackMeta($trackId, ['genre' => $genre]);
+
+        $this->assertContains($genre, $this->service->getGenreList());
+        $this->assertContains($this->artist(), array_column($this->service->getAllArtists(), 'name'));
+        $this->assertContains($trackId, array_map(static fn ($r) => (int) $r['track_id'], $this->service->searchTracks('Title A ' . $this->suffix, 50)));
+        $this->assertContains($trackId, array_map(static fn ($r) => (int) $r['track_id'], $this->service->getTracksByGenre($genre, 500)));
+        $this->assertNotEmpty($this->service->getArtistTracks($this->artist(), 200));
+        $this->assertIsArray($this->service->getArtistRowByName($this->artist()));
+        $this->assertNotEmpty($this->service->getTrackPlays($trackId, 500));
+        $this->assertIsArray($this->service->getSummary(7, 20));
+    }
+
+    /**
+     * The bulk genre operations rewrite tracks by artist, by id list, and by
+     * from→to genre; updateArtistMeta updates the artist row.
+     */
+    public function testBulkGenreOperations(): void
+    {
+        $trackId = (int) $this->service->recordPlay($this->nowPlaying('A'));
+
+        $this->assertGreaterThanOrEqual(1, $this->service->bulkSetGenreForTracks([$trackId], 'Jazz ' . $this->suffix));
+        $this->assertSame('Jazz ' . $this->suffix, $this->service->getTrackById($trackId)['genre']);
+
+        $this->assertGreaterThanOrEqual(1, $this->service->bulkSetGenreByArtist($this->artist(), 'Blues ' . $this->suffix));
+        $this->assertSame('Blues ' . $this->suffix, $this->service->getTrackById($trackId)['genre']);
+
+        $this->assertGreaterThanOrEqual(1, $this->service->bulkReassignGenre('Blues ' . $this->suffix, 'Soul ' . $this->suffix));
+        $this->assertSame('Soul ' . $this->suffix, $this->service->getTrackById($trackId)['genre']);
+
+        $artistId = (int) $this->service->getArtistRowByName($this->artist())['id'];
+        $this->assertTrue($this->service->updateArtistMeta($artistId, ['genre' => 'Funk ' . $this->suffix]));
     }
 }
