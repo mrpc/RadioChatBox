@@ -96,4 +96,57 @@ class FakeUserServiceCrudTest extends TestCase
         $this->assertContains($good, $upd['updated']);
         $this->assertSame(40, (int) $this->service->getFakeUserByNickname($good)['age']);
     }
+
+    /**
+     * updateFakeUser renaming a fake user rewrites its identity across
+     * conversations (renameInConversations) and returns the new nickname.
+     */
+    public function testUpdateFakeUserRenames(): void
+    {
+        $add    = $this->service->addFakeUser($this->nick, 25, 'male', 'NYC');
+        $id     = (int) $add['id'];
+        $newNick = 'ren' . substr($this->nick, 2);
+
+        $updated = $this->service->updateFakeUser($id, ['nickname' => $newNick]);
+        $this->assertNotNull($updated);
+        $this->assertSame($newNick, $updated['nickname']);
+        $this->assertNotNull($this->service->getFakeUserByNickname($newNick));
+    }
+
+    /**
+     * updateFakeUser rejects invalid profile values and collisions with the exact
+     * legacy messages: too-short nickname, out-of-range age, invalid sex, and a
+     * nickname already used by another fake user.
+     */
+    public function testUpdateFakeUserValidationThrows(): void
+    {
+        $id = (int) $this->service->addFakeUser($this->nick, 25, 'male', 'NYC')['id'];
+
+        $cases = [
+            [['nickname' => 'ab'], 'Nickname must be between 3 and 50 characters'],
+            [['age' => 5], 'Age must be between 18 and 99'],
+            [['sex' => 'nope'], 'Sex must be male, female or other'],
+        ];
+        foreach ($cases as [$fields, $message]) {
+            try {
+                $this->service->updateFakeUser($id, $fields);
+                $this->fail("expected InvalidArgumentException for " . json_encode($fields));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertSame($message, $e->getMessage());
+            }
+        }
+
+        // Colliding with another fake user's nickname.
+        $other = 'oth' . substr($this->nick, 2);
+        $this->service->addFakeUser($other, 30, 'female', 'LA');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Nickname already exists');
+        $this->service->updateFakeUser($id, ['nickname' => $other]);
+    }
+
+    /** updateFakeUser on an unknown id returns null (no row). */
+    public function testUpdateFakeUserUnknownIdReturnsNull(): void
+    {
+        $this->assertNull($this->service->updateFakeUser(0, ['age' => 30]));
+    }
 }

@@ -6,6 +6,7 @@ use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Controllers\MessageActionController;
 use Pramnos\Database\Database;
@@ -23,10 +24,33 @@ use RadioChatBox\Services\ReactionService;
  */
 class MessageActionControllerTest extends TestCase
 {
+    private ?string $sessionKey = null;
+
     protected function tearDown(): void
     {
+        if ($this->sessionKey !== null) {
+            try {
+                FlatCache::default()->delete($this->sessionKey);
+            } catch (\Throwable) {
+            }
+            $this->sessionKey = null;
+        }
         $_POST = [];
         $_GET = [];
+        unset($_SERVER['REQUEST_METHOD'], $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+    }
+
+    /** Fake an administrator session for the admin-only private-message read. */
+    private function authAsAdmin(string $id, string $role = 'administrator'): void
+    {
+        try {
+            $key = 'admin_session:' . $id;
+            FlatCache::default()->set($key, ['username' => $id, 'role' => $role], 120);
+            $this->sessionKey = $key;
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $id . ':x';
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -510,6 +534,187 @@ class MessageActionControllerTest extends TestCase
         } finally {
             $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$from]);
             $pdo->prepare('DELETE FROM sessions WHERE username IN (?, ?)')->execute([$from, $to]);
+        }
+    }
+
+    /**
+     * edit-message past the 10-minute window returns 403 "Edit window has
+     * expired" — drives the age_seconds > 600 guard with a message seeded 20
+     * minutes in the past.
+     */
+    public function testEditMessageWindowExpiredReturns403(): void
+    {
+        $pdo       = TestDatabase::connection();
+        $username  = 'old_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $messageId = 'msg_' . bin2hex(random_bytes(6));
+
+        $this->seedSession($pdo, $username, $sessionId);
+        // Well past the 10-minute window with generous margin for any server
+        // timezone offset applied by the age calculation.
+        $pdo->prepare(
+            "INSERT INTO messages (message_id, username, message, ip_address, created_at)
+             VALUES (?, ?, 'old text', '127.0.0.1', NOW() - INTERVAL '6 hours')"
+        )->execute([$messageId, $username]);
+
+        try {
+            $_POST = ['message_id' => $messageId, 'message' => 'too late', 'username' => $username, 'sessionId' => $sessionId];
+            $response = (new MessageActionController())->editMessage();
+
+            $this->assertSame(403, $response->getStatusCode());
+            $this->assertSame(
+                'Edit window has expired (10 minutes)',
+                json_decode($response->getBody(), true)['error']
+            );
+        } finally {
+            $pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+        }
+    }
+
+    /**
+     * private-message GET (fake-user branch): a conversation with an active fake
+     * user returns the full (session-agnostic) history, and an attachment row is
+     * folded into an `attachment` object. Drives the fake_users exists() = true
+     * path and the attachment-formatting block.
+     */
+    public function testPrivateMessageListFakeUserBranchWithAttachment(): void
+    {
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $me     = 'me_' . $suffix;
+        $fake   = 'fk_' . $suffix;
+        $attId  = 'att_' . $suffix;
+
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')->execute([$fake]);
+        $pdo->prepare(
+            "INSERT INTO attachments (attachment_id, filename, original_filename, file_path, file_size, mime_type, uploaded_by, ip_address, is_deleted)
+             VALUES (?, 'f.jpg', 'f.jpg', '/uploads/photos/f.jpg', 10, 'image/jpeg', ?, '127.0.0.1', FALSE)"
+        )->execute([$attId, $me]);
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
+             VALUES (?, 'sX', ?, ?, 'with photo', ?, NOW())"
+        )->execute([$me, $fake, 'fake_' . md5($fake), $attId]);
+
+        try {
+            $_GET = ['username' => $me, 'session_id' => 'anything', 'with_user' => $fake];
+            $response = (new MessageActionController())->privateMessageList();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertNotEmpty($body['messages']);
+            $this->assertSame($attId, $body['messages'][0]['attachment']['attachment_id']);
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$me]);
+            $pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$attId]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
+        }
+    }
+
+    /**
+     * private-message GET admin mode returns ALL messages between the pair,
+     * bypassing session scoping — gated behind an authenticated administrator.
+     */
+    public function testPrivateMessageListAdminModeReturnsPair(): void
+    {
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $a      = 'a_' . $suffix;
+        $b      = 'b_' . $suffix;
+
+        // Admin mode calls AdminAuth::verify() — a full Bearer username:password
+        // DB authentication — so a real administrator account is required.
+        $admin = 'pmadmin_' . $suffix;
+        $pass  = 'Str0ng-Admin-Pass!';
+        $ip    = '203.0.113.' . random_int(2, 250);
+        (new \RadioChatBox\Services\UserService())->createUser($admin, $pass, 'administrator');
+        $_SERVER['REMOTE_ADDR']        = $ip;
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $admin . ':' . $pass;
+
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, 's1', ?, 's2', 'a to b', NOW() - INTERVAL '1 minute'),
+                    (?, 's2', ?, 's1', 'b to a', NOW())"
+        )->execute([$a, $b, $b, $a]);
+
+        try {
+            $_GET = ['username' => $a, 'session_id' => 'ignored', 'with_user' => $b, 'admin' => 'true'];
+            $response = (new MessageActionController())->privateMessageList();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $bodies = array_column(json_decode($response->getBody(), true)['messages'], 'message');
+            $this->assertContains('a to b', $bodies);
+            $this->assertContains('b to a', $bodies);
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username IN (?, ?)')->execute([$a, $b]);
+            Database::getInstance()->queryBuilder()->from('users')->where('username', '=', $admin)->delete();
+            try {
+                FlatCache::default()->delete('admin_session:' . $admin);
+                FlatCache::default()->delete('admin_auth_attempts:' . $ip);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    /**
+     * private-message GET with no with_user returns the session's recent messages
+     * (the else branch, kept in DESC order).
+     */
+    public function testPrivateMessageListRecentBranch(): void
+    {
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $me     = 'rc_' . $suffix;
+        $sess   = 'sess_' . $suffix;
+
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, ?, 'peer', 'psess', 'recent one', NOW())"
+        )->execute([$me, $sess]);
+
+        try {
+            $_GET = ['username' => $me, 'session_id' => $sess];
+            $response = (new MessageActionController())->privateMessageList();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertContains('recent one', array_column(json_decode($response->getBody(), true)['messages'], 'message'));
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$me]);
+        }
+    }
+
+    /**
+     * private-message POST to an active fake user (bot disabled) stores the DM and
+     * drives the is-fake-user branch: an admin DM notification is created and a
+     * (no-op) bot reply is scheduled. Returns the success envelope.
+     */
+    public function testPrivateMessageToFakeUserSucceeds(): void
+    {
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $from   = 'sender_' . $suffix;
+        $fromS  = 'sess_' . $suffix;
+        $fake   = 'fake_' . $suffix;
+
+        $this->seedSession($pdo, $from, $fromS);
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')->execute([$fake]);
+
+        try {
+            $_POST = ['from_username' => $from, 'to_username' => $fake, 'from_session_id' => $fromS, 'message' => 'hey bot ' . $suffix];
+            $response = (new MessageActionController())->privateMessage();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertTrue(json_decode($response->getBody(), true)['success']);
+
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM private_messages WHERE from_username = ? AND to_username = ?');
+            $stmt->execute([$from, $fake]);
+            $this->assertSame(1, (int) $stmt->fetchColumn());
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = ? OR to_username = ?')->execute([$from, $fake]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$from]);
+            $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')->execute([$fake]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }
     }
 }
