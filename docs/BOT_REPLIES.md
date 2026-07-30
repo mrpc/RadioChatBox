@@ -21,7 +21,7 @@ public/api/private-message.php
   (reading delay: 2-8s by default)  ── nothing blocks the HTTP response
         │
         ▼
-worker.php  →  BotService::processReplyJob()
+bot:worker  →  BotService::processReplyJob()
   ├─ message budget spent?  → ask the LLM for a CLOSING message
   │                           (falls back to a random canned goodbye on failure)
   └─ otherwise             → ask the LLM for a normal reply
@@ -29,7 +29,7 @@ worker.php  →  BotService::processReplyJob()
         │  reply text is sanitised, then a `bot_deliver` job is queued
         │  with a typing delay of ~1.5s per word
         ▼
-worker.php  →  BotService::processDeliverJob()
+bot:worker  →  BotService::processDeliverJob()
   INSERT INTO private_messages + PUBLISH to Redis
   → the recipient's SSE stream shows the message
 ```
@@ -119,9 +119,9 @@ The worker is what calls the LLM and delivers the messages. Without it nothing i
 sent, and in production a supervisor keeps it running:
 
 ```bash
-php daemon.php run        # the process to supervise; starts and restarts the worker
-php worker.php status     # worker health + queue depth + configuration
-php worker.php flush      # drop every queued job
+php radiochatbox.php daemons:start        # the process to supervise; starts and restarts the worker
+php radiochatbox.php bot:status     # worker health + queue depth + configuration
+php radiochatbox.php bot:flush      # drop every queued job
 ```
 
 How to run that for real — the systemd unit, the cron fallback for machines without it,
@@ -146,10 +146,10 @@ and the same file carries the heartbeat.
 > mounts on macOS — it silently does nothing, and two processes both "acquire"
 > the same lock with no error. Atomic create works everywhere.
 
-The lock file (`logs/bot-worker-<database>.lock` by default) looks like this:
+The lock file (`logs/worker-<installation>.lock` by default) looks like this:
 
 ```json
-{"name":"bot-worker","pid":109,"host":"web1","started_at":1784957997,
+{"name":"worker","pid":109,"host":"web1","started_at":1784957997,
  "status":"running","jobs_processed":12,"heartbeat_at":1784958000,
  "current_job":null,"last_job":"bot_deliver: delivered reply from Maria to nikos"}
 ```
@@ -157,7 +157,7 @@ The lock file (`logs/bot-worker-<database>.lock` by default) looks like this:
 The heartbeat is rewritten **after every job**, not once per batch, because a
 single job can block for as long as the LLM timeout.
 
-`php worker.php status` reads it and distinguishes three states:
+`php radiochatbox.php bot:status` reads it and distinguishes three states:
 
 | State | Meaning | Exit code |
 |---|---|---|
@@ -339,9 +339,9 @@ The **Bot Activity** tab (root / owner / administrator) is the place to look:
 From the shell:
 
 ```bash
-php worker.php log              # recent calls + a 24h summary
-php worker.php log --problems   # only failures and truncations
-php worker.php prune-log        # drop entries past the retention window
+php radiochatbox.php bot:log              # recent calls + a 24h summary
+php radiochatbox.php bot:log --problems   # only failures and truncations
+php radiochatbox.php bot:prune-log        # drop entries past the retention window
 ```
 
 The dashboard also carries a **Bot LLM Tokens (24h)** card while auto-replies are
@@ -564,7 +564,7 @@ The model dropdown is likewise fetched live from `GET /models`, falling back to 
 built-in list, so a retired model (as `deepseek-chat` was) disappears on its own.
 
 ```bash
-php worker.php log   # 24h cost + balance + per-call cost
+php radiochatbox.php bot:log   # 24h cost + balance + per-call cost
 ```
 
 To retest a bot from scratch, use **🧹 Clear conversations** in its bot dialog
@@ -575,8 +575,8 @@ its per-thread budget and takeover state, and any queued reply.
 
 | Symptom | Check |
 |---|---|
-| Replies cut off mid-word / incoherent | `php worker.php log --problems`. A `finish_reason` of `length` means the token budget ran out — raise **Max tokens** or leave **Reasoning** off. |
-| No replies at all | `php worker.php status` — enabled? key set? worker running? |
+| Replies cut off mid-word / incoherent | `php radiochatbox.php bot:log --problems`. A `finish_reason` of `length` means the token budget ran out — raise **Max tokens** or leave **Reasoning** off. |
+| No replies at all | `php radiochatbox.php bot:status` — enabled? key set? worker running? |
 | `ALIVE but WEDGED` in `status` | The worker is stuck (usually a hung HTTP connection). Kill it; the next run takes the lock over on its own. |
 | "Another worker is already running" | Expected — the lock is doing its job. `status` shows which pid holds it. |
 | Replies but never delivered | Worker died between the two job stages; check the worker log. |
