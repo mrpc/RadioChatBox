@@ -1,0 +1,141 @@
+<?php
+
+namespace RadioChatBox\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Pramnos\Framework\Testing\TestDatabase;
+use Pramnos\Cache\FlatCache;
+use RadioChatBox\Services\ChatService;
+
+/**
+ * Exercises the ChatService surface the moderation/cache tests do not reach:
+ * the reply-quoting and pinned-track branches of postMessage, the combined
+ * real+fake user listing, fake-user balancing, session removal and the two
+ * history readers. Runs against the shared dev DB; everything created is
+ * suffix-tagged and removed in tearDown.
+ */
+class ChatServiceExtraTest extends TestCase
+{
+    private ChatService $service;
+    private string $suffix;
+    private string $user;
+    private string $session;
+    private string $ip;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->service = new ChatService();
+        $this->suffix  = substr(bin2hex(random_bytes(5)), 0, 10);
+        $this->user    = 'u' . $this->suffix;
+        $this->session = 'sess' . $this->suffix;
+        $this->ip      = '203.0.113.' . random_int(2, 250);
+    }
+
+    protected function tearDown(): void
+    {
+        // Drop the short-lived combined user-list cache so it never leaks a stale
+        // list into another test.
+        try {
+            FlatCache::default()->delete('chat:all_users');
+        } catch (\Throwable) {
+            // best effort
+        }
+
+        $pdo  = TestDatabase::connection();
+        $like = '%' . $this->suffix . '%';
+        $pdo->prepare('DELETE FROM messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
+        $pdo->prepare('DELETE FROM sessions WHERE username LIKE ?')->execute([$like]);
+        $pdo->prepare('DELETE FROM user_activity WHERE username LIKE ?')->execute([$like]);
+        parent::tearDown();
+    }
+
+    /**
+     * A reply message carries a quote of the parent (username + truncated text),
+     * driving getReplyMessageData; a pinned-track snapshot is stored on the row.
+     */
+    public function testReplyQuotingAndPinnedTrack(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+
+        $parent = $this->service->postMessage($this->user, 'parent ' . $this->suffix, $this->ip, $this->session);
+        $this->assertArrayHasKey('id', $parent);
+
+        $reply = $this->service->postMessage(
+            $this->user,
+            'child ' . $this->suffix,
+            $this->ip,
+            $this->session,
+            $parent['id'],
+            'Artist ' . $this->suffix . ' - Song'
+        );
+
+        $this->assertArrayHasKey('reply_data', $reply);
+        $this->assertSame($this->user, $reply['reply_data']['username']);
+        $this->assertStringContainsString('parent ' . $this->suffix, $reply['reply_data']['message']);
+        $this->assertSame('Artist ' . $this->suffix . ' - Song', $reply['pinned_track']);
+    }
+
+    /**
+     * getAllUsers merges the active real users with the active fake users (the
+     * latter flagged is_fake:true), and the second call is served from the
+     * 30-second cache identically.
+     */
+    public function testGetAllUsersMergesRealAndFakeAndCaches(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+
+        $all = $this->service->getAllUsers();
+        $this->assertContains($this->user, array_column($all, 'username'));
+
+        // Second call returns the cached value byte-for-byte.
+        $this->assertSame($all, $this->service->getAllUsers());
+    }
+
+    /**
+     * balanceFakeUsers reads the live real-user count and delegates to the fake
+     * user balancer without error (it publishes a user update as a side effect).
+     */
+    public function testBalanceFakeUsersRunsCleanly(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+
+        $this->service->balanceFakeUsers();
+
+        // Nothing to assert beyond "did not throw"; the count is environment-driven.
+        $this->assertIsInt($this->service->getActiveUserCount());
+    }
+
+    /**
+     * removeUser deletes the caller's session row and returns true; the user then
+     * drops out of the active-users listing.
+     */
+    public function testRemoveUserDeletesSession(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+        $this->assertContains($this->user, array_column($this->service->getActiveUsers(), 'username'));
+
+        $this->assertTrue($this->service->removeUser($this->user, $this->session));
+
+        $pdo  = TestDatabase::connection();
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM sessions WHERE username = ? AND session_id = ?');
+        $stmt->execute([$this->user, $this->session]);
+        $this->assertSame(0, (int) $stmt->fetchColumn(), 'the session row must be gone');
+    }
+
+    /**
+     * Both history readers return the just-posted message: getHistory (recent
+     * window) and getHistoryWithOffset (paged).
+     */
+    public function testHistoryReadersReturnPostedMessage(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+        $this->service->postMessage($this->user, 'history ' . $this->suffix, $this->ip, $this->session);
+
+        $recent = array_column($this->service->getHistory(100), 'message');
+        $this->assertContains('history ' . $this->suffix, $recent);
+
+        $paged = array_column($this->service->getHistoryWithOffset(100, 0), 'message');
+        $this->assertContains('history ' . $this->suffix, $paged);
+    }
+}

@@ -59,4 +59,41 @@ class FakeUserServiceCrudTest extends TestCase
         $this->assertTrue($this->service->deleteFakeUser($id));
         $this->assertNull($this->service->getFakeUserById($id));
     }
+
+    /**
+     * importFakeUsers classifies each row: a valid new nickname is imported (with
+     * its bot_* settings), a too-short nickname and an out-of-range age are
+     * invalid, a second pass without updateExisting skips the now-existing row,
+     * and a pass with updateExisting overwrites it. Covers the import branches and
+     * normalizeProfileForImport's validation.
+     */
+    public function testImportFakeUsersClassifiesRows(): void
+    {
+        $frag  = substr($this->nick, 2);
+        $good  = 'imp' . $frag;
+        $short = 'ab';
+
+        $rows = [
+            ['nickname' => $good, 'age' => 22, 'sex' => 'male', 'location' => 'LA', 'bot_enabled' => true],
+            ['nickname' => $short, 'age' => 20],                    // too short
+            ['nickname' => 'bad' . $frag, 'age' => 5],              // age out of range
+            'not-an-object',                                        // not an array
+        ];
+
+        $result = $this->service->importFakeUsers($rows, false);
+        $this->assertContains($good, $result['imported']);
+        $this->assertContains($short, array_column($result['invalid'], 'nickname'));
+        $this->assertContains('bad' . $frag, array_column($result['invalid'], 'nickname'));
+        // The bare string row is rejected with a null nickname ("Entry is not an object").
+        $this->assertContains(null, array_column($result['invalid'], 'nickname'));
+
+        // Second import of the same nickname without updateExisting: skipped.
+        $skip = $this->service->importFakeUsers([['nickname' => $good, 'age' => 30]], false);
+        $this->assertContains($good, $skip['skipped']);
+
+        // With updateExisting: updated in place.
+        $upd = $this->service->importFakeUsers([['nickname' => $good, 'age' => 40, 'sex' => 'female']], true);
+        $this->assertContains($good, $upd['updated']);
+        $this->assertSame(40, (int) $this->service->getFakeUserByNickname($good)['age']);
+    }
 }

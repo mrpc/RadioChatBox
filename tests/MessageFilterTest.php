@@ -4,6 +4,7 @@ namespace RadioChatBox\Tests;
 
 use Pramnos\Framework\Testing\TestDatabase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Database\Database;
 use RadioChatBox\Services\MessageFilter;
@@ -68,6 +69,52 @@ class MessageFilterTest extends TestCase
         $this->assertStringNotContainsString('https://example.com', $result['filtered']);
     }
     
+    /**
+     * Every dangerous-content branch of checkDangerousContent must neutralise the
+     * offending markup (replaced with ***) and flag the message as modified, on
+     * both the public and the private filter paths.
+     *
+     */
+    #[DataProvider('dangerousContentProvider')]
+    public function testDangerousContentIsNeutralised(string $payload, string $mustNotContain): void
+    {
+        foreach (['filterPublicMessage', 'filterPrivateMessage'] as $method) {
+            $result = MessageFilter::$method('hi ' . $payload);
+            $this->assertTrue($result['modified'], "$method must flag '$payload' as modified");
+            $this->assertStringNotContainsString($mustNotContain, $result['filtered']);
+            $this->assertStringContainsString('***', $result['filtered']);
+        }
+    }
+
+    /** @return array<string, array{0:string,1:string}> */
+    public static function dangerousContentProvider(): array
+    {
+        return [
+            'script tag'      => ['<script>alert(1)</script>', '<script'],
+            'event handler'   => ['<b onclick="x()">y</b>', 'onclick'],
+            'javascript uri'  => ['javascript:alert(1)', 'javascript:'],
+            'data html uri'   => ['data:text/html,<b>x</b>', 'data:text/html'],
+            'style tag'       => ['<style>body{}</style>', '<style'],
+            'iframe tag'      => ['<iframe src="x"></iframe>', '<iframe'],
+            'meta tag'        => ['<meta http-equiv="refresh">', '<meta'],
+            'base tag'        => ['<base href="x">', '<base'],
+            'link tag'        => ['<link rel="stylesheet">', '<link'],
+            'form tag'        => ['<form action="x">', '<form'],
+            'form input'      => ['<input type="text">', '<input'],
+        ];
+    }
+
+    /**
+     * A phone number embedded in text is stripped by the public filter's
+     * replacePhoneNumbers step.
+     */
+    public function testPhoneNumberIsRemoved(): void
+    {
+        $result = MessageFilter::filterPublicMessage('call me on 6971234567 please');
+        $this->assertTrue($result['modified']);
+        $this->assertStringNotContainsString('6971234567', $result['filtered']);
+    }
+
     public function testFilterPublicMessageAllowsNormalText()
     {
         $message = 'Hello world! This is a normal message.';

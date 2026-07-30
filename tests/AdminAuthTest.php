@@ -3,6 +3,8 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Pramnos\Cache\FlatCache;
+use Pramnos\Database\Database;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\UserService;
 use Mockery;
@@ -130,9 +132,131 @@ class AdminAuthTest extends TestCase
     public function testAdminAuthDesignNotesDocumented()
     {
         // This test passes to acknowledge the current limitations
-        $this->assertTrue(true, 
+        $this->assertTrue(true,
             "AdminAuth needs refactoring for better testability - " .
             "currently uses static methods and direct dependencies"
         );
+    }
+
+    // ========================================================================
+    // INTEGRATION TESTS — run against the shared dev DB + Redis. They create a
+    // throwaway admin user, drive the real Bearer flow, and clean everything up.
+    // ========================================================================
+
+    /** @var string|null throwaway admin username to remove in tearDown */
+    private ?string $tmpUser = null;
+    private ?string $tmpIp = null;
+
+    private function cleanupAdmin(): void
+    {
+        if ($this->tmpUser !== null) {
+            try {
+                FlatCache::default()->delete('admin_session:' . $this->tmpUser);
+            } catch (\Throwable) {
+            }
+            Database::getInstance()->queryBuilder()->from('users')
+                ->where('username', '=', $this->tmpUser)->delete();
+            $this->tmpUser = null;
+        }
+        if ($this->tmpIp !== null) {
+            try {
+                FlatCache::default()->delete('admin_auth_attempts:' . $this->tmpIp);
+            } catch (\Throwable) {
+            }
+            $this->tmpIp = null;
+        }
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REMOTE_ADDR']);
+    }
+
+    /** Create an administrator and authenticate it via a Bearer header. */
+    private function makeAdmin(string $role = 'administrator'): array
+    {
+        $this->tmpUser = 'aa_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->tmpIp   = '203.0.113.' . random_int(2, 250);
+        $password      = 'V3ry-Str0ng-Pass!';
+
+        $res = (new UserService())->createUser($this->tmpUser, $password, $role);
+        $this->assertTrue($res['success'], 'test setup: user must be created');
+
+        $_SERVER['REMOTE_ADDR']        = $this->tmpIp;
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $this->tmpUser . ':' . $password;
+
+        return ['username' => $this->tmpUser, 'password' => $password];
+    }
+
+    /**
+     * verify() authenticates a valid Bearer username:password, establishes the
+     * admin session (so getCurrentUser() then returns the user) and honours the
+     * role's permissions.
+     */
+    public function testVerifyAuthenticatesAndEstablishesSession(): void
+    {
+        $this->makeAdmin('administrator');
+
+        try {
+            $this->assertTrue(AdminAuth::verify(), 'valid credentials must authenticate');
+            $this->assertTrue(AdminAuth::authenticate(), 'authenticate() is an alias of verify()');
+
+            $current = AdminAuth::getCurrentUser();
+            $this->assertIsArray($current);
+            $this->assertSame($this->tmpUser, $current['username']);
+
+            // An administrator can manage users but cannot create root users.
+            $this->assertTrue(AdminAuth::hasPermission('manage_users'));
+            $this->assertFalse(AdminAuth::hasPermission('create_root_users'));
+        } finally {
+            $this->cleanupAdmin();
+        }
+    }
+
+    /**
+     * verify() rejects a valid username with the wrong password (false, and the
+     * failed attempt is recorded against the IP).
+     */
+    public function testVerifyRejectsWrongPassword(): void
+    {
+        $this->makeAdmin('administrator');
+
+        try {
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $this->tmpUser . ':wrong-password';
+            $this->assertFalse(AdminAuth::verify(), 'a wrong password must not authenticate');
+        } finally {
+            $this->cleanupAdmin();
+        }
+    }
+
+    /**
+     * verify() rejects malformed Authorization headers: a missing header, a
+     * non-Bearer scheme, and a Bearer value without the username:password colon.
+     */
+    public function testVerifyRejectsMalformedHeaders(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.' . random_int(2, 250);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+        $this->assertFalse(AdminAuth::verify(), 'no header must not authenticate');
+
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Basic ' . base64_encode('a:b');
+        $this->assertFalse(AdminAuth::verify(), 'non-Bearer scheme must not authenticate');
+
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer nocolonhere';
+        $this->assertFalse(AdminAuth::verify(), 'legacy password-only format must not authenticate');
+
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REMOTE_ADDR']);
+    }
+
+    /** getCurrentUser() returns null when there is no Bearer header. */
+    public function testGetCurrentUserReturnsNullWithoutHeader(): void
+    {
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+        $this->assertNull(AdminAuth::getCurrentUser());
+    }
+
+    /** hashPassword() produces a hash that password_verify accepts. */
+    public function testHashPasswordIsVerifiable(): void
+    {
+        $hash = AdminAuth::hashPassword('s3cr3t-p4ss');
+        $this->assertTrue(password_verify('s3cr3t-p4ss', $hash));
+        $this->assertFalse(password_verify('wrong', $hash));
     }
 }
