@@ -4,8 +4,8 @@
  * PramnosFramework task schedule — the CRON FALLBACK for the periodic jobs
  * (migration Phase 4).
  *
- * The PRIMARY scheduler is the in-worker one (src/Scheduler.php), driven by
- * `worker.php run --schedule` under the daemon orchestrator. It is kept because
+ * The PRIMARY scheduler is the in-worker one (src/Services/Scheduler.php), driven
+ * by `bin/rcb bot:worker --schedule` under the daemon orchestrator. It is kept because
  * cron cannot express sub-minute cadences: `track_poll` runs every 30s so short
  * songs are not missed — the finest a per-minute `schedule:run` cron can do is
  * every minute (declared below with that caveat).
@@ -15,7 +15,7 @@
  *   - default: the orchestrated worker (`./radiochatbox daemons`), or
  *   - cron:    `* * * * * php bin/rcb schedule:run`  (for hosts without the daemon)
  *
- * Each task shells out to `worker.php run-task <name>`, reusing the exact same
+ * Each task shells out to `bin/rcb bot:run-task <name>`, reusing the exact same
  * runners as the in-worker scheduler (no duplicated logic). withoutOverlapping()
  * guards against a slow run colliding with the next tick.
  */
@@ -29,7 +29,7 @@ $task = static function (string $name) use ($root): callable {
     return static function () use ($root, $name): void {
         passthru(
             escapeshellarg(PHP_BINARY) . ' '
-            . escapeshellarg($root . '/worker.php') . ' run-task '
+            . escapeshellarg($root . '/bin/rcb') . ' bot:run-task '
             . escapeshellarg($name)
         );
     };

@@ -55,6 +55,15 @@ $console = new \Pramnos\Console\Application();
 // orchestrator is abstract; each app registers its concrete subclass).
 $console->add(new \RadioChatBox\Console\RadioChatBoxDaemons());
 
+// Bot worker + its operational commands (retired the root-level worker.php).
+$console->add(new \RadioChatBox\Console\BotWorker());
+$console->add(new \RadioChatBox\Console\BotStatus());
+$console->add(new \RadioChatBox\Console\BotLog());
+$console->add(new \RadioChatBox\Console\BotSchedule());
+$console->add(new \RadioChatBox\Console\BotRunTask());
+$console->add(new \RadioChatBox\Console\BotPruneLog());
+$console->add(new \RadioChatBox\Console\BotFlush());
+
 // Register the framework's native Redis health check (pings via the shared
 // ConnectionManager) alongside the built-in database/disk/memory checks.
 \Pramnos\Health\HealthRegistry::register(new \Pramnos\Health\Checks\RedisConnectivityCheck());

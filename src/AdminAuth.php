@@ -3,10 +3,20 @@
 namespace RadioChatBox;
 
 use Pramnos\Database\Database;
-
 use Pramnos\Cache\FlatCache;
-
 use RadioChatBox\Services\UserService;
+
+/**
+ * Admin authentication: Bearer "username:password" against the users table,
+ * backed by a short-lived session token in the Cache (Redis driver), with
+ * per-IP rate limiting and role-based access control.
+ *
+ * The single owner of the admin auth contract — token issue/verify, the 401
+ * shape ({@see unauthorized()}), the login rate-limit window and the RBAC role
+ * checks live here, so controllers (and {@see \RadioChatBox\Middleware\AdminAuthMiddleware})
+ * ask "is this request an authorised admin?" instead of re-deriving it. Session
+ * and rate-limit keys are per-install (prefixed by the Cache layer).
+ */
 class AdminAuth
 {
     /**

@@ -13,9 +13,8 @@ use RadioChatBox\Installation;
  * heartbeat-staleness restart, /proc dedup, flock singleton guard, graceful
  * `.stop` handling and git-HEAD redeploy restart.
  *
- * For this phase it supervises the EXISTING worker.php unchanged (spawned via a
- * raw shell command), so no worker internals change. A later phase can reshape
- * worker.php into a framework queue worker.
+ * It supervises the `bot:worker` console command (bot replies + the periodic
+ * scheduler), spawned via `bin/rcb bot:worker --schedule`.
  */
 final class RadioChatBoxDaemons extends DaemonOrchestrator
 {
@@ -32,14 +31,14 @@ final class RadioChatBoxDaemons extends DaemonOrchestrator
     protected function getEntryPoint(): string
     {
         // Fallback entry point; the worker below uses an explicit shellCommand.
-        return ROOT . '/worker.php';
+        return ROOT . '/bin/rcb';
     }
 
     protected function buildDesiredProcesses(): array
     {
         // The worker keeps its own JSON lock+heartbeat at this path; pointing the
         // orchestrator's lockFile at it means the graceful-stop sentinel
-        // (<lockFile>.stop) is exactly the file worker.php already watches for.
+        // (<lockFile>.stop) is exactly the file the bot:worker command already watches for.
         $lockFile = ROOT . '/logs/worker-' . Installation::id() . '.lock';
 
         return [
@@ -48,8 +47,8 @@ final class RadioChatBoxDaemons extends DaemonOrchestrator
                 'daemon'          => 'worker',
                 'workerId'        => 'worker-1',
                 'lockFile'        => $lockFile,
-                // Supervise the existing worker verbatim (bot replies + scheduler).
-                'shellCommand'    => escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(ROOT . '/worker.php') . ' run --schedule',
+                // Supervise the bot worker command (bot replies + periodic scheduler).
+                'shellCommand'    => escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(ROOT . '/bin/rcb') . ' bot:worker --schedule',
                 // Health is process-liveness based for now (the worker's lock uses a
                 // JSON heartbeat rather than the orchestrator's mtime convention).
                 'requireLockFile' => false,

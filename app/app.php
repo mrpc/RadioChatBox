@@ -5,9 +5,10 @@
  *
  * The single place that declares RadioChatBox's framework wiring: its identity,
  * the global HTTP middleware applied around every route, and how migrations
- * auto-run. Read by the framework via Application::getInstance() (which resolves
- * RadioChatBox\Application from 'namespace'); public/_dispatch.php applies the
- * declared middleware and triggers the auto-migration on every request.
+ * auto-run. Read by the framework via Application::getInstance(); RadioChatBox
+ * ships no Application subclass, so the framework instantiates its base kernel
+ * (Pramnos\Application\Application). The HTTP kernel (bootstrap/http.php) applies
+ * the declared middleware and triggers the auto-migration on every request.
  *
  * @return array<string,mixed>
  */

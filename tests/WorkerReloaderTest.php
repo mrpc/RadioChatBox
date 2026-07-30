@@ -14,8 +14,8 @@ use RadioChatBox\Services\SettingsService;
  * The framework class fingerprints code and detects a supervisor; this suite
  * covers what RadioChatBox supplies to it — the per-installation lock path, the
  * settings-version stamp resolver (Redis version key, falling back to the DB),
- * and that a reloader wired the way worker.php wires it notices a saved setting
- * and watches worker.php itself.
+ * and that a reloader wired the way bot:worker wires it notices a saved setting
+ * and watches the command's own directory.
  */
 class WorkerReloaderTest extends TestCase
 {
@@ -25,29 +25,32 @@ class WorkerReloaderTest extends TestCase
     {
         // A throwaway project tree, so touching files cannot disturb the real one.
         $this->root = sys_get_temp_dir() . '/reloader_' . bin2hex(random_bytes(4));
-        mkdir($this->root . '/src', 0777, true);
+        mkdir($this->root . '/src/Console', 0777, true);
         file_put_contents($this->root . '/src/Thing.php', "<?php // one\n");
-        file_put_contents($this->root . '/worker.php', "<?php // worker\n");
+        file_put_contents($this->root . '/src/Console/BotWorker.php', "<?php // worker\n");
     }
 
     protected function tearDown(): void
     {
+        foreach (glob($this->root . '/src/Console/*') ?: [] as $file) {
+            unlink($file);
+        }
         foreach (glob($this->root . '/src/*') ?: [] as $file) {
-            unlink($file);
+            if (is_file($file)) {
+                unlink($file);
+            }
         }
-        foreach (glob($this->root . '/*.php') ?: [] as $file) {
-            unlink($file);
-        }
+        @rmdir($this->root . '/src/Console');
         @rmdir($this->root . '/src');
         @rmdir($this->root);
     }
 
-    /** The RadioChatBox watched set, as worker.php wires it. */
+    /** The RadioChatBox watched set, as bot:worker wires it. */
     private function reloader(): WorkerReloader
     {
         return new WorkerReloader(
             $this->root,
-            ['src', 'worker.php', 'composer.lock'],
+            ['src', 'src/Console', 'src/Services', 'composer.lock'],
             fn (): string => (new SettingsService())->versionStamp()
         );
     }
@@ -82,16 +85,16 @@ class WorkerReloaderTest extends TestCase
     // ------------------------------------------------------------------
 
     /**
-     * worker.php is in the watched set, so editing the worker script itself is a
-     * code change that triggers a reload.
+     * The command directory (src/Console) is in the watched set, so editing the
+     * bot:worker command is a code change that triggers a reload.
      */
-    public function testTheWorkerScriptItselfIsWatched(): void
+    public function testTheCommandDirectoryIsWatched(): void
     {
         $reloader = $this->reloader();
         $reloader->baseline();
 
-        file_put_contents($this->root . '/worker.php', "<?php // worker, edited\n");
-        touch($this->root . '/worker.php', time() + 5);
+        file_put_contents($this->root . '/src/Console/BotWorker.php', "<?php // worker, edited\n");
+        touch($this->root . '/src/Console/BotWorker.php', time() + 5);
 
         $this->assertTrue($reloader->codeChanged());
     }
