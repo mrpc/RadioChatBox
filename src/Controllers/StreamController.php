@@ -3,6 +3,7 @@
 namespace RadioChatBox\Controllers;
 
 use Pramnos\Broadcasting\Drivers\RedisDriver;
+use Pramnos\Broadcasting\Drivers\SubscribableDriverInterface;
 use Pramnos\Http\Request;
 use Pramnos\Http\Sse\SseWriter;
 use Pramnos\Http\StreamedResponse;
@@ -28,6 +29,15 @@ use RadioChatBox\Services\ReactionService;
  */
 final class StreamController
 {
+    /**
+     * @param SubscribableDriverInterface|null $driver Injectable backplane for
+     *   tests; defaults to the app's Redis subscribe driver so production is
+     *   unchanged.
+     */
+    public function __construct(private ?SubscribableDriverInterface $driver = null)
+    {
+    }
+
     #[Route('/api/stream', methods: 'GET', name: 'stream.index')]
     public function index(): StreamedResponse
     {
@@ -50,7 +60,8 @@ final class StreamController
 
         // Reuse RadioChatBox's dedicated subscribe connection + key prefix; the
         // driver prefixes channels on subscribe and strips the prefix on delivery.
-        $driver = new RedisDriver(['prefix' => $prefix], static fn () => ConnectionManager::getInstance()->newConnection());
+        $driver = $this->driver
+            ?? new RedisDriver(['prefix' => $prefix], static fn () => ConnectionManager::getInstance()->newConnection());
 
         return StreamedResponse::sse(function (SseWriter $sse) use ($username, $chatService, $chatMode, $publicMode, $driver, $channels) {
             $sse->comment('SSE connection established');

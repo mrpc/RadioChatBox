@@ -3,6 +3,7 @@
 namespace RadioChatBox\Controllers;
 
 use Pramnos\Broadcasting\Drivers\RedisDriver;
+use Pramnos\Broadcasting\Drivers\SubscribableDriverInterface;
 use Pramnos\Broadcasting\SubscriptionOptions;
 use Pramnos\Http\Request;
 use Pramnos\Http\Sse\SseWriter;
@@ -28,6 +29,15 @@ use Pramnos\Database\Database;
  */
 final class AdminStreamController
 {
+    /**
+     * @param SubscribableDriverInterface|null $driver Injectable backplane for
+     *   tests; defaults to the app's Redis subscribe driver so production is
+     *   unchanged.
+     */
+    public function __construct(private ?SubscribableDriverInterface $driver = null)
+    {
+    }
+
     #[Route('/api/admin/stream', methods: 'GET', name: 'admin.stream')]
     public function index(): StreamedResponse
     {
@@ -53,7 +63,7 @@ final class AdminStreamController
                 );
                 $sse->event('notification_count', ['unread_count' => (int) ($result ? $result->fetchColumn() : 0)]);
 
-                $driver = new RedisDriver(
+                $driver = $this->driver ?? new RedisDriver(
                     ['prefix' => ConnectionManager::getInstance()->prefix()],
                     static fn () => ConnectionManager::getInstance()->newConnection()
                 );
