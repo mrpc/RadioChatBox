@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Console;
+namespace RadioChatBox\ConsoleCommands;
 
 /**
  * Human-readable durations for bot console output (shared by bot:status /

@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Console;
+namespace RadioChatBox\ConsoleCommands;
 
 use RadioChatBox\JobQueue;
 use Symfony\Component\Console\Command\Command;

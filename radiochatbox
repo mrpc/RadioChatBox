@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
 #
-# Run project commands inside the containers.
+# RadioChatBox console — forwards to the CLI entry point (radiochatbox.php) inside
+# the app container, the same way other Pramnos Framework apps wrap their CLI.
 #
-#   ./radiochatbox bot status                  php bot-worker.php status
-#   ./radiochatbox bot run --max-runtime=55    php bot-worker.php run ...
-#   ./radiochatbox daemon status               php daemon.php status (the supervisor)
-#   ./radiochatbox daemon once --dry-run       show what it would start
-#   ./radiochatbox stats snapshot              php stats-cron.php snapshot
-#   ./radiochatbox psql                        psql on the app database
-#   ./radiochatbox psql -c 'SELECT 1'          ...with arguments
-#   ./radiochatbox redis                       redis-cli
-#   ./radiochatbox migrate                     apply every pending migration
-#   ./radiochatbox composer install            composer inside the container
-#   ./radiochatbox php -r 'echo PHP_VERSION;'  anything else runs in the app container
+#   ./radiochatbox <command> [args...]     e.g.  ./radiochatbox bot:status
+#   ./radiochatbox list                    all available commands
+#
+# For a container shell or the test suite, use ./dockerbash and ./dockertest.
 #
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -27,96 +21,8 @@ else
     exit 1
 fi
 
-if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -q '^apache$'; then
-    echo "Containers not running. Starting them..." >&2
-    "${COMPOSE[@]}" up -d
-    sleep 5
-fi
-
 # No TTY available (CI, pipes, editors): tell exec not to ask for one.
 tty_flag=()
 [[ -t 0 ]] || tty_flag=(-T)
 
-DB_NAME="${DB_NAME:-radiochatbox}"
-DB_USER="${DB_USER:-radiochatbox}"
-
-command="${1:-help}"
-[[ $# -gt 0 ]] && shift
-
-case "$command" in
-    bot)
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php worker.php "$@"
-        ;;
-
-    daemon)
-        # Legacy supervisor (kept for BC). New deployments use `daemons` below.
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php daemon.php "$@"
-        ;;
-
-    daemons)
-        # PramnosFramework daemon orchestrator (supervises the worker): crash
-        # respawn, graceful stop, singleton guard, redeploy restart.
-        #   ./radiochatbox daemons            run the reconcile loop
-        #   ./radiochatbox daemons --once     one reconciliation cycle
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bin/rcb daemons:start "$@"
-        ;;
-
-    stats)
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php stats-cron.php "$@"
-        ;;
-
-    schedule)
-        # Framework cron scheduler (fallback for hosts not running the worker
-        # daemon). Wire to system cron: `* * * * * ./radiochatbox schedule`.
-        # Do NOT use alongside the in-worker scheduler (would double-run).
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php bin/rcb schedule:run "$@"
-        ;;
-
-    psql)
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} postgres psql -U "$DB_USER" -d "$DB_NAME" "$@"
-        ;;
-
-    redis)
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} redis redis-cli "$@"
-        ;;
-
-    migrate)
-        # Runs RadioChatBox's migrations through PramnosFramework's tracked runner
-        # (records applied state in the `schemaversion` table). Scoped to
-        # app/migrations so only RadioChatBox migrations run — never the framework's
-        # own (which would collide; see docs/pramnos-migration/05-schema-convergence.md).
-        # The underlying SQL is idempotent, so the first run against an existing
-        # database is a safe no-op that simply baselines schemaversion.
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache \
-            php bin/rcb migrate --path=app/migrations "$@"
-        ;;
-
-    migrate:status|migrate:rollback)
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache \
-            php bin/rcb "$command" "$@"
-        ;;
-
-    logs)
-        exec "${COMPOSE[@]}" logs "$@"
-        ;;
-
-    test)
-        exec ./dockertest "$@"
-        ;;
-
-    shell|bash)
-        exec ./dockerbash "$@"
-        ;;
-
-    help|--help|-h)
-        # Print the header comment block and stop at the first line of code, so
-        # the usage text cannot drift out of sync with a hardcoded line range.
-        awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"
-        exit 0
-        ;;
-
-    *)
-        # Anything else is run as-is in the app container.
-        exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache "$command" "$@"
-        ;;
-esac
+exec "${COMPOSE[@]}" exec ${tty_flag[@]+"${tty_flag[@]}"} apache php radiochatbox.php "$@"

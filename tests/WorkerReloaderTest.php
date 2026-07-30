@@ -25,14 +25,14 @@ class WorkerReloaderTest extends TestCase
     {
         // A throwaway project tree, so touching files cannot disturb the real one.
         $this->root = sys_get_temp_dir() . '/reloader_' . bin2hex(random_bytes(4));
-        mkdir($this->root . '/src/Console', 0777, true);
+        mkdir($this->root . '/src/ConsoleCommands', 0777, true);
         file_put_contents($this->root . '/src/Thing.php', "<?php // one\n");
-        file_put_contents($this->root . '/src/Console/BotWorker.php', "<?php // worker\n");
+        file_put_contents($this->root . '/src/ConsoleCommands/BotWorker.php', "<?php // worker\n");
     }
 
     protected function tearDown(): void
     {
-        foreach (glob($this->root . '/src/Console/*') ?: [] as $file) {
+        foreach (glob($this->root . '/src/ConsoleCommands/*') ?: [] as $file) {
             unlink($file);
         }
         foreach (glob($this->root . '/src/*') ?: [] as $file) {
@@ -40,7 +40,7 @@ class WorkerReloaderTest extends TestCase
                 unlink($file);
             }
         }
-        @rmdir($this->root . '/src/Console');
+        @rmdir($this->root . '/src/ConsoleCommands');
         @rmdir($this->root . '/src');
         @rmdir($this->root);
     }
@@ -50,7 +50,7 @@ class WorkerReloaderTest extends TestCase
     {
         return new WorkerReloader(
             $this->root,
-            ['src', 'src/Console', 'src/Services', 'composer.lock'],
+            ['src', 'src/ConsoleCommands', 'src/Services', 'composer.lock'],
             fn (): string => (new SettingsService())->versionStamp()
         );
     }
@@ -85,7 +85,7 @@ class WorkerReloaderTest extends TestCase
     // ------------------------------------------------------------------
 
     /**
-     * The command directory (src/Console) is in the watched set, so editing the
+     * The command directory (src/ConsoleCommands) is in the watched set, so editing the
      * bot:worker command is a code change that triggers a reload.
      */
     public function testTheCommandDirectoryIsWatched(): void
@@ -93,8 +93,8 @@ class WorkerReloaderTest extends TestCase
         $reloader = $this->reloader();
         $reloader->baseline();
 
-        file_put_contents($this->root . '/src/Console/BotWorker.php', "<?php // worker, edited\n");
-        touch($this->root . '/src/Console/BotWorker.php', time() + 5);
+        file_put_contents($this->root . '/src/ConsoleCommands/BotWorker.php', "<?php // worker, edited\n");
+        touch($this->root . '/src/ConsoleCommands/BotWorker.php', time() + 5);
 
         $this->assertTrue($reloader->codeChanged());
     }

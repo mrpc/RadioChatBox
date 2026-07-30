@@ -165,7 +165,7 @@ EOF
             read -p "Re-import schema? This will DROP existing tables! (y/n): " REIMPORT
             if [ "$REIMPORT" = "y" ] || [ "$REIMPORT" = "Y" ]; then
                 echo "Existing tables found. The schema is managed by migrations now:"
-                echo "  baseline this database once, then run: php bin/rcb migrate --path=app/migrations"
+                echo "  baseline this database once, then run: php radiochatbox.php migrate --path=app/migrations"
                 echo "  (see docs/pramnos-migration/). Skipping destructive re-import."
             else
                 echo "Skipping schema import."
@@ -174,7 +174,7 @@ EOF
             echo "Database is empty. Building schema via migrations..."
             # Needs composer dependencies; ensure they are installed first.
             ( cd "$PROJECT_DIR" && composer install --no-dev --optimize-autoloader -q \
-              && php bin/rcb migrate --path=app/migrations )
+              && php radiochatbox.php migrate --path=app/migrations )
             echo "✅ Schema migrated"
         fi
     else
@@ -203,7 +203,7 @@ EOF
         echo "Building database schema via migrations..."
         # Needs composer dependencies; ensure they are installed first.
         ( cd "$PROJECT_DIR" && composer install --no-dev --optimize-autoloader -q \
-          && php bin/rcb migrate --path=app/migrations )
+          && php radiochatbox.php migrate --path=app/migrations )
         
         echo "✅ Database configured"
     fi

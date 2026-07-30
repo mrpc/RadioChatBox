@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Console;
+namespace RadioChatBox\ConsoleCommands;
 
 use Pramnos\Console\DaemonOrchestrator;
 use RadioChatBox\Installation;
@@ -14,7 +14,7 @@ use RadioChatBox\Installation;
  * `.stop` handling and git-HEAD redeploy restart.
  *
  * It supervises the `bot:worker` console command (bot replies + the periodic
- * scheduler), spawned via `bin/rcb bot:worker --schedule`.
+ * scheduler), spawned via `radiochatbox.php bot:worker --schedule`.
  */
 final class RadioChatBoxDaemons extends DaemonOrchestrator
 {
@@ -31,7 +31,7 @@ final class RadioChatBoxDaemons extends DaemonOrchestrator
     protected function getEntryPoint(): string
     {
         // Fallback entry point; the worker below uses an explicit shellCommand.
-        return ROOT . '/bin/rcb';
+        return ROOT . '/radiochatbox.php';
     }
 
     protected function buildDesiredProcesses(): array
@@ -48,7 +48,7 @@ final class RadioChatBoxDaemons extends DaemonOrchestrator
                 'workerId'        => 'worker-1',
                 'lockFile'        => $lockFile,
                 // Supervise the bot worker command (bot replies + periodic scheduler).
-                'shellCommand'    => escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(ROOT . '/bin/rcb') . ' bot:worker --schedule',
+                'shellCommand'    => escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(ROOT . '/radiochatbox.php') . ' bot:worker --schedule',
                 // Health is process-liveness based for now (the worker's lock uses a
                 // JSON heartbeat rather than the orchestrator's mtime convention).
                 'requireLockFile' => false,

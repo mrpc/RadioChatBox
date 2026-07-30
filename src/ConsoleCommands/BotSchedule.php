@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Console;
+namespace RadioChatBox\ConsoleCommands;
 
 use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;

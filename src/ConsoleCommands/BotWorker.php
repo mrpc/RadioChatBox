@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Console;
+namespace RadioChatBox\ConsoleCommands;
 
 use Pramnos\Console\CommandBase;
 use Pramnos\Console\WorkerReloader;
@@ -144,7 +144,7 @@ class BotWorker extends CommandBase
         // dirs whose code this worker runs — the command + the services it drives.
         $reloader  = new WorkerReloader(
             Installation::root(),
-            ['src', 'src/Console', 'src/Services', 'composer.lock'],
+            ['src', 'src/ConsoleCommands', 'src/Services', 'composer.lock'],
             fn (): string => $settings->versionStamp()
         );
         $reloader->baseline();
@@ -287,7 +287,7 @@ class BotWorker extends CommandBase
 
         $this->log($output, sprintf('Code changed on disk and nothing is supervising - restarting myself (attempt %d)', $respawns + 1));
 
-        $args = [escapeshellarg(PHP_BINARY), escapeshellarg(ROOT . '/bin/rcb'), 'bot:worker'];
+        $args = [escapeshellarg(PHP_BINARY), escapeshellarg(ROOT . '/radiochatbox.php'), 'bot:worker'];
         foreach (['schedule', 'watch-files'] as $flag) {
             if ($input->getOption($flag)) {
                 $args[] = '--' . $flag;

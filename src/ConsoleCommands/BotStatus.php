@@ -1,6 +1,6 @@
 <?php
 
-namespace RadioChatBox\Console;
+namespace RadioChatBox\ConsoleCommands;
 
 use Pramnos\Console\CommandBase;
 use Pramnos\Console\WorkerLock;

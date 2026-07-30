@@ -11,7 +11,7 @@ use RadioChatBox\AdminAuth;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\ArtworkService;
 use RadioChatBox\Services\ChatService;
-use RadioChatBox\Console\RadioChatBoxDaemons;
+use RadioChatBox\ConsoleCommands\RadioChatBoxDaemons;
 use Pramnos\Database\Database;
 use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;

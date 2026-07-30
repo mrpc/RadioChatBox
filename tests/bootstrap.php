@@ -26,7 +26,7 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
-// Project root — every real entry point (public/_dispatch.php, bin/rcb) defines
+// Project root — every real entry point (public/index.php, radiochatbox.php) defines
 // it, and the framework Application (resolved via app/app.php) needs it too, so
 // the test process defines it before anything constructs an Application.
 if (!defined('ROOT')) {
@@ -39,7 +39,7 @@ if (($_ENV['APP_ENV'] ?? getenv('APP_ENV')) !== 'testing') {
 
 $root = dirname(__DIR__);
 $output = (string) shell_exec(
-    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/bin/rcb')
+    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php')
     . ' migrate --path=app/Migrations 2>&1'
 );
 

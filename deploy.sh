@@ -80,8 +80,8 @@ git reset --hard origin/main || error "Failed to pull latest code"
 # repeatedly. On an existing pre-squash database, baseline it once first (see
 # docs/pramnos-migration/) so the CreateSchema baseline is marked applied.
 if [ "$RUN_MIGRATIONS" = "true" ]; then
-    log "Running database migrations (bin/rcb migrate)..."
-    php bin/rcb migrate --path=app/migrations || warning "Migrations failed"
+    log "Running database migrations (radiochatbox.php migrate)..."
+    php radiochatbox.php migrate --path=app/migrations || warning "Migrations failed"
 else
     log "Skipping database migrations (RUN_MIGRATIONS=false)"
 fi

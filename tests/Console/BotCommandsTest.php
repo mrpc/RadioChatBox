@@ -3,10 +3,10 @@
 namespace RadioChatBox\Tests\Console;
 
 use PHPUnit\Framework\TestCase;
-use RadioChatBox\Console\BotFlush;
-use RadioChatBox\Console\BotSchedule;
-use RadioChatBox\Console\BotStatus;
-use RadioChatBox\Console\BotWorker;
+use RadioChatBox\ConsoleCommands\BotFlush;
+use RadioChatBox\ConsoleCommands\BotSchedule;
+use RadioChatBox\ConsoleCommands\BotStatus;
+use RadioChatBox\ConsoleCommands\BotWorker;
 use RadioChatBox\Installation;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;

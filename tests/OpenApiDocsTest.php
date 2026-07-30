@@ -7,7 +7,7 @@ use Pramnos\Routing\OpenApiGenerator;
 
 /**
  * Ensures the attribute-routed API stays documentable via the framework's
- * OpenAPI generator (Phase 8 structure-alignment: `php bin/rcb api:docs`).
+ * OpenAPI generator (Phase 8 structure-alignment: `php radiochatbox.php api:docs`).
  *
  * Runs the same generator the api:docs command uses over src/Controllers and
  * asserts the document is well-formed and covers representative endpoints, so a
