@@ -20,9 +20,13 @@ class Console extends \Pramnos\Console\Application
         // RadioChatBox subclass.
         $this->add(new \RadioChatBox\ConsoleCommands\RadioChatBoxDaemons());
 
-        // The bot worker (retired the root-level worker.php) and its operational
-        // commands.
-        $this->add(new \RadioChatBox\ConsoleCommands\BotWorker());
+        // Per-feature background workers (supervised by daemons:start).
+        $this->add(new \RadioChatBox\ConsoleCommands\BotWorker());       // bot:start (optional)
+        $this->add(new \RadioChatBox\ConsoleCommands\TrackerWorker());   // tracker:start
+        $this->add(new \RadioChatBox\ConsoleCommands\StatsWorker());     // stats:start
+        $this->add(new \RadioChatBox\ConsoleCommands\MaintenanceWorker()); // maintenance:start
+
+        // Bot operational commands (retired the root-level worker.php).
         $this->add(new \RadioChatBox\ConsoleCommands\BotStatus());
         $this->add(new \RadioChatBox\ConsoleCommands\BotLog());
         $this->add(new \RadioChatBox\ConsoleCommands\BotSchedule());

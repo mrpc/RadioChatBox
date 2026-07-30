@@ -43,59 +43,76 @@ class Scheduler
         'track_poll' => [
             'every' => 30,
             'every_setting' => 'track_poll_seconds',
+            'group' => 'tracker',
             'description' => 'Read the stream and record the current track',
         ],
         'track_enrich' => [
             'every' => 300,
+            'group' => 'tracker',
             'description' => 'Sweep up tracks whose metadata is still missing (a change enriches immediately; this catches failures)',
         ],
         'stats_snapshot' => [
             'every' => 300,
+            'group' => 'stats',
             'description' => 'Record a user/listener snapshot (was: */5 * * * * stats-cron.php snapshot)',
         ],
         'stats_hourly' => [
             'every' => 3600,
             'at_minute' => 5,
+            'group' => 'stats',
             'description' => 'Aggregate the finished hour',
         ],
         'stats_daily' => [
             'every' => 86400,
             'at_hour' => 0,
             'at_minute' => 10,
+            'group' => 'stats',
             'description' => 'Aggregate the finished day',
         ],
         'stats_weekly' => [
             'every' => 86400,
             'at_hour' => 0,
             'at_minute' => 20,
+            'group' => 'stats',
             'description' => 'Aggregate the week so far',
         ],
         'stats_monthly' => [
             'every' => 86400,
             'at_hour' => 0,
             'at_minute' => 30,
+            'group' => 'stats',
             'description' => 'Aggregate the month so far',
         ],
         'stats_yearly' => [
             'every' => 86400,
             'at_hour' => 0,
             'at_minute' => 40,
+            'group' => 'stats',
             'description' => 'Aggregate the year so far',
         ],
         'cleanup' => [
             'every' => 3600,
+            'group' => 'maintenance',
             'description' => 'Expired bans and DM blocks, stale sessions, old messages (was: the cleanup.php cron URL)',
         ],
         'prune_llm_log' => [
             'every' => 86400,
             'at_hour' => 3,
+            'group' => 'bot',
             'description' => 'Drop LLM log entries past the retention window',
         ],
         'llm_balance_snapshot' => [
             'every' => LlmAccount::SNAPSHOT_INTERVAL,
+            'group' => 'bot',
             'description' => 'Record the provider balance, so real spend can be measured',
         ],
     ];
+
+    /** Task groups, one per feature worker (see src/ConsoleCommands). */
+    public const GROUP_TRACKER = 'tracker';
+    public const GROUP_STATS = 'stats';
+    public const GROUP_MAINTENANCE = 'maintenance';
+    public const GROUP_BOT = 'bot';
 
     private PramnosDatabase $db;
     private SettingsService $settings;
@@ -271,11 +288,20 @@ class Scheduler
      *
      * @return list<array{task:string,status:string,duration_ms:int,error:?string}>
      */
-    public function runDue(?callable $heartbeat = null, int $limit = 2): array
+    public function runDue(?callable $heartbeat = null, int $limit = 2, ?string $group = null): array
     {
         $results = [];
 
-        foreach (array_slice($this->dueTasks(), 0, max(1, $limit)) as $name) {
+        $due = $this->dueTasks();
+        if ($group !== null) {
+            $tasks = $this->tasks();
+            $due = array_values(array_filter(
+                $due,
+                static fn (string $name): bool => ($tasks[$name]['group'] ?? null) === $group
+            ));
+        }
+
+        foreach (array_slice($due, 0, max(1, $limit)) as $name) {
             $results[] = $this->run($name);
 
             if ($heartbeat !== null) {

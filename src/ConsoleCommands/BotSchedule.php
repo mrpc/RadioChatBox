@@ -27,7 +27,7 @@ class BotSchedule extends Command
         $state = $scheduler->state();
         $due   = $scheduler->dueTasks();
 
-        $output->writeln('Scheduled tasks (run them with: bot:worker --schedule)');
+        $output->writeln('Scheduled tasks (run by the feature workers under daemons:start, or via cron: schedule:run)');
         foreach ($scheduler->tasks() as $task => $meta) {
             $row = $state[$task] ?? null;
             $output->writeln(sprintf(

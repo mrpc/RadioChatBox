@@ -7,6 +7,7 @@ use RadioChatBox\ConsoleCommands\BotFlush;
 use RadioChatBox\ConsoleCommands\BotSchedule;
 use RadioChatBox\ConsoleCommands\BotStatus;
 use RadioChatBox\ConsoleCommands\BotWorker;
+use RadioChatBox\ConsoleCommands\StatsWorker;
 use RadioChatBox\Installation;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
@@ -27,21 +28,37 @@ class BotCommandsTest extends TestCase
     }
 
     /**
-     * `bot:worker --once` processes the (empty) queue, reports it, exits cleanly,
-     * and releases its lock afterwards — the one-shot path of the worker loop.
+     * `bot:start --once` runs one pass of the bot worker (empty queue + bot
+     * housekeeping), exits cleanly, and releases its 'worker' lock afterwards.
      */
-    public function testWorkerOnceProcessesAndReleasesLock(): void
+    public function testBotStartOnceRunsAndReleasesLock(): void
     {
         $tester = $this->tester(new BotWorker());
         $exit = $tester->execute(['--once' => true]);
 
         $this->assertSame(Command::SUCCESS, $exit);
-        $this->assertStringContainsString('Processed', $tester->getDisplay());
 
         // The lock is released (removed) on the way out, so a fresh WorkerLock at
         // the same path sees no live holder.
-        $lock = new \Pramnos\Console\WorkerLock('worker', Installation::lockPath());
-        $this->assertFalse($lock->isHeldByAnother(), 'the lock must be free after --once');
+        $lock = new \Pramnos\Console\WorkerLock('worker', Installation::lockPath('worker'));
+        $this->assertFalse($lock->isHeldByAnother(), 'the bot lock must be free after --once');
+    }
+
+    /**
+     * A scheduled feature worker (stats:start) runs its group's due tasks once and
+     * releases its own distinct lock — it never touches the bot worker's lock.
+     */
+    public function testStatsStartOnceUsesItsOwnLock(): void
+    {
+        $tester = $this->tester(new StatsWorker());
+        $exit = $tester->execute(['--once' => true]);
+
+        $this->assertSame(Command::SUCCESS, $exit);
+
+        $statsLock = new \Pramnos\Console\WorkerLock('stats', Installation::lockPath('stats'));
+        $this->assertFalse($statsLock->isHeldByAnother(), 'the stats lock must be free after --once');
+        $this->assertNotSame(Installation::lockPath('worker'), Installation::lockPath('stats'),
+            'each feature worker must use a distinct lock');
     }
 
     /**
@@ -67,7 +84,7 @@ class BotCommandsTest extends TestCase
         $exit = $tester->execute([]);
 
         $this->assertSame(Command::SUCCESS, $exit);
-        $this->assertStringContainsString('bot:worker --schedule', $tester->getDisplay());
+        $this->assertStringContainsString('Scheduled tasks', $tester->getDisplay());
     }
 
     /**

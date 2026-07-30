@@ -278,6 +278,52 @@ class SchedulerTest extends TestCase
     /**
      * @param array<string,callable> $runners
      */
+    /**
+     * Every task must belong to a known feature group, so none is orphaned from a
+     * worker (each per-feature worker runs exactly one group).
+     */
+    public function testEveryTaskDeclaresAKnownGroup(): void
+    {
+        $known = [
+            Scheduler::GROUP_TRACKER,
+            Scheduler::GROUP_STATS,
+            Scheduler::GROUP_MAINTENANCE,
+            Scheduler::GROUP_BOT,
+        ];
+
+        foreach (Scheduler::TASKS as $name => $def) {
+            $this->assertArrayHasKey('group', $def, "task {$name} must declare a group");
+            $this->assertContains($def['group'], $known, "task {$name} has an unknown group");
+        }
+    }
+
+    /**
+     * runDue($group) runs only the due tasks in that group — the mechanism each
+     * per-feature worker relies on to run just its own tasks.
+     */
+    public function testRunDueFiltersByGroup(): void
+    {
+        $ran = [];
+        // Keyed by real task names, so tasks() resolves their real groups
+        // (stats_snapshot → stats, track_poll → tracker).
+        $runners = [
+            'stats_snapshot' => static function () use (&$ran): void {
+                $ran[] = 'stats_snapshot';
+            },
+            'track_poll' => static function () use (&$ran): void {
+                $ran[] = 'track_poll';
+            },
+        ];
+        $scheduler = $this->schedulerWith($runners);
+        // Make both due (no prior run recorded, or an old one).
+        $this->backdate('stats_snapshot', 999999);
+        $this->backdate('track_poll', 999999);
+
+        $scheduler->runDue(null, 10, Scheduler::GROUP_STATS);
+
+        $this->assertSame(['stats_snapshot'], $ran, 'only the stats group must run');
+    }
+
     private function schedulerWith(array $runners): Scheduler
     {
         return new Scheduler(new SettingsService(), $runners);
