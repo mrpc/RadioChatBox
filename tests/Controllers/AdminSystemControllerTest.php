@@ -3,6 +3,7 @@
 namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
+use Pramnos\Framework\Testing\TestDatabase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminSystemController;
@@ -25,8 +26,9 @@ class AdminSystemControllerTest extends TestCase
 {
     protected function tearDown(): void
     {
-        $_GET  = [];
-        $_POST = [];
+        $_GET   = [];
+        $_POST  = [];
+        $_FILES = [];
         unset($_SERVER['REQUEST_METHOD']);
     }
 
@@ -232,6 +234,72 @@ class AdminSystemControllerTest extends TestCase
 
         $this->assertSame(400, $response->getStatusCode());
         $this->assertSame('No file uploaded', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * POST /api/admin/track-artwork-upload happy path: a real image file is read,
+     * stored via ArtworkService (GD) and linked to a seeded track (track_cover)
+     * and artist (artist_image). Returns {success, url, thumb} and updates the
+     * row. The stored files and seeded rows are cleaned up. (This action reads the
+     * temp file directly — no is_uploaded_file gate — so it runs under CLI.)
+     */
+    public function testTrackArtworkUploadStoresAndLinksImage(): void
+    {
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+
+        // Seed a track and an artist to attach the artwork to.
+        $pdo->prepare("INSERT INTO artists (name) VALUES (?)")->execute(['ArtUp ' . $suffix]);
+        $artistId = (int) $pdo->query('SELECT lastval()')->fetchColumn();
+        $pdo->prepare("INSERT INTO tracks (display, artist, title) VALUES (?, ?, ?)")
+            ->execute(['ArtUp ' . $suffix . ' - Song', 'ArtUp ' . $suffix, 'Song']);
+        $trackId = (int) $pdo->query('SELECT lastval()')->fetchColumn();
+
+        // A real JPEG temp file to upload.
+        $im = imagecreatetruecolor(300, 300);
+        imagefilledrectangle($im, 0, 0, 300, 300, imagecolorallocate($im, 120, 40, 200));
+        $tmp = tempnam(sys_get_temp_dir(), 'artup') . '.jpg';
+        imagejpeg($im, $tmp);
+        imagedestroy($im);
+
+        $stored = [];
+        try {
+            foreach ([['track_cover', $trackId], ['artist_image', $artistId]] as [$type, $id]) {
+                $_SERVER['REQUEST_METHOD'] = 'POST';
+                $_POST  = ['type' => $type, 'id' => $id];
+                $_FILES = ['file' => [
+                    'tmp_name' => $tmp,
+                    'name'     => 'art.jpg',
+                    'size'     => filesize($tmp),
+                    'error'    => UPLOAD_ERR_OK,
+                    'type'     => 'image/jpeg',
+                ]];
+
+                $response = (new AdminSystemController())->trackArtworkUpload();
+                $this->assertSame(200, $response->getStatusCode(), "type {$type} must succeed");
+                $body = json_decode($response->getBody(), true);
+                $this->assertTrue($body['success']);
+                $this->assertNotEmpty($body['url']);
+                $stored[] = $body['url'];
+            }
+
+            // The track row now points at the stored cover.
+            $stmt = $pdo->prepare('SELECT cover_file FROM tracks WHERE id = ?');
+            $stmt->execute([$trackId]);
+            $this->assertNotEmpty($stmt->fetchColumn(), 'the track cover must be linked');
+        } finally {
+            @unlink($tmp);
+            foreach ($stored as $web) {
+                $disk = dirname(__DIR__, 2) . '/public' . $web;
+                foreach ([$disk, preg_replace('/\.jpg$/i', '_thumb.jpg', $disk)] as $f) {
+                    if (is_file($f)) {
+                        @unlink($f);
+                    }
+                }
+            }
+            $pdo->prepare('DELETE FROM tracks WHERE id = ?')->execute([$trackId]);
+            $pdo->prepare('DELETE FROM artists WHERE id = ?')->execute([$artistId]);
+        }
     }
 
     /**
