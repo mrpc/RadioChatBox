@@ -3,8 +3,10 @@
 namespace RadioChatBox\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Pramnos\Cache\FlatCache;
 use Pramnos\Framework\Testing\TestDatabase;
 use RadioChatBox\Services\FakeUserService;
+use RadioChatBox\Services\SettingsService;
 
 /**
  * Covers the FakeUserService CRUD lifecycle (add → read → update → bot settings →
@@ -148,5 +150,47 @@ class FakeUserServiceCrudTest extends TestCase
     public function testUpdateFakeUserUnknownIdReturnsNull(): void
     {
         $this->assertNull($this->service->updateFakeUser(0, ['age' => 30]));
+    }
+
+    /**
+     * balanceFakeUsers activates inactive fake users to meet the configured
+     * minimum (no live radio URL → the minimum_users path), then deactivates the
+     * excess when the minimum drops. Drives activateRandomFakeUsers /
+     * deactivateRandomFakeUsers / getJitteredTarget / countActiveFakeUsers — safe
+     * now that the suite runs against an isolated database. Settings are restored.
+     */
+    public function testBalanceActivatesAndDeactivatesFakeUsers(): void
+    {
+        $frag     = substr($this->nick, 2);
+        $settings = new SettingsService();
+        $prevMin  = (string) $settings->get('minimum_users', '0');
+        $prevUrl  = (string) $settings->get('radio_status_url', '');
+
+        // Seed several inactive fake users under this run's fragment.
+        for ($i = 0; $i < 6; $i++) {
+            $row = $this->service->addFakeUser('bal' . $i . $frag, 25, 'female', 'NYC');
+            $this->service->setFakeUserActive((int) $row['id'], false);
+        }
+
+        try {
+            $settings->setMultiple(['radio_status_url' => '', 'minimum_users' => '4']);
+            FlatCache::default()->delete('fake_users:jitter_target');
+
+            $this->service->balanceFakeUsers(0);
+            $activeAfterRaise = count($this->service->getActiveFakeUsers());
+            $this->assertGreaterThan(0, $activeAfterRaise, 'some fake users must be activated to meet the minimum');
+
+            // Drop the minimum to zero → the balancer deactivates all fake users.
+            $settings->setMultiple(['minimum_users' => '0']);
+            FlatCache::default()->delete('fake_users:jitter_target');
+            $this->service->balanceFakeUsers(0);
+            $this->assertLessThanOrEqual(
+                $activeAfterRaise,
+                count($this->service->getActiveFakeUsers()),
+                'lowering the minimum must not increase the active count'
+            );
+        } finally {
+            $settings->setMultiple(['minimum_users' => $prevMin, 'radio_status_url' => $prevUrl]);
+        }
     }
 }
