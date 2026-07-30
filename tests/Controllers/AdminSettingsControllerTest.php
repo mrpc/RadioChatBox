@@ -275,4 +275,68 @@ class AdminSettingsControllerTest extends TestCase
         $this->assertTrue($body['success']);
         $this->assertStringContainsString('old notification(s)', $body['message']);
     }
+
+    /**
+     * GET /api/admin/settings returns the full settings envelope: it reads every
+     * row (password hash filtered out), computes the embed code / PHP upload cap
+     * and folds in the bot provider/model catalog. Non-mutating.
+     */
+    public function testShowReturnsSettingsEnvelope(): void
+    {
+        $response = (new AdminSettingsController())->show();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertIsArray($body['settings']);
+        // Computed extras are always present regardless of DB contents.
+        $this->assertArrayHasKey('embed_code', $body['settings']);
+        $this->assertArrayHasKey('bot_providers', $body['settings']);
+        $this->assertArrayNotHasKey('admin_password_hash', $body['settings'], 'the hash must never be sent');
+    }
+
+    /**
+     * POST /api/admin/settings applies a whitelisted key through
+     * SettingsService::updateFromAdmin and reports success. The prior page_title
+     * is snapshotted and restored so shared settings state does not leak.
+     */
+    public function testUpdateAppliesWhitelistedSetting(): void
+    {
+        $settings = new \RadioChatBox\Services\SettingsService();
+        $previous = (string) $settings->get('page_title', 'RadioChatBox');
+
+        try {
+            $_POST = ['page_title' => 'Coverage Title ' . substr(bin2hex(random_bytes(3)), 0, 6)];
+            $response = (new AdminSettingsController())->update();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame($_POST['page_title'], $settings->get('page_title'));
+        } finally {
+            $settings->setMultiple(['page_title' => $previous]);
+        }
+    }
+
+    /**
+     * POST /api/admin/update-settings writes an arbitrary key/value map via
+     * SettingsService::setMultiple and reports success. A throwaway key is used
+     * and removed afterwards so no real setting is disturbed.
+     */
+    public function testUpdateMultipleWritesSettings(): void
+    {
+        $key = 'coverage_probe_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        try {
+            $_POST = ['settings' => [$key => 'on']];
+            $response = (new AdminSettingsController())->updateMultiple();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertTrue(json_decode($response->getBody(), true)['success']);
+            $this->assertSame('on', (new \RadioChatBox\Services\SettingsService())->get($key));
+        } finally {
+            Database::getInstance()->queryBuilder()->from('settings')
+                ->where('setting_key', '=', $key)->delete();
+        }
+    }
 }

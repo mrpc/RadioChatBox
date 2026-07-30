@@ -390,4 +390,126 @@ class MessageActionControllerTest extends TestCase
                 ->execute(['me' => $me]);
         }
     }
+
+    /** Seed a live session row so getSessionInfo() accepts the caller. */
+    private function seedSession(\PDO $pdo, string $username, string $sessionId): void
+    {
+        $pdo->prepare(
+            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+             VALUES (:u, :s, :ip, NOW(), NOW())'
+        )->execute(['u' => $username, 's' => $sessionId, 'ip' => '127.0.0.1']);
+    }
+
+    /**
+     * react POST happy path: an owned session toggles a reaction on a real
+     * message, returning {success:true, ...} — covers the session-ownership check
+     * plus ReactionService::toggleReaction. Seeded rows are cleaned up.
+     */
+    public function testReactTogglesReactionForOwnedSession(): void
+    {
+        $pdo       = TestDatabase::connection();
+        $username  = 'react_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $messageId = 'msg_' . bin2hex(random_bytes(6));
+        $emoji     = ReactionService::getAllowedEmojis()[0];
+
+        $this->seedSession($pdo, $username, $sessionId);
+        $pdo->prepare(
+            'INSERT INTO messages (message_id, username, message, ip_address, created_at)
+             VALUES (:mid, :u, :msg, :ip, NOW())'
+        )->execute(['mid' => $messageId, 'u' => $username, 'msg' => 'react to me', 'ip' => '127.0.0.1']);
+
+        try {
+            $_POST = [
+                'message_id' => $messageId,
+                'username'   => $username,
+                'session_id' => $sessionId,
+                'emoji'      => $emoji,
+            ];
+            $response = (new MessageActionController())->react();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertTrue(json_decode($response->getBody(), true)['success']);
+        } finally {
+            $pdo->prepare('DELETE FROM message_reactions WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+        }
+    }
+
+    /**
+     * block POST happy path: an owned session blocks then unblocks a target,
+     * returning {success:true, blocked:true|false} — covers both action branches
+     * and the session-ownership check.
+     */
+    public function testBlockAndUnblockForOwnedSession(): void
+    {
+        $pdo       = TestDatabase::connection();
+        $username  = 'blk_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $target    = 'tgt_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        $this->seedSession($pdo, $username, $sessionId);
+
+        try {
+            $_POST = [
+                'action'          => 'block',
+                'username'        => $username,
+                'session_id'      => $sessionId,
+                'target_username' => $target,
+            ];
+            $blocked = (new MessageActionController())->block();
+            $this->assertSame(200, $blocked->getStatusCode());
+            $this->assertTrue(json_decode($blocked->getBody(), true)['blocked']);
+
+            $_POST['action'] = 'unblock';
+            $unblocked = (new MessageActionController())->block();
+            $this->assertSame(200, $unblocked->getStatusCode());
+            $this->assertFalse(json_decode($unblocked->getBody(), true)['blocked']);
+        } finally {
+            $pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+        }
+    }
+
+    /**
+     * private-message POST happy path: a real user DMs another live user; the
+     * message is stored and the {success:true, data:{...}} envelope returned.
+     * Drives the recipient-live-session branch, the display-name snapshot reads
+     * and the INSERT ... RETURNING. All seeded rows are cleaned up.
+     */
+    public function testPrivateMessageSendStoresAndReturnsEnvelope(): void
+    {
+        $pdo      = TestDatabase::connection();
+        $from     = 'pmf_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $to       = 'pmt_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $fromSess = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $toSess   = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        $this->seedSession($pdo, $from, $fromSess);
+        $this->seedSession($pdo, $to, $toSess);
+
+        try {
+            $_POST = [
+                'from_username'   => $from,
+                'to_username'     => $to,
+                'from_session_id' => $fromSess,
+                'message'         => 'hi there ' . $from,
+            ];
+            $response = (new MessageActionController())->privateMessage();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame('Private message sent', $body['message']);
+            $this->assertSame($to, $body['data']['to_username']);
+
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM private_messages WHERE from_username = ? AND to_username = ?');
+            $stmt->execute([$from, $to]);
+            $this->assertSame(1, (int) $stmt->fetchColumn(), 'the DM must be stored');
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$from]);
+            $pdo->prepare('DELETE FROM sessions WHERE username IN (?, ?)')->execute([$from, $to]);
+        }
+    }
 }

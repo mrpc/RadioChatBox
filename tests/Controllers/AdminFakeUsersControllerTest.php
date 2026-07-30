@@ -5,8 +5,10 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use Pramnos\Framework\Testing\TestDatabase;
 use RadioChatBox\Controllers\AdminFakeUsersController;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
+use RadioChatBox\Services\FakeUserService;
 
 /**
  * Covers the migrated admin fake-user endpoints and their auth middleware
@@ -20,11 +22,79 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
  */
 class AdminFakeUsersControllerTest extends TestCase
 {
+    /** @var string[] nickname fragments to clean from fake_users in tearDown */
+    private array $cleanupNicks = [];
+
     protected function tearDown(): void
     {
         $_POST = [];
         $_GET  = [];
+        if ($this->cleanupNicks !== []) {
+            $pdo = TestDatabase::connection();
+            foreach ($this->cleanupNicks as $n) {
+                $pdo->prepare('DELETE FROM fake_users WHERE nickname LIKE ?')->execute(['%' . $n . '%']);
+            }
+            $this->cleanupNicks = [];
+        }
         parent::tearDown();
+    }
+
+    private function body(Response $r): array
+    {
+        return json_decode($r->getBody(), true) ?: [];
+    }
+
+    /**
+     * The full CRUD lifecycle through the controller: add → list/index/export →
+     * update → updateBot → toggle → delete, each returning 200.
+     */
+    public function testFakeUserLifecycleThroughController(): void
+    {
+        $frag = substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanupNicks[] = $frag;
+        $nick = 'ctl' . $frag;
+
+        $_POST = ['nickname' => $nick, 'age' => 25, 'sex' => 'female', 'location' => 'NYC'];
+        $add = (new AdminFakeUsersController())->add();
+        $this->assertSame(200, $add->getStatusCode());
+        $this->assertTrue($this->body($add)['success']);
+
+        $id = (int) (new FakeUserService())->getFakeUserByNickname($nick)['id'];
+        $this->assertGreaterThan(0, $id);
+
+        $_GET = [];
+        $this->assertSame(200, (new AdminFakeUsersController())->list()->getStatusCode());
+        $this->assertSame(200, (new AdminFakeUsersController())->index()->getStatusCode());
+        $this->assertSame(200, (new AdminFakeUsersController())->export()->getStatusCode());
+
+        $_POST = ['id' => $id, 'age' => 30, 'location' => 'LA'];
+        $this->assertSame(200, (new AdminFakeUsersController())->update()->getStatusCode());
+
+        $_POST = ['id' => $id, 'bot_enabled' => true, 'bot_persona' => 'friendly', 'bot_max_messages' => 4];
+        $this->assertSame(200, (new AdminFakeUsersController())->updateBot()->getStatusCode());
+
+        $_POST = ['id' => $id];
+        $this->assertSame(200, (new AdminFakeUsersController())->toggle()->getStatusCode());
+
+        $_POST = ['id' => $id];
+        $this->assertSame(200, (new AdminFakeUsersController())->delete()->getStatusCode());
+    }
+
+    /**
+     * import() accepts an export-shaped payload ({fake_users: [...]}) and reports
+     * how many were imported.
+     */
+    public function testImportAddsFakeUsers(): void
+    {
+        $frag = substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanupNicks[] = $frag;
+
+        $_POST = ['fake_users' => [
+            ['nickname' => 'imp' . $frag, 'age' => 22, 'sex' => 'male', 'location' => 'LA'],
+        ]];
+        $r = (new AdminFakeUsersController())->import();
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertTrue($this->body($r)['success']);
     }
 
     /**

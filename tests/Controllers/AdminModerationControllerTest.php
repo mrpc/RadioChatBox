@@ -10,6 +10,7 @@ use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminModerationController;
 use Pramnos\Database\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
+use RadioChatBox\Services\ChatService;
 
 /**
  * Covers the migrated admin moderation endpoints (replaced the eight
@@ -23,11 +24,192 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
  */
 class AdminModerationControllerTest extends TestCase
 {
+    /** @var array{ips:string[],nicks:string[],suffixes:string[]} data to clean up */
+    private array $cleanup = ['ips' => [], 'nicks' => [], 'suffixes' => []];
+
     protected function tearDown(): void
     {
         $_POST = [];
         $_GET  = [];
         $_SERVER['REQUEST_METHOD'] = 'GET';
+
+        $chat = new ChatService();
+        foreach ($this->cleanup['ips'] as $ip) {
+            $chat->unbanIP($ip);
+        }
+        foreach ($this->cleanup['nicks'] as $n) {
+            $chat->unbanNickname($n);
+        }
+        if ($this->cleanup['suffixes'] !== []) {
+            $pdo = TestDatabase::connection();
+            foreach ($this->cleanup['suffixes'] as $s) {
+                $like = '%' . $s . '%';
+                $pdo->prepare('DELETE FROM messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
+                $pdo->prepare('DELETE FROM sessions WHERE username LIKE ?')->execute([$like]);
+                $pdo->prepare('DELETE FROM user_activity WHERE username LIKE ?')->execute([$like]);
+            }
+        }
+        $this->cleanup = ['ips' => [], 'nicks' => [], 'suffixes' => []];
+    }
+
+    private function json(Response $r): array
+    {
+        return json_decode($r->getBody(), true) ?: [];
+    }
+
+    /**
+     * ban-ip full cycle: POST bans an address (200 success), GET lists it, DELETE
+     * unbans it (200 success) — exercises all three converted method branches.
+     */
+    public function testBanIpPostListDelete(): void
+    {
+        $ip = '203.0.113.' . random_int(2, 250);
+        $this->cleanup['ips'][] = $ip;
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['ip_address' => $ip, 'reason' => 'moderation test'];
+        $post  = (new AdminModerationController())->banIp();
+        $this->assertSame(200, $post->getStatusCode());
+        $this->assertTrue($this->json($post)['success']);
+
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_POST = [];
+        $list  = (new AdminModerationController())->banIp();
+        $this->assertSame(200, $list->getStatusCode());
+        $this->assertContains($ip, array_column($this->json($list)['banned_ips'], 'ip_address'));
+
+        $_SERVER['REQUEST_METHOD'] = 'DELETE';
+        $_POST = ['ip_address' => $ip];
+        $del   = (new AdminModerationController())->banIp();
+        $this->assertSame(200, $del->getStatusCode());
+        $this->assertTrue($this->json($del)['success']);
+    }
+
+    /**
+     * ban-nickname full cycle: POST bans a nickname (200), GET lists it, DELETE
+     * unbans it (200).
+     */
+    public function testBanNicknamePostListDelete(): void
+    {
+        $nick = 'modnick' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanup['nicks'][] = $nick;
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['nickname' => $nick, 'reason' => 'moderation test'];
+        $post  = (new AdminModerationController())->banNickname();
+        $this->assertSame(200, $post->getStatusCode());
+        $this->assertTrue($this->json($post)['success']);
+
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_POST = [];
+        $list  = (new AdminModerationController())->banNickname();
+        $this->assertSame(200, $list->getStatusCode());
+        $this->assertContains(
+            strtolower($nick),
+            array_map('strtolower', array_column($this->json($list)['banned_nicknames'], 'nickname'))
+        );
+
+        $_SERVER['REQUEST_METHOD'] = 'DELETE';
+        $_POST = ['nickname' => $nick];
+        $del   = (new AdminModerationController())->banNickname();
+        $this->assertSame(200, $del->getStatusCode());
+        $this->assertTrue($this->json($del)['success']);
+    }
+
+    /**
+     * kick-user happy path: register a real session, then kick it — the session
+     * row is deleted and the response reports success (covers the KickRegistry +
+     * broadcast + delete branch).
+     */
+    public function testKickUserRemovesSession(): void
+    {
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanup['suffixes'][] = $suffix;
+        $user = 'kick' . $suffix;
+        $chat = new ChatService();
+        $chat->registerUser($user, 'sess' . $suffix, '203.0.113.9');
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['username' => $user];
+        $resp  = (new AdminModerationController())->kickUser();
+
+        $this->assertSame(200, $resp->getStatusCode());
+        $this->assertTrue($this->json($resp)['success']);
+
+        $pdo  = TestDatabase::connection();
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM sessions WHERE username = ?');
+        $stmt->execute([$user]);
+        $this->assertSame(0, (int) $stmt->fetchColumn(), 'the kicked session row must be gone');
+    }
+
+    /**
+     * delete-message happy path: post a real message, soft-delete it by id (200
+     * success), then confirm the row is flagged is_deleted (covers the update /
+     * tombstone / broadcast branch).
+     */
+    public function testDeleteMessageSoftDeletesRow(): void
+    {
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanup['suffixes'][] = $suffix;
+        $user = 'del' . $suffix;
+        $chat = new ChatService();
+        $chat->registerUser($user, 'sess' . $suffix, '203.0.113.10');
+        $posted = $chat->postMessage($user, 'to delete ' . $suffix, '203.0.113.10', 'sess' . $suffix);
+        $messageId = $posted['id'];
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['message_id' => $messageId];
+        $resp  = (new AdminModerationController())->deleteMessage();
+
+        $this->assertSame(200, $resp->getStatusCode());
+        $this->assertTrue($this->json($resp)['success']);
+
+        $pdo  = TestDatabase::connection();
+        $stmt = $pdo->prepare('SELECT is_deleted FROM messages WHERE message_id = ?');
+        $stmt->execute([$messageId]);
+        $this->assertTrue((bool) $stmt->fetchColumn(), 'the message must be soft-deleted');
+    }
+
+    /**
+     * url-whitelist mirrors the blacklist path (query/insert/delete + duplicate
+     * classification): insert a unique pattern (200), re-insert (400 duplicate),
+     * GET lists it, DELETE by id (200). All rows cleaned up.
+     */
+    public function testUrlWhitelistInsertDuplicateListAndDelete(): void
+    {
+        $pattern = 'wl-' . bin2hex(random_bytes(5)) . '.example';
+        $pdo     = TestDatabase::connection();
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = ['pattern' => $pattern, 'description' => 'whitelist test'];
+            $created = (new AdminModerationController())->urlWhitelist();
+            $this->assertSame(200, $created->getStatusCode());
+            $this->assertTrue($this->json($created)['success']);
+
+            $_POST = ['pattern' => $pattern, 'description' => 'dupe'];
+            $dupe  = (new AdminModerationController())->urlWhitelist();
+            $this->assertSame(400, $dupe->getStatusCode());
+            $this->assertSame('Pattern already exists', $this->json($dupe)['error']);
+
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_POST = [];
+            $list  = (new AdminModerationController())->urlWhitelist();
+            $this->assertSame(200, $list->getStatusCode());
+            $this->assertContains($pattern, array_column($this->json($list)['patterns'], 'pattern'));
+
+            $stmt = $pdo->prepare('SELECT id FROM url_whitelist WHERE pattern = ?');
+            $stmt->execute([$pattern]);
+            $id = (int) $stmt->fetchColumn();
+
+            $_SERVER['REQUEST_METHOD'] = 'DELETE';
+            $_GET = ['id' => $id];
+            $deleted = (new AdminModerationController())->urlWhitelist();
+            $this->assertSame(200, $deleted->getStatusCode());
+            $this->assertTrue($this->json($deleted)['success']);
+        } finally {
+            $pdo->prepare('DELETE FROM url_whitelist WHERE pattern = ?')->execute([$pattern]);
+        }
     }
 
     /**
