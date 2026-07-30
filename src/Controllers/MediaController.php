@@ -5,6 +5,8 @@ namespace RadioChatBox\Controllers;
 use DOMDocument;
 use DOMXPath;
 use InvalidArgumentException;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientException;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
@@ -129,42 +131,31 @@ final class MediaController
             // Cache backend unavailable — proceed without cache
         }
 
-        // Fetch the page content
-        $context = stream_context_create([
-            'http' => [
-                'method'          => 'GET',
-                'timeout'         => 5,
-                'follow_location' => true,
-                'max_redirects'   => 3,
-                'header'          => implode("\r\n", [
-                    'User-Agent: RadioChatBox Link Preview Bot/1.0',
-                    'Accept: text/html,application/xhtml+xml',
-                    'Accept-Language: en',
-                ]),
-                'ignore_errors'   => true,
-            ],
-            'ssl' => [
-                'verify_peer'      => true,
-                'verify_peer_name' => true,
-            ],
-        ]);
-
-        $html = @file_get_contents($url, false, $context);
-
-        if ($html === false || strlen($html) === 0) {
+        // Fetch the page content through the framework HTTP client (curl
+        // underneath, TLS verification on, redirects followed). As with the former
+        // stream context's ignore_errors, a non-2xx still yields its body; only a
+        // transport error or an empty body is treated as "could not fetch". This
+        // also makes the fetch fakeable in tests via Client::fake().
+        try {
+            $response = Client::get($url)
+                ->timeout(5)
+                ->userAgent('RadioChatBox Link Preview Bot/1.0')
+                ->header('Accept', 'text/html,application/xhtml+xml')
+                ->header('Accept-Language', 'en')
+                ->send();
+        } catch (ClientException $e) {
             return Response::json(['error' => 'Could not fetch URL'], 422);
         }
 
-        // Check Content-Type from response headers — only parse HTML
-        $responseHeaders = $http_response_header ?? [];
-        $contentType = '';
-        foreach ($responseHeaders as $header) {
-            if (stripos($header, 'Content-Type:') === 0) {
-                $contentType = $header;
-                break;
-            }
+        $html = $response->body();
+
+        if ($html === '') {
+            return Response::json(['error' => 'Could not fetch URL'], 422);
         }
-        if (!empty($contentType) && stripos($contentType, 'text/html') === false) {
+
+        // Only parse HTML — a declared non-HTML Content-Type is rejected.
+        $contentType = $response->header('content-type');
+        if ($contentType !== '' && stripos($contentType, 'text/html') === false) {
             return Response::json(['error' => 'URL is not an HTML page'], 422);
         }
 

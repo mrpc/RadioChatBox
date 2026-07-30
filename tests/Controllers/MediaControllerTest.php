@@ -3,6 +3,9 @@
 namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientException;
+use Pramnos\Http\ClientResponse;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\MediaController;
 
@@ -21,6 +24,63 @@ class MediaControllerTest extends TestCase
     {
         $_GET = [];
         $_POST = [];
+        Client::resetFakes();
+    }
+
+    /**
+     * link-preview happy path: for a public URL whose fetch is faked as HTML with
+     * Open Graph tags, it returns 200 with the parsed preview (title/description/
+     * image). The SSRF guard runs for real (example.com resolves public), only the
+     * HTTP fetch is faked.
+     */
+    public function testLinkPreviewReturnsOpenGraphPreview(): void
+    {
+        $html = '<html><head>'
+            . '<meta property="og:title" content="Fixture Title">'
+            . '<meta property="og:description" content="Fixture description">'
+            . '<meta property="og:image" content="https://example.com/img.png">'
+            . '</head><body>x</body></html>';
+        Client::fake(['*example.com*' => ClientResponse::make($html, 200, ['content-type' => 'text/html; charset=utf-8'])]);
+
+        $_GET = ['url' => 'https://example.com/article?probe=' . uniqid()];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertSame('Fixture Title', $body['title']);
+        $this->assertSame('Fixture description', $body['description']);
+    }
+
+    /**
+     * link-preview rejects a declared non-HTML Content-Type with 422
+     * {error:'URL is not an HTML page'}.
+     */
+    public function testLinkPreviewRejectsNonHtmlContentType(): void
+    {
+        Client::fake(['*example.com*' => ClientResponse::make('{"x":1}', 200, ['content-type' => 'application/json'])]);
+
+        $_GET = ['url' => 'https://example.com/data.json?probe=' . uniqid()];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('URL is not an HTML page', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * A transport error during the fetch (ClientException) maps to 422
+     * {error:'Could not fetch URL'}.
+     */
+    public function testLinkPreviewFetchFailureReturns422(): void
+    {
+        Client::fake(['*example.com*' => static function (): ClientResponse {
+            throw new ClientException('connection refused', 7);
+        }]);
+
+        $_GET = ['url' => 'https://example.com/down?probe=' . uniqid()];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('Could not fetch URL', json_decode($response->getBody(), true)['error']);
     }
 
     /**
