@@ -45,9 +45,57 @@ class ChatServiceExtraTest extends TestCase
         $pdo  = TestDatabase::connection();
         $like = '%' . $this->suffix . '%';
         $pdo->prepare('DELETE FROM messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
+        $pdo->prepare('DELETE FROM private_messages WHERE from_username LIKE ? OR to_username LIKE ?')->execute([$like, $like]);
         $pdo->prepare('DELETE FROM sessions WHERE username LIKE ?')->execute([$like]);
         $pdo->prepare('DELETE FROM user_activity WHERE username LIKE ?')->execute([$like]);
+        $pdo->prepare('DELETE FROM user_profiles WHERE username LIKE ?')->execute([$like]);
         parent::tearDown();
+    }
+
+    /**
+     * registerUser with profile data (age/location/sex) also writes a
+     * user_profiles row (the profile branch skipped by the bare registration).
+     */
+    public function testRegisterUserWithProfileStoresProfileRow(): void
+    {
+        $this->assertTrue(
+            $this->service->registerUser($this->user, $this->session, $this->ip, '27', 'Athens', 'female')
+        );
+
+        $pdo  = TestDatabase::connection();
+        $stmt = $pdo->prepare('SELECT age, location, sex FROM user_profiles WHERE username = ? AND session_id = ?');
+        $stmt->execute([$this->user, $this->session]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $this->assertSame('Athens', $row['location']);
+        $this->assertSame('female', $row['sex']);
+    }
+
+    /**
+     * The admin message listing/counter honour the private and combined ("all"
+     * with private included) type filters, driving the private-only and UNION
+     * branches of getAllMessages / getTotalMessagesCount.
+     */
+    public function testAdminListingPrivateAndCombinedBranches(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+        // A public message and a private one, both suffix-tagged.
+        $this->service->postMessage($this->user, 'pub ' . $this->suffix, $this->ip, $this->session);
+        $pdo = TestDatabase::connection();
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, ?, ?, ?, ?, NOW())"
+        )->execute([$this->user, $this->session, 'peer' . $this->suffix, 'psess', 'priv ' . $this->suffix]);
+
+        // Private-only branch.
+        $priv = array_column($this->service->getAllMessages(200, 0, true, 'private'), 'message');
+        $this->assertContains('priv ' . $this->suffix, $priv);
+        $this->assertGreaterThanOrEqual(1, $this->service->getTotalMessagesCount(true, 'private'));
+
+        // Combined (public UNION private) branch.
+        $both = array_column($this->service->getAllMessages(500, 0, true, 'all'), 'message');
+        $this->assertContains('pub ' . $this->suffix, $both);
+        $this->assertContains('priv ' . $this->suffix, $both);
+        $this->assertGreaterThanOrEqual(2, $this->service->getTotalMessagesCount(true, 'all'));
     }
 
     /**

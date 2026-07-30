@@ -296,10 +296,19 @@ class AdminStatsControllerTest extends TestCase
     public function testTrackStatsPostUpdateAndBulk(): void
     {
         $trackId = $this->seedTrack();
+        $service = new \RadioChatBox\Services\TrackStatsService();
+        $artistId = (int) $service->getArtistRowByName('Artist ' . $this->suffix)['id'];
+        $albums   = $service->getAlbumsByArtist('Artist ' . $this->suffix);
+        $albumId  = (int) ($albums[0]['album_id'] ?? 0);
+        $this->assertGreaterThan(0, $artistId);
+        $this->assertGreaterThan(0, $albumId);
+
         $_SERVER['REQUEST_METHOD'] = 'POST';
 
         foreach ([
             ['action' => 'update-track', 'track_id' => $trackId, 'genre' => 'Pop ' . $this->suffix],
+            ['action' => 'update-artist', 'artist_id' => $artistId, 'genre' => 'Indie ' . $this->suffix],
+            ['action' => 'update-album', 'album_id' => $albumId, 'genre' => 'Folk ' . $this->suffix],
             ['action' => 'bulk-genre-tracks', 'track_ids' => [$trackId], 'genre' => 'Jazz ' . $this->suffix],
             ['action' => 'bulk-genre-artist', 'artist' => 'Artist ' . $this->suffix, 'genre' => 'Blues ' . $this->suffix],
             ['action' => 'bulk-genre-reassign', 'from' => 'Blues ' . $this->suffix, 'to' => 'Soul ' . $this->suffix],
