@@ -404,4 +404,47 @@ class AdminImpersonationControllerTest extends TestCase
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }
     }
+
+    /**
+     * conversations() with a fake user that has inbound DMs populates its
+     * per-fake-user rollup: the sender list (with online status from a live
+     * session), the recent-messages slice and total count. Drives the inner
+     * loop that stays empty when no fake user has conversations.
+     */
+    public function testConversationsPopulatesFakeUserRollup(): void
+    {
+        $this->authAsRoot();
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $fake   = 'convfake_' . $suffix;
+        $sender = 'convsend_' . $suffix;
+
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')->execute([$fake]);
+        $pdo->prepare(
+            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+             VALUES (?, ?, ?, NOW(), NOW())'
+        )->execute([$sender, 'sess_' . $suffix, '127.0.0.1']);
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES (?, ?, ?, ?, 'hello fake', NOW())"
+        )->execute([$sender, 'sess_' . $suffix, $fake, 'fake_' . md5($fake)]);
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $response = (new AdminImpersonationController())->conversations();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertArrayHasKey($fake, $body['conversations']);
+            $conv = $body['conversations'][$fake];
+            $this->assertSame(1, $conv['total_messages']);
+            $this->assertSame($sender, $conv['senders'][0]['username']);
+            $this->assertTrue($conv['senders'][0]['is_online'], 'the sender has a live session');
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE to_username = ?')->execute([$fake]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$sender]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
+        }
+    }
 }
