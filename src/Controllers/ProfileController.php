@@ -27,6 +27,14 @@ use RadioChatBox\Services\PhotoService;
 final class ProfileController
 {
     /**
+     * @param PhotoService|null $photoService Injectable for tests; defaults to a
+     *   real PhotoService so production wiring is unchanged.
+     */
+    public function __construct(private ?PhotoService $photoService = null)
+    {
+    }
+
+    /**
      * POST /api/update-profile — replaces public/api/update-profile.php.
      *
      * Verifies the session belongs to the user, optionally updates the
@@ -233,7 +241,7 @@ final class ProfileController
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
             // Upload photo
-            $photoService = new PhotoService();
+            $photoService = $this->photoService ?? new PhotoService();
             $result = $photoService->uploadPhoto($_FILES['photo'], $username, $recipient, $ipAddress);
 
             return Response::json([

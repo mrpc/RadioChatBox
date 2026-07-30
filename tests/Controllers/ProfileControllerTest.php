@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\ProfileController;
 use Pramnos\Database\Database;
+use RadioChatBox\Services\PhotoService;
 use RadioChatBox\Services\UserService;
 
 /**
@@ -233,5 +234,67 @@ class ProfileControllerTest extends TestCase
             'ip'  => '127.0.0.1',
             'uid' => $userId,
         ]);
+    }
+
+    /**
+     * upload-photo happy path: with valid fields and a real image file it stores
+     * the photo via the (injected) PhotoService and returns
+     * {success:true, attachment:{…}}. A PhotoService double accepts the CLI temp
+     * file (is_uploaded_file is false under PHPUnit). The stored file + DB row are
+     * cleaned up.
+     */
+    public function testUploadPhotoStoresViaInjectedService(): void
+    {
+        $im = imagecreatetruecolor(150, 150);
+        imagefilledrectangle($im, 0, 0, 150, 150, imagecolorallocate($im, 40, 160, 90));
+        $tmp = tempnam(sys_get_temp_dir(), 'pcup') . '.jpg';
+        imagejpeg($im, $tmp);
+        imagedestroy($im);
+
+        $photoService = new class extends PhotoService {
+            protected function isUploadedFile(string $path): bool
+            {
+                return is_file($path);
+            }
+        };
+
+        $uploader = 'pcup_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $_POST  = ['username' => $uploader, 'recipient' => 'peer_' . $uploader];
+        $_FILES = ['photo' => [
+            'tmp_name' => $tmp,
+            'name'     => 'pic.jpg',
+            'size'     => filesize($tmp),
+            'error'    => UPLOAD_ERR_OK,
+            'type'     => 'image/jpeg',
+        ]];
+
+        $attachmentId = null;
+        try {
+            $response = (new ProfileController($photoService))->uploadPhoto();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertArrayHasKey('attachment_id', $body['attachment']);
+            $attachmentId = $body['attachment']['attachment_id'];
+
+            $disk = dirname(__DIR__, 2) . '/public' . $body['attachment']['file_path'];
+            $this->assertFileExists($disk);
+        } finally {
+            @unlink($tmp);
+            if ($attachmentId !== null) {
+                $pdo  = TestDatabase::connection();
+                $stmt = $pdo->prepare('SELECT file_path FROM attachments WHERE attachment_id = ?');
+                $stmt->execute([$attachmentId]);
+                $fp = (string) $stmt->fetchColumn();
+                if ($fp !== '') {
+                    $disk = dirname(__DIR__, 2) . '/public' . $fp;
+                    if (is_file($disk)) {
+                        @unlink($disk);
+                    }
+                }
+                $pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$attachmentId]);
+            }
+        }
     }
 }
