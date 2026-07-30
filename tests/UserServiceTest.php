@@ -332,4 +332,29 @@ class UserServiceTest extends TestCase
         $this->assertContains('moderator', $roles);
         $this->assertContains('simple_user', $roles);
     }
+
+    /**
+     * authenticate() returns the sanitized user for the right password, and null
+     * for a wrong password, an unknown identifier, and a deactivated account —
+     * covering all four guard branches. The returned row never carries the hash.
+     */
+    public function testAuthenticateBranches(): void
+    {
+        $username = $this->uniqueUsername('auth');
+        $password = 'Auth-Str0ng-Pass!';
+        $this->userService->createUser($username, $password, 'moderator', $username . '@x.example');
+
+        $ok = $this->userService->authenticate($username, $password);
+        $this->assertIsArray($ok);
+        $this->assertSame($username, $ok['username']);
+        $this->assertArrayNotHasKey('password_hash', $ok, 'the hash must never be returned');
+
+        $this->assertNull($this->userService->authenticate($username, 'wrong'), 'wrong password fails');
+        $this->assertNull($this->userService->authenticate('no_such_' . $this->suffix, $password), 'unknown user fails');
+
+        // Deactivate and confirm the is_active guard rejects it.
+        $id = (int) $this->userService->getUserByUsername($username)['id'];
+        $this->userService->updateUser($id, ['is_active' => false]);
+        $this->assertNull($this->userService->authenticate($username, $password), 'inactive account fails');
+    }
 }

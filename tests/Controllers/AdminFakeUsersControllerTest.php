@@ -5,6 +5,7 @@ namespace RadioChatBox\Tests\Controllers;
 use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use Pramnos\Cache\FlatCache;
 use Pramnos\Framework\Testing\TestDatabase;
 use RadioChatBox\Controllers\AdminFakeUsersController;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -24,11 +25,33 @@ class AdminFakeUsersControllerTest extends TestCase
 {
     /** @var string[] nickname fragments to clean from fake_users in tearDown */
     private array $cleanupNicks = [];
+    private ?string $sessionKey = null;
+
+    /** Fake an administrator session for the RBAC-gated clear-history action. */
+    private function authAsAdmin(string $id): void
+    {
+        try {
+            $key = 'admin_session:' . $id;
+            FlatCache::default()->set($key, ['username' => $id, 'role' => 'administrator'], 120);
+            $this->sessionKey = $key;
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $id . ':x';
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
+        }
+    }
 
     protected function tearDown(): void
     {
         $_POST = [];
         $_GET  = [];
+        if ($this->sessionKey !== null) {
+            try {
+                FlatCache::default()->delete($this->sessionKey);
+            } catch (\Throwable) {
+            }
+            $this->sessionKey = null;
+            unset($_SERVER['HTTP_AUTHORIZATION']);
+        }
         if ($this->cleanupNicks !== []) {
             $pdo = TestDatabase::connection();
             foreach ($this->cleanupNicks as $n) {
@@ -78,6 +101,40 @@ class AdminFakeUsersControllerTest extends TestCase
 
         $_POST = ['id' => $id];
         $this->assertSame(200, (new AdminFakeUsersController())->delete()->getStatusCode());
+    }
+
+    /**
+     * clearHistory (privileged) by nickname clears a fake user's bot conversation:
+     * with an active fake user and a seeded inbound DM it returns {success:true,
+     * nickname, cleared:{messages, threads}}. Drives the success branch behind the
+     * RBAC gate the other test only checks for 403.
+     */
+    public function testClearHistorySucceedsForAdmin(): void
+    {
+        $frag = substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanupNicks[] = $frag;
+        $fake = 'ch' . $frag;
+        $this->authAsAdmin('fakeadmin_' . $frag);
+
+        $pdo = TestDatabase::connection();
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')->execute([$fake]);
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, from_session_id, to_username, to_session_id, message, created_at)
+             VALUES ('sender', 's', ?, ?, 'hi', NOW())"
+        )->execute([$fake, 'fake_' . md5($fake)]);
+
+        try {
+            $_POST = ['nickname' => $fake];
+            $response = (new AdminFakeUsersController())->clearHistory();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = $this->body($response);
+            $this->assertTrue($body['success']);
+            $this->assertSame($fake, $body['nickname']);
+            $this->assertArrayHasKey('messages', $body['cleared']);
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE to_username = ?')->execute([$fake]);
+        }
     }
 
     /**
