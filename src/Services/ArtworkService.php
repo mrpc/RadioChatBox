@@ -3,6 +3,8 @@
 namespace RadioChatBox\Services;
 
 use Pramnos\Cache\FlatCache;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientException;
 /**
  * Fetches album cover art and artist images for tracks and stores them locally.
  *
@@ -524,30 +526,25 @@ class ArtworkService
      */
     private function httpGet(string $url, bool $binary = false): ?string
     {
-        if (function_exists('curl_init')) {
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_TIMEOUT => self::HTTP_TIMEOUT,
-                CURLOPT_CONNECTTIMEOUT => self::HTTP_TIMEOUT,
-                CURLOPT_USERAGENT => 'RadioChatBox/1.0 (+artwork)',
-                CURLOPT_SSL_VERIFYPEER => true,
-            ]);
-            $body = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            if ($body === false || $code >= 400) {
-                return null;
-            }
-            return $body;
+        // Fetch through the framework HTTP client (curl underneath, same TLS
+        // verification + redirect following). Behaviour matches the former raw
+        // curl: a transport error or any >= 400 status yields null. Routing every
+        // provider/image fetch through Client makes them fakeable in tests via
+        // Client::fake().
+        try {
+            $response = Client::get($url)
+                ->timeout(self::HTTP_TIMEOUT)
+                ->connectTimeout(self::HTTP_TIMEOUT)
+                ->userAgent('RadioChatBox/1.0 (+artwork)')
+                ->send();
+        } catch (ClientException) {
+            return null;
         }
 
-        $ctx = stream_context_create(['http' => [
-            'timeout' => self::HTTP_TIMEOUT,
-            'header' => "User-Agent: RadioChatBox/1.0 (+artwork)\r\n",
-        ]]);
-        $body = @file_get_contents($url, false, $ctx);
-        return $body === false ? null : $body;
+        if ($response->status() >= 400) {
+            return null;
+        }
+
+        return $response->body();
     }
 }
