@@ -133,11 +133,36 @@ class ChatServiceExtraTest extends TestCase
     {
         $this->service->registerUser($this->user, $this->session, $this->ip);
 
-        $all = $this->service->getAllUsers();
-        $this->assertContains($this->user, array_column($all, 'username'));
+        // An active fake user so the fake-user formatting branch runs.
+        $fakeNick = 'fk' . $this->suffix;
+        $fakeSvc  = new \RadioChatBox\Services\FakeUserService();
+        $fake     = $fakeSvc->addFakeUser($fakeNick, 24, 'female', 'Athens');
+        $fakeSvc->setFakeUserActive((int) $fake['id'], true);
 
-        // Second call returns the cached value byte-for-byte.
-        $this->assertSame($all, $this->service->getAllUsers());
+        try {
+            // Bust the 30s combined-list cache from any earlier call this run.
+            FlatCache::default()->delete('chat:all_users');
+
+            $all = $this->service->getAllUsers();
+            $this->assertContains($this->user, array_column($all, 'username'));
+
+            $fakeRow = null;
+            foreach ($all as $u) {
+                if (($u['username'] ?? null) === $fakeNick) {
+                    $fakeRow = $u;
+                    break;
+                }
+            }
+            $this->assertNotNull($fakeRow, 'the active fake user must be merged in');
+            $this->assertTrue($fakeRow['is_fake'], 'fake users are flagged is_fake');
+            $this->assertSame('Athens', $fakeRow['location']);
+
+            // Second call returns the cached value byte-for-byte.
+            $this->assertSame($all, $this->service->getAllUsers());
+        } finally {
+            TestDatabase::connection()->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fakeNick]);
+            FlatCache::default()->delete('chat:all_users');
+        }
     }
 
     /**

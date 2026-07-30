@@ -293,6 +293,40 @@ class AdminStatsControllerTest extends TestCase
         $this->assertTrue($this->body($r)['success']);
     }
 
+    /** stats(): every remaining granularity branch returns 200 with its data. */
+    public function testStatsAllGranularitiesReturnData(): void
+    {
+        $this->authAsAdmin();
+        foreach (['hourly', 'weekly', 'monthly', 'yearly'] as $granularity) {
+            $_GET = ['granularity' => $granularity];
+            $r = (new AdminStatsController())->stats();
+            $this->assertSame(200, $r->getStatusCode(), "granularity {$granularity} must return 200");
+            $body = $this->body($r);
+            $this->assertTrue($body['success']);
+            $this->assertSame($granularity, $body['granularity']);
+        }
+    }
+
+    /**
+     * botActivity view=balance returns the provider balance envelope. With no API
+     * key configured the account is unconfigured and balance is null, but the
+     * whole balance branch (LlmAccount reads) still runs.
+     */
+    public function testBotActivityBalanceViewReturnsEnvelope(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['view' => 'balance'];
+
+        $r = (new AdminStatsController())->botActivity();
+        $this->assertSame(200, $r->getStatusCode());
+        $body = $this->body($r);
+        $this->assertTrue($body['success']);
+        $this->assertArrayHasKey('configured', $body);
+        $this->assertArrayHasKey('provider', $body);
+        $this->assertArrayHasKey('supports_balance', $body);
+    }
+
     /** trackStats() GET: every read-only report mode returns success. */
     public function testTrackStatsGetReportModes(): void
     {
