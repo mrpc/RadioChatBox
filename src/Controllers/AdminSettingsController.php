@@ -35,6 +35,19 @@ use RadioChatBox\Services\SettingsService;
  */
 final class AdminSettingsController
 {
+    /** @var callable(string,string):bool moves an uploaded file to its destination */
+    private $fileMover;
+
+    /**
+     * @param (callable(string,string):bool)|null $fileMover Injectable for tests;
+     *   defaults to move_uploaded_file() so production behaviour is unchanged (a
+     *   PHPUnit temp file is not a genuine upload, so a test passes copy()).
+     */
+    public function __construct(?callable $fileMover = null)
+    {
+        $this->fileMover = $fileMover ?? 'move_uploaded_file';
+    }
+
     /**
      * GET /api/admin/settings — the full settings map (minus the admin password
      * hash) plus derived helpers: PHP upload limit, embed code/url, bot farewell
@@ -255,8 +268,9 @@ final class AdminSettingsController
             $filename = $logoType . '_' . time() . '_' . uniqid() . '.' . $extension;
             $filePath = $uploadDir . $filename;
 
-            // Move uploaded file
-            if (!move_uploaded_file($file['tmp_name'], $filePath)) {
+            // Move uploaded file (through the injectable mover, so tests can store
+            // a temp file that is not a genuine HTTP upload).
+            if (!($this->fileMover)($file['tmp_name'], $filePath)) {
                 return Response::json(['error' => 'Failed to save file'], 500);
             }
 

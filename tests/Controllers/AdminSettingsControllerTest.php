@@ -319,6 +319,57 @@ class AdminSettingsControllerTest extends TestCase
     }
 
     /**
+     * POST /api/admin/upload-logo happy path: with a valid image and the injected
+     * file mover (copy, since a PHPUnit temp file is not a genuine upload) it
+     * stores the file, writes the logo_url setting and returns {success, url}. The
+     * stored file and the setting are cleaned up.
+     */
+    public function testUploadLogoStoresFileAndSetting(): void
+    {
+        $im = imagecreatetruecolor(64, 64);
+        imagefilledrectangle($im, 0, 0, 64, 64, imagecolorallocate($im, 200, 200, 0));
+        $tmp = tempnam(sys_get_temp_dir(), 'logo') . '.png';
+        imagepng($im, $tmp);
+        imagedestroy($im);
+
+        $_POST  = ['type' => 'logo'];
+        $_FILES = ['logo' => [
+            'tmp_name' => $tmp,
+            'name'     => 'brand.png',
+            'size'     => filesize($tmp),
+            'error'    => UPLOAD_ERR_OK,
+            'type'     => 'image/png',
+        ]];
+
+        $controller = new AdminSettingsController(static fn (string $from, string $to): bool => copy($from, $to));
+
+        $storedUrl = null;
+        try {
+            $response = $controller->uploadLogo();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertStringContainsString('/uploads/logos/', $body['url']);
+            $storedUrl = $body['url'];
+
+            // The setting was written.
+            $this->assertSame($body['url'], (new \RadioChatBox\Services\SettingsService())->get('logo_url'));
+        } finally {
+            @unlink($tmp);
+            if ($storedUrl !== null) {
+                $rel  = parse_url($storedUrl, PHP_URL_PATH) ?: '';
+                $disk = dirname(__DIR__, 2) . '/public' . $rel;
+                if (is_file($disk)) {
+                    @unlink($disk);
+                }
+            }
+            Database::getInstance()->queryBuilder()->from('settings')
+                ->where('setting_key', '=', 'logo_url')->delete();
+        }
+    }
+
+    /**
      * PUT /api/admin/notifications with clear_read removes the caller's already-read
      * notifications and reports the count (the clear-read branch; typically 0 in a
      * clean test DB, which still exercises the DELETE + count).
