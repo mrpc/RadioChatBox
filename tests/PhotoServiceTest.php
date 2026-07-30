@@ -145,4 +145,64 @@ class PhotoServiceTest extends TestCase
         $live        = $service->getTotalAttachmentsCount(false);
         $this->assertGreaterThanOrEqual($live, $withDeleted, 'including deleted never counts fewer');
     }
+
+    /**
+     * uploadPhoto processes a real (test-double-accepted) upload end to end:
+     * validates it, decodes + resizes an oversized image via GD, stores the
+     * optimised file and a DB row, and returns the attachment metadata. The
+     * is_uploaded_file() gate is bypassed by the test double so the pipeline runs
+     * under CLI. The stored file and row are cleaned up.
+     */
+    public function testUploadPhotoStoresAnOptimisedImageAndRow(): void
+    {
+        // A real oversized JPEG on disk, to also drive the resize branch.
+        $img = imagecreatetruecolor(2200, 400);
+        imagefilledrectangle($img, 0, 0, 2200, 400, imagecolorallocate($img, 30, 90, 160));
+        $tmp = tempnam(sys_get_temp_dir(), 'upl') . '.jpg';
+        imagejpeg($img, $tmp);
+        imagedestroy($img);
+
+        $service = new class extends PhotoService {
+            protected function isUploadedFile(string $path): bool
+            {
+                return is_file($path); // accept a real temp file under CLI
+            }
+        };
+
+        $uploaded = null;
+        try {
+            $uploaded = $service->uploadPhoto(
+                [
+                    'tmp_name' => $tmp,
+                    'name'     => 'holiday.jpg',
+                    'size'     => filesize($tmp),
+                    'error'    => UPLOAD_ERR_OK,
+                    'type'     => 'image/jpeg',
+                ],
+                'uploader_' . substr($this->id, 10),
+                'recipient_' . substr($this->id, 10),
+                '127.0.0.1'
+            );
+
+            $this->assertArrayHasKey('attachment_id', $uploaded);
+            $this->assertSame('image/jpeg', $uploaded['mime_type']);
+            // Oversized width was scaled down to the 1920 cap.
+            $this->assertLessThanOrEqual(1920, $uploaded['width']);
+
+            // The optimised file really exists, and a live DB row was written.
+            $disk = dirname(__DIR__) . '/public' . $uploaded['file_path'];
+            $this->assertFileExists($disk);
+            $this->assertIsArray($service->getAttachment($uploaded['attachment_id']));
+        } finally {
+            @unlink($tmp);
+            if ($uploaded !== null) {
+                $disk = dirname(__DIR__) . '/public' . ($uploaded['file_path'] ?? '');
+                if ($uploaded['file_path'] ?? null && is_file($disk)) {
+                    @unlink($disk);
+                }
+                $this->pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')
+                    ->execute([$uploaded['attachment_id']]);
+            }
+        }
+    }
 }

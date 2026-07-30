@@ -292,7 +292,7 @@ class PhotoService
      */
     private function validateFile(array $file): void
     {
-        if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        if (!isset($file['tmp_name']) || !$this->isUploadedFile($file['tmp_name'])) {
             throw new \RuntimeException('No file uploaded');
         }
 
@@ -309,6 +309,17 @@ class PhotoService
         if (!in_array($ext, $this->allowedExtensions)) {
             throw new \RuntimeException('Invalid file extension');
         }
+    }
+
+    /**
+     * Whether $path is a genuine HTTP file upload. Wraps is_uploaded_file() so the
+     * upload pipeline stays testable: is_uploaded_file() is always false under
+     * CLI/PHPUnit, so a test double overrides this to accept a real temp file.
+     * Production behaviour is unchanged.
+     */
+    protected function isUploadedFile(string $path): bool
+    {
+        return is_uploaded_file($path);
     }
 
     /**
