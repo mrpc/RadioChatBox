@@ -115,4 +115,34 @@ class PhotoServiceTest extends TestCase
         $withTrash = array_column($service->getAllAttachments(500, 0, true), 'attachment_id');
         $this->assertContains($this->id, $withTrash, 'they appear when deleted ones are included');
     }
+
+    /**
+     * getAttachmentsByUser lists a live photo for its uploader (the converted
+     * uploaded_by / is_deleted = FALSE read, cached per user).
+     */
+    public function testGetAttachmentsByUserListsLivePhoto(): void
+    {
+        $service = new PhotoService();
+
+        $ids = array_column($service->getAttachmentsByUser('phototester'), 'attachment_id');
+        $this->assertContains($this->id, $ids);
+    }
+
+    /**
+     * getTotalAttachmentsCount counts live photos, and counts more (or equal)
+     * when soft-deleted ones are included — covering both branches.
+     */
+    public function testTotalAttachmentsCountBranches(): void
+    {
+        $service = new PhotoService();
+
+        $liveBefore = $service->getTotalAttachmentsCount(false);
+        $this->assertGreaterThanOrEqual(1, $liveBefore, 'our live photo is counted');
+
+        $this->cleanupQuietly($service); // trashes our photo
+
+        $withDeleted = $service->getTotalAttachmentsCount(true);
+        $live        = $service->getTotalAttachmentsCount(false);
+        $this->assertGreaterThanOrEqual($live, $withDeleted, 'including deleted never counts fewer');
+    }
 }
