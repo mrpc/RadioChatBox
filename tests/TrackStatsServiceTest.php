@@ -6,6 +6,8 @@ use Pramnos\Framework\Testing\TestDatabase;
 
 use PHPUnit\Framework\TestCase;
 use Pramnos\Database\Database;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientResponse;
 use RadioChatBox\Services\TrackStatsService;
 
 /**
@@ -39,6 +41,7 @@ class TrackStatsServiceTest extends TestCase
 
     protected function tearDown(): void
     {
+        Client::resetFakes();
         $pdo = TestDatabase::connection();
         $like = '%' . $this->suffix . '%';
         // Children before parents.
@@ -241,5 +244,55 @@ class TrackStatsServiceTest extends TestCase
 
         $artistId = (int) $this->service->getArtistRowByName($this->artist())['id'];
         $this->assertTrue($this->service->updateArtistMeta($artistId, ['genre' => 'Funk ' . $this->suffix]));
+    }
+
+    /**
+     * enrichTrack with a feed that carries the album title and cover URL: the
+     * external providers are faked to return no match, so the feed values win —
+     * the cover image is downloaded and stored, an album row is created and
+     * linked, and the track is stamped enriched. Exercises the enrichment DB
+     * flow (upsertAlbum + artist/track updates) without any live HTTP.
+     */
+    public function testEnrichTrackWithFeedAlbumAndCover(): void
+    {
+        // A valid in-memory JPEG for the feed cover download.
+        $img = imagecreatetruecolor(80, 80);
+        imagefilledrectangle($img, 0, 0, 80, 80, imagecolorallocate($img, 200, 60, 30));
+        ob_start();
+        imagejpeg($img);
+        $jpeg = (string) ob_get_clean();
+        imagedestroy($img);
+
+        Client::fake([
+            '*api.deezer.com*'   => ClientResponse::make(['data' => []]),
+            '*itunes.apple.com*' => ClientResponse::make(['results' => []]),
+            '*feedcover.test*'   => ClientResponse::make($jpeg),
+        ]);
+
+        $trackId = (int) $this->service->recordPlay($this->nowPlaying('A'));
+        $coverWeb = null;
+
+        try {
+            $ok = $this->service->enrichTrack($trackId, [
+                'album'      => 'Feed Album ' . $this->suffix,
+                'feed_cover' => 'https://feedcover.test/cover.jpg',
+            ]);
+            $this->assertTrue($ok);
+
+            $track = $this->service->getTrackById($trackId);
+            $this->assertNotNull($track['enriched_at'], 'the track must be marked enriched');
+            $this->assertNotNull($track['album_id'], 'the feed album must be created and linked');
+            $this->assertNotEmpty($track['cover_file'], 'the feed cover must be downloaded and stored');
+            $coverWeb = $track['cover_file'];
+        } finally {
+            if ($coverWeb) {
+                $disk = dirname(__DIR__) . '/public' . $coverWeb;
+                foreach ([$disk, preg_replace('/\.jpg$/i', '_thumb.jpg', $disk)] as $f) {
+                    if (is_file($f)) {
+                        @unlink($f);
+                    }
+                }
+            }
+        }
     }
 }
