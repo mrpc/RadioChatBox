@@ -319,6 +319,42 @@ class AdminSettingsControllerTest extends TestCase
     }
 
     /**
+     * PUT /api/admin/notifications with clear_read removes the caller's already-read
+     * notifications and reports the count (the clear-read branch; typically 0 in a
+     * clean test DB, which still exercises the DELETE + count).
+     */
+    public function testNotificationsUpdateClearRead(): void
+    {
+        $this->authAsAdmin();
+        $_POST = ['clear_read' => true];
+
+        $response = (new AdminSettingsController())->notificationsUpdate();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertStringContainsString('read notification(s)', $body['message']);
+    }
+
+    /**
+     * PUT /api/admin/notifications with a non-empty body carrying none of
+     * notification_id/mark_all_read/clear_read hits the "required" 400 guard.
+     */
+    public function testNotificationsUpdateRequiresAnAction(): void
+    {
+        $this->authAsAdmin();
+        $_POST = ['unrelated' => 'x'];
+
+        $response = (new AdminSettingsController())->notificationsUpdate();
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            'notification_id, mark_all_read, or clear_read is required',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
+
+    /**
      * POST /api/admin/update-settings writes an arbitrary key/value map via
      * SettingsService::setMultiple and reports success. A throwaway key is used
      * and removed afterwards so no real setting is disturbed.

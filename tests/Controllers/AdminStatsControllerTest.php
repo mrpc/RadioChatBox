@@ -238,6 +238,41 @@ class AdminStatsControllerTest extends TestCase
         return json_decode($r->getBody(), true) ?: [];
     }
 
+    /**
+     * botActivity view=thread with fake_user+peer returns the per-thread state,
+     * message list and matching LLM calls (empty is fine) — drives the thread
+     * branch's getThreadState/threadMessages/log page reads.
+     */
+    public function testBotActivityThreadViewReturnsState(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['view' => 'thread', 'fake_user' => 'nobody_' . $this->suffix, 'peer' => 'peer_' . $this->suffix];
+
+        $r = (new AdminStatsController())->botActivity();
+        $this->assertSame(200, $r->getStatusCode());
+        $b = $this->body($r);
+        $this->assertTrue($b['success']);
+        $this->assertArrayHasKey('state', $b);
+        $this->assertArrayHasKey('messages', $b);
+        $this->assertArrayHasKey('calls', $b);
+    }
+
+    /**
+     * botActivity view=call with an unknown id returns 404 "Log entry not found"
+     * (the LlmLog::find miss branch).
+     */
+    public function testBotActivityCallViewNotFound(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['view' => 'call', 'id' => 0];
+
+        $r = (new AdminStatsController())->botActivity();
+        $this->assertSame(404, $r->getStatusCode());
+        $this->assertSame('Log entry not found', $this->body($r)['error']);
+    }
+
     /** stats(): the summary granularity returns success. */
     public function testStatsSummaryReturnsData(): void
     {

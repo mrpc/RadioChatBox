@@ -235,6 +235,27 @@ class AdminSystemControllerTest extends TestCase
     }
 
     /**
+     * GET /api/admin/photos?action=by_user returns that user's attachments with a
+     * count (the by_user branch); an empty username hits the 400 guard.
+     */
+    public function testPhotosByUserReturnsCountAndRejectsEmpty(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+
+        $_GET = ['action' => 'by_user', 'username' => 'nobody_' . bin2hex(random_bytes(3))];
+        $ok = (new AdminSystemController())->photos();
+        $this->assertSame(200, $ok->getStatusCode());
+        $body = json_decode($ok->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertSame(count($body['photos']), $body['count']);
+
+        $_GET = ['action' => 'by_user', 'username' => ''];
+        $bad = (new AdminSystemController())->photos();
+        $this->assertSame(400, $bad->getStatusCode());
+        $this->assertSame('Username is required', json_decode($bad->getBody(), true)['error']);
+    }
+
+    /**
      * POST /api/admin/create-session mints a stream token and stores it in Redis
      * with a 24h TTL. Asserts the {success, session_token, expires_in} envelope
      * and that the token key really exists, then deletes it so nothing leaks.
