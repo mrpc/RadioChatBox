@@ -159,10 +159,10 @@ class ChatService
                 'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to, m.pinned_track,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
-                 FROM messages m
-                 LEFT JOIN messages r ON m.reply_to = r.message_id
-                 LEFT JOIN users u ON m.user_id = u.id
-                 LEFT JOIN users ru ON r.user_id = ru.id
+                 FROM chat_messages m
+                 LEFT JOIN chat_messages r ON m.reply_to = r.message_id
+                 LEFT JOIN users u ON m.user_id = u.userid
+                 LEFT JOIN users ru ON r.user_id = ru.userid
                  WHERE m.is_deleted = false
                  ORDER BY m.created_at DESC
                  LIMIT :limit',
@@ -225,10 +225,10 @@ class ChatService
                 'SELECT m.message_id, m.username, m.message, m.ip_address, m.created_at, m.edited_at, m.reply_to, m.pinned_track,
                         r.username as reply_username, r.message as reply_message,
                         u.display_name, ru.display_name as reply_display_name
-                 FROM messages m
-                 LEFT JOIN messages r ON m.reply_to = r.message_id
-                 LEFT JOIN users u ON m.user_id = u.id
-                 LEFT JOIN users ru ON r.user_id = ru.id
+                 FROM chat_messages m
+                 LEFT JOIN chat_messages r ON m.reply_to = r.message_id
+                 LEFT JOIN users u ON m.user_id = u.userid
+                 LEFT JOIN users ru ON r.user_id = ru.userid
                  WHERE m.is_deleted = false
                  ORDER BY m.created_at DESC
                  LIMIT :limit OFFSET :offset',
@@ -294,8 +294,8 @@ class ChatService
             } else {
                 // PERFORMANCE OPTIMIZATION: Fetch both settings in ONE query instead of two
                 $result = $this->db->query(
-                    "SELECT setting_key, setting_value FROM settings
-                     WHERE setting_key IN ('rate_limit_messages', 'rate_limit_window')"
+                    "SELECT setting, value FROM settings
+                     WHERE setting IN ('rate_limit_messages', 'rate_limit_window')"
                 );
                 $rows = $result ? $result->fetchAll() : [];
                 $results = [];
@@ -390,7 +390,7 @@ class ChatService
             $displayName = $messageData['display_name'] ?? null;
 
             $result = $this->db->preparedQuery(
-                'INSERT INTO messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to, pinned_track)
+                'INSERT INTO chat_messages (message_id, username, user_id, display_name, message, ip_address, created_at, reply_to, pinned_track)
                  VALUES (:message_id, :username, :user_id, :display_name, :message, :ip_address, :created_at, :reply_to, :pinned_track)',
                 [
                     'message_id' => $messageData['id'],
@@ -438,8 +438,8 @@ class ChatService
             // Fallback to database
             $result = $this->db->preparedQuery(
                 'SELECT m.username, m.message, u.display_name
-                 FROM messages m
-                 LEFT JOIN users u ON m.user_id = u.id
+                 FROM chat_messages m
+                 LEFT JOIN users u ON m.user_id = u.userid
                  WHERE m.message_id = :message_id AND m.is_deleted = false
                  LIMIT 1',
                 ['message_id' => $messageId]
@@ -494,13 +494,13 @@ class ChatService
 
             // Fetch from database (single query for both fields)
             $result = $this->db->preparedQuery(
-                'SELECT id, display_name FROM users WHERE username = :username AND is_active = true LIMIT 1',
+                'SELECT userid, display_name FROM users WHERE username = :username AND is_active = true LIMIT 1',
                 ['username' => $username]
             );
             $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
             $userData = [
-                'user_id' => $row ? $row['id'] : null,
+                'user_id' => $row ? $row['userid'] : null,
                 'display_name' => $row ? $row['display_name'] : null,
             ];
 
@@ -548,8 +548,8 @@ class ChatService
             // Check if this session has a user_id matching the registered username
             $result = $this->db->preparedQuery(
                 'SELECT s.user_id, u.username 
-                 FROM sessions s 
-                 INNER JOIN users u ON s.user_id = u.id 
+                 FROM presence_sessions s
+                 INNER JOIN users u ON s.user_id = u.userid
                  WHERE s.session_id = :session_id AND u.username = :username',
                 [
                     'session_id' => $sessionId,
@@ -578,7 +578,7 @@ class ChatService
         
         // Check if this is a registered username
         $result = $this->db->preparedQuery(
-            'SELECT id, username FROM users WHERE username = :username',
+            'SELECT userid, username FROM users WHERE username = :username',
             ['username' => $nickname]
         );
         $registeredUser = ($result && $result->numRows > 0) ? $result->fields : null;
@@ -607,7 +607,7 @@ class ChatService
 
         // For non-registered nicknames, check if taken by another session
         $result = $this->db->preparedQuery(
-            'SELECT session_id FROM sessions WHERE LOWER(username) = LOWER(:username)',
+            'SELECT session_id FROM presence_sessions WHERE LOWER(username) = LOWER(:username)',
             ['username' => $nickname]
         );
         $existingSession = $result ? $result->fetchColumn() : false;
@@ -644,7 +644,7 @@ class ChatService
         
         // Check if username matches a registered user account
         $result = $this->db->preparedQuery(
-            'SELECT id, username FROM users WHERE username = :username',
+            'SELECT userid, username FROM users WHERE username = :username',
             ['username' => $username]
         );
         $registeredUser = ($result && $result->numRows > 0) ? $result->fields : null;
@@ -660,7 +660,7 @@ class ChatService
         } else {
             // Check if username conflicts with any user's display name
             $result = $this->db->preparedQuery(
-                'SELECT id, username FROM users WHERE display_name = :username',
+                'SELECT userid, username FROM users WHERE display_name = :username',
                 ['username' => $username]
             );
             $userWithDisplayName = ($result && $result->numRows > 0) ? $result->fields : null;
@@ -684,7 +684,7 @@ class ChatService
             }
             // For non-registered usernames, enforce one session per username
             $result = $this->db->preparedQuery(
-                'SELECT session_id FROM sessions WHERE username = :username',
+                'SELECT session_id FROM presence_sessions WHERE username = :username',
                 ['username' => $username]
             );
             $existingUser = ($result && $result->numRows > 0) ? $result->fields : null;
@@ -700,7 +700,7 @@ class ChatService
             // Insert or update active session
             // Note: ON CONFLICT now uses (username, session_id) to allow multiple sessions for authenticated users
             $this->db->preparedQuery(
-                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
                  ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
@@ -710,7 +710,7 @@ class ChatService
                     'username' => $username,
                     'session_id' => $sessionId,
                     'ip_address' => $ipAddress,
-                    'user_id' => $registeredUser !== null ? $registeredUser['id'] : null,
+                    'user_id' => $registeredUser !== null ? $registeredUser['userid'] : null,
                 ]
             );
 
@@ -724,7 +724,7 @@ class ChatService
                 [
                     'username' => $username,
                     'ip_address' => $ipAddress,
-                    'user_id' => $registeredUser !== null ? $registeredUser['id'] : null,
+                    'user_id' => $registeredUser !== null ? $registeredUser['userid'] : null,
                 ]
             );
 
@@ -767,7 +767,7 @@ class ChatService
         try {
             // Delete session from database
             $result = $this->db->preparedQuery(
-                'DELETE FROM sessions WHERE session_id = :session_id',
+                'DELETE FROM presence_sessions WHERE session_id = :session_id',
                 ['session_id' => $sessionId]
             );
 
@@ -795,7 +795,7 @@ class ChatService
             $this->cleanupInactiveSessions();
 
             $result = $this->db->preparedQuery(
-                'UPDATE sessions
+                'UPDATE presence_sessions
                  SET last_heartbeat = NOW()
                  WHERE username = :username AND session_id = :session_id',
                 [
@@ -851,9 +851,9 @@ class ChatService
     {
         try {
             $stmt = $this->db->preparedQuery(
-                'SELECT s.username, s.session_id, s.user_id, s.ip_address, s.last_heartbeat, u.role as user_role
-                 FROM sessions s
-                 LEFT JOIN users u ON s.user_id = u.id
+                'SELECT s.username, s.session_id, s.user_id, s.ip_address, s.last_heartbeat, u.usertype as user_usertype
+                 FROM presence_sessions s
+                 LEFT JOIN users u ON s.user_id = u.userid
                  WHERE s.username = :username AND s.session_id = :session_id',
                 [
                     'username' => $username,
@@ -862,6 +862,13 @@ class ChatService
             );
 
             $result = ($stmt && $stmt->numRows > 0) ? $stmt->fields : null;
+            if ($result !== null) {
+                // Preserve the JSON contract: expose a role LABEL (was u.role),
+                // now derived from the usertype ladder. Guests (no user row) → null.
+                $result['user_role'] = isset($result['user_usertype']) && $result['user_usertype'] !== null
+                    ? Authz::labelForUsertype((int) $result['user_usertype'])
+                    : null;
+            }
             return $result ?: null;
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
@@ -890,9 +897,9 @@ class ChatService
                     p.location,
                     p.sex,
                     u.display_name
-                 FROM sessions a
+                 FROM presence_sessions a
                  LEFT JOIN user_profiles p ON a.username = p.username
-                 LEFT JOIN users u ON a.user_id = u.id
+                 LEFT JOIN users u ON a.user_id = u.userid
                  ORDER BY a.username, a.joined_at ASC'
             );
 
@@ -913,7 +920,7 @@ class ChatService
         $this->cleanupInactiveSessions();
         
         try {
-            $stmt = $this->db->query('SELECT COUNT(*) FROM sessions');
+            $stmt = $this->db->query('SELECT COUNT(*) FROM presence_sessions');
             return (int)$stmt->fetchColumn();
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
@@ -1004,7 +1011,7 @@ class ChatService
     {
         try {
             $this->db->preparedQuery(
-                'DELETE FROM sessions 
+                'DELETE FROM presence_sessions
                  WHERE username = :username AND session_id = :session_id',
                 [
                     'username' => $username,
@@ -1183,9 +1190,9 @@ class ChatService
                 // Only public messages (non-deleted)
                 $sql =
                     'SELECT message_id, username, message, ip_address, created_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username
-                     FROM messages 
+                     FROM chat_messages
                      WHERE is_deleted = FALSE
-                     ORDER BY created_at DESC 
+                     ORDER BY created_at DESC
                      LIMIT :limit OFFSET :offset';
                 $params = ['limit' => $limit, 'offset' => $offset];
             } elseif ($type === 'private') {
@@ -1218,7 +1225,7 @@ class ChatService
                         \'public\' as message_type, 
                         NULL as from_username, 
                         NULL as to_username
-                     FROM messages 
+                     FROM chat_messages
                      WHERE is_deleted = FALSE)
                     UNION ALL
                     (SELECT 
@@ -1255,12 +1262,12 @@ class ChatService
     {
         try {
             if (!$includePrivate || $type === 'public') {
-                $stmt = $this->db->query('SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE');
+                $stmt = $this->db->query('SELECT COUNT(*) FROM chat_messages WHERE is_deleted = FALSE');
             } elseif ($type === 'private') {
                 $stmt = $this->db->query('SELECT COUNT(*) FROM private_messages');
             } else {
                 $stmt = $this->db->query(
-                    'SELECT (SELECT COUNT(*) FROM messages WHERE is_deleted = FALSE) + (SELECT COUNT(*) FROM private_messages) AS total'
+                    'SELECT (SELECT COUNT(*) FROM chat_messages WHERE is_deleted = FALSE) + (SELECT COUNT(*) FROM private_messages) AS total'
                 );
             }
             return (int)$stmt->fetchColumn();
@@ -1278,7 +1285,7 @@ class ChatService
     public function getTotalActiveUsersCount(): int
     {
         try {
-            $stmt = $this->db->query('SELECT COUNT(*) FROM sessions');
+            $stmt = $this->db->query('SELECT COUNT(*) FROM presence_sessions');
             return (int)$stmt->fetchColumn();
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
@@ -1367,7 +1374,7 @@ class ChatService
             );
 
             // Remove from active sessions if currently online
-            $this->db->preparedQuery('DELETE FROM sessions WHERE LOWER(username) = LOWER(:nickname)', ['nickname' => $nickname]);
+            $this->db->preparedQuery('DELETE FROM presence_sessions WHERE LOWER(username) = LOWER(:nickname)', ['nickname' => $nickname]);
 
             // Invalidate Redis cache
             if ($result) {
@@ -1477,10 +1484,10 @@ class ChatService
     public function getSetting(string $key, $default = null)
     {
         try {
-            $queryResult = $this->db->preparedQuery("SELECT setting_value FROM settings WHERE setting_key = ?", [$key]);
+            $queryResult = $this->db->preparedQuery("SELECT value FROM settings WHERE setting = ?", [$key]);
             $result = ($queryResult && $queryResult->numRows > 0) ? $queryResult->fields : null;
 
-            return $result ? $result['setting_value'] : $default;
+            return $result ? $result['value'] : $default;
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to get setting: " . $e->getMessage(), 'radiochatbox');
             return $default;
@@ -1494,15 +1501,15 @@ class ChatService
     {
         try {
             if (empty($keys)) {
-                $result = $this->db->query("SELECT setting_key, setting_value FROM settings");
+                $result = $this->db->query("SELECT setting, value FROM settings");
             } else {
                 $placeholders = str_repeat('?,', count($keys) - 1) . '?';
-                $result = $this->db->preparedQuery("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ($placeholders)", $keys);
+                $result = $this->db->preparedQuery("SELECT setting, value FROM settings WHERE setting IN ($placeholders)", $keys);
             }
 
             $settings = [];
             foreach (($result ? $result->fetchAll() : []) as $row) {
-                $settings[$row['setting_key']] = $row['setting_value'];
+                $settings[$row['setting']] = $row['value'];
             }
 
             return $settings;

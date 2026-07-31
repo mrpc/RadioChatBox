@@ -84,7 +84,7 @@ final class ProfileController
 
             // Verify session belongs to user
             $sessionOwned = $db->queryBuilder()
-                ->from('sessions')
+                ->from('presence_sessions')
                 ->where('session_id', '=', $sessionId)
                 ->where('username', '=', $username)
                 ->exists();
@@ -97,7 +97,7 @@ final class ProfileController
             if (array_key_exists('displayName', $input)) {
                 // Check if user is authenticated (has user_id in session)
                 $sessionRow = $db->queryBuilder()
-                    ->from('sessions')
+                    ->from('presence_sessions')
                     ->select(['user_id'])
                     ->where('session_id', '=', $sessionId)
                     ->where('username', '=', $username)
@@ -121,7 +121,7 @@ final class ProfileController
                         $conflictsOtherUser = $db->queryBuilder()
                             ->from('users')
                             ->where('display_name', '=', $finalDisplayName)
-                            ->where('id', '!=', $session['user_id'])
+                            ->where('userid', '!=', $session['user_id'])
                             ->exists();
                         if ($conflictsOtherUser) {
                             return Response::json(['success' => false, 'error' => 'This display name is already taken'], 400);
@@ -133,7 +133,7 @@ final class ProfileController
                         }
 
                         // Check if display name conflicts with active guest nicknames
-                        if ($db->queryBuilder()->from('sessions')->where('username', '=', $finalDisplayName)->exists()) {
+                        if ($db->queryBuilder()->from('presence_sessions')->where('username', '=', $finalDisplayName)->exists()) {
                             return Response::json(['success' => false, 'error' => 'This display name is currently in use as a nickname'], 400);
                         }
                     }
@@ -141,7 +141,7 @@ final class ProfileController
                     // Update display_name in users table
                     $db->queryBuilder()
                         ->from('users')
-                        ->where('id', '=', $session['user_id'])
+                        ->where('userid', '=', $session['user_id'])
                         ->update(['display_name' => $finalDisplayName]);
 
                     // Clear ALL caches related to this user's display name (the

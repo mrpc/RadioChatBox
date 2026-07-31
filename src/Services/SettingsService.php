@@ -171,12 +171,12 @@ class SettingsService
         // Load from database
         $rows = $this->db->queryBuilder()
             ->from('settings')
-            ->select(['setting_key', 'setting_value'])
+            ->select(['setting', 'value'])
             ->getAll();
         $settings = [];
 
         foreach ($rows as $row) {
-            $settings[$row['setting_key']] = $row['setting_value'];
+            $settings[$row['setting']] = $row['value'];
         }
 
         // Cache for future requests
@@ -223,12 +223,12 @@ class SettingsService
         $qb = $this->db->queryBuilder()->from('settings');
         $result = $qb->upsert(
             [
-                'setting_key'   => $key,
-                'setting_value' => (string) $value,
+                'setting'   => $key,
+                'value'     => (string) $value,
                 'updated_at'    => $qb->raw('NOW()'),
             ],
-            ['setting_key'],
-            ['setting_value', 'updated_at']
+            ['setting'],
+            ['value', 'updated_at']
         );
 
         if ($result !== false) {
@@ -295,12 +295,12 @@ class SettingsService
                 $qb = $this->db->queryBuilder()->from('settings');
                 $ok = $qb->upsert(
                     [
-                        'setting_key'   => $key,
-                        'setting_value' => (string) $value,
+                        'setting'   => $key,
+                        'value'     => (string) $value,
                         'updated_at'    => $qb->raw('NOW()'),
                     ],
-                    ['setting_key'],
-                    ['setting_value', 'updated_at']
+                    ['setting'],
+                    ['value', 'updated_at']
                 );
                 // The framework returns false on a DB error instead of throwing,
                 // so guard explicitly to keep the batch all-or-nothing.
@@ -416,12 +416,12 @@ class SettingsService
                 $qb = $this->db->queryBuilder()->from('settings');
                 $ok = $qb->upsert(
                     [
-                        'setting_key'   => $key,
-                        'setting_value' => (string) $value,
+                        'setting'   => $key,
+                        'value'     => (string) $value,
                         'updated_at'    => $qb->raw('NOW()'),
                     ],
-                    ['setting_key'],
-                    ['setting_value', 'updated_at']
+                    ['setting'],
+                    ['value', 'updated_at']
                 );
                 // The framework returns false on a DB error instead of throwing,
                 // so guard explicitly to keep the batch all-or-nothing.

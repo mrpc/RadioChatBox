@@ -439,8 +439,8 @@ class PhotoService
         // Query database
         $result = $this->db->queryBuilder()
             ->from('settings')
-            ->where('setting_key', '=', $key)
-            ->value('setting_value');
+            ->where('setting', '=', $key)
+            ->value('value');
 
         $value = $result !== null ? $result : $default;
         

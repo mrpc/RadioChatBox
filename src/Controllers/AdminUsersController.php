@@ -84,7 +84,7 @@ final class AdminUsersController
 
         // Get current user ID for created_by field.
         $currentUserData = $userService->getUserByUsername($currentUser['username']);
-        $createdBy = $currentUserData ? $currentUserData['id'] : null;
+        $createdBy = $currentUserData ? $currentUserData['userid'] : null;
 
         $result = $userService->createUser(
             $input['username'],
@@ -243,7 +243,7 @@ final class AdminUsersController
 
         // Prevent self-deletion.
         $currentUserData = $userService->getUserByUsername($currentUser['username']);
-        if ($currentUserData && $currentUserData['id'] === $userId) {
+        if ($currentUserData && $currentUserData['userid'] === $userId) {
             return Response::json(['error' => 'Cannot delete your own account'], 400);
         }
 
@@ -334,12 +334,12 @@ final class AdminUsersController
             // Get total message count for this user (with search filter if provided).
             if (!empty($search)) {
                 $result = $db->preparedQuery(
-                    "SELECT COUNT(*) FROM messages WHERE username = :username AND message ILIKE :search",
+                    "SELECT COUNT(*) FROM chat_messages WHERE username = :username AND message ILIKE :search",
                     ['username' => $username, 'search' => '%' . $search . '%']
                 );
             } else {
                 $result = $db->preparedQuery(
-                    "SELECT COUNT(*) FROM messages WHERE username = :username",
+                    "SELECT COUNT(*) FROM chat_messages WHERE username = :username",
                     ['username' => $username]
                 );
             }
@@ -350,7 +350,7 @@ final class AdminUsersController
             if (!empty($search)) {
                 $result = $db->preparedQuery("
                     SELECT m.*, u.ip_address
-                    FROM messages m
+                    FROM chat_messages m
                     LEFT JOIN user_activity u ON m.username = u.username
                     WHERE m.username = :username AND m.message ILIKE :search
                     ORDER BY m.created_at DESC
@@ -359,7 +359,7 @@ final class AdminUsersController
             } else {
                 $result = $db->preparedQuery("
                     SELECT m.*, u.ip_address
-                    FROM messages m
+                    FROM chat_messages m
                     LEFT JOIN user_activity u ON m.username = u.username
                     WHERE m.username = :username
                     ORDER BY m.created_at DESC
@@ -379,7 +379,7 @@ final class AdminUsersController
 
             // Get active session info.
             $result = $db->preparedQuery(
-                "SELECT * FROM sessions WHERE username = :username",
+                "SELECT * FROM presence_sessions WHERE username = :username",
                 ['username' => $username]
             );
             $activeSession = $result ? $result->fetch() : false;

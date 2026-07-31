@@ -40,8 +40,8 @@ class ChatServiceModerationTest extends TestCase
 
         $pdo  = TestDatabase::connection();
         $like = '%' . $this->suffix . '%';
-        $pdo->prepare('DELETE FROM messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
-        $pdo->prepare('DELETE FROM sessions WHERE username LIKE ?')->execute([$like]);
+        $pdo->prepare('DELETE FROM chat_messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
+        $pdo->prepare('DELETE FROM presence_sessions WHERE username LIKE ?')->execute([$like]);
         $pdo->prepare('DELETE FROM user_activity WHERE username LIKE ?')->execute([$like]);
         parent::tearDown();
     }

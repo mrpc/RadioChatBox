@@ -31,14 +31,14 @@ class LlmLogTest extends TestCase
         parent::setUp();
 
         $pdo = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE setting = ?');
         $stmt->execute(['bot_llm_log_enabled']);
         $value = $stmt->fetchColumn();
         $this->previousEnabled = $value === false ? null : (string) $value;
 
         $pdo->prepare(
-            'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-             ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+            'INSERT INTO settings (setting, value) VALUES (?, ?)
+             ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value'
         )->execute(['bot_llm_log_enabled', 'true']);
         (new SettingsService())->invalidateCache();
 
@@ -55,11 +55,11 @@ class LlmLogTest extends TestCase
             ->execute([$this->provider, $this->nick]);
 
         if ($this->previousEnabled === null) {
-            $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['bot_llm_log_enabled']);
+            $pdo->prepare('DELETE FROM settings WHERE setting = ?')->execute(['bot_llm_log_enabled']);
         } else {
             $pdo->prepare(
-                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+                'INSERT INTO settings (setting, value) VALUES (?, ?)
+                 ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value'
             )->execute(['bot_llm_log_enabled', $this->previousEnabled]);
         }
         (new SettingsService())->invalidateCache();

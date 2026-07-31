@@ -108,14 +108,14 @@ class StatsService
         
         // Count concurrent users (unique usernames in sessions)
         $concurrentUsers = (int) $this->db->queryBuilder()
-            ->from('sessions')
+            ->from('presence_sessions')
             ->select(['COUNT(DISTINCT username) AS count'])
             ->whereRaw("last_heartbeat > NOW() - INTERVAL '5 minutes'")
             ->first()->fields['count'];
 
         // Count total active sessions (including multiple tabs)
         $activeSessions = $this->db->queryBuilder()
-            ->from('sessions')
+            ->from('presence_sessions')
             ->whereRaw("last_heartbeat > NOW() - INTERVAL '5 minutes'")
             ->count();
 
@@ -605,7 +605,7 @@ class StatsService
         try {
             // Count total public messages today
             $realTimeMessages = $this->db->queryBuilder()
-                ->from('messages')
+                ->from('chat_messages')
                 ->select(['COUNT(*) AS count'])
                 ->where('created_at', '>=', $todayStart)
                 ->where('created_at', '<=', $todayEnd)
@@ -631,7 +631,7 @@ class StatsService
                 "SELECT
                     COUNT(DISTINCT CASE WHEN user_id IS NOT NULL THEN username END) as registered_users,
                     COUNT(DISTINCT CASE WHEN user_id IS NULL THEN username END) as guest_users
-                FROM sessions
+                FROM presence_sessions
                 WHERE last_heartbeat >= :today_start
                 AND last_heartbeat <= :today_end",
                 ['today_start' => $todayStart, 'today_end' => $todayEnd]

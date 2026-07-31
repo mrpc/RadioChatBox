@@ -240,7 +240,7 @@ final class AdminImpersonationController
 
             // Get recipient's session_id (most recent live session if multiple devices)
             $lookup    = $db->preparedQuery(
-                "SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1",
+                "SELECT session_id FROM presence_sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1",
                 [$toUsername]
             );
             $recipient = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
@@ -391,7 +391,7 @@ final class AdminImpersonationController
                         if (!isset($senders[$msg['from_username']])) {
                             // Check if sender is online (has active session)
                             $isOnline = $db->queryBuilder()
-                                ->from('sessions')
+                                ->from('presence_sessions')
                                 ->where('username', '=', $msg['from_username'])
                                 ->exists();
 

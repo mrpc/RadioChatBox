@@ -44,8 +44,8 @@ class AdminModerationControllerTest extends TestCase
             $pdo = TestDatabase::connection();
             foreach ($this->cleanup['suffixes'] as $s) {
                 $like = '%' . $s . '%';
-                $pdo->prepare('DELETE FROM messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
-                $pdo->prepare('DELETE FROM sessions WHERE username LIKE ?')->execute([$like]);
+                $pdo->prepare('DELETE FROM chat_messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
+                $pdo->prepare('DELETE FROM presence_sessions WHERE username LIKE ?')->execute([$like]);
                 $pdo->prepare('DELETE FROM user_activity WHERE username LIKE ?')->execute([$like]);
             }
         }
@@ -137,7 +137,7 @@ class AdminModerationControllerTest extends TestCase
         $this->assertTrue($this->json($resp)['success']);
 
         $pdo  = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM sessions WHERE username = ?');
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM presence_sessions WHERE username = ?');
         $stmt->execute([$user]);
         $this->assertSame(0, (int) $stmt->fetchColumn(), 'the kicked session row must be gone');
     }
@@ -165,7 +165,7 @@ class AdminModerationControllerTest extends TestCase
         $this->assertTrue($this->json($resp)['success']);
 
         $pdo  = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT is_deleted FROM messages WHERE message_id = ?');
+        $stmt = $pdo->prepare('SELECT is_deleted FROM chat_messages WHERE message_id = ?');
         $stmt->execute([$messageId]);
         $this->assertTrue((bool) $stmt->fetchColumn(), 'the message must be soft-deleted');
     }
@@ -194,7 +194,7 @@ class AdminModerationControllerTest extends TestCase
         $this->assertGreaterThanOrEqual(2, $body['deleted_count']);
 
         $pdo  = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM messages WHERE message_id IN (?, ?) AND is_deleted = TRUE');
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM chat_messages WHERE message_id IN (?, ?) AND is_deleted = TRUE');
         $stmt->execute([$m1['id'], $m2['id']]);
         $this->assertSame(2, (int) $stmt->fetchColumn(), 'both seeded messages must be soft-deleted');
     }

@@ -2595,7 +2595,7 @@ class BotService
     private function resolvePeerSessionId(string $peer, string $fallback): ?string
     {
         $result = $this->db->preparedQuery('
-            SELECT session_id FROM sessions
+            SELECT session_id FROM presence_sessions
             WHERE username = ?
             ORDER BY last_heartbeat DESC
             LIMIT 1

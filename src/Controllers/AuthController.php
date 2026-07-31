@@ -72,7 +72,7 @@ final class AuthController
             // Create or update session with user_id (upsert with NOW() expressions
             // in both VALUES and DO UPDATE — kept as verbatim prepared SQL).
             $db->preparedQuery(
-                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
                  ON CONFLICT (username, session_id) DO UPDATE SET
                      ip_address = :ip_address,
@@ -82,7 +82,7 @@ final class AuthController
                     'username' => $user['username'],
                     'session_id' => $sessionId,
                     'ip_address' => $ipAddress,
-                    'user_id' => $user['id'],
+                    'user_id' => $user['userid'],
                 ]
             );
 
@@ -90,7 +90,7 @@ final class AuthController
                 'success' => true,
                 'message' => 'Login successful',
                 'user' => [
-                    'id' => $user['id'],
+                    'id' => $user['userid'],
                     'username' => $user['username'],
                     'display_name' => $user['display_name'] ?? null,
                     'role' => $user['role'],

@@ -383,7 +383,7 @@ class AdminImpersonationControllerTest extends TestCase
         $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')
             ->execute([$fake]);
         $pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at)
              VALUES (?, ?, ?, NOW(), NOW())'
         )->execute([$peer, $peerSess, '127.0.0.1']);
 
@@ -403,7 +403,7 @@ class AdminImpersonationControllerTest extends TestCase
             $this->assertSame(1, (int) $stmt->fetchColumn(), 'the impersonated DM must be stored');
         } finally {
             $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$fake]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$peer]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$peer]);
             $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')
                 ->execute([$fake]);
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
@@ -500,7 +500,7 @@ class AdminImpersonationControllerTest extends TestCase
 
         $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, FALSE)')->execute([$fake]);
         $pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at)
              VALUES (?, ?, ?, NOW(), NOW())'
         )->execute([$sender, 'sess_' . $suffix, '127.0.0.1']);
         $pdo->prepare(
@@ -522,7 +522,7 @@ class AdminImpersonationControllerTest extends TestCase
             $this->assertTrue($conv['senders'][0]['is_online'], 'the sender has a live session');
         } finally {
             $pdo->prepare('DELETE FROM private_messages WHERE to_username = ?')->execute([$fake]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$sender]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$sender]);
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }
     }

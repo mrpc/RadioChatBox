@@ -23,18 +23,18 @@ class SessionUserIdTest extends TestCase
         self::$redis = \Pramnos\Redis\ConnectionManager::getInstance()->connection();
         
         // Clean up test data
-        self::$pdo->exec("DELETE FROM sessions WHERE username LIKE 'testsession%'");
+        self::$pdo->exec("DELETE FROM presence_sessions WHERE username LIKE 'testsession%'");
         self::$pdo->exec("DELETE FROM users WHERE username LIKE 'testsession%'");
-        self::$pdo->exec("DELETE FROM messages WHERE username LIKE 'testsession%'");
+        self::$pdo->exec("DELETE FROM chat_messages WHERE username LIKE 'testsession%'");
         self::$pdo->exec("DELETE FROM user_activity WHERE username LIKE 'testsession%'");
     }
 
     public static function tearDownAfterClass(): void
     {
         // Clean up test data
-        self::$pdo->exec("DELETE FROM sessions WHERE username LIKE 'testsession%'");
+        self::$pdo->exec("DELETE FROM presence_sessions WHERE username LIKE 'testsession%'");
         self::$pdo->exec("DELETE FROM users WHERE username LIKE 'testsession%'");
-        self::$pdo->exec("DELETE FROM messages WHERE username LIKE 'testsession%'");
+        self::$pdo->exec("DELETE FROM chat_messages WHERE username LIKE 'testsession%'");
         self::$pdo->exec("DELETE FROM user_activity WHERE username LIKE 'testsession%'");
     }
 
@@ -52,7 +52,7 @@ class SessionUserIdTest extends TestCase
         $this->assertTrue($result, 'Guest registration should succeed');
         
         // Check session has NULL user_id
-        $stmt = self::$pdo->prepare('SELECT user_id FROM sessions WHERE username = :username AND session_id = :session_id');
+        $stmt = self::$pdo->prepare('SELECT user_id FROM presence_sessions WHERE username = :username AND session_id = :session_id');
         $stmt->execute(['username' => $username, 'session_id' => $sessionId]);
         $session = $stmt->fetch(\PDO::FETCH_ASSOC);
         
@@ -74,12 +74,12 @@ class SessionUserIdTest extends TestCase
         // Register authenticated user
         $result = $userService->createUser($username, $password, 'simple_user', $email);
         $this->assertTrue($result['success'], 'User registration should succeed');
-        $userId = $result['user']['id'];
+        $userId = $result['user']['userid'];
         $this->assertIsInt($userId, 'User should have an ID');
         
         // Create session with user_id (simulating login)
         $stmt = self::$pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
         );
         $stmt->execute([
@@ -90,7 +90,7 @@ class SessionUserIdTest extends TestCase
         ]);
         
         // Check session has the correct user_id
-        $stmt = self::$pdo->prepare('SELECT user_id FROM sessions WHERE username = :username AND session_id = :session_id');
+        $stmt = self::$pdo->prepare('SELECT user_id FROM presence_sessions WHERE username = :username AND session_id = :session_id');
         $stmt->execute(['username' => $username, 'session_id' => $sessionId]);
         $session = $stmt->fetch(\PDO::FETCH_ASSOC);
         
@@ -111,12 +111,12 @@ class SessionUserIdTest extends TestCase
         // Register authenticated user
         $result = $userService->createUser($username, $password, 'simple_user', $email);
         $this->assertTrue($result['success'], 'User registration should succeed');
-        $userId = $result['user']['id'];
+        $userId = $result['user']['userid'];
         $this->assertIsInt($userId, 'User should have an ID');
         
         // Create a guest session first
         $stmt = self::$pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at)
              VALUES (:username, :session_id, :ip_address, NOW(), NOW())'
         );
         $stmt->execute([
@@ -126,14 +126,14 @@ class SessionUserIdTest extends TestCase
         ]);
         
         // Verify guest session has NULL user_id
-        $stmt = self::$pdo->prepare('SELECT user_id FROM sessions WHERE username = :username AND session_id = :session_id');
+        $stmt = self::$pdo->prepare('SELECT user_id FROM presence_sessions WHERE username = :username AND session_id = :session_id');
         $stmt->execute(['username' => $username, 'session_id' => $sessionId]);
         $session = $stmt->fetch(\PDO::FETCH_ASSOC);
         $this->assertNull($session['user_id'], 'Initial guest session should have NULL user_id');
         
         // Simulate login (update session with user_id)
         $stmt = self::$pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
              ON CONFLICT (username, session_id) DO UPDATE SET
                  ip_address = :ip_address,
@@ -149,7 +149,7 @@ class SessionUserIdTest extends TestCase
         ]);
         
         // Verify session now has user_id
-        $stmt = self::$pdo->prepare('SELECT user_id FROM sessions WHERE username = :username AND session_id = :session_id');
+        $stmt = self::$pdo->prepare('SELECT user_id FROM presence_sessions WHERE username = :username AND session_id = :session_id');
         $stmt->execute(['username' => $username, 'session_id' => $sessionId]);
         $session = $stmt->fetch(\PDO::FETCH_ASSOC);
         
@@ -171,12 +171,12 @@ class SessionUserIdTest extends TestCase
         // Register authenticated user with display name
         $result = $userService->createUser($username, $password, 'simple_user', $email, null, $displayName);
         $this->assertTrue($result['success'], 'User registration should succeed');
-        $userId = $result['user']['id'];
+        $userId = $result['user']['userid'];
         $this->assertIsInt($userId, 'User should have an ID');
         
         // Create session with user_id and register via registerUser (simulating authenticated user joining chat)
         $stmt = self::$pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
         );
         $stmt->execute([
@@ -195,7 +195,7 @@ class SessionUserIdTest extends TestCase
         $this->assertEquals($username, $messageData['username'], 'Message should have correct username');
         
         // Check message has user_id
-        $stmt = self::$pdo->prepare('SELECT user_id, username FROM messages WHERE username = :username AND message = :message ORDER BY created_at DESC LIMIT 1');
+        $stmt = self::$pdo->prepare('SELECT user_id, username FROM chat_messages WHERE username = :username AND message = :message ORDER BY created_at DESC LIMIT 1');
         $stmt->execute(['username' => $username, 'message' => $messageText]);
         $message = $stmt->fetch(\PDO::FETCH_ASSOC);
         

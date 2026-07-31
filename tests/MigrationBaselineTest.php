@@ -5,14 +5,16 @@ namespace RadioChatBox\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Guards the single baseline schema migration (the SQL squash).
+ * Guards the baseline schema migration (the SQL squash) and the migration
+ * directory conventions.
  *
- * RadioChatBox's schema is created by one PramnosFramework migration
+ * RadioChatBox's schema starts from one PramnosFramework baseline migration
  * (app/Migrations/*_create_schema.php) instead of the former database/init.sql
- * plus 22 incremental SQL files. These checks make sure that consolidation stays
- * intact: exactly one migration exists, it implements up() using the schema
- * builder and raw SQL, and the legacy init.sql / raw migration files are gone
- * (so nothing silently falls back to them).
+ * plus 22 incremental SQL files. Schema convergence onto the framework adds
+ * further app migrations alongside it, so this no longer requires a *single*
+ * file — it requires that the baseline still exists and is well-formed, that
+ * every additional migration follows the timestamped-filename + Migration
+ * subclass convention, and that the legacy init.sql / raw SQL files stay gone.
  */
 class MigrationBaselineTest extends TestCase
 {
@@ -20,21 +22,43 @@ class MigrationBaselineTest extends TestCase
     private const DB_DIR   = __DIR__ . '/../database';
 
     /**
-     * There is exactly one migration and it is the CreateSchema baseline.
+     * The CreateSchema baseline exists (exactly one) and is well-formed.
      */
-    public function testSingleCreateSchemaMigrationExists(): void
+    public function testBaselineCreateSchemaMigrationExists(): void
     {
-        $files = glob(self::MIG_DIR . '/*.php') ?: [];
-        $this->assertCount(1, $files, 'expected a single baseline migration');
-        $this->assertStringEndsWith('_create_schema.php', $files[0]);
+        $baseline = glob(self::MIG_DIR . '/*_create_schema.php') ?: [];
+        $this->assertCount(1, $baseline, 'expected exactly one *_create_schema.php baseline');
 
-        $src = (string) file_get_contents($files[0]);
+        $src = (string) file_get_contents($baseline[0]);
         $this->assertStringContainsString('class CreateSchema extends Migration', $src);
         // Uses the schema builder for tables and raw SQL for the rest.
         $this->assertStringContainsString('$this->schema()', $src);
         $this->assertStringContainsString('$this->DB()->statement(', $src);
         $this->assertStringContainsString("createTable('users'", $src);
-        $this->assertStringContainsString("enumType('role'", $src);
+    }
+
+    /**
+     * Every migration file follows the YYYY_MM_DD_HHMMSS_slug.php convention and
+     * declares a Migration subclass (so the runner discovers and orders them).
+     */
+    public function testAllMigrationsFollowConvention(): void
+    {
+        $files = glob(self::MIG_DIR . '/*.php') ?: [];
+        $this->assertNotEmpty($files, 'expected at least the baseline migration');
+
+        foreach ($files as $file) {
+            $base = basename($file);
+            $this->assertMatchesRegularExpression(
+                '/^\d{4}_\d{2}_\d{2}_\d{6}_.+\.php$/',
+                $base,
+                "migration $base must be named YYYY_MM_DD_HHMMSS_slug.php"
+            );
+            $this->assertStringContainsString(
+                'extends Migration',
+                (string) file_get_contents($file),
+                "migration $base must declare a Migration subclass"
+            );
+        }
     }
 
     /**

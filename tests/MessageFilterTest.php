@@ -25,14 +25,14 @@ class MessageFilterTest extends TestCase
     protected function setUp(): void
     {
         $pdo = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE setting = ?');
         $stmt->execute(['gif_enabled']);
         $value = $stmt->fetchColumn();
         $this->previousGifEnabled = $value === false ? null : (string) $value;
 
         $pdo->prepare(
-            'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-             ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+            'INSERT INTO settings (setting, value) VALUES (?, ?)
+             ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value'
         )->execute(['gif_enabled', 'true']);
 
         (new SettingsService())->invalidateCache();
@@ -47,11 +47,11 @@ class MessageFilterTest extends TestCase
     {
         $pdo = TestDatabase::connection();
         if ($this->previousGifEnabled === null) {
-            $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['gif_enabled']);
+            $pdo->prepare('DELETE FROM settings WHERE setting = ?')->execute(['gif_enabled']);
         } else {
             $pdo->prepare(
-                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+                'INSERT INTO settings (setting, value) VALUES (?, ?)
+                 ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value'
             )->execute(['gif_enabled', $this->previousGifEnabled]);
         }
 

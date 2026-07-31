@@ -61,15 +61,15 @@ final class AdminSettingsController
         $db = Database::getInstance();
 
         try {
-            $result = $db->query("SELECT setting_key, setting_value FROM settings ORDER BY setting_key");
+            $result = $db->query("SELECT setting, value FROM settings ORDER BY setting");
             $settings = [];
             if ($result) {
                 while ($row = $result->fetch()) {
                     // SECURITY: Never send password hash to client
-                    if ($row['setting_key'] === 'admin_password_hash') {
+                    if ($row['setting'] === 'admin_password_hash') {
                         continue;
                     }
-                    $settings[$row['setting_key']] = $row['setting_value'];
+                    $settings[$row['setting']] = $row['value'];
                 }
             }
 
@@ -286,10 +286,10 @@ final class AdminSettingsController
             // Update database setting
             $settingKey = $logoType === 'favicon' ? 'favicon_url' : 'logo_url';
             $db->preparedQuery(
-                'INSERT INTO settings (setting_key, setting_value, updated_at)
+                'INSERT INTO settings (setting, value, updated_at)
                  VALUES (:key, :value, NOW())
-                 ON CONFLICT (setting_key)
-                 DO UPDATE SET setting_value = :value, updated_at = NOW()',
+                 ON CONFLICT (setting)
+                 DO UPDATE SET value = :value, updated_at = NOW()',
                 [
                     'key' => $settingKey,
                     'value' => $fileUrl,

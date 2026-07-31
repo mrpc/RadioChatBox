@@ -231,7 +231,7 @@ class ReactionService
     {
         try {
             return $this->db->queryBuilder()
-                ->from('messages')
+                ->from('chat_messages')
                 ->where('message_id', '=', $messageId)
                 ->exists();
         // @codeCoverageIgnoreStart

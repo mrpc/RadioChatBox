@@ -103,14 +103,27 @@ if ($primary) {
         exit(1);
     }
 
-    // Build the schema from the tracked baseline migration. The subprocess
-    // inherits DB_NAME={$testDb} from putenv() above, so it migrates the fresh
-    // test database (never the dev one).
-    $output = (string) shell_exec(
-        escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php')
-        . ' migrate --path=app/Migrations 2>&1'
-    );
-    fwrite(STDERR, "[tests] migrate ({$testDb}):\n" . trim($output) . "\n");
+    // Build the schema in two explicit phases (schema convergence, Phase B).
+    // On a FRESH database the un-applied baseline (priority 50) and the framework
+    // create_* migrations (priority 10) would share one batch, where the lower-
+    // priority framework tables sort first and clobber the baseline. So we apply
+    // the app migrations alone first (Phase A: baseline → rename → converge →
+    // repoint → settings), which reshapes users/settings in place and frees the
+    // messages/sessions names, THEN enable the framework set (Phase B), whose
+    // create_users/settings become hasTable() skips and whose sessions/messages
+    // create fresh. RCB_SKIP_AUTO_MIGRATE=1 stops radiochatbox.php's line-48
+    // auto-migrate from pulling everything into one unordered batch first.
+    // The subprocesses inherit DB_NAME={$testDb} from putenv() above.
+    $php  = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php');
+    $envp = 'RCB_SKIP_AUTO_MIGRATE=1 ';
+
+    // Phase A — app migrations only (framework dirs excluded by --path).
+    $outputA = (string) shell_exec($envp . $php . ' migrate --path=app/Migrations 2>&1');
+    fwrite(STDERR, "[tests] migrate A app ({$testDb}):\n" . trim($outputA) . "\n");
+
+    // Phase B — framework migrations (app.php has framework => true).
+    $outputB = (string) shell_exec($envp . $php . ' migrate 2>&1');
+    fwrite(STDERR, "[tests] migrate B framework ({$testDb}):\n" . trim($outputB) . "\n");
 }
 
 // ---------------------------------------------------------------------------

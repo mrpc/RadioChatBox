@@ -66,10 +66,10 @@ class StatsServiceComputeMethodsTest extends TestCase
             
             // Delete ALL messages from today to ensure clean state for real-time count testing
             // This is necessary because getSummary() now includes real-time message counts
-            self::$pdo->exec("DELETE FROM messages WHERE created_at >= CURRENT_DATE");
+            self::$pdo->exec("DELETE FROM chat_messages WHERE created_at >= CURRENT_DATE");
             
             // Delete sessions from today for clean user count testing
-            self::$pdo->exec("DELETE FROM sessions WHERE last_heartbeat >= CURRENT_DATE");
+            self::$pdo->exec("DELETE FROM presence_sessions WHERE last_heartbeat >= CURRENT_DATE");
             
             // Clear Redis cache
             self::$redis->flushAll();

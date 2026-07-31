@@ -24,7 +24,7 @@ class ReactionServiceTest extends TestCase
         // Create a dedicated public message to react to (FK target).
         $this->messageId = 'msg_test_' . bin2hex(random_bytes(6));
         $stmt = $this->pdo->prepare(
-            'INSERT INTO messages (message_id, username, message, ip_address, created_at)
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
              VALUES (?, ?, ?, ?, NOW())'
         );
         $stmt->execute([$this->messageId, '__test_author__', 'test message', '127.0.0.1']);
@@ -34,7 +34,7 @@ class ReactionServiceTest extends TestCase
     {
         // Reactions are removed via FK ON DELETE CASCADE, but clean explicitly too.
         $this->pdo->prepare('DELETE FROM message_reactions WHERE message_id = ?')->execute([$this->messageId]);
-        $this->pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$this->messageId]);
+        $this->pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$this->messageId]);
     }
 
     private function countRowsForUser(string $username): int

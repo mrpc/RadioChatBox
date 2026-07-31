@@ -89,7 +89,7 @@ class BotServicePipelineTest extends TestCase
             ->execute([$this->nick, $this->nick]);
         // bot_threads rows go with the fake user (ON DELETE CASCADE).
         $this->pdo->prepare('DELETE FROM fake_users WHERE id = ?')->execute([$this->fakeUserId]);
-        $this->pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$this->peer]);
+        $this->pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$this->peer]);
         // Blocks outlive the fake user row, so clear them explicitly.
         $this->pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ? OR blocked_username = ?')
             ->execute([$this->nick, $this->peer]);
@@ -656,7 +656,7 @@ class BotServicePipelineTest extends TestCase
         // The peer reconnected with a new session id since the job was queued.
         $newSession = 'sess_new_' . substr(bin2hex(random_bytes(4)), 0, 6);
         $this->pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat) VALUES (?, ?, ?, NOW())'
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat) VALUES (?, ?, ?, NOW())'
         )->execute([$this->peer, $newSession, '127.0.0.1']);
 
         $this->bot->processDeliverJob($this->deliverPayload());

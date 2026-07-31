@@ -31,15 +31,19 @@ class AppDescriptorTest extends TestCase
     }
 
     /**
-     * The descriptor identifies the app and enables NO framework features, so no
-     * framework feature migrations (auth/messaging/queue/...) are ever in scope.
+     * The descriptor identifies the app and enables the framework features adopted
+     * by the schema convergence (auth/authserver/messaging/queue).
      */
-    public function testIdentityAndNoFeatures(): void
+    public function testIdentityAndFeatures(): void
     {
         $app = $this->descriptor();
 
         $this->assertSame('RadioChatBox', $app['namespace']);
-        $this->assertSame([], $app['features'], 'No framework features may be enabled');
+        $this->assertSame(
+            ['auth', 'authserver', 'messaging', 'queue'],
+            $app['features'],
+            'Schema convergence adopts the auth/authserver/messaging/queue features'
+        );
     }
 
     /**
@@ -66,29 +70,33 @@ class AppDescriptorTest extends TestCase
     }
 
     /**
-     * Auto-migration is scoped to the app's own Migrations directory with the
-     * framework feature dirs switched off, and the cutoff is set to the baseline
-     * timestamp so auto-run only ever applies genuinely new, post-baseline
-     * migrations (the baseline itself is applied by the explicit `rcb migrate`).
+     * Auto-migration includes the app's own Migrations directory plus the
+     * framework feature dirs (the schema convergence enabled them), and the
+     * cutoff is cleared so auto-run sees the baseline and its dependent
+     * convergence migrations in the same batch — MigrationRunner's topological
+     * sort then orders them by dependency rather than isolating a post-baseline
+     * migration into its own batch.
      */
-    public function testMigrationsAreAppScopedWithBaselineCutoff(): void
+    public function testMigrationsAreAppScopedWithClearedCutoff(): void
     {
         $app = $this->descriptor();
 
-        $this->assertFalse($app['migrations']['framework'], 'Framework migration dirs must be off');
+        $this->assertTrue($app['migrations']['framework'], 'Framework migration dirs must be on (convergence)');
         $this->assertSame(
             [realpath(__DIR__ . '/../app/Migrations')],
             array_map('realpath', $app['migrations']['paths'])
         );
-        $this->assertSame('2025-01-01 00:00:01', $app['migration_cutoff']);
+        $this->assertSame('', $app['migration_cutoff']);
     }
 
     /**
      * migrate() is safe to call on every execution: it never throws and is
-     * idempotent, and — the load-bearing invariant — it does NOT create the
-     * framework's legacy `sessions` schema. The app's own sessions table keeps
-     * its columns (session_id/last_heartbeat), proving the framework
-     * create_sessions migration never ran.
+     * idempotent, and — the load-bearing invariant — the app's presence table
+     * keeps its own schema. Stage 1 of the convergence renamed the app's
+     * `sessions` table to `presence_sessions` (freeing the `sessions` name for
+     * the framework); that table keeps its columns (session_id/last_heartbeat),
+     * and the framework's legacy visitor-tracking `sessions` schema
+     * (visitorid/sid) is absent while framework migrations stay off.
      */
     public function testMigrateIsSafeAndLeavesAppSessionsSchemaIntact(): void
     {
@@ -100,13 +108,13 @@ class AppDescriptorTest extends TestCase
         $pdo = TestDatabase::connection();
         $columns = $pdo->query(
             "SELECT column_name FROM information_schema.columns
-             WHERE table_schema = 'public' AND table_name = 'sessions'"
+             WHERE table_schema = 'public' AND table_name = 'presence_sessions'"
         )->fetchAll(\PDO::FETCH_COLUMN);
 
-        // App schema — present.
+        // App presence schema — present under the new name.
         $this->assertContains('session_id', $columns);
         $this->assertContains('last_heartbeat', $columns);
-        // Framework legacy schema — must be absent (its create_sessions never ran).
+        // Framework legacy visitor-tracking schema — must be absent (framework off).
         $this->assertNotContains('visitorid', $columns);
         $this->assertNotContains('sid', $columns);
     }

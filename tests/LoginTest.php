@@ -25,7 +25,7 @@ class LoginTest extends TestCase
         // Cleanup test sessions
         try {
             $pdo = TestDatabase::connection();
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE session_id = :session_id");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE session_id = :session_id");
             $stmt->execute(['session_id' => $this->sessionId]);
         } catch (\Exception $e) {
             // Ignore cleanup errors
@@ -92,7 +92,7 @@ class LoginTest extends TestCase
         );
         
         $this->assertTrue($result['success'] ?? false, 'Test user should be created');
-        $userId = $result['user']['id'] ?? null;
+        $userId = $result['user']['userid'] ?? null;
         $this->assertNotNull($userId, 'User ID should be returned');
 
         try {
@@ -109,7 +109,7 @@ class LoginTest extends TestCase
             $this->assertEquals($userId, $response['body']['user']['id'] ?? null);
 
             // Verify session was created with user_id
-            $stmt = $pdo->prepare("SELECT user_id, username FROM sessions WHERE session_id = :session_id");
+            $stmt = $pdo->prepare("SELECT user_id, username FROM presence_sessions WHERE session_id = :session_id");
             $stmt->execute(['session_id' => $this->sessionId]);
             $session = $stmt->fetch(\PDO::FETCH_ASSOC);
             
@@ -119,9 +119,9 @@ class LoginTest extends TestCase
 
         } finally {
             // Cleanup
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
             $stmt->execute(['username' => $testUsername]);
-            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
             $stmt->execute(['id' => $userId]);
         }
     }
@@ -144,7 +144,7 @@ class LoginTest extends TestCase
         );
         
         $this->assertTrue($result['success'] ?? false, 'Test user should be created');
-        $userId = $result['user']['id'] ?? null;
+        $userId = $result['user']['userid'] ?? null;
 
         try {
             // Login
@@ -159,8 +159,8 @@ class LoginTest extends TestCase
             // Verify user can join chat (session is authenticated)
             $stmt = $pdo->prepare("
                 SELECT s.user_id, u.username 
-                FROM sessions s 
-                INNER JOIN users u ON s.user_id = u.id 
+                FROM presence_sessions s 
+                INNER JOIN users u ON s.user_id = u.userid
                 WHERE s.session_id = :session_id AND u.username = :username
             ");
             $stmt->execute([
@@ -173,9 +173,9 @@ class LoginTest extends TestCase
 
         } finally {
             // Cleanup
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
             $stmt->execute(['username' => $testUsername]);
-            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
             $stmt->execute(['id' => $userId]);
         }
     }
@@ -199,7 +199,7 @@ class LoginTest extends TestCase
         );
         
         $this->assertTrue($result['success'] ?? false, 'Test user should be created');
-        $userId = $result['user']['id'] ?? null;
+        $userId = $result['user']['userid'] ?? null;
 
         try {
             // Test login with email instead of username
@@ -215,9 +215,9 @@ class LoginTest extends TestCase
 
         } finally {
             // Cleanup
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
             $stmt->execute(['username' => $testUsername]);
-            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
             $stmt->execute(['id' => $userId]);
         }
     }
@@ -269,7 +269,7 @@ class LoginTest extends TestCase
                     $ipAddress = '127.0.0.1';
                     
                     $stmt = $pdo->prepare(
-                        'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                        'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                          VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
                          ON CONFLICT (username, session_id) DO UPDATE SET
                              ip_address = :ip_address,
@@ -281,7 +281,7 @@ class LoginTest extends TestCase
                         'username' => $user['username'],
                         'session_id' => $sessionId,
                         'ip_address' => $ipAddress,
-                        'user_id' => $user['id']
+                        'user_id' => $user['userid']
                     ]);
                     
                     $status = 200;
@@ -289,7 +289,7 @@ class LoginTest extends TestCase
                         'success' => true,
                         'message' => 'Login successful',
                         'user' => [
-                            'id' => $user['id'],
+                            'id' => $user['userid'],
                             'username' => $user['username'],
                             'role' => $user['role']
                         ]

@@ -44,9 +44,9 @@ class ChatServiceExtraTest extends TestCase
 
         $pdo  = TestDatabase::connection();
         $like = '%' . $this->suffix . '%';
-        $pdo->prepare('DELETE FROM messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
+        $pdo->prepare('DELETE FROM chat_messages WHERE message LIKE ? OR username LIKE ?')->execute([$like, $like]);
         $pdo->prepare('DELETE FROM private_messages WHERE from_username LIKE ? OR to_username LIKE ?')->execute([$like, $like]);
-        $pdo->prepare('DELETE FROM sessions WHERE username LIKE ?')->execute([$like]);
+        $pdo->prepare('DELETE FROM presence_sessions WHERE username LIKE ?')->execute([$like]);
         $pdo->prepare('DELETE FROM user_activity WHERE username LIKE ?')->execute([$like]);
         $pdo->prepare('DELETE FROM user_profiles WHERE username LIKE ?')->execute([$like]);
         parent::tearDown();
@@ -191,7 +191,7 @@ class ChatServiceExtraTest extends TestCase
         $this->assertTrue($this->service->removeUser($this->user, $this->session));
 
         $pdo  = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM sessions WHERE username = ? AND session_id = ?');
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM presence_sessions WHERE username = ? AND session_id = ?');
         $stmt->execute([$this->user, $this->session]);
         $this->assertSame(0, (int) $stmt->fetchColumn(), 'the session row must be gone');
     }
@@ -266,7 +266,7 @@ class ChatServiceExtraTest extends TestCase
         // 2) Registered username.
         $regUser = 'reg' . $this->suffix;
         $created = (new \RadioChatBox\Services\UserService())->createUser($regUser, 'testpass123', 'simple_user');
-        $userId  = (int) $created['user']['id'];
+        $userId  = (int) $created['user']['userid'];
         $fakeNick = 'fk' . $this->suffix;
         try {
             $this->assertFalse($this->service->isNicknameAvailable($regUser, ''), 'registered name needs a session');
@@ -275,7 +275,7 @@ class ChatServiceExtraTest extends TestCase
             // A session authenticated as that registered user → available.
             $authSess = 'auth' . $this->suffix;
             $pdo->prepare(
-                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (?, ?, ?, ?, NOW(), NOW())'
             )->execute([$regUser, $authSess, $this->ip, $userId]);
             $this->assertTrue($this->service->isNicknameAvailable($regUser, $authSess), 'own authenticated session is allowed');
@@ -289,8 +289,8 @@ class ChatServiceExtraTest extends TestCase
             $this->assertFalse($this->service->isNicknameAvailable($this->user, 'someone_else'));
             $this->assertTrue($this->service->isNicknameAvailable($this->user, $this->session));
         } finally {
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$regUser]);
-            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$regUser]);
+            $pdo->prepare('DELETE FROM users WHERE userid = ?')->execute([$userId]);
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fakeNick]);
         }
     }

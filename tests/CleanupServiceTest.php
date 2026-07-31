@@ -100,7 +100,7 @@ class CleanupServiceTest extends TestCase
     private function insertMessage(string $username, int $daysAgo, bool $deleted): void
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO messages (message_id, username, message, ip_address, created_at, is_deleted)
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at, is_deleted)
              VALUES (:id, :username, :message, :ip, NOW() - make_interval(days => :days), :deleted)'
         );
         $stmt->bindValue(':id', 'cleanuptest_' . bin2hex(random_bytes(6)));
@@ -114,7 +114,7 @@ class CleanupServiceTest extends TestCase
 
     private function messageExists(string $username): bool
     {
-        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM messages WHERE username = ?');
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM chat_messages WHERE username = ?');
         $stmt->execute([$username]);
 
         return (int) $stmt->fetchColumn() > 0;
@@ -122,7 +122,7 @@ class CleanupServiceTest extends TestCase
 
     private function removeFixtures(): void
     {
-        $this->pdo->prepare('DELETE FROM messages WHERE username LIKE ?')->execute(['cleanuptest_%']);
+        $this->pdo->prepare('DELETE FROM chat_messages WHERE username LIKE ?')->execute(['cleanuptest_%']);
 
         try {
             $this->pdo->prepare('DELETE FROM messages_archive WHERE username LIKE ?')

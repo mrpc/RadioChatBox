@@ -186,7 +186,7 @@ final class AdminModerationController
 
             // Get user's IP and session before removing them.
             $userRow = $db->queryBuilder()
-                ->from('sessions')
+                ->from('presence_sessions')
                 ->select(['ip_address', 'session_id'])
                 ->where('username', '=', $username)
                 ->first();
@@ -201,7 +201,7 @@ final class AdminModerationController
 
             // Remove from database.
             $result = $db->queryBuilder()
-                ->from('sessions')
+                ->from('presence_sessions')
                 ->where('username', '=', $username)
                 ->delete();
 
@@ -258,7 +258,7 @@ final class AdminModerationController
         try {
             // Soft delete all messages by setting is_deleted = true.
             $result = $db->queryBuilder()
-                ->from('messages')
+                ->from('chat_messages')
                 ->where('is_deleted', '=', false)
                 ->update(['is_deleted' => true]);
             $deletedCount = $result ? $result->getAffectedRows() : 0;
@@ -311,7 +311,7 @@ final class AdminModerationController
 
             // Mark the message as deleted (soft delete) instead of actually deleting it.
             $result = $db->queryBuilder()
-                ->from('messages')
+                ->from('chat_messages')
                 ->where('message_id', '=', $messageId)
                 ->update(['is_deleted' => true]);
 

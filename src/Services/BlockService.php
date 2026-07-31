@@ -58,7 +58,7 @@ class BlockService
             $id = $this->db->queryBuilder()
                 ->from('users')
                 ->where('username', '=', $username)
-                ->value('id');
+                ->value('userid');
             return $id === null ? null : (int)$id;
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {

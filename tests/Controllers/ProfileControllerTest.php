@@ -178,7 +178,7 @@ class ProfileControllerTest extends TestCase
             $this->assertSame('Thessaloniki', $row['loc'], 'the second update overwrote via EXCLUDED');
         } finally {
             $pdo->prepare('DELETE FROM user_profiles WHERE username = :u')->execute(['u' => $username]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = :u')->execute(['u' => $username]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = :u')->execute(['u' => $username]);
         }
     }
 
@@ -195,7 +195,7 @@ class ProfileControllerTest extends TestCase
         $username = 'profconf_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $created  = (new UserService())->createUser($username, 'testpass123', 'simple_user', null, null);
         $this->assertTrue($created['success'] ?? false, 'seed user must be created');
-        $userId    = $created['user']['id'];
+        $userId    = $created['user']['userid'];
         $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $this->seedSession($pdo, $username, $sessionId, $userId);
 
@@ -215,8 +215,8 @@ class ProfileControllerTest extends TestCase
             );
         } finally {
             $pdo->prepare('DELETE FROM user_profiles WHERE username = :u')->execute(['u' => $username]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = :u')->execute(['u' => $username]);
-            $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $userId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = :u')->execute(['u' => $username]);
+            $pdo->prepare('DELETE FROM users WHERE userid = :id')->execute(['id' => $userId]);
         }
     }
 
@@ -230,7 +230,7 @@ class ProfileControllerTest extends TestCase
         $pdo      = TestDatabase::connection();
         $username = 'profok_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $created  = (new UserService())->createUser($username, 'testpass123', 'simple_user', null, null);
-        $userId   = (int) $created['user']['id'];
+        $userId   = (int) $created['user']['userid'];
         $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $this->seedSession($pdo, $username, $sessionId, $userId);
         $displayName = 'Disp' . substr($username, 7);
@@ -242,13 +242,13 @@ class ProfileControllerTest extends TestCase
             $this->assertSame(200, $response->getStatusCode());
             $this->assertTrue(json_decode($response->getBody(), true)['success']);
 
-            $stmt = $pdo->prepare('SELECT display_name FROM users WHERE id = ?');
+            $stmt = $pdo->prepare('SELECT display_name FROM users WHERE userid = ?');
             $stmt->execute([$userId]);
             $this->assertSame($displayName, $stmt->fetchColumn(), 'the display name must be persisted');
         } finally {
             $pdo->prepare('DELETE FROM user_profiles WHERE username = ?')->execute([$username]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
-            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM users WHERE userid = ?')->execute([$userId]);
         }
     }
 
@@ -263,15 +263,15 @@ class ProfileControllerTest extends TestCase
         $suffix   = substr(bin2hex(random_bytes(4)), 0, 8);
         $username = 'profc_' . $suffix;
         $created  = (new UserService())->createUser($username, 'testpass123', 'simple_user', null, null);
-        $userId   = (int) $created['user']['id'];
+        $userId   = (int) $created['user']['userid'];
         $sessionId = 'sess_' . $suffix;
         $this->seedSession($pdo, $username, $sessionId, $userId);
 
         // Another user already holding a display_name.
         $otherName = 'other_' . $suffix;
         $other     = (new UserService())->createUser($otherName, 'testpass123', 'simple_user', null, null);
-        $otherId   = (int) $other['user']['id'];
-        $pdo->prepare('UPDATE users SET display_name = ? WHERE id = ?')->execute(['Taken' . $suffix, $otherId]);
+        $otherId   = (int) $other['user']['userid'];
+        $pdo->prepare('UPDATE users SET display_name = ? WHERE userid = ?')->execute(['Taken' . $suffix, $otherId]);
 
         // A fake user and an active guest nickname.
         $pdo->prepare('INSERT INTO fake_users (nickname, is_active) VALUES (?, TRUE)')->execute(['Fake' . $suffix]);
@@ -291,9 +291,9 @@ class ProfileControllerTest extends TestCase
                 $this->assertSame($message, json_decode($response->getBody(), true)['error']);
             }
         } finally {
-            $pdo->prepare('DELETE FROM sessions WHERE username IN (?, ?)')->execute([$username, 'Guest' . $suffix]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username IN (?, ?)')->execute([$username, 'Guest' . $suffix]);
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute(['Fake' . $suffix]);
-            $pdo->prepare('DELETE FROM users WHERE id IN (?, ?)')->execute([$userId, $otherId]);
+            $pdo->prepare('DELETE FROM users WHERE userid IN (?, ?)')->execute([$userId, $otherId]);
         }
     }
 
@@ -303,7 +303,7 @@ class ProfileControllerTest extends TestCase
     private function seedSession(\PDO $pdo, string $username, string $sessionId, ?int $userId): void
     {
         $pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:u, :s, :ip, :uid, NOW(), NOW())'
         )->execute([
             'u'   => $username,

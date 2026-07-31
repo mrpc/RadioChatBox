@@ -270,7 +270,7 @@ final class AdminSystemController
             $countResult = $db->query("
                 SELECT COUNT(DISTINCT u.username)
                 FROM user_activity u
-                WHERE u.username NOT IN (SELECT username FROM sessions)
+                WHERE u.username NOT IN (SELECT username FROM presence_sessions)
             ");
             $total      = (int) ($countResult ? $countResult->fetchColumn() : 0);
             $totalPages = ceil($total / $limit);
@@ -285,11 +285,11 @@ final class AdminSystemController
                     p.age,
                     p.location,
                     p.sex,
-                    (SELECT MAX(created_at) FROM messages m WHERE m.username = u.username) as last_message_at,
-                    (SELECT COUNT(*) FROM messages m WHERE m.username = u.username) as message_count
+                    (SELECT MAX(created_at) FROM chat_messages m WHERE m.username = u.username) as last_message_at,
+                    (SELECT COUNT(*) FROM chat_messages m WHERE m.username = u.username) as message_count
                 FROM user_activity u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username NOT IN (SELECT username FROM sessions)
+                WHERE u.username NOT IN (SELECT username FROM presence_sessions)
                 ORDER BY last_message_at DESC NULLS LAST
                 LIMIT :limit OFFSET :offset
             ", ['limit' => $limit, 'offset' => $offset]);

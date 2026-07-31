@@ -30,7 +30,7 @@ final class UserProfileController
 
             $userRow = $db->queryBuilder()
                 ->from('users')
-                ->select(['id', 'username', 'display_name'])
+                ->select(['userid', 'username', 'display_name'])
                 ->where('username', '=', $username)
                 ->first();
             $user = ($userRow && $userRow->numRows > 0) ? $userRow->fields : null;

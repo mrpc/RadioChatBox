@@ -24,7 +24,7 @@ class SendControllerTest extends TestCase
     protected function setUp(): void
     {
         $pdo = TestDatabase::connection();
-        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE setting = ?');
         $stmt->execute(['chat_mode']);
         $v = $stmt->fetchColumn();
         $this->prevChatMode = $v === false ? null : (string) $v;
@@ -34,10 +34,10 @@ class SendControllerTest extends TestCase
     {
         $pdo = TestDatabase::connection();
         if ($this->prevChatMode === null) {
-            $pdo->prepare('DELETE FROM settings WHERE setting_key = ?')->execute(['chat_mode']);
+            $pdo->prepare('DELETE FROM settings WHERE setting = ?')->execute(['chat_mode']);
         } else {
-            $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-                ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value')
+            $pdo->prepare('INSERT INTO settings (setting, value) VALUES (?, ?)
+                ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value')
                 ->execute(['chat_mode', $this->prevChatMode]);
         }
         (new SettingsService())->invalidateCache();
@@ -56,8 +56,8 @@ class SendControllerTest extends TestCase
 
     public function testPublicChatDisabledReturns429(): void
     {
-        TestDatabase::connection()->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-            ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value')
+        TestDatabase::connection()->prepare('INSERT INTO settings (setting, value) VALUES (?, ?)
+            ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value')
             ->execute(['chat_mode', 'private']);
         (new SettingsService())->invalidateCache();
 

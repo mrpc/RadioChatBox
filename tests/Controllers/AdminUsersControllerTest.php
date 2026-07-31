@@ -101,7 +101,7 @@ class AdminUsersControllerTest extends TestCase
         $this->authAsAdministrator();
         $target = 'tgt_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $res = (new \RadioChatBox\Services\UserService())->createUser($target, 'Str0ngPass!', 'moderator');
-        $userId = (int) $res['user']['id'];
+        $userId = (int) $res['user']['userid'];
 
         try {
             $_SERVER['REQUEST_METHOD'] = 'POST';
@@ -300,7 +300,7 @@ class AdminUsersControllerTest extends TestCase
             $this->assertSame(201, $created->getStatusCode());
             $createdBody = json_decode($created->getBody(), true);
             $this->assertTrue($createdBody['success']);
-            $userId = (int) $createdBody['user']['id'];
+            $userId = (int) $createdBody['user']['userid'];
             $this->assertGreaterThan(0, $userId);
 
             // list()
@@ -350,7 +350,7 @@ class AdminUsersControllerTest extends TestCase
         $this->authAsRoot();
         $username = 'um_' . substr(bin2hex(random_bytes(4)), 0, 8);
         $created  = (new \RadioChatBox\Services\UserService())->createUser($username, 'Str0ngPass!', 'root');
-        $userId   = (int) $created['user']['id'];
+        $userId   = (int) $created['user']['userid'];
 
         try {
             $_SERVER['REQUEST_METHOD'] = 'POST';
@@ -365,18 +365,19 @@ class AdminUsersControllerTest extends TestCase
             $this->assertTrue(json_decode($updated->getBody(), true)['success']);
 
             $pdo  = TestDatabase::connection();
-            $stmt = $pdo->prepare('SELECT email, role, is_active FROM users WHERE id = ?');
+            $stmt = $pdo->prepare('SELECT email, usertype, is_active FROM users WHERE userid = ?');
             $stmt->execute([$userId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             $this->assertSame($username . '@x.test', $row['email']);
-            $this->assertSame('administrator', $row['role']);
+            // Role is stored as the usertype ladder now (administrator = 90).
+            $this->assertSame(90, (int) $row['usertype']);
 
             // Deleting the (now administrator) user as root succeeds.
             $_SERVER['REQUEST_METHOD'] = 'DELETE';
             $_POST = ['user_id' => $userId];
             $this->assertSame(200, (new AdminUsersController())->delete()->getStatusCode());
         } finally {
-            Database::getInstance()->queryBuilder()->from('users')->where('id', '=', $userId)->delete();
+            Database::getInstance()->queryBuilder()->from('users')->where('userid', '=', $userId)->delete();
         }
     }
 }

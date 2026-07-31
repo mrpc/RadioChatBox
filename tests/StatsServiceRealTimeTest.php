@@ -59,8 +59,8 @@ class StatsServiceRealTimeTest extends TestCase
             FlatCache::default()->delete('stats:summary');
             
             // Clean up test messages and sessions from today
-            self::$pdo->exec("DELETE FROM messages WHERE created_at >= CURRENT_DATE AND message LIKE '%Test message%'");
-            self::$pdo->exec("DELETE FROM sessions WHERE last_heartbeat >= CURRENT_DATE");
+            self::$pdo->exec("DELETE FROM chat_messages WHERE created_at >= CURRENT_DATE AND message LIKE '%Test message%'");
+            self::$pdo->exec("DELETE FROM presence_sessions WHERE last_heartbeat >= CURRENT_DATE");
             self::$pdo->exec("DELETE FROM stats_hourly WHERE stat_hour >= CURRENT_DATE");
         } catch (\Exception $e) {
             // Ignore cleanup errors
@@ -125,7 +125,7 @@ class StatsServiceRealTimeTest extends TestCase
         for ($i = 0; $i < 3; $i++) {
             $messageId = uniqid('test_msg_', true);
             $stmt = self::$pdo->prepare(
-                "INSERT INTO messages (message_id, username, message, ip_address, created_at, is_deleted) 
+                "INSERT INTO chat_messages (message_id, username, message, ip_address, created_at, is_deleted) 
                  VALUES (?, ?, ?, ?, NOW(), false) 
                  RETURNING id"
             );
@@ -145,7 +145,7 @@ class StatsServiceRealTimeTest extends TestCase
             
         } finally {
             // Cleanup test messages
-            $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ANY(?)");
+            $stmt = self::$pdo->prepare("DELETE FROM chat_messages WHERE id = ANY(?)");
             $stmt->execute(['{' . implode(',', $messageIds) . '}']);
         }
     }

@@ -365,7 +365,7 @@ class AdminSettingsControllerTest extends TestCase
                 }
             }
             Database::getInstance()->queryBuilder()->from('settings')
-                ->where('setting_key', '=', 'logo_url')->delete();
+                ->where('setting', '=', 'logo_url')->delete();
         }
     }
 
@@ -448,7 +448,7 @@ class AdminSettingsControllerTest extends TestCase
             $this->assertSame('on', (new \RadioChatBox\Services\SettingsService())->get($key));
         } finally {
             Database::getInstance()->queryBuilder()->from('settings')
-                ->where('setting_key', '=', $key)->delete();
+                ->where('setting', '=', $key)->delete();
         }
     }
 }

@@ -324,11 +324,11 @@ class MessageActionControllerTest extends TestCase
         $messageId = 'msg_' . bin2hex(random_bytes(6));
 
         $pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at)
              VALUES (:u, :s, :ip, NOW(), NOW())'
         )->execute(['u' => $username, 's' => $sessionId, 'ip' => '127.0.0.1']);
         $pdo->prepare(
-            'INSERT INTO messages (message_id, username, message, ip_address, created_at)
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
              VALUES (:mid, :u, :msg, :ip, NOW())'
         )->execute(['mid' => $messageId, 'u' => $username, 'msg' => 'original text', 'ip' => '127.0.0.1']);
 
@@ -346,14 +346,14 @@ class MessageActionControllerTest extends TestCase
             $this->assertTrue($body['success']);
             $this->assertSame('edited text', $body['message']);
 
-            $stmt = $pdo->prepare('SELECT message, edited_at FROM messages WHERE message_id = ?');
+            $stmt = $pdo->prepare('SELECT message, edited_at FROM chat_messages WHERE message_id = ?');
             $stmt->execute([$messageId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             $this->assertSame('edited text', $row['message'], 'the row must be updated');
             $this->assertNotNull($row['edited_at'], 'edited_at must be stamped');
         } finally {
-            $pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$messageId]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$username]);
         }
     }
 
@@ -419,7 +419,7 @@ class MessageActionControllerTest extends TestCase
     private function seedSession(\PDO $pdo, string $username, string $sessionId): void
     {
         $pdo->prepare(
-            'INSERT INTO sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at)
              VALUES (:u, :s, :ip, NOW(), NOW())'
         )->execute(['u' => $username, 's' => $sessionId, 'ip' => '127.0.0.1']);
     }
@@ -439,7 +439,7 @@ class MessageActionControllerTest extends TestCase
 
         $this->seedSession($pdo, $username, $sessionId);
         $pdo->prepare(
-            'INSERT INTO messages (message_id, username, message, ip_address, created_at)
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
              VALUES (:mid, :u, :msg, :ip, NOW())'
         )->execute(['mid' => $messageId, 'u' => $username, 'msg' => 'react to me', 'ip' => '127.0.0.1']);
 
@@ -456,8 +456,8 @@ class MessageActionControllerTest extends TestCase
             $this->assertTrue(json_decode($response->getBody(), true)['success']);
         } finally {
             $pdo->prepare('DELETE FROM message_reactions WHERE message_id = ?')->execute([$messageId]);
-            $pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$messageId]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$username]);
         }
     }
 
@@ -492,7 +492,7 @@ class MessageActionControllerTest extends TestCase
             $this->assertFalse(json_decode($unblocked->getBody(), true)['blocked']);
         } finally {
             $pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ?')->execute([$username]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$username]);
         }
     }
 
@@ -533,7 +533,7 @@ class MessageActionControllerTest extends TestCase
             $this->assertSame(1, (int) $stmt->fetchColumn(), 'the DM must be stored');
         } finally {
             $pdo->prepare('DELETE FROM private_messages WHERE from_username = ?')->execute([$from]);
-            $pdo->prepare('DELETE FROM sessions WHERE username IN (?, ?)')->execute([$from, $to]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username IN (?, ?)')->execute([$from, $to]);
         }
     }
 
@@ -553,7 +553,7 @@ class MessageActionControllerTest extends TestCase
         // Well past the 10-minute window with generous margin for any server
         // timezone offset applied by the age calculation.
         $pdo->prepare(
-            "INSERT INTO messages (message_id, username, message, ip_address, created_at)
+            "INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
              VALUES (?, ?, 'old text', '127.0.0.1', NOW() - INTERVAL '6 hours')"
         )->execute([$messageId, $username]);
 
@@ -567,8 +567,8 @@ class MessageActionControllerTest extends TestCase
                 json_decode($response->getBody(), true)['error']
             );
         } finally {
-            $pdo->prepare('DELETE FROM messages WHERE message_id = ?')->execute([$messageId]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$username]);
         }
     }
 
@@ -712,7 +712,7 @@ class MessageActionControllerTest extends TestCase
             $this->assertSame(1, (int) $stmt->fetchColumn());
         } finally {
             $pdo->prepare('DELETE FROM private_messages WHERE from_username = ? OR to_username = ?')->execute([$from, $fake]);
-            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$from]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$from]);
             $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')->execute([$fake]);
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }

@@ -53,7 +53,7 @@ class ChatServiceCacheTest extends TestCase
         for ($i = 0; $i < 3; $i++) {
             $messageId = uniqid('test_cache_', true);
             $stmt = self::$pdo->prepare(
-                "INSERT INTO messages (message_id, username, message, ip_address, created_at, is_deleted) 
+                "INSERT INTO chat_messages (message_id, username, message, ip_address, created_at, is_deleted) 
                  VALUES (?, ?, ?, ?, NOW(), false) 
                  RETURNING id"
             );
@@ -110,7 +110,7 @@ class ChatServiceCacheTest extends TestCase
         } finally {
             // Cleanup test messages
             if (!empty($messageIds)) {
-                $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ANY(?)");
+                $stmt = self::$pdo->prepare("DELETE FROM chat_messages WHERE id = ANY(?)");
                 $stmt->execute(['{' . implode(',', $messageIds) . '}']);
             }
             self::$redis->del(self::$prefix . 'chat:history');
@@ -125,7 +125,7 @@ class ChatServiceCacheTest extends TestCase
         // Post a test message
         $messageId = uniqid('test_ttl_', true);
         $stmt = self::$pdo->prepare(
-            "INSERT INTO messages (message_id, username, message, ip_address, created_at, is_deleted) 
+            "INSERT INTO chat_messages (message_id, username, message, ip_address, created_at, is_deleted) 
              VALUES (?, ?, ?, ?, NOW(), false) 
              RETURNING id"
         );
@@ -145,7 +145,7 @@ class ChatServiceCacheTest extends TestCase
             
         } finally {
             // Cleanup
-            $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ?");
+            $stmt = self::$pdo->prepare("DELETE FROM chat_messages WHERE id = ?");
             $stmt->execute([$dbMessageId]);
             self::$redis->del(self::$prefix . 'chat:history');
         }
@@ -165,7 +165,7 @@ class ChatServiceCacheTest extends TestCase
             // Post first message
             $msg1Id = uniqid('test_ttl1_', true);
             $stmt = self::$pdo->prepare(
-                "INSERT INTO messages (message_id, username, message, ip_address, created_at, is_deleted) 
+                "INSERT INTO chat_messages (message_id, username, message, ip_address, created_at, is_deleted) 
                  VALUES (?, ?, ?, ?, NOW(), false) 
                  RETURNING id"
             );
@@ -206,7 +206,7 @@ class ChatServiceCacheTest extends TestCase
         } finally {
             // Cleanup
             if (!empty($messageIds)) {
-                $stmt = self::$pdo->prepare("DELETE FROM messages WHERE id = ANY(?)");
+                $stmt = self::$pdo->prepare("DELETE FROM chat_messages WHERE id = ANY(?)");
                 $stmt->execute(['{' . implode(',', $messageIds) . '}']);
             }
             self::$redis->del(self::$prefix . 'chat:history');

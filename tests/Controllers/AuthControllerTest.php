@@ -90,7 +90,7 @@ class AuthControllerTest extends TestCase
 
         $created = (new UserService())->createUser($username, $password, 'simple_user', null, null);
         $this->assertTrue($created['success'] ?? false, 'test user must be created');
-        $userId = $created['user']['id'];
+        $userId = $created['user']['userid'];
 
         try {
             $_POST = ['username' => $username, 'password' => $password, 'sessionId' => $sessionId];
@@ -108,7 +108,7 @@ class AuthControllerTest extends TestCase
             $this->assertSame(200, $second->getStatusCode());
 
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) AS n, MAX(user_id) AS uid FROM sessions
+                'SELECT COUNT(*) AS n, MAX(user_id) AS uid FROM presence_sessions
                  WHERE username = :u AND session_id = :s'
             );
             $stmt->execute(['u' => $username, 's' => $sessionId]);
@@ -117,8 +117,8 @@ class AuthControllerTest extends TestCase
             $this->assertSame(1, (int) $row['n'], 'the upsert must keep exactly one session row');
             $this->assertSame($userId, (int) $row['uid'], 'the session must be linked to the user');
         } finally {
-            $pdo->prepare('DELETE FROM sessions WHERE username = :u')->execute(['u' => $username]);
-            $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $userId]);
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = :u')->execute(['u' => $username]);
+            $pdo->prepare('DELETE FROM users WHERE userid = :id')->execute(['id' => $userId]);
         }
     }
 

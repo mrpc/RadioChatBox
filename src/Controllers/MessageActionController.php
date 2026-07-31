@@ -182,8 +182,8 @@ final class MessageActionController
                         EXTRACT(EPOCH FROM (
                             NOW() - ((m.created_at AT TIME ZONE current_setting($$TIMEZONE$$)) AT TIME ZONE $$UTC$$)
                         )) AS age_seconds
-                 FROM messages m
-                 INNER JOIN sessions s ON s.username = m.username
+                 FROM chat_messages m
+                 INNER JOIN presence_sessions s ON s.username = m.username
                  WHERE m.message_id = :message_id
                      AND m.username   = :username
                      AND s.session_id = :session_id
@@ -212,7 +212,7 @@ final class MessageActionController
 
             // Persist to PostgreSQL (edited_at = NOW() — kept verbatim).
             $db->preparedQuery(
-                'UPDATE messages
+                'UPDATE chat_messages
                  SET message = :message, edited_at = NOW()
                  WHERE message_id = :message_id',
                 [
@@ -465,7 +465,7 @@ final class MessageActionController
 
             // Check if recipient has a live session (most recent one if multiple devices)
             $result    = $db->preparedQuery(
-                "SELECT session_id FROM sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1",
+                "SELECT session_id FROM presence_sessions WHERE username = ? ORDER BY last_heartbeat DESC LIMIT 1",
                 [$toUsername]
             );
             $recipient = ($result && $result->numRows > 0) ? $result->fields : false;

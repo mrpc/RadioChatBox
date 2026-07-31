@@ -52,7 +52,7 @@ class CleanupService
     {
         try {
             $result = $this->db->queryBuilder()
-                ->from('sessions')
+                ->from('presence_sessions')
                 ->whereRaw("last_heartbeat < NOW() - INTERVAL '5 minutes'")
                 ->delete();
             $count = $result ? $result->getAffectedRows() : 0;
@@ -80,7 +80,7 @@ class CleanupService
             // as a literal, so every run failed with a syntax error and the purge
             // silently never happened. make_interval() takes a real parameter.
             $result = $this->db->queryBuilder()
-                ->from('messages')
+                ->from('chat_messages')
                 ->whereRaw('is_deleted = TRUE')
                 ->whereRaw('created_at < NOW() - make_interval(days => %s)', [$daysOld])
                 ->delete();
@@ -114,7 +114,7 @@ class CleanupService
             // stays a verbatim prepared statement.
             $result = $this->db->preparedQuery(
                 'INSERT INTO messages_archive
-                 SELECT * FROM messages
+                 SELECT * FROM chat_messages
                  WHERE created_at < NOW() - make_interval(days => :days)
                  AND is_deleted = FALSE
                  ON CONFLICT (message_id) DO NOTHING',
@@ -125,7 +125,7 @@ class CleanupService
             // Delete from main table
             if ($archived > 0) {
                 $this->db->queryBuilder()
-                    ->from('messages')
+                    ->from('chat_messages')
                     ->whereRaw('created_at < NOW() - make_interval(days => %s)', [$daysOld])
                     ->whereRaw('is_deleted = FALSE')
                     ->delete();
@@ -205,7 +205,7 @@ class CleanupService
     {
         $this->db->statement('
             CREATE TABLE IF NOT EXISTS messages_archive (
-                LIKE messages INCLUDING ALL
+                LIKE chat_messages INCLUDING ALL
             )
         ');
     }

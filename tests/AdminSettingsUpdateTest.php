@@ -54,7 +54,7 @@ class AdminSettingsUpdateTest extends TestCase
 
         // These tests write to the real settings table; remember what to restore.
         foreach (array_merge(self::BOT_KEYS, ['max_photo_size_mb', 'page_title']) as $key) {
-            $stmt = $this->pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+            $stmt = $this->pdo->prepare('SELECT value FROM settings WHERE setting = ?');
             $stmt->execute([$key]);
             $value = $stmt->fetchColumn();
             $this->snapshot[$key] = $value === false ? null : (string) $value;
@@ -65,14 +65,14 @@ class AdminSettingsUpdateTest extends TestCase
     {
         foreach ($this->snapshot as $key => $value) {
             if ($value === null) {
-                $stmt = $this->pdo->prepare('DELETE FROM settings WHERE setting_key = ?');
+                $stmt = $this->pdo->prepare('DELETE FROM settings WHERE setting = ?');
                 $stmt->execute([$key]);
                 continue;
             }
 
             $stmt = $this->pdo->prepare(
-                'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
-                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value'
+                'INSERT INTO settings (setting, value) VALUES (?, ?)
+                 ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value'
             );
             $stmt->execute([$key, $value]);
         }
@@ -82,7 +82,7 @@ class AdminSettingsUpdateTest extends TestCase
 
     private function storedValue(string $key): ?string
     {
-        $stmt = $this->pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt = $this->pdo->prepare('SELECT value FROM settings WHERE setting = ?');
         $stmt->execute([$key]);
         $value = $stmt->fetchColumn();
 

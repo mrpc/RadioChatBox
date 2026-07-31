@@ -15,42 +15,11 @@ class UserService
 {
     private \Pramnos\Database\Database $db;
 
-    // Role hierarchy (higher number = more privileges)
-    private const ROLE_LEVELS = [
-        'simple_user' => 0,
-        'moderator' => 1,
-        'administrator' => 2,
-        'root' => 3
-    ];
-    
-    // Permissions for each role
-    private const PERMISSIONS = [
-        'root' => [
-            'view_private_messages',
-            'manage_settings',
-            'manage_users',
-            'manage_bans',
-            'manage_blacklist',
-            'view_messages',
-            'create_root_users',
-            'delete_root_users'
-        ],
-        'administrator' => [
-            'view_private_messages',
-            'manage_settings',
-            'manage_users',
-            'manage_bans',
-            'manage_blacklist',
-            'view_messages'
-        ],
-        'moderator' => [
-            'view_messages',
-            'view_bans',
-            'view_blacklist'
-        ],
-        'simple_user' => []
-    ];
-    
+    // The role hierarchy and permission map moved to the Authz facade when the
+    // `users.role` enum was converged to the framework `users.usertype` integer.
+    // The app still speaks role labels (create/update/display); Authz maps them
+    // to/from usertype and reproduces the original permission decisions exactly.
+
     public function __construct()
     {
         $this->db = Database::getInstance();
@@ -75,8 +44,8 @@ class UserService
             return ['success' => false, 'error' => 'Username must be 3-50 characters'];
         }
         
-        // Validate role
-        if (!in_array($role, ['root', 'administrator', 'moderator', 'simple_user'])) {
+        // Validate role (a label; converted to usertype for storage)
+        if (!Authz::isValidLabel($role)) {
             return ['success' => false, 'error' => 'Invalid role'];
         }
         
@@ -91,11 +60,11 @@ class UserService
         try {
             $result = $this->db->queryBuilder()
                 ->from('users')
-                ->returning('id', 'username', 'role', 'email', 'display_name', 'created_at')
+                ->returning('userid', 'username', 'usertype', 'email', 'display_name', 'created_at')
                 ->insert([
                     'username'      => $username,
-                    'password_hash' => $passwordHash,
-                    'role'          => $role,
+                    'password'      => $passwordHash,
+                    'usertype'      => Authz::usertypeForLabel($role),
                     'email'         => $email,
                     'created_by'    => $createdBy,
                     'display_name'  => $displayName,
@@ -155,12 +124,13 @@ class UserService
                 if (strlen($value) < 8) {
                     return ['success' => false, 'error' => 'Password must be at least 8 characters'];
                 }
-                $updateData['password_hash'] = password_hash($value, PASSWORD_DEFAULT);
+                $updateData['password'] = password_hash($value, PASSWORD_DEFAULT);
             } elseif ($field === 'role') {
-                if (!in_array($value, ['root', 'administrator', 'moderator', 'simple_user'])) {
+                if (!Authz::isValidLabel($value)) {
                     return ['success' => false, 'error' => 'Invalid role'];
                 }
-                $updateData['role'] = $value;
+                // The app updates a role LABEL; store it as the usertype ladder.
+                $updateData['usertype'] = Authz::usertypeForLabel($value);
             } elseif ($field === 'is_active') {
                 $updateData['is_active'] = (bool)$value;
             } elseif ($field === 'email') {
@@ -177,8 +147,8 @@ class UserService
         try {
             $result = $this->db->queryBuilder()
                 ->from('users')
-                ->where('id', '=', $userId)
-                ->returning('id', 'username', 'role', 'email', 'display_name', 'is_active', 'updated_at')
+                ->where('userid', '=', $userId)
+                ->returning('userid', 'username', 'usertype', 'email', 'display_name', 'is_active', 'updated_at')
                 ->update($updateData);
 
             $user = ($result && $result->numRows > 0) ? $result->fields : null;
@@ -219,7 +189,7 @@ class UserService
             // Get user info before deleting
             $username = $this->db->queryBuilder()
                 ->from('users')
-                ->where('id', '=', $userId)
+                ->where('userid', '=', $userId)
                 ->value('username');
 
             if ($username === null) {
@@ -229,7 +199,7 @@ class UserService
             // Delete user
             $this->db->queryBuilder()
                 ->from('users')
-                ->where('id', '=', $userId)
+                ->where('userid', '=', $userId)
                 ->delete();
 
             // Clear caches
@@ -273,20 +243,14 @@ class UserService
         try {
             $qb = $this->db->queryBuilder()
                 ->from('users')
-                ->select(['id', 'username', 'role', 'email', 'display_name', 'is_active', 'created_at', 'updated_at', 'last_login']);
+                ->select(['userid', 'username', 'usertype', 'email', 'display_name', 'is_active', 'created_at', 'updated_at', 'last_login']);
 
             if (!$includeInactive) {
                 $qb->whereRaw('is_active = TRUE');
             }
 
-            $qb->orderByRaw(
-                "CASE role
-                    WHEN 'root' THEN 1
-                    WHEN 'administrator' THEN 2
-                    WHEN 'moderator' THEN 3
-                    WHEN 'simple_user' THEN 4
-                END"
-            )->orderBy('username', 'asc');
+            // Most-privileged first (root=99 → simple_user=0), then by name.
+            $qb->orderBy('usertype', 'desc')->orderBy('username', 'asc');
 
             $users = $qb->getAll();
 
@@ -322,8 +286,8 @@ class UserService
         try {
             $row = $this->db->queryBuilder()
                 ->from('users')
-                ->select(['id', 'username', 'role', 'email', 'is_active', 'created_at', 'updated_at', 'last_login'])
-                ->where('id', '=', $userId)
+                ->select(['userid', 'username', 'usertype', 'email', 'is_active', 'created_at', 'updated_at', 'last_login'])
+                ->where('userid', '=', $userId)
                 ->first();
             $user = ($row && $row->numRows > 0) ? $row->fields : null;
 
@@ -348,7 +312,7 @@ class UserService
         try {
             $row = $this->db->queryBuilder()
                 ->from('users')
-                ->select(['id', 'username', 'role', 'email', 'is_active', 'created_at', 'updated_at', 'last_login'])
+                ->select(['userid', 'username', 'usertype', 'email', 'is_active', 'created_at', 'updated_at', 'last_login'])
                 ->where('username', '=', $username)
                 ->first();
             $user = ($row && $row->numRows > 0) ? $row->fields : null;
@@ -376,7 +340,7 @@ class UserService
             // Try both username and email
             $row = $this->db->queryBuilder()
                 ->from('users')
-                ->select(['id', 'username', 'password_hash', 'role', 'email', 'display_name', 'is_active'])
+                ->select(['userid', 'username', 'password', 'usertype', 'email', 'display_name', 'is_active'])
                 ->whereRaw('username = %s OR email = %s', [$identifier, $identifier])
                 ->first();
             $user = ($row && $row->numRows > 0) ? $row->fields : null;
@@ -391,12 +355,12 @@ class UserService
             }
             
             // Verify password
-            if (!password_verify($password, $user['password_hash'])) {
+            if (!password_verify($password, $user['password'])) {
                 return null;
             }
-            
+
             // Update last login
-            $this->updateLastLogin($user['id']);
+            $this->updateLastLogin($user['userid']);
             
             return $this->sanitizeUser($user);
             
@@ -417,11 +381,7 @@ class UserService
      */
     public function hasPermission(string $role, string $permission): bool
     {
-        if (!isset(self::PERMISSIONS[$role])) {
-            return false;
-        }
-        
-        return in_array($permission, self::PERMISSIONS[$role]);
+        return Authz::can(Authz::usertypeForLabel($role), $permission);
     }
     
     /**
@@ -433,18 +393,10 @@ class UserService
      */
     public function canManageUser(string $currentUserRole, string $targetUserRole): bool
     {
-        // Root can manage everyone
-        if ($currentUserRole === 'root') {
-            return true;
-        }
-        
-        // Administrator can manage everyone except root
-        if ($currentUserRole === 'administrator' && $targetUserRole !== 'root') {
-            return true;
-        }
-        
-        // Others cannot manage users
-        return false;
+        return Authz::canManage(
+            Authz::usertypeForLabel($currentUserRole),
+            Authz::usertypeForLabel($targetUserRole)
+        );
     }
     
     /**
@@ -456,7 +408,7 @@ class UserService
     {
         try {
             $qb = $this->db->queryBuilder()->from('users');
-            $qb->where('id', '=', $userId)->update(['last_login' => $qb->raw('CURRENT_TIMESTAMP')]);
+            $qb->where('userid', '=', $userId)->update(['last_login' => $qb->raw('CURRENT_TIMESTAMP')]);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::updateLastLogin error: " . $e->getMessage(), 'radiochatbox');
@@ -472,7 +424,12 @@ class UserService
      */
     private function sanitizeUser(array $user): array
     {
-        unset($user['password_hash']);
+        unset($user['password']);
+        // The app/SPA speak role LABELS; derive one from the usertype ladder so
+        // callers keep receiving a `role` key after the enum column was dropped.
+        if (isset($user['usertype'])) {
+            $user['role'] = Authz::labelForUsertype((int) $user['usertype']);
+        }
         return $user;
     }
     
@@ -543,17 +500,19 @@ class UserService
      */
     public function getRoleLevel(string $role): int
     {
-        return self::ROLE_LEVELS[$role] ?? 0;
+        // Legacy 0..3 ordinal (root=3), kept for callers/tests that compare
+        // relative rank. The stored ladder is the Authz usertype (0/50/90/99).
+        return ['simple_user' => 0, 'moderator' => 1, 'administrator' => 2, 'root' => 3][$role] ?? 0;
     }
-    
+
     /**
      * Get all available roles
-     * 
+     *
      * @return array List of roles
      */
     public function getAvailableRoles(): array
     {
-        return array_keys(self::ROLE_LEVELS);
+        return Authz::availableRoleLabels();
     }
     
     /**

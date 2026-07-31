@@ -172,10 +172,10 @@ class AdminApiTest extends TestCase
     {
         // Columns that SHOULD exist in users table
         $shouldHaveColumns = [
-            'id',
+            'userid',
             'username',
-            'password_hash',
-            'role',
+            'password',
+            'usertype',
             'email',
             'is_active',
             'created_at',
@@ -246,7 +246,7 @@ class AdminApiTest extends TestCase
         // Insert 25 test messages
         for ($i = 1; $i <= 25; $i++) {
             $stmt = $this->db->prepare("
-                INSERT INTO messages (message_id, username, message, ip_address, created_at)
+                INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
                 VALUES (:message_id, :username, :message, :ip_address, NOW())
             ");
             $stmt->execute([
@@ -260,7 +260,7 @@ class AdminApiTest extends TestCase
         // Test pagination - page 1 with limit 10
         $stmt = $this->db->prepare("
             SELECT COUNT(*) as total
-            FROM messages 
+            FROM chat_messages 
             WHERE username = ?
         ");
         $stmt->execute([$testUsername]);
@@ -272,7 +272,7 @@ class AdminApiTest extends TestCase
         $offset = 0;
         $stmt = $this->db->prepare("
             SELECT m.*, u.ip_address 
-            FROM messages m
+            FROM chat_messages m
             LEFT JOIN user_activity u ON m.username = u.username
             WHERE m.username = :username
             ORDER BY m.created_at DESC
@@ -290,7 +290,7 @@ class AdminApiTest extends TestCase
         $offset = 10;
         $stmt = $this->db->prepare("
             SELECT m.*, u.ip_address 
-            FROM messages m
+            FROM chat_messages m
             LEFT JOIN user_activity u ON m.username = u.username
             WHERE m.username = :username
             ORDER BY m.created_at DESC
@@ -308,7 +308,7 @@ class AdminApiTest extends TestCase
         $offset = 20;
         $stmt = $this->db->prepare("
             SELECT m.*, u.ip_address 
-            FROM messages m
+            FROM chat_messages m
             LEFT JOIN user_activity u ON m.username = u.username
             WHERE m.username = :username
             ORDER BY m.created_at DESC
@@ -323,7 +323,7 @@ class AdminApiTest extends TestCase
         $this->assertCount(5, $messages, 'Should return 5 messages on page 3');
         
         // Cleanup
-        $stmt = $this->db->prepare("DELETE FROM messages WHERE username = ?");
+        $stmt = $this->db->prepare("DELETE FROM chat_messages WHERE username = ?");
         $stmt->execute([$testUsername]);
         $stmt = $this->db->prepare("DELETE FROM user_activity WHERE username = ?");
         $stmt->execute([$testUsername]);
@@ -360,7 +360,7 @@ class AdminApiTest extends TestCase
         
         foreach ($messages as $msg) {
             $stmt = $this->db->prepare("
-                INSERT INTO messages (message_id, username, message, ip_address, created_at)
+                INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
                 VALUES (:message_id, :username, :message, :ip_address, NOW())
             ");
             $stmt->execute([
@@ -375,7 +375,7 @@ class AdminApiTest extends TestCase
         $search = 'hello';
         $stmt = $this->db->prepare("
             SELECT COUNT(*) 
-            FROM messages 
+            FROM chat_messages 
             WHERE username = ? AND message ILIKE ?
         ");
         $stmt->execute([$testUsername, '%' . $search . '%']);
@@ -386,7 +386,7 @@ class AdminApiTest extends TestCase
         // Test search with results
         $stmt = $this->db->prepare("
             SELECT m.message
-            FROM messages m
+            FROM chat_messages m
             WHERE m.username = ? AND m.message ILIKE ?
             ORDER BY m.created_at DESC
         ");
@@ -403,7 +403,7 @@ class AdminApiTest extends TestCase
         }
         
         // Cleanup
-        $stmt = $this->db->prepare("DELETE FROM messages WHERE username = ?");
+        $stmt = $this->db->prepare("DELETE FROM chat_messages WHERE username = ?");
         $stmt->execute([$testUsername]);
         $stmt = $this->db->prepare("DELETE FROM user_activity WHERE username = ?");
         $stmt->execute([$testUsername]);

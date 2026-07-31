@@ -71,7 +71,7 @@ final class MaintenanceController
             $pdo = new PDO($dsn, $config['user'], $config['password']);
 
             // Test query
-            $stmt = $pdo->query('SELECT COUNT(*) FROM messages');
+            $stmt = $pdo->query('SELECT COUNT(*) FROM chat_messages');
             $count = $stmt->fetchColumn();
 
             $health['services']['postgresql'] = [

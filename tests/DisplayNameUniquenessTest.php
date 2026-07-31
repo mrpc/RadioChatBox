@@ -32,20 +32,20 @@ class DisplayNameUniquenessTest extends TestCase
         
         // Create user account
         $stmt = $this->pdo->prepare(
-            "INSERT INTO users (username, password_hash, email) 
-             VALUES (:username, :password_hash, :email) 
-             RETURNING id"
+            "INSERT INTO users (username, password, email)
+             VALUES (:username, :password, :email)
+             RETURNING userid"
         );
         $stmt->execute([
             'username' => $this->testUsername,
-            'password_hash' => password_hash('password123', PASSWORD_BCRYPT),
+            'password' => password_hash('password123', PASSWORD_BCRYPT),
             'email' => $this->testUsername . '@test.com'
         ]);
         $this->testUserId = $stmt->fetchColumn();
         
         // Create authenticated session
         $stmt = $this->pdo->prepare(
-            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            "INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, '127.0.0.1', :user_id, NOW(), NOW())"
         );
         $stmt->execute([
@@ -58,7 +58,7 @@ class DisplayNameUniquenessTest extends TestCase
     protected function tearDown(): void
     {
         // Clean up test data
-        $stmt = $this->pdo->prepare("DELETE FROM sessions WHERE username LIKE 'testuser_%' OR username LIKE 'guest_%'");
+        $stmt = $this->pdo->prepare("DELETE FROM presence_sessions WHERE username LIKE 'testuser_%' OR username LIKE 'guest_%'");
         $stmt->execute();
 
         $stmt = $this->pdo->prepare("DELETE FROM users WHERE username LIKE 'testuser_%'");
@@ -75,12 +75,12 @@ class DisplayNameUniquenessTest extends TestCase
         // Create another user with a specific username
         $otherUsername = 'testuser_' . uniqid();
         $stmt = $this->pdo->prepare(
-            "INSERT INTO users (username, password_hash, email) 
-             VALUES (:username, :password_hash, :email)"
+            "INSERT INTO users (username, password, email)
+             VALUES (:username, :password, :email)"
         );
         $stmt->execute([
             'username' => $otherUsername,
-            'password_hash' => password_hash('password123', PASSWORD_BCRYPT),
+            'password' => password_hash('password123', PASSWORD_BCRYPT),
             'email' => $otherUsername . '@test.com'
         ]);
         
@@ -98,12 +98,12 @@ class DisplayNameUniquenessTest extends TestCase
         $otherDisplayName = 'UniqueDisplay_' . uniqid();
         
         $stmt = $this->pdo->prepare(
-            "INSERT INTO users (username, password_hash, email, display_name) 
-             VALUES (:username, :password_hash, :email, :display_name)"
+            "INSERT INTO users (username, password, email, display_name)
+             VALUES (:username, :password, :email, :display_name)"
         );
         $stmt->execute([
             'username' => $otherUsername,
-            'password_hash' => password_hash('password123', PASSWORD_BCRYPT),
+            'password' => password_hash('password123', PASSWORD_BCRYPT),
             'email' => $otherUsername . '@test.com',
             'display_name' => $otherDisplayName
         ]);
@@ -156,7 +156,7 @@ class DisplayNameUniquenessTest extends TestCase
         // Set a display name for our test user
         $displayName = 'MyDisplayName_' . uniqid();
         $stmt = $this->pdo->prepare(
-            "UPDATE users SET display_name = :display_name WHERE id = :user_id"
+            "UPDATE users SET display_name = :display_name WHERE userid = :user_id"
         );
         $stmt->execute([
             'display_name' => $displayName,
@@ -179,7 +179,7 @@ class DisplayNameUniquenessTest extends TestCase
         $this->assertTrue($response['body']['success']);
         
         // Verify it was saved
-        $stmt = $this->pdo->prepare("SELECT display_name FROM users WHERE id = :user_id");
+        $stmt = $this->pdo->prepare("SELECT display_name FROM users WHERE userid = :user_id");
         $stmt->execute(['user_id' => $this->testUserId]);
         $saved = $stmt->fetchColumn();
         
@@ -191,7 +191,7 @@ class DisplayNameUniquenessTest extends TestCase
         // Set a display name first
         $displayName = 'ValidDisplay_' . uniqid();
         $stmt = $this->pdo->prepare(
-            "UPDATE users SET display_name = :display_name WHERE id = :user_id"
+            "UPDATE users SET display_name = :display_name WHERE userid = :user_id"
         );
         $stmt->execute([
             'display_name' => $displayName,
@@ -205,7 +205,7 @@ class DisplayNameUniquenessTest extends TestCase
         $this->assertTrue($response['body']['success']);
         
         // Verify it was cleared
-        $stmt = $this->pdo->prepare("SELECT display_name FROM users WHERE id = :user_id");
+        $stmt = $this->pdo->prepare("SELECT display_name FROM users WHERE userid = :user_id");
         $stmt->execute(['user_id' => $this->testUserId]);
         $saved = $stmt->fetchColumn();
         
@@ -231,7 +231,7 @@ class DisplayNameUniquenessTest extends TestCase
         // Verify session belongs to user
         $stmt = $db->prepare("
             SELECT user_id 
-            FROM sessions 
+            FROM presence_sessions 
             WHERE session_id = :session_id AND username = :username AND user_id IS NOT NULL
         ");
         $stmt->execute([
@@ -252,7 +252,7 @@ class DisplayNameUniquenessTest extends TestCase
         // If setting a display name (not clearing it), check for uniqueness
         if ($finalDisplayName !== null) {
             // Check if display name conflicts with any username
-            $stmt = $db->prepare("SELECT id FROM users WHERE username = :display_name");
+            $stmt = $db->prepare("SELECT userid FROM users WHERE username = :display_name");
             $stmt->execute(['display_name' => $finalDisplayName]);
             if ($stmt->fetch()) {
                 ob_end_clean();
@@ -261,9 +261,9 @@ class DisplayNameUniquenessTest extends TestCase
             
             // Check if display name conflicts with another user's display name
             $stmt = $db->prepare("
-                SELECT id FROM users 
-                WHERE display_name = :display_name 
-                AND id != :user_id
+                SELECT userid FROM users
+                WHERE display_name = :display_name
+                AND userid != :user_id
             ");
             $stmt->execute([
                 'display_name' => $finalDisplayName,
@@ -283,7 +283,7 @@ class DisplayNameUniquenessTest extends TestCase
             }
             
             // Check if display name conflicts with active guest nicknames
-            $stmt = $db->prepare("SELECT session_id FROM sessions WHERE username = :display_name");
+            $stmt = $db->prepare("SELECT session_id FROM presence_sessions WHERE username = :display_name");
             $stmt->execute(['display_name' => $finalDisplayName]);
             if ($stmt->fetch()) {
                 ob_end_clean();
@@ -292,7 +292,7 @@ class DisplayNameUniquenessTest extends TestCase
         }
         
         // Update display_name in users table
-        $stmt = $db->prepare("UPDATE users SET display_name = :display_name WHERE id = :user_id");
+        $stmt = $db->prepare("UPDATE users SET display_name = :display_name WHERE userid = :user_id");
         $stmt->execute([
             'display_name' => $finalDisplayName,
             'user_id' => $session['user_id']

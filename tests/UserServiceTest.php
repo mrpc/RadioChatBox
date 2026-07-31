@@ -73,7 +73,7 @@ class UserServiceTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertEquals($username, $result['user']['username']);
         $this->assertEquals('administrator', $result['user']['role']);
-        $this->assertArrayNotHasKey('password_hash', $result['user']);
+        $this->assertArrayNotHasKey('password', $result['user']);
     }
 
     /** A username shorter than 3 characters is rejected before any DB write. */
@@ -130,7 +130,7 @@ class UserServiceTest extends TestCase
     {
         $username = $this->uniqueUsername();
         $created = $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
-        $id = (int) $created['user']['id'];
+        $id = (int) $created['user']['userid'];
 
         $result = $this->userService->updateUser($id, [
             'email' => 'newemail@example.com',
@@ -160,7 +160,7 @@ class UserServiceTest extends TestCase
     {
         $username = $this->uniqueUsername();
         $created = $this->userService->createUser($username, 'password123', 'moderator', $username . '@example.com');
-        $id = (int) $created['user']['id'];
+        $id = (int) $created['user']['userid'];
 
         $result = $this->userService->deleteUser($id);
 
@@ -186,14 +186,14 @@ class UserServiceTest extends TestCase
     {
         $username = $this->uniqueUsername();
         $created = $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
-        $id = (int) $created['user']['id'];
+        $id = (int) $created['user']['userid'];
 
         $user = $this->userService->getUserById($id);
 
         $this->assertIsArray($user);
         $this->assertEquals($username, $user['username']);
         $this->assertEquals('administrator', $user['role']);
-        $this->assertArrayNotHasKey('password_hash', $user);
+        $this->assertArrayNotHasKey('password', $user);
     }
 
     /** getUserByUsername returns the sanitized row for an existing user. */
@@ -223,7 +223,7 @@ class UserServiceTest extends TestCase
         $this->assertIsArray($user);
         $this->assertEquals($username, $user['username']);
         $this->assertEquals('administrator', $user['role']);
-        $this->assertArrayNotHasKey('password_hash', $user);
+        $this->assertArrayNotHasKey('password', $user);
     }
 
     /** A wrong password does not authenticate. */
@@ -248,7 +248,7 @@ class UserServiceTest extends TestCase
     {
         $username = $this->uniqueUsername();
         $created = $this->userService->createUser($username, 'password123', 'administrator', $username . '@example.com');
-        $id = (int) $created['user']['id'];
+        $id = (int) $created['user']['userid'];
 
         $this->userService->updateUser($id, ['is_active' => false]);
 
@@ -347,13 +347,13 @@ class UserServiceTest extends TestCase
         $ok = $this->userService->authenticate($username, $password);
         $this->assertIsArray($ok);
         $this->assertSame($username, $ok['username']);
-        $this->assertArrayNotHasKey('password_hash', $ok, 'the hash must never be returned');
+        $this->assertArrayNotHasKey('password', $ok, 'the hash must never be returned');
 
         $this->assertNull($this->userService->authenticate($username, 'wrong'), 'wrong password fails');
         $this->assertNull($this->userService->authenticate('no_such_' . $this->suffix, $password), 'unknown user fails');
 
         // Deactivate and confirm the is_active guard rejects it.
-        $id = (int) $this->userService->getUserByUsername($username)['id'];
+        $id = (int) $this->userService->getUserByUsername($username)['userid'];
         $this->userService->updateUser($id, ['is_active' => false]);
         $this->assertNull($this->userService->authenticate($username, $password), 'inactive account fails');
     }

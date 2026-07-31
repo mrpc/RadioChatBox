@@ -45,7 +45,12 @@ $application->settings = $settings;
 // Auto-run any pending (post-baseline) migrations on every console execution.
 // The fingerprint fast-path makes this a no-op when the schema is current; the
 // explicit `migrate` command still handles the full baseline (fresh installs / CI).
-$application->migrate();
+// RCB_SKIP_AUTO_MIGRATE=1 disables this so a controlled multi-phase build (the
+// test bootstrap, or a maintenance-window deploy) can order the phases itself
+// without this line pulling framework migrations into an unordered batch first.
+if (getenv('RCB_SKIP_AUTO_MIGRATE') !== '1') {
+    $application->migrate();
+}
 
 // Register the framework's native Redis health check (pings via the shared
 // ConnectionManager) alongside the built-in database/disk/memory checks.

@@ -313,7 +313,7 @@ class ChatServiceTest extends TestCase
             null,
             $senderDisplayName
         );
-        $senderId = $senderResult['user']['id'] ?? null;
+        $senderId = $senderResult['user']['userid'] ?? null;
         
         $recipientResult = $userService->createUser(
             $recipientUsername,
@@ -323,7 +323,7 @@ class ChatServiceTest extends TestCase
             null,
             $recipientDisplayName
         );
-        $recipientId = $recipientResult['user']['id'] ?? null;
+        $recipientId = $recipientResult['user']['userid'] ?? null;
         
         $senderSessionId = 'pm_sender_session_' . uniqid();
         $recipientSessionId = 'pm_recipient_session_' . uniqid();
@@ -331,7 +331,7 @@ class ChatServiceTest extends TestCase
         try {
             // Create sessions for both users
             $stmt = $pdo->prepare(
-                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
             );
             $stmt->execute([
@@ -386,11 +386,11 @@ class ChatServiceTest extends TestCase
             
         } finally {
             // Cleanup sessions
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username IN (:sender, :recipient)");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username IN (:sender, :recipient)");
             $stmt->execute(['sender' => $senderUsername, 'recipient' => $recipientUsername]);
             
             // Cleanup users
-            $stmt = $pdo->prepare("DELETE FROM users WHERE id IN (:sender_id, :recipient_id)");
+            $stmt = $pdo->prepare("DELETE FROM users WHERE userid IN (:sender_id, :recipient_id)");
             $stmt->execute(['sender_id' => $senderId, 'recipient_id' => $recipientId]);
         }
     }
@@ -403,7 +403,7 @@ class ChatServiceTest extends TestCase
 
         // Ensure 'admin' user exists (from init.sql)
         $pdo = TestDatabase::connection();
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = 'admin'");
+        $stmt = $pdo->prepare("SELECT userid FROM users WHERE username = 'admin'");
         $stmt->execute();
         $adminUser = $stmt->fetch(\PDO::FETCH_ASSOC);
         $this->assertNotEmpty($adminUser, 'Admin user should exist in database');
@@ -431,13 +431,13 @@ class ChatServiceTest extends TestCase
         // Create a test user
         $testUsername = 'testuser_' . uniqid();
         $stmt = $pdo->prepare(
-            "INSERT INTO users (username, password_hash, role, is_active) 
-             VALUES (:username, :password_hash, 'simple_user', TRUE) 
-             RETURNING id"
+            "INSERT INTO users (username, password, usertype, is_active)
+             VALUES (:username, :password, 0, TRUE)
+             RETURNING userid"
         );
         $stmt->execute([
             'username' => $testUsername,
-            'password_hash' => password_hash('testpass', PASSWORD_DEFAULT)
+            'password' => password_hash('testpass', PASSWORD_DEFAULT)
         ]);
         $userId = $stmt->fetchColumn();
         $this->assertNotEmpty($userId, 'Test user should be created');
@@ -445,7 +445,7 @@ class ChatServiceTest extends TestCase
         // Create an authenticated session for this user
         $authSession = 'auth_session_' . uniqid();
         $stmt = $pdo->prepare(
-            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            "INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, '127.0.0.1', :user_id, NOW(), NOW())"
         );
         $stmt->execute([
@@ -463,9 +463,9 @@ class ChatServiceTest extends TestCase
         $this->assertTrue($result, 'Authenticated user should be able to register with their username');
 
         // Cleanup
-        $stmt = $pdo->prepare("DELETE FROM sessions WHERE session_id = :session_id");
+        $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE session_id = :session_id");
         $stmt->execute(['session_id' => $authSession]);
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+        $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
         $stmt->execute(['id' => $userId]);
     }
 
@@ -476,20 +476,20 @@ class ChatServiceTest extends TestCase
         // Create a test user
         $testUsername = 'testuser_multi_' . uniqid();
         $stmt = $pdo->prepare(
-            "INSERT INTO users (username, password_hash, role, is_active) 
-             VALUES (:username, :password_hash, 'simple_user', TRUE) 
-             RETURNING id"
+            "INSERT INTO users (username, password, usertype, is_active)
+             VALUES (:username, :password, 0, TRUE)
+             RETURNING userid"
         );
         $stmt->execute([
             'username' => $testUsername,
-            'password_hash' => password_hash('testpass', PASSWORD_DEFAULT)
+            'password' => password_hash('testpass', PASSWORD_DEFAULT)
         ]);
         $userId = $stmt->fetchColumn();
 
         // Create first authenticated session
         $authSession1 = 'auth_session1_' . uniqid();
         $stmt = $pdo->prepare(
-            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            "INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, '127.0.0.1', :user_id, NOW(), NOW())"
         );
         $stmt->execute([
@@ -505,7 +505,7 @@ class ChatServiceTest extends TestCase
         // Create second authenticated session (simulating different device)
         $authSession2 = 'auth_session2_' . uniqid();
         $stmt = $pdo->prepare(
-            "INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+            "INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
              VALUES (:username, :session_id, '127.0.0.2', :user_id, NOW(), NOW())"
         );
         $stmt->execute([
@@ -519,15 +519,15 @@ class ChatServiceTest extends TestCase
         $this->assertTrue($result2, 'Authenticated user should be able to have multiple sessions');
 
         // Verify both sessions exist
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM sessions WHERE username = :username");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM presence_sessions WHERE username = :username");
         $stmt->execute(['username' => $testUsername]);
         $count = $stmt->fetchColumn();
         $this->assertEquals(2, $count, 'Both sessions should exist for authenticated user');
 
         // Cleanup
-        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
         $stmt->execute(['username' => $testUsername]);
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+        $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
         $stmt->execute(['id' => $userId]);
     }
 
@@ -606,7 +606,7 @@ class ChatServiceTest extends TestCase
         // Cleanup
         $stmt = $pdo->prepare("DELETE FROM user_activity WHERE username = :username");
         $stmt->execute(['username' => $username]);
-        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
         $stmt->execute(['username' => $username]);
     }
 
@@ -637,7 +637,7 @@ class ChatServiceTest extends TestCase
         // Cleanup
         $stmt = $pdo->prepare("DELETE FROM user_activity WHERE username = :username");
         $stmt->execute(['username' => $username]);
-        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
         $stmt->execute(['username' => $username]);
     }
 
@@ -651,7 +651,7 @@ class ChatServiceTest extends TestCase
         
         // Register the user account
         $stmt = $pdo->prepare(
-            'INSERT INTO users (username, password_hash, email, created_at, updated_at) 
+            'INSERT INTO users (username, password, email, created_at, updated_at)
              VALUES (:username, :password, :email, NOW(), NOW())'
         );
         $stmt->execute([
@@ -661,10 +661,10 @@ class ChatServiceTest extends TestCase
         ]);
         
         // Get the user ID
-        $stmt = $pdo->prepare('SELECT id FROM users WHERE username = :username');
+        $stmt = $pdo->prepare('SELECT userid FROM users WHERE username = :username');
         $stmt->execute(['username' => $testUsername]);
         $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-        $userId = $user['id'];
+        $userId = $user['userid'];
         
         // Create an authenticated session
         $sessionId = 'auth_session_' . uniqid();
@@ -672,7 +672,7 @@ class ChatServiceTest extends TestCase
         
         // Manually insert a session with user_id to simulate authentication
         $stmt = $pdo->prepare(
-            'INSERT INTO sessions (username, session_id, user_id, ip_address, last_heartbeat, joined_at)
+            'INSERT INTO presence_sessions (username, session_id, user_id, ip_address, last_heartbeat, joined_at)
              VALUES (:username, :session_id, :user_id, :ip_address, NOW(), NOW())'
         );
         $stmt->execute([
@@ -698,7 +698,7 @@ class ChatServiceTest extends TestCase
         // Cleanup
         $stmt = $pdo->prepare("DELETE FROM user_activity WHERE username = :username");
         $stmt->execute(['username' => $testUsername]);
-        $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+        $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
         $stmt->execute(['username' => $testUsername]);
         $stmt = $pdo->prepare("DELETE FROM users WHERE username = :username");
         $stmt->execute(['username' => $testUsername]);
@@ -724,7 +724,7 @@ class ChatServiceTest extends TestCase
         );
         
         $this->assertTrue($result['success'] ?? false, 'Test user should be created');
-        $userId = $result['user']['id'] ?? null;
+        $userId = $result['user']['userid'] ?? null;
         
         try {
             // Create a session for this user
@@ -732,7 +732,7 @@ class ChatServiceTest extends TestCase
             $ipAddress = '127.0.0.1';
             
             $stmt = $pdo->prepare(
-                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
             );
             $stmt->execute([
@@ -769,12 +769,12 @@ class ChatServiceTest extends TestCase
         } finally {
             // Cleanup
             if (isset($message['id'])) {
-                $stmt = $pdo->prepare("DELETE FROM messages WHERE message_id = :message_id");
+                $stmt = $pdo->prepare("DELETE FROM chat_messages WHERE message_id = :message_id");
                 $stmt->execute(['message_id' => $message['id']]);
             }
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
             $stmt->execute(['username' => $testUsername]);
-            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
             $stmt->execute(['id' => $userId]);
         }
     }
@@ -799,7 +799,7 @@ class ChatServiceTest extends TestCase
         );
         
         $this->assertTrue($result['success'] ?? false, 'Test user should be created');
-        $userId = $result['user']['id'] ?? null;
+        $userId = $result['user']['userid'] ?? null;
         
         $messageId = null;
         try {
@@ -808,7 +808,7 @@ class ChatServiceTest extends TestCase
             $ipAddress = '127.0.0.1';
             
             $stmt = $pdo->prepare(
-                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
                  VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())'
             );
             $stmt->execute([
@@ -829,7 +829,7 @@ class ChatServiceTest extends TestCase
             
             // Query the database directly to verify display_name snapshot is stored
             $stmt = $pdo->prepare(
-                'SELECT display_name FROM messages WHERE message_id = :message_id'
+                'SELECT display_name FROM chat_messages WHERE message_id = :message_id'
             );
             $stmt->execute(['message_id' => $messageId]);
             $dbRow = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -841,12 +841,12 @@ class ChatServiceTest extends TestCase
         } finally {
             // Cleanup
             if ($messageId) {
-                $stmt = $pdo->prepare("DELETE FROM messages WHERE message_id = :message_id");
+                $stmt = $pdo->prepare("DELETE FROM chat_messages WHERE message_id = :message_id");
                 $stmt->execute(['message_id' => $messageId]);
             }
-            $stmt = $pdo->prepare("DELETE FROM sessions WHERE username = :username");
+            $stmt = $pdo->prepare("DELETE FROM presence_sessions WHERE username = :username");
             $stmt->execute(['username' => $testUsername]);
-            $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id");
+            $stmt = $pdo->prepare("DELETE FROM users WHERE userid = :id");
             $stmt->execute(['id' => $userId]);
         }
     }
