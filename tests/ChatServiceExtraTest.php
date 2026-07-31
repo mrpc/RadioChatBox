@@ -249,6 +249,52 @@ class ChatServiceExtraTest extends TestCase
         $this->assertStringContainsString('parent-db ' . $this->suffix, $reply['reply_data']['message']);
     }
 
+    /**
+     * isNicknameAvailable across all namespaces: an unused nickname is free; a
+     * registered username is free only to a session authenticated as that user
+     * (denied otherwise / with no session); a fake-user nickname is denied to
+     * guests; and a guest nickname held by another live session is denied but free
+     * to the session that already holds it.
+     */
+    public function testIsNicknameAvailableBranches(): void
+    {
+        $pdo = TestDatabase::connection();
+
+        // 1) Unused nickname → available.
+        $this->assertTrue($this->service->isNicknameAvailable('free' . $this->suffix, 'anysess'));
+
+        // 2) Registered username.
+        $regUser = 'reg' . $this->suffix;
+        $created = (new \RadioChatBox\Services\UserService())->createUser($regUser, 'testpass123', 'simple_user');
+        $userId  = (int) $created['user']['id'];
+        $fakeNick = 'fk' . $this->suffix;
+        try {
+            $this->assertFalse($this->service->isNicknameAvailable($regUser, ''), 'registered name needs a session');
+            $this->assertFalse($this->service->isNicknameAvailable($regUser, 'wrongsess'), 'wrong session is denied');
+
+            // A session authenticated as that registered user → available.
+            $authSess = 'auth' . $this->suffix;
+            $pdo->prepare(
+                'INSERT INTO sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                 VALUES (?, ?, ?, ?, NOW(), NOW())'
+            )->execute([$regUser, $authSess, $this->ip, $userId]);
+            $this->assertTrue($this->service->isNicknameAvailable($regUser, $authSess), 'own authenticated session is allowed');
+
+            // 3) Fake user nickname → denied to guests.
+            $pdo->prepare('INSERT INTO fake_users (nickname, is_active) VALUES (?, TRUE)')->execute([$fakeNick]);
+            $this->assertFalse($this->service->isNicknameAvailable($fakeNick, 'sess'));
+
+            // 4) Guest nickname held by another live session → denied; same session → free.
+            $this->service->registerUser($this->user, $this->session, $this->ip);
+            $this->assertFalse($this->service->isNicknameAvailable($this->user, 'someone_else'));
+            $this->assertTrue($this->service->isNicknameAvailable($this->user, $this->session));
+        } finally {
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$regUser]);
+            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fakeNick]);
+        }
+    }
+
     /** Assert the message with $text in $rows carries a quoted reply_data. */
     private function assertReplyDataPresent(array $rows, string $text): void
     {

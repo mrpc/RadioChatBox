@@ -8,6 +8,7 @@ use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminUsersController;
 use Pramnos\Cache\FlatCache;
 use Pramnos\Database\Database;
+use Pramnos\Framework\Testing\TestDatabase;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
 /**
@@ -336,6 +337,46 @@ class AdminUsersControllerTest extends TestCase
         } finally {
             Database::getInstance()->queryBuilder()->from('users')
                 ->where('username', '=', $username)->delete();
+        }
+    }
+
+    /**
+     * update() applies the email / role / is_active fields together (each isset
+     * branch of the updates builder), and the change is persisted. Deleting a root
+     * user as root also succeeds (the delete_root_users branch).
+     */
+    public function testUpdateMultipleFieldsAndDeleteRoot(): void
+    {
+        $this->authAsRoot();
+        $username = 'um_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $created  = (new \RadioChatBox\Services\UserService())->createUser($username, 'Str0ngPass!', 'root');
+        $userId   = (int) $created['user']['id'];
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_POST = [
+                'user_id'   => $userId,
+                'email'     => $username . '@x.test',
+                'role'      => 'administrator',
+                'is_active' => false,
+            ];
+            $updated = (new AdminUsersController())->update();
+            $this->assertSame(200, $updated->getStatusCode());
+            $this->assertTrue(json_decode($updated->getBody(), true)['success']);
+
+            $pdo  = TestDatabase::connection();
+            $stmt = $pdo->prepare('SELECT email, role, is_active FROM users WHERE id = ?');
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $this->assertSame($username . '@x.test', $row['email']);
+            $this->assertSame('administrator', $row['role']);
+
+            // Deleting the (now administrator) user as root succeeds.
+            $_SERVER['REQUEST_METHOD'] = 'DELETE';
+            $_POST = ['user_id' => $userId];
+            $this->assertSame(200, (new AdminUsersController())->delete()->getStatusCode());
+        } finally {
+            Database::getInstance()->queryBuilder()->from('users')->where('id', '=', $userId)->delete();
         }
     }
 }
