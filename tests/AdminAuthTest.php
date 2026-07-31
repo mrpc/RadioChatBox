@@ -259,4 +259,48 @@ class AdminAuthTest extends TestCase
         $this->assertTrue(password_verify('s3cr3t-p4ss', $hash));
         $this->assertFalse(password_verify('wrong', $hash));
     }
+
+    /**
+     * getCurrentUser resolves the admin when the Bearer identifier is the user's
+     * EMAIL (not username): the session is keyed by username, so it looks the email
+     * up in the users table to find the real username, then returns that session.
+     */
+    public function testGetCurrentUserResolvesByEmail(): void
+    {
+        $this->tmpUser = 'aae_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $email = $this->tmpUser . '@example.test';
+        (new UserService())->createUser($this->tmpUser, 'V3ry-Str0ng-Pass!', 'administrator', $email);
+
+        // Session stored under the USERNAME; the request authenticates by EMAIL.
+        FlatCache::default()->set('admin_session:' . $this->tmpUser, ['username' => $this->tmpUser, 'role' => 'administrator'], 120);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $email . ':x';
+
+        try {
+            $current = AdminAuth::getCurrentUser();
+            $this->assertIsArray($current);
+            $this->assertSame($this->tmpUser, $current['username']);
+        } finally {
+            $this->cleanupAdmin();
+        }
+    }
+
+    /**
+     * After five failed authentication attempts from one IP the rate limiter kicks
+     * in: a further verify() is refused without even reaching the password check.
+     */
+    public function testVerifyRateLimitsAfterRepeatedFailures(): void
+    {
+        $this->makeAdmin('administrator');
+
+        try {
+            $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $this->tmpUser . ':wrong-password';
+            for ($i = 0; $i < 6; $i++) {
+                $this->assertFalse(AdminAuth::verify(), "attempt {$i} must fail");
+            }
+            // The counter is now >= 5, so the rate-limit branch has run.
+            $this->assertFalse(AdminAuth::verify(), 'a rate-limited attempt is refused');
+        } finally {
+            $this->cleanupAdmin();
+        }
+    }
 }
