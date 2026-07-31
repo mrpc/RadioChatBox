@@ -223,6 +223,32 @@ class ChatServiceExtraTest extends TestCase
         $this->assertReplyDataPresent($paged, 'reply ' . $this->suffix);
     }
 
+    /**
+     * When the Redis reply hash misses, getReplyMessageData falls back to the
+     * database: post a parent, wipe the message hash, then post a reply — the
+     * quote is still resolved (from the DB) and re-cached.
+     */
+    public function testReplyDataFallsBackToDatabaseOnCacheMiss(): void
+    {
+        $this->service->registerUser($this->user, $this->session, $this->ip);
+        $parent = $this->service->postMessage($this->user, 'parent-db ' . $this->suffix, $this->ip, $this->session);
+
+        // Wipe the Redis reply hash so the O(1) lookup misses and the DB path runs.
+        (new \RadioChatBox\MessageHistory())->clear();
+
+        $reply = $this->service->postMessage(
+            $this->user,
+            'child-db ' . $this->suffix,
+            $this->ip,
+            $this->session,
+            $parent['id']
+        );
+
+        $this->assertArrayHasKey('reply_data', $reply);
+        $this->assertSame($this->user, $reply['reply_data']['username']);
+        $this->assertStringContainsString('parent-db ' . $this->suffix, $reply['reply_data']['message']);
+    }
+
     /** Assert the message with $text in $rows carries a quoted reply_data. */
     private function assertReplyDataPresent(array $rows, string $text): void
     {
