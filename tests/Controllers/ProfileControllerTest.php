@@ -221,6 +221,83 @@ class ProfileControllerTest extends TestCase
     }
 
     /**
+     * update-profile success path: an authenticated user sets a unique display
+     * name — it passes every uniqueness guard and is written to the users row (the
+     * cache-clear + broadcast side of the branch also runs).
+     */
+    public function testUpdateProfileSetsDisplayNameSuccessfully(): void
+    {
+        $pdo      = TestDatabase::connection();
+        $username = 'profok_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $created  = (new UserService())->createUser($username, 'testpass123', 'simple_user', null, null);
+        $userId   = (int) $created['user']['id'];
+        $sessionId = 'sess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->seedSession($pdo, $username, $sessionId, $userId);
+        $displayName = 'Disp' . substr($username, 7);
+
+        try {
+            $_POST = ['username' => $username, 'sessionId' => $sessionId, 'displayName' => $displayName, 'age' => 28];
+            $response = (new ProfileController())->update();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertTrue(json_decode($response->getBody(), true)['success']);
+
+            $stmt = $pdo->prepare('SELECT display_name FROM users WHERE id = ?');
+            $stmt->execute([$userId]);
+            $this->assertSame($displayName, $stmt->fetchColumn(), 'the display name must be persisted');
+        } finally {
+            $pdo->prepare('DELETE FROM user_profiles WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$username]);
+            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
+        }
+    }
+
+    /**
+     * update-profile enforces display-name uniqueness against the three remaining
+     * namespaces, each with its exact message: another user's display_name, a fake
+     * user's nickname, and an active guest's nickname.
+     */
+    public function testUpdateProfileDisplayNameConflictsAcrossNamespaces(): void
+    {
+        $pdo      = TestDatabase::connection();
+        $suffix   = substr(bin2hex(random_bytes(4)), 0, 8);
+        $username = 'profc_' . $suffix;
+        $created  = (new UserService())->createUser($username, 'testpass123', 'simple_user', null, null);
+        $userId   = (int) $created['user']['id'];
+        $sessionId = 'sess_' . $suffix;
+        $this->seedSession($pdo, $username, $sessionId, $userId);
+
+        // Another user already holding a display_name.
+        $otherName = 'other_' . $suffix;
+        $other     = (new UserService())->createUser($otherName, 'testpass123', 'simple_user', null, null);
+        $otherId   = (int) $other['user']['id'];
+        $pdo->prepare('UPDATE users SET display_name = ? WHERE id = ?')->execute(['Taken' . $suffix, $otherId]);
+
+        // A fake user and an active guest nickname.
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active) VALUES (?, TRUE)')->execute(['Fake' . $suffix]);
+        $this->seedSession($pdo, 'Guest' . $suffix, 'gsess_' . $suffix, null);
+
+        $cases = [
+            ['Taken' . $suffix, 'This display name is already taken'],
+            ['Fake'  . $suffix, 'This display name conflicts with a system user'],
+            ['Guest' . $suffix, 'This display name is currently in use as a nickname'],
+        ];
+
+        try {
+            foreach ($cases as [$name, $message]) {
+                $_POST = ['username' => $username, 'sessionId' => $sessionId, 'displayName' => $name, 'age' => 30];
+                $response = (new ProfileController())->update();
+                $this->assertSame(400, $response->getStatusCode(), "conflict '{$name}' must be 400");
+                $this->assertSame($message, json_decode($response->getBody(), true)['error']);
+            }
+        } finally {
+            $pdo->prepare('DELETE FROM sessions WHERE username IN (?, ?)')->execute([$username, 'Guest' . $suffix]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute(['Fake' . $suffix]);
+            $pdo->prepare('DELETE FROM users WHERE id IN (?, ?)')->execute([$userId, $otherId]);
+        }
+    }
+
+    /**
      * Seed a session row for the profile tests (user_id nullable for guests).
      */
     private function seedSession(\PDO $pdo, string $username, string $sessionId, ?int $userId): void
