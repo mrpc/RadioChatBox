@@ -3,6 +3,7 @@
 namespace RadioChatBox\Tests\Controllers;
 
 use PHPUnit\Framework\TestCase;
+use Pramnos\Framework\Testing\TestDatabase;
 use Pramnos\Http\Client;
 use Pramnos\Http\ClientException;
 use Pramnos\Http\ClientResponse;
@@ -81,6 +82,78 @@ class MediaControllerTest extends TestCase
 
         $this->assertSame(422, $response->getStatusCode());
         $this->assertSame('Could not fetch URL', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * link-preview parses a Twitter Card + <title> fallback when Open Graph tags
+     * are absent (the twitter: and <title> branches of parseOpenGraph).
+     */
+    public function testLinkPreviewParsesTwitterAndTitleFallback(): void
+    {
+        $html = '<html><head><title>Title Fallback</title>'
+            . '<meta name="twitter:description" content="Tw desc">'
+            . '<meta name="twitter:image" content="https://example.com/tw.png">'
+            . '</head><body>x</body></html>';
+        Client::fake(['*example.com*' => ClientResponse::make($html, 200, ['content-type' => 'text/html'])]);
+
+        $_GET = ['url' => 'https://example.com/tw?probe=' . uniqid()];
+        $body = json_decode((new MediaController())->linkPreview()->getBody(), true);
+
+        $this->assertSame('Title Fallback', $body['title']);
+        $this->assertSame('Tw desc', $body['description']);
+    }
+
+    /**
+     * now-playing active path: with a configured radio URL and a faked active feed
+     * it returns nowPlaying.active=true, records the play and attaches metadata
+     * (recordPlay + getCurrentTrackMeta + enrichTrack, with the external providers
+     * faked to no match). Settings/caches restored and the recorded track removed.
+     */
+    public function testNowPlayingActiveRecordsPlay(): void
+    {
+        $suffix   = substr(bin2hex(random_bytes(4)), 0, 8);
+        $settings = new \RadioChatBox\Services\SettingsService();
+        $prevUrl  = (string) $settings->get('radio_status_url', '');
+        $display  = 'NP Artist ' . $suffix . ' - NP Song';
+
+        // Reset the radio cache (a FlatCache key — must be cleared through the same
+        // API, not a raw del, or a stale feed cached by another test leaks in) and
+        // the raw last-track dedup pointer, so the play records against our feed.
+        \Pramnos\Cache\FlatCache::default()->delete('radio:now_playing');
+        $cm = \Pramnos\Redis\ConnectionManager::getInstance();
+        $cm->connection()->del($cm->prefix() . 'radio:last_track');
+
+        Client::fake([
+            '*radio.test*'       => ClientResponse::make(['icestats' => ['source' => [
+                'title'     => 'NP Artist ' . $suffix . ' - NP Song',
+                'listeners' => 8,
+            ]]]),
+            '*api.deezer.com*'   => ClientResponse::make(['data' => []]),
+            '*itunes.apple.com*' => ClientResponse::make(['results' => []]),
+        ]);
+
+        try {
+            $settings->setMultiple(['radio_status_url' => 'https://radio.test/status-json.xsl']);
+
+            $response = (new MediaController())->nowPlaying();
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertTrue($body['nowPlaying']['active']);
+            $this->assertSame(8, $body['nowPlaying']['listeners']);
+
+            $pdo  = TestDatabase::connection();
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM tracks WHERE display = ?');
+            $stmt->execute([$display]);
+            $this->assertGreaterThanOrEqual(1, (int) $stmt->fetchColumn(), 'the play must be recorded');
+        } finally {
+            $settings->setMultiple(['radio_status_url' => $prevUrl]);
+            \Pramnos\Cache\FlatCache::default()->delete('radio:now_playing');
+            $pdo = TestDatabase::connection();
+            $pdo->prepare('DELETE FROM track_plays WHERE track_id IN (SELECT id FROM tracks WHERE display = ?)')->execute([$display]);
+            $pdo->prepare('DELETE FROM tracks WHERE display = ?')->execute([$display]);
+            $pdo->prepare('DELETE FROM artists WHERE name = ?')->execute(['NP Artist ' . $suffix]);
+        }
     }
 
     /**

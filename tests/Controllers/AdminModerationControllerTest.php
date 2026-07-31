@@ -171,6 +171,35 @@ class AdminModerationControllerTest extends TestCase
     }
 
     /**
+     * clear-chat soft-deletes every live message and reports the count. Safe to
+     * exercise now that the suite runs on an isolated database: seed two messages,
+     * clear, and confirm they are flagged is_deleted.
+     */
+    public function testClearChatSoftDeletesMessages(): void
+    {
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->cleanup['suffixes'][] = $suffix;
+        $user = 'clr' . $suffix;
+        $chat = new ChatService();
+        $chat->registerUser($user, 'sess' . $suffix, '203.0.113.11');
+        $m1 = $chat->postMessage($user, 'one ' . $suffix, '203.0.113.11', 'sess' . $suffix);
+        $m2 = $chat->postMessage($user, 'two ' . $suffix, '203.0.113.11', 'sess' . $suffix);
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $response = (new AdminModerationController())->clearChat();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = $this->json($response);
+        $this->assertTrue($body['success']);
+        $this->assertGreaterThanOrEqual(2, $body['deleted_count']);
+
+        $pdo  = TestDatabase::connection();
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM messages WHERE message_id IN (?, ?) AND is_deleted = TRUE');
+        $stmt->execute([$m1['id'], $m2['id']]);
+        $this->assertSame(2, (int) $stmt->fetchColumn(), 'both seeded messages must be soft-deleted');
+    }
+
+    /**
      * url-whitelist mirrors the blacklist path (query/insert/delete + duplicate
      * classification): insert a unique pattern (200), re-insert (400 duplicate),
      * GET lists it, DELETE by id (200). All rows cleaned up.
