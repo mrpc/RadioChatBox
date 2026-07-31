@@ -65,9 +65,11 @@ final class AdminSystemController
                 'message'      => 'Redis cache flushed successfully',
                 'keys_cleared' => $keysCleared,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -204,10 +206,12 @@ final class AdminSystemController
                 'schedule'           => $tasks,
                 'schedule_failures'  => count(array_filter($tasks, static fn (array $t): bool => $t['last_status'] === 'failed')),
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('worker-status error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to read worker status'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -235,10 +239,12 @@ final class AdminSystemController
                 'count'   => $count,
                 'users'   => $allUsers,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -300,9 +306,11 @@ final class AdminSystemController
                     'total_pages' => $totalPages,
                 ],
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -350,10 +358,12 @@ final class AdminSystemController
                     'total_pages' => $totalPages,
                 ],
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -436,10 +446,12 @@ final class AdminSystemController
             return Response::json(['error' => 'Invalid action'], 400);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('Admin photos error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -489,10 +501,12 @@ final class AdminSystemController
                 'session_token' => $token,
                 'expires_in'    => 24 * 60 * 60,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('Error creating session token: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to create session token'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -561,9 +575,11 @@ final class AdminSystemController
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

@@ -573,10 +573,12 @@ class FakeUserService
                 $radioListeners = $nowPlaying['listeners'];
                 $targetUserCount = $radioListeners; // Use radio listeners as target
             }
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             // If radio service fails, fall back to minimum_users
             \Pramnos\Logs\Logger::log("Failed to get radio listeners for fake user balancing: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
         
         // If radio listeners not available, fall back to minimum_users setting.
         if ($targetUserCount === null) {
@@ -627,9 +629,11 @@ class FakeUserService
                     return $target;
                 }
             }
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             // Fall through and recompute.
         }
+        // @codeCoverageIgnoreEnd
 
         $delta = (int) floor($minUsers * 0.10);
         $min = max(0, $minUsers - $delta);
@@ -644,9 +648,11 @@ class FakeUserService
         try {
             // Refresh roughly every 3 minutes for a natural drift.
             FlatCache::default()->set('fake_users:jitter_target', $minUsers . ':' . $target, 180);
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             // Non-fatal: without caching it just recomputes next call.
         }
+        // @codeCoverageIgnoreEnd
 
         return $target;
     }

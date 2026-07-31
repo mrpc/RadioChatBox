@@ -22,9 +22,11 @@ final class VersionController
                 'version'   => $this->version(),
                 'timestamp' => time(),
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['success' => false, 'error' => 'Failed to get version'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

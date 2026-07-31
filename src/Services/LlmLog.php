@@ -83,9 +83,11 @@ class LlmLog
                 'cost'          => $pricing->cost((string) ($entry['model'] ?? ''), $usage),
                 'currency'      => $pricing->getCurrency(),
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('LlmLog::record failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

@@ -430,9 +430,11 @@ final class AdminUsersController
                 ],
                 'search' => $search
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

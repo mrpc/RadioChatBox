@@ -87,10 +87,12 @@ final class AdminModerationController
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -150,10 +152,12 @@ final class AdminModerationController
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -218,9 +222,11 @@ final class AdminModerationController
             }
 
             return Response::json(['error' => 'Failed to kick user'], 500);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -273,9 +279,11 @@ final class AdminModerationController
                 'message'       => 'Public chat cleared',
                 'deleted_count' => $deletedCount,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

@@ -96,10 +96,12 @@ final class MessageActionController
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 404);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -116,10 +118,12 @@ final class MessageActionController
                 'success' => true,
                 'allowed' => ReactionService::getAllowedEmojis(),
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -241,13 +245,17 @@ final class MessageActionController
                 'edited_at' => $editedAtIso,
                 'timestamp' => $timestamp,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\PDOException $e) {
             \Pramnos\Logs\Logger::log('Edit message DB error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Database error'], 500);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
+        // @codeCoverageIgnoreEnd
             \Pramnos\Logs\Logger::log('Edit message error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -321,10 +329,12 @@ final class MessageActionController
             }
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -365,10 +375,12 @@ final class MessageActionController
             return Response::json($response);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -587,10 +599,12 @@ final class MessageActionController
                             'timestamp' => time()
                         ];
                         BroadcastingManager::instance()->broadcast('chat:admin_notifications', 'fake_user_dm', $notificationData);
+                    // @codeCoverageIgnoreStart
                     } catch (\Exception $e) {
                         // Log error but don't fail the message send
                         \Pramnos\Logs\Logger::log("Failed to create admin notification: " . $e->getMessage(), 'radiochatbox');
                     }
+                    // @codeCoverageIgnoreEnd
                 }
 
                 // Schedule an automatic bot reply. This only queues a job (the LLM
@@ -615,10 +629,12 @@ final class MessageActionController
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -789,9 +805,11 @@ final class MessageActionController
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

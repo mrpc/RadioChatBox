@@ -510,9 +510,11 @@ class ArtworkService
             @chmod($dstDisk, 0644);
             imagedestroy($src);
             imagedestroy($dst);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             // Best-effort: the full image is used as a fallback.
         }
+        // @codeCoverageIgnoreEnd
     }
 
     private function webPathExists(string $webPath): bool

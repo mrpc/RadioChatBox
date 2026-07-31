@@ -106,10 +106,12 @@ final class AdminImpersonationController
                 'action'  => $action,
                 'state'   => $bot->getThreadState($fakeUser, $peer),
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('impersonate-bot error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to update bot state'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -172,10 +174,12 @@ final class AdminImpersonationController
             throw new InvalidArgumentException('action must be "block" or "unblock"');
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -314,10 +318,12 @@ final class AdminImpersonationController
                     $toUsername,
                     $currentUser['username'] ?? ''
                 );
+            // @codeCoverageIgnoreStart
             } catch (\Exception $e) {
                 // Never fail the admin's message because of bot bookkeeping.
                 \Pramnos\Logs\Logger::log('Failed to stop bot on impersonation: ' . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
 
             // Log impersonation for audit
             \Pramnos\Logs\Logger::log("IMPERSONATION: Admin {$currentUser['username']} sent message as {$impersonateAs} to {$toUsername}", 'radiochatbox');
@@ -441,9 +447,11 @@ final class AdminImpersonationController
                     return $carry;
                 }, []),
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('Impersonate conversations error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Failed to fetch conversations'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

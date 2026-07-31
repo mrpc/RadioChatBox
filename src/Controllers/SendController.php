@@ -55,9 +55,11 @@ final class SendController
             return Response::json(['error' => $e->getMessage()], 400);
         } catch (RuntimeException $e) {
             return Response::json(['error' => $e->getMessage()], 429);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

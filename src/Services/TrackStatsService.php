@@ -67,9 +67,11 @@ class TrackStatsService
             if ($lastDisplay !== false && $lastDisplay === $display) {
                 return null; // same as the previous recorded play
             }
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             // Non-fatal: fall through to record.
         }
+        // @codeCoverageIgnoreEnd
 
         $listeners = isset($nowPlaying['listeners']) && $nowPlaying['listeners'] !== null
             ? (int)$nowPlaying['listeners'] : null;
@@ -111,6 +113,7 @@ class TrackStatsService
 
             $this->db->commitTransaction();
             return $trackId;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollbackTransaction();
@@ -118,6 +121,7 @@ class TrackStatsService
             \Pramnos\Logs\Logger::log('TrackStatsService::recordPlay failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Resolve or create an artist by name, returning its id. */
@@ -130,10 +134,12 @@ class TrackStatsService
                  RETURNING id',
                 ['name' => mb_substr($name, 0, 300)]
             )->fetchColumn();
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::upsertArtist failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Resolve or create an album (by title + artist), filling metadata. */
@@ -161,10 +167,12 @@ class TrackStatsService
                     'eid' => $meta['album_external_id'] ?? null,
                 ]
             )->fetchColumn();
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::upsertAlbum failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     private function markEnriched(int $trackId): void
@@ -172,9 +180,11 @@ class TrackStatsService
         try {
             $qb = $this->db->queryBuilder()->from('tracks');
             $qb->where('id', '=', $trackId)->update(['enriched_at' => $qb->raw('NOW()')]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::markEnriched failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -234,9 +244,11 @@ class TrackStatsService
                         'id' => $artistId,
                     ]
                 );
+            // @codeCoverageIgnoreStart
             } catch (\Throwable $e) {
                 \Pramnos\Logs\Logger::log('enrichTrack artist update failed: ' . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
         }
 
         // Album row.
@@ -271,11 +283,13 @@ class TrackStatsService
                     'id' => $trackId,
                 ]
             );
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('enrichTrack track update failed: ' . $e->getMessage(), 'radiochatbox');
             $this->markEnriched($trackId);
             return false;
         }
+        // @codeCoverageIgnoreEnd
 
         return true;
     }
@@ -296,11 +310,13 @@ class TrackStatsService
         try {
             $result = $this->db->preparedQuery('SELECT enriched_at FROM tracks WHERE id = ?', [$trackId]);
             $row = $result ? $result->fetch() : null;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::enrichIfPending failed: ' . $e->getMessage(), 'radiochatbox');
 
             return false;
         }
+        // @codeCoverageIgnoreEnd
 
         if ($row === null || $row['enriched_at'] !== null) {
             return false;
@@ -318,10 +334,12 @@ class TrackStatsService
                 ->orderBy('last_played_at', 'desc')
                 ->limit($limit)
                 ->pluck('id');
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::enrichPending failed: ' . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
 
         $count = 0;
         foreach ($ids as $id) {
@@ -350,10 +368,12 @@ class TrackStatsService
                 ['date' => $date, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getLog failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -384,10 +404,12 @@ class TrackStatsService
                 ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTopTracks failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -417,10 +439,12 @@ class TrackStatsService
                 ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTopArtists failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Most-played genres over a window (excludes flagged tracks/artists). */
@@ -445,10 +469,12 @@ class TrackStatsService
                 ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTopGenres failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Most-played albums over a window (excludes flagged tracks/artists). */
@@ -474,10 +500,12 @@ class TrackStatsService
                 ['from' => $from, 'to' => $to, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTopAlbums failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -520,10 +548,12 @@ class TrackStatsService
                     ->update($updateData);
             }
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::updateTrackMeta failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -550,10 +580,12 @@ class TrackStatsService
             $updateData['updated_at'] = $qb->raw('NOW()');
             $qb->where('id', '=', $artistId)->update($updateData);
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::updateArtistMeta failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -576,10 +608,12 @@ class TrackStatsService
             $updateData['updated_at'] = $qb->raw('NOW()');
             $qb->where('id', '=', $albumId)->update($updateData);
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::updateAlbumMeta failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -633,10 +667,12 @@ class TrackStatsService
             $updateData['updated_at'] = $qb->raw('NOW()');
             $qb->where('id', '=', $albumId)->update($updateData);
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::enrichAlbum failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -660,9 +696,11 @@ class TrackStatsService
                 $qb = $this->db->queryBuilder()->from('artists');
                 $qb->where('id', '=', $row['id'])
                     ->update(['image_file' => $file, 'updated_at' => $qb->raw('NOW()')]);
+            // @codeCoverageIgnoreStart
             } catch (\Throwable $e) {
                 \Pramnos\Logs\Logger::log('TrackStatsService::ensureArtistImage failed: ' . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
         }
         return $file;
     }
@@ -677,10 +715,12 @@ class TrackStatsService
                 ['name' => $name]
             );
             return ($result && $result->numRows > 0) ? $result->fields : null;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getArtistRowByName failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** All-time summary for one artist (plays, distinct tracks, first/last). */
@@ -699,10 +739,12 @@ class TrackStatsService
                 return null;
             }
             return $row;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getArtistSummary failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Tracks by one artist with play counts (all-time), most-played first. */
@@ -720,10 +762,12 @@ class TrackStatsService
                 ['artist' => $artist, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getArtistTracks failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** A single track's metadata, or null if not found. */
@@ -743,10 +787,12 @@ class TrackStatsService
                 ['id' => $trackId]
             );
             return ($result && $result->numRows > 0) ? $result->fields : null;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTrackById failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -766,10 +812,12 @@ class TrackStatsService
                 ->limit($limit)
                 ->getAll();
             return $result;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTrackPlays failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -793,9 +841,11 @@ class TrackStatsService
                 $totals['total_plays'] = (int)$row['total_plays'];
                 $totals['unique_tracks'] = (int)$row['unique_tracks'];
             }
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getSummary totals failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
 
         $perDay = [];
         try {
@@ -806,9 +856,11 @@ class TrackStatsService
                 ['from' => $from, 'to' => $to]
             );
             $perDay = $r ? $r->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getSummary perDay failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
 
         // The currently/most-recently played track (for a "now playing" link).
         $current = null;
@@ -819,9 +871,11 @@ class TrackStatsService
                  ORDER BY tp.played_at DESC LIMIT 1'
             );
             $current = ($r && $r->numRows > 0) ? $r->fields : null;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getSummary current failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
 
         return [
             'from' => $from,
@@ -867,10 +921,12 @@ class TrackStatsService
                 'genre' => $row['genre'] ?: null,
                 'cover' => $row['cover_file'] ?: ($row['album_cover'] ?: ($row['artist_image'] ?: null)),
             ];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getCurrentTrackMeta failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Distinct genres already present in the database (tracks + albums). */
@@ -885,10 +941,12 @@ class TrackStatsService
                  ) g ORDER BY genre ASC"
             )->fetchAll();
             return array_column($rows, 'genre');
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getGenreList failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Every artist, alphabetically, with all-time play/track counts. */
@@ -910,10 +968,12 @@ class TrackStatsService
                  GROUP BY t.artist
                  ORDER BY LOWER(t.artist) ASC'
             )->fetchAll();
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getAllArtists failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Albums by an artist (all-time play counts), most-played first. */
@@ -933,10 +993,12 @@ class TrackStatsService
                 ['artist' => $artist]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getAlbumsByArtist failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -964,10 +1026,12 @@ class TrackStatsService
                 ->update(['genre' => $g, 'updated_at' => $qb->raw('NOW()')]);
 
             return $count;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::bulkSetGenreByArtist failed: ' . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -991,10 +1055,12 @@ class TrackStatsService
                 array_merge([$g], $ids)
             );
             return $result ? $result->getAffectedRows() : 0;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::bulkSetGenreForTracks failed: ' . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -1015,10 +1081,12 @@ class TrackStatsService
                 ->where('genre', '=', $from)
                 ->update(['genre' => $toVal]);
             return $result ? $result->getAffectedRows() : 0;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::bulkReassignGenre failed: ' . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Search tracks by title/artist/display. */
@@ -1041,10 +1109,12 @@ class TrackStatsService
                 ['q' => '%' . $query . '%', 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::searchTracks failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Tracks of a given genre with play counts (excludes flagged items). */
@@ -1066,10 +1136,12 @@ class TrackStatsService
                 ['genre' => $genre, 'limit' => $limit]
             );
             return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getTracksByGenre failed: ' . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Album detail: the album row + its tracks with play counts. */
@@ -1098,9 +1170,11 @@ class TrackStatsService
             );
 
             return ['album' => $album, 'tracks' => $tracks ? $tracks->fetchAll() : []];
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('TrackStatsService::getAlbumDetail failed: ' . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 }

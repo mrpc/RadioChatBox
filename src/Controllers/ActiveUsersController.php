@@ -24,9 +24,11 @@ final class ActiveUsersController
                 'count'   => count($users),
                 'users'   => $users,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

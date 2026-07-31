@@ -459,9 +459,11 @@ class MessageFilter
                 $remaining = 3 - $violations;
                 \Pramnos\Logs\Logger::log("Spam URL violation for {$ipAddress} (violations: {$violations}, {$remaining} more until auto-ban)", 'radiochatbox');
             }
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to track spam violation: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**

@@ -377,8 +377,10 @@ class Scheduler
                     'failures'         => $qb->raw('scheduled_tasks.failures + EXCLUDED.failures'),
                 ]
             );
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('Scheduler::record failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 }

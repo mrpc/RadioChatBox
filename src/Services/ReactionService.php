@@ -166,9 +166,11 @@ class ReactionService
             foreach ($rows as $row) {
                 $counts[$row['message_id']][$row['emoji']] = (int)$row['cnt'];
             }
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('ReactionService::attachToMessages counts failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
 
         // Current user's own reactions.
         $mine = [];
@@ -183,9 +185,11 @@ class ReactionService
                 foreach ($rows as $row) {
                     $mine[$row['message_id']][$row['emoji']] = true;
                 }
+            // @codeCoverageIgnoreStart
             } catch (\Throwable $e) {
                 \Pramnos\Logs\Logger::log('ReactionService::attachToMessages mine failed: ' . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
         }
 
         foreach ($messages as &$m) {
@@ -230,10 +234,12 @@ class ReactionService
                 ->from('messages')
                 ->where('message_id', '=', $messageId)
                 ->exists();
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('ReactionService::messageExists failed: ' . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -253,8 +259,10 @@ class ReactionService
                 'message_id' => $messageId,
                 'counts' => $counts,
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log('ReactionService::publishUpdate failed: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 }

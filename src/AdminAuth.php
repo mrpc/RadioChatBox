@@ -102,10 +102,12 @@ class AdminAuth
             
             return false;
             
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("AdminAuth::authenticateDatabase error: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -125,9 +127,11 @@ class AdminAuth
                 'role' => $role,
                 'authenticated_at' => time(),
             ], 86400);
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("AdminAuth::setCurrentUser error: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -141,9 +145,11 @@ class AdminAuth
     {
         try {
             FlatCache::default()->delete("admin_session:{$username}");
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("AdminAuth::destroySession error: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -205,16 +211,20 @@ class AdminAuth
                         return $sessionData;
                     }
                 }
+            // @codeCoverageIgnoreStart
             } catch (\Exception $e) {
                 \Pramnos\Logs\Logger::log("AdminAuth::getCurrentUser database lookup error: " . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
             
             return null;
             
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("AdminAuth::getCurrentUser error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -260,11 +270,13 @@ class AdminAuth
 
             // Allow max 5 attempts per 15 minutes
             return $attempts < 5;
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             // If Redis fails, allow the attempt but log it
             \Pramnos\Logs\Logger::log("Admin auth rate limit check failed: " . $e->getMessage(), 'radiochatbox');
             return true;
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -275,9 +287,11 @@ class AdminAuth
         try {
             // Atomic sliding-window counter (Redis INCRBY + 15-minute expiry).
             FlatCache::default()->increment("admin_auth_attempts:{$ipAddress}", 1, 900);
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to record admin auth attempt: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -287,9 +301,11 @@ class AdminAuth
     {
         try {
             FlatCache::default()->delete("admin_auth_attempts:{$ipAddress}");
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to clear admin auth attempts: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**

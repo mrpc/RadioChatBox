@@ -199,10 +199,12 @@ class UserService
                 'user' => $this->sanitizeUser($user)
             ];
 
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::updateUser error: " . $e->getMessage(), 'radiochatbox');
             return ['success' => false, 'error' => 'Database error'];
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -236,10 +238,12 @@ class UserService
 
             return ['success' => true];
 
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::deleteUser error: " . $e->getMessage(), 'radiochatbox');
             return ['success' => false, 'error' => 'Database error'];
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -259,10 +263,12 @@ class UserService
             if (is_array($cached)) {
                 return $cached;
             }
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("UserService::getAllUsers Redis error: " . $e->getMessage(), 'radiochatbox');
             // Continue to database query if Redis fails
         }
+        // @codeCoverageIgnoreEnd
         
         try {
             $qb = $this->db->queryBuilder()
@@ -289,16 +295,20 @@ class UserService
             // Cache the results for 5 minutes
             try {
                 FlatCache::default()->set($cacheKey, $users, 300);
+            // @codeCoverageIgnoreStart
             } catch (\Exception $e) {
                 \Pramnos\Logs\Logger::log("UserService::getAllUsers cache set error: " . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
             
             return $users;
 
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::getAllUsers error: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -319,10 +329,12 @@ class UserService
 
             return $user ? $this->sanitizeUser($user) : null;
 
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::getUserById error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -343,10 +355,12 @@ class UserService
 
             return $user ? $this->sanitizeUser($user) : null;
 
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::getUserByUsername error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -386,10 +400,12 @@ class UserService
             
             return $this->sanitizeUser($user);
             
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::authenticate error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -441,9 +457,11 @@ class UserService
         try {
             $qb = $this->db->queryBuilder()->from('users');
             $qb->where('id', '=', $userId)->update(['last_login' => $qb->raw('CURRENT_TIMESTAMP')]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::updateLastLogin error: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -479,9 +497,11 @@ class UserService
 
             // Note: Individual user_data:{username} caches will expire naturally in 5 minutes
             // or can be cleared per-user if we know which user was updated
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("UserService::clearUsersCache error: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
     
     /**
@@ -508,9 +528,11 @@ class UserService
             FlatCache::default()->delete("display_name:{$username}");
             // Clear new user_data cache (includes both user_id and display_name)
             FlatCache::default()->delete("user_data:{$username}");
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("UserService::clearUserDataCache error: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

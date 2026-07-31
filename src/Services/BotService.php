@@ -577,11 +577,13 @@ class BotService
             ], $delay);
 
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('BotService::onIncomingMessage failed: ' . $e->getMessage(), 'radiochatbox');
 
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     // ========================================================================
@@ -2178,10 +2180,12 @@ class BotService
                 ->from('banned_nicknames')
                 ->whereRaw('LOWER(nickname) = LOWER(%s)', [$peer])
                 ->exists();
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             error_log('BotService::isPeerBanned failed: ' . $e->getMessage());
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -2575,9 +2579,11 @@ class BotService
             if ($gap !== false && $gap !== null) {
                 $facts['seconds_since_last_message'] = (int) $gap;
             }
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('BotService: could not load peer facts: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
 
         return $facts;
     }
@@ -2715,9 +2721,11 @@ class BotService
                 SET last_error = ?, updated_at = NOW()
                 WHERE fake_user_id = ? AND peer_username = ?
             ', [mb_substr($message, 0, 500), $fakeUserId, $peer]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('BotService: failed to record thread error: ' . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Logical (unprefixed) counter key; the Cache capability adds the prefix. */

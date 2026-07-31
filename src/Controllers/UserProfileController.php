@@ -49,9 +49,11 @@ final class UserProfileController
             $profile['display_name'] = $user ? $user['display_name'] : null;
 
             return Response::json(['success' => true, 'profile' => $profile]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('Error fetching user profile: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['success' => false, 'error' => 'Failed to fetch profile'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

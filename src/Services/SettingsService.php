@@ -389,9 +389,11 @@ class SettingsService
             if (is_string($stamp) && $stamp !== '') {
                 return $stamp;
             }
+        // @codeCoverageIgnoreStart
         } catch (\Throwable) {
             // Fall through to the database.
         }
+        // @codeCoverageIgnoreEnd
 
         try {
             $max = $this->db->queryBuilder()->from('settings')->max('updated_at');

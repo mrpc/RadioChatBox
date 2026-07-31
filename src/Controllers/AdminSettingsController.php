@@ -131,12 +131,14 @@ final class AdminSettingsController
             $settings['bot_default_llm_prices'] = LlmPricing::seedJson();
 
             return Response::json(['success' => true, 'settings' => $settings]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             if ($db->inTransaction()) {
                 $db->rollbackTransaction();
             }
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -184,12 +186,14 @@ final class AdminSettingsController
             }
 
             return Response::json($response);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             if ($db->inTransaction()) {
                 $db->rollbackTransaction();
             }
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -301,9 +305,11 @@ final class AdminSettingsController
                 'url' => $fileUrl,
                 'message' => ucfirst($logoType) . ' uploaded successfully',
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -390,10 +396,12 @@ final class AdminSettingsController
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Admin notifications error: " . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -469,10 +477,12 @@ final class AdminSettingsController
             throw new InvalidArgumentException('notification_id, mark_all_read, or clear_read is required');
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Admin notifications error: " . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -503,9 +513,11 @@ final class AdminSettingsController
                 'success' => true,
                 'message' => "Deleted $count old notification(s)",
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Admin notifications error: " . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

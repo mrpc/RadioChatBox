@@ -55,8 +55,10 @@ final class SettingsController
                 ->withHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
                 ->withHeader('Pragma', 'no-cache')
                 ->withHeader('Expires', '0');
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

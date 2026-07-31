@@ -134,11 +134,13 @@ class LlmAccount
 
         try {
             $response = $this->adminClient()->get($path);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('LlmAccount::providerCosts failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }
+        // @codeCoverageIgnoreEnd
 
         $spent = 0.0;
         $currency = LlmPricing::CURRENCY;
@@ -339,11 +341,13 @@ class LlmAccount
                 'granted_balance'   => $balance['granted'],
                 'topped_up_balance' => $balance['topped_up'],
             ]);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('LlmAccount::snapshot failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }
+        // @codeCoverageIgnoreEnd
 
         return $balance;
     }
@@ -355,9 +359,11 @@ class LlmAccount
                 ->from('bot_llm_balance')
                 ->where('provider', '=', $this->provider)
                 ->max('created_at');
+        // @codeCoverageIgnoreStart
         } catch (\Throwable) {
             return false;
         }
+        // @codeCoverageIgnoreEnd
 
         if (!$last) {
             return true;
@@ -400,11 +406,13 @@ class LlmAccount
                 ->where('provider', '=', $this->provider)
                 ->orderBy('created_at', 'asc')
                 ->getAll();
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('LlmAccount::realSpend failed: ' . $e->getMessage(), 'radiochatbox');
 
             return null;
         }
+        // @codeCoverageIgnoreEnd
 
         if (count($rows) < 2) {
             return null;

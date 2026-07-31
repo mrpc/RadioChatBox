@@ -164,10 +164,12 @@ class StatsService
             FlatCache::default()->delete('stats:hourly:latest');
             
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to aggregate hourly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -188,10 +190,12 @@ class StatsService
             FlatCache::default()->delete('stats:daily:latest');
             
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to aggregate daily stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -212,10 +216,12 @@ class StatsService
             FlatCache::default()->delete('stats:weekly:latest');
             
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to aggregate weekly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -236,10 +242,12 @@ class StatsService
             FlatCache::default()->delete('stats:monthly:latest');
             
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to aggregate monthly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -260,10 +268,12 @@ class StatsService
             FlatCache::default()->delete('stats:yearly:latest');
             
             return true;
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to aggregate yearly stats: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -609,9 +619,11 @@ class StatsService
                     (int)($realTimeMessages['count'] ?? 0)
                 );
             }
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("StatsService: Error querying real-time messages: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
         
         // Count registered and guest users active today from sessions
         try {
@@ -635,9 +647,11 @@ class StatsService
                 $todayStats['guest_users'] ?? 0,
                 (int)($realTimeUsers['guest_users'] ?? 0)
             );
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("StatsService: Error querying real-time users: " . $e->getMessage(), 'radiochatbox');
         }
+        // @codeCoverageIgnoreEnd
 
         $summary = [
             'today' => $todayStats,

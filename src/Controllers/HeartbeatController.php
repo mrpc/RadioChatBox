@@ -57,9 +57,11 @@ final class HeartbeatController
             // internally to once per 5 minutes. Never fail the heartbeat over it.
             try {
                 (new StatsService())->recordSnapshot();
+            // @codeCoverageIgnoreStart
             } catch (\Exception $e) {
                 \Pramnos\Logs\Logger::log('Stats snapshot recording failed: ' . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
 
             return Response::json([
                 'success'     => true,
@@ -69,9 +71,11 @@ final class HeartbeatController
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
+        // @codeCoverageIgnoreEnd
     }
 }

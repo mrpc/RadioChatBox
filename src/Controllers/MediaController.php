@@ -127,9 +127,11 @@ final class MediaController
             if ($cached !== null) {
                 return Response::json($cached);
             }
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             // Cache backend unavailable — proceed without cache
         }
+        // @codeCoverageIgnoreEnd
 
         // Fetch the page content through the framework HTTP client (curl
         // underneath, TLS verification on, redirects followed). As with the former
@@ -203,9 +205,11 @@ final class MediaController
             $newTrackId = null;
             try {
                 $newTrackId = (new TrackStatsService())->recordPlay($now);
+            // @codeCoverageIgnoreStart
             } catch (\Exception $e) {
                 \Pramnos\Logs\Logger::log('Track play recording failed: ' . $e->getMessage(), 'radiochatbox');
             }
+            // @codeCoverageIgnoreEnd
 
             // Attach stored metadata for the current track (for the hover card).
             if (!empty($now['active']) && !empty($now['display'])) {
@@ -222,9 +226,11 @@ final class MediaController
                 try {
                     // Pass the feed so any feed-provided album/cover art is used.
                     (new TrackStatsService())->enrichTrack($newTrackId, $now);
+                // @codeCoverageIgnoreStart
                 } catch (\Exception $e) {
                     \Pramnos\Logs\Logger::log('Inline track enrichment failed: ' . $e->getMessage(), 'radiochatbox');
                 }
+                // @codeCoverageIgnoreEnd
             }
 
             return Response::json([

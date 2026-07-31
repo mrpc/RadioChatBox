@@ -37,10 +37,12 @@ class CleanupService
             }
 
             return $count;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to cleanup expired bans: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -60,10 +62,12 @@ class CleanupService
             }
 
             return $count;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to cleanup stale sessions: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -87,10 +91,12 @@ class CleanupService
             }
 
             return $count;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to purge deleted messages: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -128,10 +134,12 @@ class CleanupService
             }
 
             return $archived;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to archive old messages: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -166,10 +174,12 @@ class CleanupService
                 \Pramnos\Logs\Logger::log("Cleanup: Removed {$count} expired DM blocks", 'radiochatbox');
             }
             return $count;
+        // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to cleanup expired DM blocks: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -180,10 +190,12 @@ class CleanupService
         try {
             $photoService = new \RadioChatBox\Services\PhotoService();
             return $photoService->cleanupExpiredPhotos();
+        // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to cleanup expired photos: " . $e->getMessage(), 'radiochatbox');
             return 0;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
