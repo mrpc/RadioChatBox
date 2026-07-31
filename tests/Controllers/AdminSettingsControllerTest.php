@@ -370,6 +370,31 @@ class AdminSettingsControllerTest extends TestCase
     }
 
     /**
+     * update() reports ignored unknown keys and rejected (clamped/invalid) values
+     * rather than silently succeeding: an unrecognised key lands in `ignored`, and
+     * an out-of-range whitelisted value lands in `rejected`. Nothing valid is
+     * written, so no snapshot/restore is needed.
+     */
+    public function testUpdateReportsIgnoredAndRejectedKeys(): void
+    {
+        // Unknown key → ignored.
+        $_POST = ['this_is_not_a_setting_' . substr(bin2hex(random_bytes(3)), 0, 6) => 'x'];
+        $ignored = (new AdminSettingsController())->update();
+        $this->assertSame(200, $ignored->getStatusCode());
+        $ignoredBody = json_decode($ignored->getBody(), true);
+        $this->assertNotEmpty($ignoredBody['ignored']);
+        $this->assertStringContainsString('ignored unknown keys', $ignoredBody['message']);
+
+        // A whitelisted key with an invalid value → rejected (unknown provider).
+        $_POST = ['bot_llm_provider' => 'nonexistent_provider'];
+        $rejected = (new AdminSettingsController())->update();
+        $this->assertSame(200, $rejected->getStatusCode());
+        $rejectedBody = json_decode($rejected->getBody(), true);
+        $this->assertNotEmpty($rejectedBody['rejected']);
+        $this->assertStringContainsString('Saved, except', $rejectedBody['message']);
+    }
+
+    /**
      * PUT /api/admin/notifications with clear_read removes the caller's already-read
      * notifications and reports the count (the clear-read branch; typically 0 in a
      * clean test DB, which still exercises the DELETE + count).

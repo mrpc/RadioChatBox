@@ -242,6 +242,24 @@ class AdminStatsControllerTest extends TestCase
     }
 
     /**
+     * aggregate() runs each granularity's aggregation (hourly/daily/weekly/
+     * monthly/yearly/all), reading the granularity from the query string, and
+     * returns 200 {success, results} for each — covering every switch arm.
+     */
+    public function testAggregateAllGranularities(): void
+    {
+        $this->authAsAdmin();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        foreach (['hourly', 'daily', 'weekly', 'monthly', 'yearly', 'all'] as $granularity) {
+            $_GET = ['granularity' => $granularity];
+            $r = (new AdminStatsController())->aggregate();
+            $this->assertSame(200, $r->getStatusCode(), "granularity {$granularity} must return 200");
+            $this->assertTrue($this->body($r)['success']);
+            $this->assertArrayHasKey('results', $this->body($r));
+        }
+    }
+
+    /**
      * The track-stats POST enrichment actions (enrich track / album / artist) run
      * through the framework HTTP client, faked to no external match, and each
      * returns 200 success. Covers the enrich/enrich-album/enrich-artist branches.
