@@ -210,6 +210,57 @@ class PhotoServiceTest extends TestCase
     }
 
     /**
+     * A non-OK upload error code is mapped to its human message via
+     * getUploadErrorMessage (checked after validateFile passes).
+     */
+    public function testUploadErrorCodeIsMapped(): void
+    {
+        $img = imagecreatetruecolor(20, 20);
+        $jpg = tempnam(sys_get_temp_dir(), 'errj') . '.jpg';
+        imagejpeg($img, $jpg);
+        imagedestroy($img);
+
+        try {
+            $file = $this->fileEntry($jpg);
+            $file['error'] = UPLOAD_ERR_INI_SIZE;
+            $this->assertUploadThrows($this->acceptingService(), $file, 'exceeds server upload limit');
+        } finally {
+            @unlink($jpg);
+        }
+    }
+
+    /**
+     * A PNG upload is stored with a .png extension (getExtensionFromMime's png
+     * branch) and its real dimensions.
+     */
+    public function testUploadPngStoresWithPngExtension(): void
+    {
+        $img = imagecreatetruecolor(64, 48);
+        $png = tempnam(sys_get_temp_dir(), 'okp') . '.png';
+        imagepng($img, $png);
+        imagedestroy($img);
+
+        $uploaded = null;
+        try {
+            $uploaded = $this->acceptingService()->uploadPhoto(
+                ['tmp_name' => $png, 'name' => 'pic.png', 'size' => (int) filesize($png), 'error' => UPLOAD_ERR_OK, 'type' => 'image/png'],
+                'u', 'r', '127.0.0.1'
+            );
+            $this->assertStringEndsWith('.png', $uploaded['filename']);
+            $this->assertSame('image/png', $uploaded['mime_type']);
+        } finally {
+            @unlink($png);
+            if ($uploaded !== null) {
+                $disk = dirname(__DIR__) . '/public' . $uploaded['file_path'];
+                if (is_file($disk)) {
+                    @unlink($disk);
+                }
+                $this->pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$uploaded['attachment_id']]);
+            }
+        }
+    }
+
+    /**
      * uploadPhoto refuses when photo uploads are disabled by setting
      * (allow_photo_uploads=false). The setting is snapshotted/restored.
      */
