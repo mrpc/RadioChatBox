@@ -146,6 +146,123 @@ class PhotoServiceTest extends TestCase
         $this->assertGreaterThanOrEqual($live, $withDeleted, 'including deleted never counts fewer');
     }
 
+    /** A PhotoService that accepts a CLI temp file as an upload. */
+    private function acceptingService(): PhotoService
+    {
+        return new class extends PhotoService {
+            protected function isUploadedFile(string $path): bool
+            {
+                return is_file($path);
+            }
+        };
+    }
+
+    /** Build a $_FILES-style entry for $tmp. */
+    private function fileEntry(string $tmp, string $name = 'p.jpg', ?int $size = null): array
+    {
+        return [
+            'tmp_name' => $tmp,
+            'name'     => $name,
+            'size'     => $size ?? (int) filesize($tmp),
+            'error'    => UPLOAD_ERR_OK,
+            'type'     => 'image/jpeg',
+        ];
+    }
+
+    /**
+     * uploadPhoto's validation branches each throw their specific message: a bad
+     * extension, an empty file, an over-size file, and a non-image payload (valid
+     * extension but not a real image).
+     */
+    public function testUploadValidationRejections(): void
+    {
+        $service = $this->acceptingService();
+
+        // Real JPEG for the extension/size checks.
+        $img = imagecreatetruecolor(20, 20);
+        $jpg = tempnam(sys_get_temp_dir(), 'okj') . '.jpg';
+        imagejpeg($img, $jpg);
+        imagedestroy($img);
+
+        // A text file with a .jpg name (passes extension, fails getimagesize).
+        $fake = tempnam(sys_get_temp_dir(), 'fake') . '.jpg';
+        file_put_contents($fake, 'not an image');
+
+        try {
+            $this->assertUploadThrows($service, $this->fileEntry($jpg, 'p.txt'), 'Invalid file extension');
+            $this->assertUploadThrows($service, $this->fileEntry($jpg, 'p.jpg', 0), 'File is empty');
+            $this->assertUploadThrows($service, $this->fileEntry($jpg, 'p.jpg', 999999999), 'File too large');
+            $this->assertUploadThrows($service, $this->fileEntry($fake, 'p.jpg'), 'File is not a valid image');
+        } finally {
+            @unlink($jpg);
+            @unlink($fake);
+        }
+    }
+
+    private function assertUploadThrows(PhotoService $service, array $file, string $expectedMessage): void
+    {
+        try {
+            $service->uploadPhoto($file, 'u', 'r', '127.0.0.1');
+            $this->fail("expected upload to throw: {$expectedMessage}");
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString($expectedMessage, $e->getMessage());
+        }
+    }
+
+    /**
+     * uploadPhoto refuses when photo uploads are disabled by setting
+     * (allow_photo_uploads=false). The setting is snapshotted/restored.
+     */
+    public function testUploadRejectedWhenDisabled(): void
+    {
+        $settings = new \RadioChatBox\Services\SettingsService();
+        $prev = (string) $settings->get('allow_photo_uploads', 'true');
+        try {
+            $settings->setMultiple(['allow_photo_uploads' => 'false']);
+            // PhotoService caches the setting per-key; bust it so the write is seen.
+            \Pramnos\Cache\FlatCache::default()->delete('setting:allow_photo_uploads');
+            $this->assertUploadThrows(
+                new PhotoService(),
+                ['tmp_name' => '/x', 'name' => 'p.jpg', 'size' => 1, 'error' => UPLOAD_ERR_OK],
+                'Photo uploads are disabled'
+            );
+        } finally {
+            $settings->setMultiple(['allow_photo_uploads' => $prev]);
+            \Pramnos\Cache\FlatCache::default()->delete('setting:allow_photo_uploads');
+        }
+    }
+
+    /**
+     * emptyTrash permanently removes soft-deleted photos — unlinks the file and
+     * drops the row. Safe to exercise now that the suite runs on an isolated DB.
+     */
+    public function testEmptyTrashRemovesTrashedPhotos(): void
+    {
+        $id  = 'trash_' . substr(bin2hex(random_bytes(5)), 0, 8);
+        $dir = dirname(__DIR__) . '/public/uploads/photos';
+        $fn  = $id . '.jpg';
+        $disk = $dir . '/' . $fn;
+        file_put_contents($disk, 'x');
+        $this->pdo->prepare(
+            "INSERT INTO attachments
+                (attachment_id, filename, original_filename, file_path, file_size, mime_type, uploaded_by, ip_address, is_deleted)
+             VALUES (?, ?, ?, ?, 1, 'image/jpeg', 'trashtester', '127.0.0.1', TRUE)"
+        )->execute([$id, $fn, $fn, '/uploads/photos/' . $fn]);
+
+        try {
+            $removed = (new PhotoService())->emptyTrash();
+            $this->assertGreaterThanOrEqual(1, $removed);
+            $this->assertFileDoesNotExist($disk, 'the trashed file must be unlinked');
+
+            $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM attachments WHERE attachment_id = ?');
+            $stmt->execute([$id]);
+            $this->assertSame(0, (int) $stmt->fetchColumn(), 'the row must be dropped');
+        } finally {
+            @unlink($disk);
+            $this->pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$id]);
+        }
+    }
+
     /**
      * uploadPhoto processes a real (test-double-accepted) upload end to end:
      * validates it, decodes + resizes an oversized image via GD, stores the
