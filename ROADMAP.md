@@ -243,11 +243,11 @@ This document outlines the planned features and enhancements for RadioChatBox.
 ### Intelligent Fake Users
 **Priority:** LOW - Enhanced realism for fake users
 
-- [ ] Bot-driven realistic behavior for fake users
-- [ ] Configurable message templates and responses
+- [x] Bot-driven realistic behavior for fake users
+- [x] Configurable message templates and responses
 - [ ] Random message timing (appear more human)
-- [ ] Contextual responses based on chat activity
-- [ ] Personality profiles for different fake users
+- [x] Contextual responses based on chat activity
+- [x] Personality profiles for different fake users
 - [ ] Fake users react to events (new song, etc.)
 - [ ] Configurable activity patterns (time-based)
 
