@@ -6,6 +6,8 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Cache\FlatCache;
+use Pramnos\Http\Client;
+use Pramnos\Http\ClientResponse;
 use RadioChatBox\Controllers\AdminStatsController;
 use Pramnos\Database\Database;
 use Pramnos\Framework\Testing\TestDatabase;
@@ -31,6 +33,7 @@ class AdminStatsControllerTest extends TestCase
 
     protected function tearDown(): void
     {
+        Client::resetFakes();
         if ($this->sessionKey !== null) {
             try {
                 FlatCache::default()->delete($this->sessionKey);
@@ -236,6 +239,35 @@ class AdminStatsControllerTest extends TestCase
     private function body(Response $r): array
     {
         return json_decode($r->getBody(), true) ?: [];
+    }
+
+    /**
+     * The track-stats POST enrichment actions (enrich track / album / artist) run
+     * through the framework HTTP client, faked to no external match, and each
+     * returns 200 success. Covers the enrich/enrich-album/enrich-artist branches.
+     */
+    public function testTrackStatsEnrichActions(): void
+    {
+        $trackId = $this->seedTrack();
+        $service = new TrackStatsService();
+        $albumId = (int) $service->getAlbumsByArtist('Artist ' . $this->suffix)[0]['album_id'];
+
+        Client::fake([
+            '*api.deezer.com*'   => ClientResponse::make(['data' => []]),
+            '*itunes.apple.com*' => ClientResponse::make(['results' => []]),
+        ]);
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        foreach ([
+            ['action' => 'enrich', 'track_id' => $trackId],
+            ['action' => 'enrich-album', 'album_id' => $albumId],
+            ['action' => 'enrich-artist', 'artist' => 'Artist ' . $this->suffix],
+        ] as $post) {
+            $_POST = $post;
+            $r = (new AdminStatsController())->trackStats();
+            $this->assertSame(200, $r->getStatusCode(), "action {$post['action']} must return 200");
+            $this->assertTrue($this->body($r)['success']);
+        }
     }
 
     /**

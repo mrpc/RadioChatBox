@@ -77,6 +77,11 @@ class AdminImpersonationControllerTest extends TestCase
         unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
     }
 
+    private function json(Response $r): array
+    {
+        return json_decode($r->getBody(), true) ?: [];
+    }
+
     /**
      * The route middleware must reject an unauthenticated request with a 401
      * ({"error":"Unauthorized"}) and never run the wrapped action.
@@ -401,6 +406,80 @@ class AdminImpersonationControllerTest extends TestCase
             $pdo->prepare('DELETE FROM sessions WHERE username = ?')->execute([$peer]);
             $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')
                 ->execute([$fake]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
+        }
+    }
+
+    /**
+     * bot() GET returns the thread state for an active fake user (404 for an
+     * unknown one), and each POST management action (take/release/reset/force/stop)
+     * returns 200. Covers the GET state read and the action match arms.
+     */
+    public function testBotGetStateAndPostActions(): void
+    {
+        $this->authAsRoot();
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $fake   = 'botfake_' . $suffix;
+        $peer   = 'botpeer_' . $suffix;
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active, bot_enabled) VALUES (?, TRUE, TRUE)')->execute([$fake]);
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_GET = ['fake_user' => $fake, 'peer' => $peer];
+            $state = (new AdminImpersonationController())->bot();
+            $this->assertSame(200, $state->getStatusCode());
+            $this->assertArrayHasKey('state', $this->json($state));
+
+            $_GET = ['fake_user' => 'ghost_' . $suffix, 'peer' => $peer];
+            $this->assertSame(404, (new AdminImpersonationController())->bot()->getStatusCode());
+
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            foreach (['take', 'force', 'release', 'reset', 'stop'] as $action) {
+                $_GET  = [];
+                $_POST = ['fake_user' => $fake, 'peer' => $peer, 'action' => $action];
+                $this->assertSame(200, (new AdminImpersonationController())->bot()->getStatusCode(), "action {$action} must be 200");
+            }
+        } finally {
+            $pdo->prepare('DELETE FROM bot_threads WHERE fake_user_id IN (SELECT id FROM fake_users WHERE nickname = ?)')->execute([$fake]);
+            $pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ? OR blocked_username = ?')->execute([$fake, $fake]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
+        }
+    }
+
+    /**
+     * block() GET reports the block state, and POST block/unblock toggle a fake
+     * user's mutual DM block against a peer.
+     */
+    public function testImpersonateBlockGetAndToggle(): void
+    {
+        $this->authAsRoot();
+        $pdo    = TestDatabase::connection();
+        $suffix = substr(bin2hex(random_bytes(4)), 0, 8);
+        $fake   = 'blkf_' . $suffix;
+        $peer   = 'blkp_' . $suffix;
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active) VALUES (?, TRUE)')->execute([$fake]);
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_GET = ['impersonate_as' => $fake, 'to_username' => $peer];
+            $get = (new AdminImpersonationController())->block();
+            $this->assertSame(200, $get->getStatusCode());
+            $this->assertFalse($this->json($get)['i_blocked']);
+
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_GET  = [];
+            $_POST = ['action' => 'block', 'impersonate_as' => $fake, 'to_username' => $peer];
+            $blocked = (new AdminImpersonationController())->block();
+            $this->assertSame(200, $blocked->getStatusCode());
+            $this->assertTrue($this->json($blocked)['blocked']);
+
+            $_POST['action'] = 'unblock';
+            $unblocked = (new AdminImpersonationController())->block();
+            $this->assertSame(200, $unblocked->getStatusCode());
+            $this->assertFalse($this->json($unblocked)['blocked']);
+        } finally {
+            $pdo->prepare('DELETE FROM dm_blocks WHERE blocker_username = ? OR blocked_username = ?')->execute([$fake, $fake]);
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }
     }
