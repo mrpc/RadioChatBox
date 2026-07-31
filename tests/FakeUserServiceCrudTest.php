@@ -153,6 +153,37 @@ class FakeUserServiceCrudTest extends TestCase
     }
 
     /**
+     * updateBotSettings normalises each field: bool cast, 0-100 clamping, unknown
+     * provider/language reset to null (fall back to global), empty string to null,
+     * and an empty option set returns the current row unchanged.
+     */
+    public function testUpdateBotSettingsNormalization(): void
+    {
+        $id = (int) $this->service->addFakeUser($this->nick, 25, 'male', 'NYC')['id'];
+
+        $updated = $this->service->updateBotSettings($id, [
+            'bot_enabled'                 => '1',                 // -> true
+            'bot_max_messages'            => 500,                 // clamp -> 100
+            'bot_ignore_chance'           => -5,                  // clamp -> 0
+            'bot_typing_seconds_per_word' => 99,                  // clamp -> "10"
+            'bot_llm_provider'            => 'no_such_provider',  // unknown -> null
+            'bot_reply_language'          => 'zz',                // unknown -> null
+            'bot_persona'                 => '',                  // empty -> null
+        ]);
+
+        $this->assertNotNull($updated);
+        $this->assertTrue((bool) $updated['bot_enabled']);
+        $this->assertSame(100, (int) $updated['bot_max_messages']);
+        $this->assertSame(0, (int) $updated['bot_ignore_chance']);
+        $this->assertNull($updated['bot_llm_provider']);
+        $this->assertNull($updated['bot_reply_language']);
+        $this->assertNull($updated['bot_persona']);
+
+        // An empty option set is a no-op that returns the current row.
+        $this->assertNotNull($this->service->updateBotSettings($id, []));
+    }
+
+    /**
      * balanceFakeUsers activates inactive fake users to meet the configured
      * minimum (no live radio URL → the minimum_users path), then deactivates the
      * excess when the minimum drops. Drives activateRandomFakeUsers /
