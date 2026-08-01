@@ -6018,10 +6018,25 @@
         }
 
         /** The detail behind the card: every periodic task with its last run. */
-        function openWorkerStatus() {
-            const data = workerStatus;
-            if (!data) return;
+        // Open the modal immediately, then fetch on demand if the dashboard poll
+        // has not populated workerStatus yet (or failed) — a silent no-op on click
+        // was indistinguishable from a broken button.
+        async function openWorkerStatus() {
+            const modal = document.getElementById('worker-status-modal');
+            const body  = document.getElementById('worker-status-body');
+            modal.style.display = 'flex';
+            if (!workerStatus) {
+                body.innerHTML = 'Loading…';
+                try { await loadWorkerStatus(); } catch (e) { /* handled below */ }
+            }
+            if (!workerStatus) {
+                body.innerHTML = '<div style="color:#b91c1c;">Could not read the worker status.</div>';
+                return;
+            }
+            renderWorkerStatusModal(workerStatus);
+        }
 
+        function renderWorkerStatusModal(data) {
             // Per-daemon breakdown (stats/maintenance/tracker/bot). The bot only
             // appears in the list when bot replies are enabled, so its absence is
             // not a fault — only a present-but-dead bot is.
