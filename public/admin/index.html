@@ -2399,6 +2399,48 @@
                             <small>Free key at <a href="https://klipy.com/api" target="_blank">klipy.com/api</a>.</small>
                         </div>
                     </div>
+
+                    <div class="settings-group">
+                        <h3>Realtime (WebSocket)</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-realtime-websocket-enabled" style="width: auto;">
+                                Enable WebSocket transport
+                            </label>
+                            <small>When on (and a public host is set + the worker is healthy) clients use WebSocket instead of SSE, and fall back to SSE automatically. Needs a reverse proxy forwarding the public URL to the worker's bind port.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Public URL scheme</label>
+                            <select id="setting-realtime-ws-public-scheme">
+                                <option value="wss">wss (TLS — production)</option>
+                                <option value="ws">ws (no TLS — local only)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Public host</label>
+                            <input type="text" id="setting-realtime-ws-public-host" placeholder="e.g. chat.example.com">
+                            <small>The hostname the browser dials (behind the reverse proxy). Leave empty to force SSE.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Public port</label>
+                            <input type="number" id="setting-realtime-ws-public-port" placeholder="443">
+                        </div>
+                        <div class="form-group">
+                            <label>Worker bind host</label>
+                            <input type="text" id="setting-realtime-ws-bind-host" placeholder="127.0.0.1">
+                            <small>Where the <code>realtime:serve</code> worker listens; the proxy targets this.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Worker bind port</label>
+                            <input type="number" id="setting-realtime-ws-bind-port" placeholder="6001">
+                            <small>Must be UNIQUE per instance on the same host.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>App key</label>
+                            <input type="text" id="setting-realtime-app-key" placeholder="radiochatbox">
+                            <small>Public Pusher-protocol app key (not a secret).</small>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="section">
@@ -3212,7 +3254,89 @@
         let impersonateChatPeriodicReconnectTimer = null;
         let currentImpersonateConversation = null; // Track current conversation
 
-        function connectAdminStream() {
+        let adminWs = null;
+        let adminWsFellBack = false;
+
+        // Admin notifications realtime: WebSocket when /api/realtime-config
+        // advertises it, else SSE — and any WS failure falls back to SSE, the
+        // unchanged default. The WS path subscribes to the admin-only private
+        // channel, authorized by the admin Bearer (a fetch can send it).
+        async function connectAdminStream() {
+            if (adminStreamEventSource) { adminStreamEventSource.close(); adminStreamEventSource = null; }
+            if (adminWs) { try { adminWs.onclose = null; adminWs.close(); } catch (_) {} adminWs = null; }
+
+            let cfg = null;
+            try {
+                const r = await fetch('/api/realtime-config', { cache: 'no-store' });
+                if (r.ok) cfg = await r.json();
+            } catch (_) { /* → SSE */ }
+
+            if (cfg && cfg.transport === 'websocket' && typeof WebSocket !== 'undefined') {
+                connectAdminWS(cfg);
+            } else {
+                connectAdminSSE();
+            }
+        }
+
+        function connectAdminWS(cfg) {
+            let established = false;
+            adminWsFellBack = false;
+            const fallback = (why) => {
+                if (adminWsFellBack) return;
+                adminWsFellBack = true;
+                console.warn('admin WebSocket unavailable (' + why + ') — falling back to SSE');
+                try { if (adminWs) { adminWs.onclose = null; adminWs.close(); } } catch (_) {}
+                adminWs = null;
+                connectAdminSSE();
+            };
+
+            let ws;
+            try {
+                ws = new WebSocket(`${cfg.scheme}://${cfg.host}:${cfg.port}/app/${cfg.appKey}?protocol=7&client=rcb-admin&version=1.0`);
+            } catch (e) { fallback('construct'); return; }
+            adminWs = ws;
+            const openTimer = setTimeout(() => { if (!established) fallback('timeout'); }, 6000);
+
+            ws.onmessage = async (evt) => {
+                let f; try { f = JSON.parse(evt.data); } catch (_) { return; }
+                const ev = f.event;
+                if (ev === 'pusher:connection_established') {
+                    established = true;
+                    clearTimeout(openTimer);
+                    adminStreamReconnectAttempts = 0;
+                    let sid = ''; try { sid = JSON.parse(f.data).socket_id; } catch (_) {}
+                    try {
+                        const r = await fetch('/api/broadcasting/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                            body: JSON.stringify({ socket_id: sid, channel_name: 'private-admin-notifications' })
+                        });
+                        if (r.ok) {
+                            const { auth } = await r.json();
+                            ws.send(JSON.stringify({ event: 'pusher:subscribe', data: { channel: 'private-admin-notifications', auth } }));
+                        } else {
+                            console.warn('admin notifications channel authorization refused');
+                        }
+                    } catch (e) { console.warn('admin notifications channel authorization failed', e); }
+                    console.log('Admin WebSocket connected');
+                    return;
+                }
+                if (ev === 'pusher:ping') { try { ws.send(JSON.stringify({ event: 'pusher:pong', data: {} })); } catch (_) {} return; }
+                if (!ev || ev.indexOf('pusher') === 0) return;
+                let data = null;
+                try { data = typeof f.data === 'string' ? JSON.parse(f.data) : f.data; } catch (_) { return; }
+                if (ev === 'notification') { handleAdminNotificationEvent(data); }
+            };
+            ws.onerror = () => { if (!established) fallback('error'); };
+            ws.onclose = () => {
+                clearTimeout(openTimer);
+                if (!established) { fallback('closed'); return; }
+                adminWs = null;
+                reconnectAdminStream();
+            };
+        }
+
+        function connectAdminSSE() {
             // Close existing connection if any
             if (adminStreamEventSource) {
                 adminStreamEventSource.close();
@@ -3350,6 +3474,10 @@
             if (adminStreamEventSource) {
                 adminStreamEventSource.close();
                 adminStreamEventSource = null;
+            }
+            if (adminWs) {
+                try { adminWs.onclose = null; adminWs.close(); } catch (_) {}
+                adminWs = null;
             }
             if (adminStreamPeriodicReconnectTimer) {
                 clearInterval(adminStreamPeriodicReconnectTimer);
@@ -7605,6 +7733,18 @@
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
                     document.getElementById('setting-gif-provider').value = settings.gif_provider || 'giphy';
                     document.getElementById('setting-giphy-api-key').value = settings.giphy_api_key || '';
+                    // Realtime (WebSocket). Public host/scheme/port default to the
+                    // domain the admin panel is served from — the WS endpoint almost
+                    // always sits behind the SAME reverse proxy — so the admin only
+                    // has to tick "enable" and save in the common case.
+                    const isHttps = window.location.protocol === 'https:';
+                    document.getElementById('setting-realtime-websocket-enabled').checked = settings.realtime_websocket_enabled === 'true';
+                    document.getElementById('setting-realtime-ws-public-scheme').value = settings.realtime_ws_public_scheme || (isHttps ? 'wss' : 'ws');
+                    document.getElementById('setting-realtime-ws-public-host').value = settings.realtime_ws_public_host || window.location.hostname;
+                    document.getElementById('setting-realtime-ws-public-port').value = settings.realtime_ws_public_port || (isHttps ? '443' : (window.location.port || '80'));
+                    document.getElementById('setting-realtime-ws-bind-host').value = settings.realtime_ws_bind_host || '';
+                    document.getElementById('setting-realtime-ws-bind-port').value = settings.realtime_ws_bind_port || '';
+                    document.getElementById('setting-realtime-app-key').value = settings.realtime_app_key || '';
                     document.getElementById('setting-klipy-api-key').value = settings.klipy_api_key || '';
                     
                     // Update fake user form requirements based on require_profile
@@ -7991,6 +8131,13 @@
                 gif_provider: document.getElementById('setting-gif-provider').value,
                 giphy_api_key: document.getElementById('setting-giphy-api-key').value,
                 klipy_api_key: document.getElementById('setting-klipy-api-key').value,
+                realtime_websocket_enabled: document.getElementById('setting-realtime-websocket-enabled').checked ? 'true' : 'false',
+                realtime_ws_public_scheme: document.getElementById('setting-realtime-ws-public-scheme').value,
+                realtime_ws_public_host: document.getElementById('setting-realtime-ws-public-host').value,
+                realtime_ws_public_port: document.getElementById('setting-realtime-ws-public-port').value,
+                realtime_ws_bind_host: document.getElementById('setting-realtime-ws-bind-host').value,
+                realtime_ws_bind_port: document.getElementById('setting-realtime-ws-bind-port').value,
+                realtime_app_key: document.getElementById('setting-realtime-app-key').value,
                 max_photo_size_mb: document.getElementById('setting-max-photo-size-mb').value,
                 minimum_users: document.getElementById('setting-minimum-users').value,
                 rate_limit_messages: document.getElementById('setting-rate-limit-messages').value,

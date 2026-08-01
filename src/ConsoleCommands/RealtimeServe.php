@@ -72,7 +72,7 @@ final class RealtimeServe extends CommandBase
 
         // Subscribe to the prefixed Redis channels (the driver publishes under the
         // connection prefix); the router maps them back to logical WS channels.
-        $logical   = ['chat:updates', 'chat:user_updates', 'chat:private_messages'];
+        $logical   = ['chat:updates', 'chat:user_updates', 'chat:private_messages', 'chat:admin_notifications'];
         $subscribe = array_map(static fn (string $c): string => $prefix . $c, $logical);
 
         $redisConfig = [
@@ -130,6 +130,12 @@ final class RealtimeServe extends CommandBase
                 $routes[] = ['private-pm-' . $from, 'private', $payload];
             }
             return $routes;
+        }
+
+        // Admin notifications: deliver only on the admin-only private channel, so
+        // no chat client ever receives them (only authenticated admins subscribe).
+        if ($logical === 'chat:admin_notifications') {
+            return [['private-admin-notifications', 'notification', $payload]];
         }
 
         // Public channels: keep the SSE stream's event naming so one client handler

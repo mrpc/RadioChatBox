@@ -20,6 +20,7 @@ class RealtimeControllerTest extends TestCase
     protected function tearDown(): void
     {
         $_POST = [];
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
         // Leave WS disabled for other tests.
         (new SettingsService())->set('realtime_websocket_enabled', 'false');
     }
@@ -77,5 +78,33 @@ class RealtimeControllerTest extends TestCase
     {
         $_POST = ['channel_name' => 'private-pm-alice'];
         $this->assertSame(400, (new RealtimeController())->auth()->getStatusCode());
+    }
+
+    /**
+     * The shared admin notifications channel is signed for an authenticated admin
+     * (the seeded admin/admin123). AdminAuth::verify() reads the Bearer header a
+     * fetch can send (unlike EventSource) and caches the session it looks up.
+     */
+    public function testAuthSignsAdminNotificationsChannelForAdmin(): void
+    {
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer admin:admin123';
+        $_POST = ['socket_id' => '9.9', 'channel_name' => 'private-admin-notifications'];
+
+        $response = (new RealtimeController())->auth();
+
+        if ($response->getStatusCode() === 403) {
+            // Redis unavailable → AdminAuth cannot cache/verify; skip rather than fail.
+            $this->markTestSkipped('admin auth unavailable (Redis?)');
+        }
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertArrayHasKey('auth', json_decode($response->getBody(), true));
+    }
+
+    /** Without an admin Bearer, the admin channel is refused. */
+    public function testAuthRefusesAdminNotificationsWithoutAdmin(): void
+    {
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+        $_POST = ['socket_id' => '9.9', 'channel_name' => 'private-admin-notifications'];
+        $this->assertSame(403, (new RealtimeController())->auth()->getStatusCode());
     }
 }

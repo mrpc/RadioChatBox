@@ -5,7 +5,9 @@ namespace RadioChatBox\Controllers;
 use Pramnos\Broadcasting\RealtimeConfig;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
+use RadioChatBox\AdminAuth;
 use RadioChatBox\ConsoleCommands\RadioChatBoxDaemons;
+use RadioChatBox\Services\Authz;
 use RadioChatBox\Services\RealtimeToken;
 use RadioChatBox\Services\RealtimeSettings;
 
@@ -59,19 +61,30 @@ final class RealtimeController
             return Response::json(['error' => 'socket_id and channel_name are required'], 400);
         }
 
-        $rt       = new RealtimeToken();
-        $claims   = $token !== '' ? $rt->verify($token) : null;
-        $username = $claims['u'] ?? null;
+        $rt     = new RealtimeToken();
+        $appKey = RealtimeSettings::resolve()['appKey'];
+        $sign   = fn (): Response => Response::json(['auth' => $rt->pusherChannelAuth($appKey, $socketId, $channel)]);
 
-        // A client may authorize ONLY its own private channel. Anything else —
-        // notably another user's private-pm-* — is refused.
+        // The shared admin notifications channel: any authenticated admin may
+        // subscribe (proven by the admin Bearer/session the fetch sends — unlike
+        // EventSource, a fetch can carry the Authorization header).
+        if ($channel === 'private-admin-notifications') {
+            $admin = AdminAuth::verify() ? AdminAuth::getCurrentUser() : null;
+            if (!is_array($admin) || Authz::usertypeForLabel($admin['role'] ?? '') < Authz::ADMINISTRATOR) {
+                return Response::json(['error' => 'Forbidden'], 403);
+            }
+            return $sign();
+        }
+
+        // A chat client may authorize ONLY its own private DM channel, proven by
+        // the realtime token. Anything else — notably another user's private-pm-*
+        // — is refused.
+        $username = $token !== '' ? ($rt->verify($token)['u'] ?? null) : null;
         if ($username === null || $channel !== 'private-pm-' . $username) {
             return Response::json(['error' => 'Forbidden'], 403);
         }
 
-        $appKey = RealtimeSettings::resolve()['appKey'];
-
-        return Response::json(['auth' => $rt->pusherChannelAuth($appKey, $socketId, $channel)]);
+        return $sign();
     }
 
     /** Whether the realtime:serve worker is currently supervised and running. */

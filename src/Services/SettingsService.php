@@ -44,6 +44,15 @@ class SettingsService
         'minimum_users',
         // Radio stream status (Icecast/Shoutcast)
         'radio_status_url',
+        // Realtime (WebSocket) transport — public address the browser dials, the
+        // worker's local bind, and the public app key (see RealtimeSettings).
+        'realtime_websocket_enabled',
+        'realtime_ws_public_scheme',
+        'realtime_ws_public_host',
+        'realtime_ws_public_port',
+        'realtime_ws_bind_host',
+        'realtime_ws_bind_port',
+        'realtime_app_key',
         // SEO & Branding
         'site_title',
         'site_description',

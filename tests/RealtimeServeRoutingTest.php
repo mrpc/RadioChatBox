@@ -33,6 +33,21 @@ class RealtimeServeRoutingTest extends TestCase
         }
     }
 
+    public function testAdminNotificationsRouteToAdminOnlyChannel(): void
+    {
+        $routes = RealtimeServe::routeMessage(
+            self::PREFIX,
+            self::PREFIX . 'chat:admin_notifications',
+            'message',
+            ['title' => 'New report']
+        );
+        $this->assertSame(
+            [['private-admin-notifications', 'notification', ['title' => 'New report']]],
+            $routes,
+            'admin notifications go only to the admin-only private channel'
+        );
+    }
+
     public function testUserUpdatesMapToUsersEvent(): void
     {
         $routes = RealtimeServe::routeMessage(self::PREFIX, self::PREFIX . 'chat:user_updates', 'message', ['count' => 3]);
