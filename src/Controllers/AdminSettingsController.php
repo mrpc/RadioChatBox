@@ -16,6 +16,7 @@ use RadioChatBox\Services\LlmPricing;
 use RadioChatBox\Services\LlmProviders;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\SettingsService;
+use RadioChatBox\Services\Authz;
 
 /**
  * Admin settings resource. Migrated from four legacy file-per-endpoint scripts
@@ -323,7 +324,7 @@ final class AdminSettingsController
     public function notificationsIndex(): Response
     {
         $currentUser = AdminAuth::getCurrentUser();
-        if (!$currentUser || !in_array($currentUser['role'], ['root', 'administrator', 'owner'])) {
+        if (!$currentUser || Authz::usertypeForLabel($currentUser['role'] ?? '') < Authz::ADMINISTRATOR) {
             return Response::json(['error' => 'Forbidden: Only root/administrator can view notifications'], 403);
         }
 
@@ -415,32 +416,21 @@ final class AdminSettingsController
     public function notificationsUpdate(): Response
     {
         $currentUser = AdminAuth::getCurrentUser();
-        if (!$currentUser || !in_array($currentUser['role'], ['root', 'administrator', 'owner'])) {
+        if (!$currentUser || Authz::usertypeForLabel($currentUser['role'] ?? '') < Authz::ADMINISTRATOR) {
             return Response::json(['error' => 'Forbidden: Only root/administrator can view notifications'], 403);
         }
 
         try {
             $db = Database::getInstance();
 
-            // PUT bodies are decoded into the framework's putData, not $_POST, so
-            // fall back to the raw JSON body (as the legacy endpoint did). Without
-            // this the mark-all-read PUT always 400s with "Invalid JSON".
-            $input = $_POST;
-            if (empty($input)) {
-                $raw = file_get_contents('php://input');
-                $decoded = ($raw !== false && $raw !== '') ? json_decode($raw, true) : null;
-                if (is_array($decoded)) {
-                    $input = $decoded;
-                }
-            }
-
-            if (empty($input)) {
-                throw new InvalidArgumentException('Invalid JSON');
-            }
-
-            $notificationId = $input['notification_id'] ?? null;
-            $markAllRead = $input['mark_all_read'] ?? false;
-            $clearReadNotifications = $input['clear_read'] ?? false;
+            // This is a PUT: the framework decodes the JSON body into the Request
+            // put store (it only merges POST bodies into $_POST), so read the
+            // fields natively from there — reading $_POST here always came back
+            // empty and 400'd the mark-all-read action.
+            $request = Request::getInstance();
+            $notificationId = $request->get('notification_id', null, 'put');
+            $markAllRead = filter_var($request->get('mark_all_read', false, 'put'), FILTER_VALIDATE_BOOLEAN);
+            $clearReadNotifications = filter_var($request->get('clear_read', false, 'put'), FILTER_VALIDATE_BOOLEAN);
 
             if ($clearReadNotifications) {
                 $result = $db->preparedQuery("
@@ -503,12 +493,12 @@ final class AdminSettingsController
     public function notificationsCleanup(): Response
     {
         $currentUser = AdminAuth::getCurrentUser();
-        if (!$currentUser || !in_array($currentUser['role'], ['root', 'administrator', 'owner'])) {
+        if (!$currentUser || Authz::usertypeForLabel($currentUser['role'] ?? '') < Authz::ADMINISTRATOR) {
             return Response::json(['error' => 'Forbidden: Only root/administrator can view notifications'], 403);
         }
 
         // Only root can run cleanup
-        if ($currentUser['role'] !== 'root') {
+        if (Authz::usertypeForLabel($currentUser['role'] ?? '') < Authz::ROOT) {
             return Response::json(['error' => 'Forbidden: Only root can cleanup notifications'], 403);
         }
 

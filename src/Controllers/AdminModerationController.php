@@ -300,18 +300,12 @@ final class AdminModerationController
     public function deleteMessage(): Response
     {
         try {
-            // The route accepts DELETE too, whose JSON body the framework decodes
-            // into putData rather than $_POST — fall back to the raw body so a
-            // DELETE call does not lose message_id.
-            $input = $_POST;
-            if (empty($input)) {
-                $raw = file_get_contents('php://input');
-                $decoded = ($raw !== false && $raw !== '') ? json_decode($raw, true) : null;
-                if (is_array($decoded)) {
-                    $input = $decoded;
-                }
-            }
-            $messageId = $input['message_id'] ?? null;
+            // The route accepts DELETE as well as POST; the framework decodes a
+            // DELETE JSON body into the Request delete store and a POST one into
+            // $_POST, so read from the store matching the actual method.
+            $request = Request::getInstance();
+            $hash = strtoupper((string) $request->getRequestMethod()) === 'DELETE' ? 'delete' : 'post';
+            $messageId = $request->get('message_id', null, $hash);
 
             if (!$messageId) {
                 return Response::json(['error' => 'Message ID is required'], 400);

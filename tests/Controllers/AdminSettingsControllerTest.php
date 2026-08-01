@@ -38,6 +38,11 @@ class AdminSettingsControllerTest extends TestCase
         }
         $_POST = [];
         $_GET = [];
+        // Reset the framework PUT store + method so a PUT-body test never leaks
+        // into the next test (the notifications actions read this, not $_POST).
+        Request::$putData = [];
+        Request::$deleteData = [];
+        Request::$requestMethod = 'GET';
         unset($_FILES['logo'], $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
     }
 
@@ -55,6 +60,19 @@ class AdminSettingsControllerTest extends TestCase
         } catch (\Throwable $e) {
             $this->markTestSkipped('Redis unavailable: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Simulate a PUT request body the way the framework delivers it: a real PUT's
+     * JSON body is decoded into the Request put store, NOT $_POST (PHP only fills
+     * $_POST for POST). The notifications endpoint is PUT, so the earlier tests
+     * that seeded $_POST were passing while production 400'd — these helpers keep
+     * the tests faithful to the transport.
+     */
+    private function putBody(array $data): void
+    {
+        Request::$requestMethod = 'PUT';
+        Request::$putData = $data;
     }
 
     /**
@@ -249,7 +267,7 @@ class AdminSettingsControllerTest extends TestCase
     public function testNotificationsMarkAllReadReturnsSuccessForAdmin(): void
     {
         $this->authAsAdmin();
-        $_POST = ['mark_all_read' => true];
+        $this->putBody(['mark_all_read' => true]);
 
         $response = (new AdminSettingsController())->notificationsUpdate();
 
@@ -402,7 +420,7 @@ class AdminSettingsControllerTest extends TestCase
     public function testNotificationsUpdateClearRead(): void
     {
         $this->authAsAdmin();
-        $_POST = ['clear_read' => true];
+        $this->putBody(['clear_read' => true]);
 
         $response = (new AdminSettingsController())->notificationsUpdate();
 
@@ -419,7 +437,7 @@ class AdminSettingsControllerTest extends TestCase
     public function testNotificationsUpdateRequiresAnAction(): void
     {
         $this->authAsAdmin();
-        $_POST = ['unrelated' => 'x'];
+        $this->putBody(['unrelated' => 'x']);
 
         $response = (new AdminSettingsController())->notificationsUpdate();
 
@@ -428,6 +446,55 @@ class AdminSettingsControllerTest extends TestCase
             'notification_id, mark_all_read, or clear_read is required',
             json_decode($response->getBody(), true)['error']
         );
+    }
+
+    /**
+     * Regression for the "mark all as read" 400: a real PUT never populates
+     * $_POST, so seeding only $_POST (with an EMPTY put store) must NOT satisfy
+     * the action — the handler reads the put store. On the old $_POST-reading code
+     * this returned 200; now it correctly falls through to the "required" 400.
+     */
+    public function testNotificationsUpdateIgnoresPostBodyOnPut(): void
+    {
+        $this->authAsAdmin();
+        Request::$requestMethod = 'PUT';
+        Request::$putData = [];        // as a real PUT arrives
+        $_POST = ['mark_all_read' => true];
+
+        $response = (new AdminSettingsController())->notificationsUpdate();
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            'notification_id, mark_all_read, or clear_read is required',
+            json_decode($response->getBody(), true)['error']
+        );
+    }
+
+    /**
+     * Authz gate (role→usertype): a moderator is below administrator, so the
+     * notifications update is forbidden with 403 even with a valid action body.
+     */
+    public function testNotificationsUpdateForbidsModeratorWith403(): void
+    {
+        $this->authAsAdmin('moderator');
+        $this->putBody(['mark_all_read' => true]);
+
+        $response = (new AdminSettingsController())->notificationsUpdate();
+
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
+    /**
+     * Authz gate: cleanup is root-only, so an administrator (usertype below root)
+     * is rejected with 403 before the cleanup stored function runs.
+     */
+    public function testNotificationsCleanupForbidsAdministratorWith403(): void
+    {
+        $this->authAsAdmin('administrator');
+
+        $response = (new AdminSettingsController())->notificationsCleanup();
+
+        $this->assertSame(403, $response->getStatusCode());
     }
 
     /**

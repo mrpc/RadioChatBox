@@ -32,6 +32,11 @@ class AdminModerationControllerTest extends TestCase
         $_POST = [];
         $_GET  = [];
         $_SERVER['REQUEST_METHOD'] = 'GET';
+        // Reset the framework method + delete/put stores so a method-specific test
+        // never leaks into the next (deleteMessage reads them by request method).
+        Request::$requestMethod = 'GET';
+        Request::$deleteData = [];
+        Request::$putData = [];
 
         $chat = new ChatService();
         foreach ($this->cleanup['ips'] as $ip) {
@@ -473,6 +478,23 @@ class AdminModerationControllerTest extends TestCase
     {
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_POST = ['message_id' => 'no-such-message-' . bin2hex(random_bytes(4))];
+
+        $response = (new AdminModerationController())->deleteMessage();
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('Message not found', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * Regression: the route also accepts DELETE, whose body the framework delivers
+     * in the Request delete store (not $_POST). deleteMessage() must read it by
+     * method, so a DELETE carrying message_id gets past the "required" 400 (here to
+     * a 404 for an unknown id). The pre-fix handler read only $_POST and 400'd.
+     */
+    public function testDeleteMessageReadsBodyOnDeleteMethod(): void
+    {
+        Request::$requestMethod = 'DELETE';
+        Request::$deleteData = ['message_id' => 'no-such-message-' . bin2hex(random_bytes(4))];
 
         $response = (new AdminModerationController())->deleteMessage();
 
