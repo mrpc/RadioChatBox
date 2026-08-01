@@ -10,11 +10,8 @@
     ],
     "repositories": [
         {
-            "type": "path",
-            "url": "../PramnosFramework",
-            "options": {
-                "symlink": true
-            }
+            "type": "vcs",
+            "url": "https://github.com/mrpc/PramnosFramework.git"
         }
     ],
     "require": {
@@ -23,7 +20,7 @@
         "ext-pdo": "*",
         "ext-pdo_pgsql": "*",
         "ext-gd": "*",
-        "mrpc/pramnosframework": "@dev"
+        "mrpc/pramnosframework": "dev-main"
     },
     "require-dev": {
         "phpunit/phpunit": "^12",
