@@ -10,11 +10,12 @@ use PHPUnit\Framework\TestCase;
  *
  * RadioChatBox's schema starts from one PramnosFramework baseline migration
  * (app/Migrations/*_create_schema.php) instead of the former database/init.sql
- * plus 22 incremental SQL files. Schema convergence onto the framework adds
- * further app migrations alongside it, so this no longer requires a *single*
- * file — it requires that the baseline still exists and is well-formed, that
- * every additional migration follows the timestamped-filename + Migration
- * subclass convention, and that the legacy init.sql / raw SQL files stay gone.
+ * plus 22 incremental SQL files. The framework schema convergence — once five
+ * separate app migrations — is squashed back into this single baseline now that
+ * every production site has migrated, so the app again ships exactly one
+ * migration. This guards that the baseline exists and is well-formed, that any
+ * migration present follows the timestamped-filename + Migration subclass
+ * convention, and that the legacy init.sql / raw SQL files stay gone.
  */
 class MigrationBaselineTest extends TestCase
 {

@@ -17,13 +17,14 @@ return [
     'name'      => 'RadioChatBox',
     'namespace' => 'RadioChatBox',
 
-    // Schema convergence (Phase B): adopt the framework's users/auth/settings/
+    // Framework schema features: adopt the framework's users/auth/settings/
     // messaging/queue schema. `core` is always-on; these add the auth stack
     // (users companions, usertokens, RBAC, 2FA/passkey), messaging and queue.
-    // RCB's colliding tables are renamed (messages→chat_messages,
-    // sessions→presence_sessions) or converged in place (users, settings) by the
-    // app migrations, which run at priority<10 so they precede the framework
-    // create_* migrations (see app/Migrations/2026_08_01_*).
+    // The create_schema baseline builds RCB's tables in the framework-converged
+    // shape (users(userid,usertype), chat_messages/presence_sessions, settings),
+    // so the framework's own create_users/settings/messages/sessions become
+    // hasTable() skips and its auth/messaging/queue companions attach to
+    // users(userid).
     'features'  => ['auth', 'authserver', 'messaging', 'queue'],
 
     // Global HTTP middleware, applied by bootstrap/http.php around every route.
@@ -44,16 +45,13 @@ return [
     ],
 
     // Auto-migration on every execution (web + console), via the framework
-    // fingerprint fast-path. Scan ONLY the app's own migrations — NOT the
-    // framework feature dirs (Stage 2 of the schema convergence flips this on).
-    // The cutoff is cleared: the schema-convergence migrations declare
-    // dependencies on the `create_schema` baseline, and MigrationRunner::sort()
-    // honours dependencies within a batch (Kahn's algorithm) over priority — but
-    // only when the baseline is in the SAME batch. A floor cutoff would isolate
-    // a post-baseline migration into its own auto-run batch (baseline excluded),
-    // where its dependency is unresolved and it can run against a not-yet-created
-    // schema. Keeping the cutoff empty lets auto-run see the baseline + all
-    // convergence migrations together, so they always run in dependency order.
+    // fingerprint fast-path. `framework => true` runs the framework feature
+    // migrations (auth/messaging/queue) alongside the app's create_schema
+    // baseline. The cutoff is kept empty (not a floor) because the framework
+    // migrations are dated 2020 — any post-baseline floor would filter them out.
+    // On a brand-new database run the baseline first, then the framework set
+    // (see tests/bootstrap.php's two-phase build), so the framework create_*
+    // migrations see the baseline's tables and hasTable()-skip them.
     'migrations' => [
         'paths'     => [__DIR__ . '/Migrations'],
         'framework' => true,

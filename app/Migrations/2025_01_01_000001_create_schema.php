@@ -1518,10 +1518,377 @@ SELECT pg_catalog.setval('public.user_profiles_id_seq', 1, false);
 SELECT pg_catalog.setval('public.users_id_seq', 1, true);
 SET session_replication_role = DEFAULT;
 SQL);
+
+        // --- Pramnos framework schema convergence (squashed baseline) ---------
+        // Reshape the just-created RCB schema to the framework shape so the
+        // framework's own create_users/settings/messages/sessions migrations
+        // become hasTable() skips and its auth/messaging/queue companions attach
+        // to users(userid). This was five separate app migrations
+        // (app/Migrations/2026_08_01_*) that ran once against every production
+        // site; now that all are migrated it is folded into the baseline, so a
+        // fresh install needs only this one app migration (+ the framework set).
+        $this->applyConvergence();
     }
 
     public function down(): void
     {
         // Baseline migration: no automated rollback.
+    }
+
+    // ── Schema convergence (folded, forward-only; see git history of the former
+    //    app/Migrations/2026_08_01_00000{1..5} for the staged originals) ────────
+
+    private function applyConvergence(): void
+    {
+        $this->convergeRenameCollidingTables();
+        $this->convergeUsers();
+        $this->repointUserFks();
+        $this->convergeSettings();
+        $this->finalizeDropLegacyRole();
+    }
+
+    /** messages→chat_messages, sessions→presence_sessions + redefine the plpgsql
+     *  functions that name those tables as text. */
+    private function convergeRenameCollidingTables(): void
+    {
+        $s  = $this->schema();
+        $db = $this->DB();
+
+        if ($s->hasTable('messages') && !$s->hasTable('chat_messages')) {
+            $db->statement('ALTER TABLE messages RENAME TO chat_messages;');
+        }
+        if ($s->hasTable('sessions') && !$s->hasTable('presence_sessions')) {
+            $db->statement('ALTER TABLE sessions RENAME TO presence_sessions;');
+        }
+
+        $db->statement($this->aggregateHourlyStatsSql('chat_messages'));
+        $db->statement($this->cleanupInactiveSessionsSql('presence_sessions'));
+    }
+
+    /** Both aggregate_hourly_stats overloads (timestamp / timestamptz) against the
+     *  given messages-table name; guest detection via u.username IS NULL so it is
+     *  independent of the users PK column name. */
+    private function aggregateHourlyStatsSql(string $messagesTable): string
+    {
+        $body = static function (string $tsType) use ($messagesTable): string {
+            return <<<SQL
+CREATE OR REPLACE FUNCTION public.aggregate_hourly_stats(target_hour {$tsType})
+ RETURNS void
+ LANGUAGE plpgsql
+AS \$function\$
+DECLARE
+    v_active_users INTEGER;
+    v_guest_users INTEGER;
+    v_registered_users INTEGER;
+    v_total_messages INTEGER;
+    v_private_messages INTEGER;
+    v_photo_uploads INTEGER;
+    v_new_registrations INTEGER;
+    v_radio_listeners_avg INTEGER;
+    v_radio_listeners_peak INTEGER;
+    v_peak_concurrent INTEGER;
+    v_hour_start {$tsType};
+    v_hour_end {$tsType};
+BEGIN
+    v_hour_start := date_trunc('hour', target_hour);
+    v_hour_end := v_hour_start + INTERVAL '1 hour';
+
+    SELECT COUNT(DISTINCT username) INTO v_active_users
+    FROM {$messagesTable}
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end AND is_deleted = FALSE;
+
+    SELECT COUNT(DISTINCT m.username) INTO v_guest_users
+    FROM {$messagesTable} m LEFT JOIN users u ON m.username = u.username
+    WHERE m.created_at >= v_hour_start AND m.created_at < v_hour_end
+      AND m.is_deleted = FALSE AND u.username IS NULL;
+
+    v_registered_users := COALESCE(v_active_users, 0) - COALESCE(v_guest_users, 0);
+
+    SELECT COUNT(*) INTO v_total_messages
+    FROM {$messagesTable}
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end AND is_deleted = FALSE;
+
+    SELECT COUNT(*) INTO v_private_messages
+    FROM private_messages
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end;
+
+    SELECT COUNT(*) INTO v_photo_uploads
+    FROM attachments
+    WHERE uploaded_at >= v_hour_start AND uploaded_at < v_hour_end AND is_deleted = FALSE;
+
+    SELECT COUNT(*) INTO v_new_registrations
+    FROM users
+    WHERE created_at >= v_hour_start AND created_at < v_hour_end;
+
+    SELECT COALESCE(AVG(radio_listeners)::INTEGER, 0) INTO v_radio_listeners_avg
+    FROM stats_snapshots
+    WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
+
+    SELECT COALESCE(MAX(radio_listeners), 0) INTO v_radio_listeners_peak
+    FROM stats_snapshots
+    WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
+
+    SELECT COALESCE(MAX(concurrent_users), 0) INTO v_peak_concurrent
+    FROM stats_snapshots
+    WHERE snapshot_time >= v_hour_start AND snapshot_time < v_hour_end;
+
+    INSERT INTO stats_hourly (
+        stat_hour, active_users, guest_users, registered_users,
+        total_messages, private_messages, photo_uploads,
+        new_registrations, radio_listeners_avg, radio_listeners_peak, peak_concurrent_users
+    )
+    VALUES (
+        v_hour_start,
+        COALESCE(v_active_users, 0),
+        COALESCE(v_guest_users, 0),
+        COALESCE(v_registered_users, 0),
+        COALESCE(v_total_messages, 0),
+        COALESCE(v_private_messages, 0),
+        COALESCE(v_photo_uploads, 0),
+        COALESCE(v_new_registrations, 0),
+        COALESCE(v_radio_listeners_avg, 0),
+        COALESCE(v_radio_listeners_peak, 0),
+        COALESCE(v_peak_concurrent, 0)
+    )
+    ON CONFLICT (stat_hour) DO UPDATE SET
+        active_users = EXCLUDED.active_users,
+        guest_users = EXCLUDED.guest_users,
+        registered_users = EXCLUDED.registered_users,
+        total_messages = EXCLUDED.total_messages,
+        private_messages = EXCLUDED.private_messages,
+        photo_uploads = EXCLUDED.photo_uploads,
+        new_registrations = EXCLUDED.new_registrations,
+        radio_listeners_avg = EXCLUDED.radio_listeners_avg,
+        radio_listeners_peak = EXCLUDED.radio_listeners_peak,
+        peak_concurrent_users = EXCLUDED.peak_concurrent_users;
+END;
+\$function\$;
+SQL;
+        };
+
+        return $body('timestamp without time zone') . "\n" . $body('timestamp with time zone');
+    }
+
+    private function cleanupInactiveSessionsSql(string $sessionsTable): string
+    {
+        return <<<SQL
+CREATE OR REPLACE FUNCTION public.cleanup_inactive_sessions()
+ RETURNS integer
+ LANGUAGE plpgsql
+AS \$function\$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM {$sessionsTable}
+    WHERE last_heartbeat < NOW() - INTERVAL '5 minutes';
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+\$function\$;
+SQL;
+    }
+
+    /** users → framework shape in place: id→userid, password_hash→password,
+     *  +usertype (backfilled from role) + framework companion columns/indexes. */
+    private function convergeUsers(): void
+    {
+        $s  = $this->schema();
+        $db = $this->DB();
+
+        if ($s->hasColumn('users', 'userid')) {
+            return;
+        }
+
+        $db->statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS valid_email;');
+        $db->statement('DROP INDEX IF EXISTS idx_users_email_unique;');
+
+        $db->statement('ALTER TABLE users RENAME COLUMN id TO userid;');
+        $db->statement('ALTER TABLE users RENAME COLUMN password_hash TO password;');
+        $db->statement("ALTER TABLE users ALTER COLUMN email SET DEFAULT '';");
+
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS usertype smallint NOT NULL DEFAULT 0;');
+        $db->statement(
+            "UPDATE users SET usertype = CASE role
+                WHEN 'root'          THEN 99
+                WHEN 'administrator' THEN 90
+                WHEN 'moderator'     THEN 50
+                ELSE 0 END;"
+        );
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS regdate integer NOT NULL DEFAULT 0;');
+        $db->statement('UPDATE users SET regdate = COALESCE(EXTRACT(EPOCH FROM created_at)::int, 0);');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS lastlogin integer NOT NULL DEFAULT 0;');
+        $db->statement('UPDATE users SET lastlogin = COALESCE(EXTRACT(EPOCH FROM last_login)::int, 0);');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS modified integer NOT NULL DEFAULT 0;');
+        $db->statement('UPDATE users SET modified = COALESCE(EXTRACT(EPOCH FROM updated_at)::int, 0);');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS active smallint NOT NULL DEFAULT 1;');
+        $db->statement('UPDATE users SET active = CASE WHEN is_active THEN 1 ELSE 0 END;');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS validated smallint NOT NULL DEFAULT 1;');
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS lastname   varchar(128) NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS firstname  varchar(128) NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS language   varchar(50)  NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone   char(3)      NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS dateformat varchar(15)  NOT NULL DEFAULT 'd/m/Y H:i';");
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS sex        smallint NOT NULL DEFAULT 0;');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS birthdate  bigint   NOT NULL DEFAULT 0;');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS photo      integer;');
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone   varchar(50)  NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS fax     varchar(50)  NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile  varchar(50)  NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS vat     varchar(15)  NOT NULL DEFAULT '';");
+        $db->statement("ALTER TABLE users ADD COLUMN IF NOT EXISTS website varchar(255) NOT NULL DEFAULT '';");
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS fbauth  bigint;');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS regcompletion   integer;');
+        $db->statement('ALTER TABLE users ADD COLUMN IF NOT EXISTS lasttermsagreed integer;');
+
+        $db->statement('CREATE INDEX IF NOT EXISTS idx_users_email            ON users(email);');
+        $db->statement('CREATE INDEX IF NOT EXISTS idx_users_active_validated ON users(active, validated);');
+        $db->statement('CREATE INDEX IF NOT EXISTS idx_users_usertype         ON users(usertype);');
+    }
+
+    /** Widen + repoint every user FK to users(userid), reserve userid=1 for Guest
+     *  (remapping the seeded admin off it), and recreate the FKs. */
+    private function repointUserFks(): void
+    {
+        $s  = $this->schema();
+        $db = $this->DB();
+
+        if (!$s->hasColumn('users', 'userid')) {
+            return;
+        }
+        $guest = $db->query("SELECT 1 FROM users WHERE userid = 1 AND username = 'Guest'");
+        if ($guest && $guest->numRows > 0) {
+            return;
+        }
+
+        $db->statement('DROP VIEW IF EXISTS user_stats;');
+        $db->statement(<<<'SQL'
+DO $$
+DECLARE
+    targets text[][] := ARRAY[
+        ['dm_blocks','blocker_user_id'], ['dm_blocks','blocked_user_id'],
+        ['chat_messages','user_id'],
+        ['private_messages','from_user_id'], ['private_messages','to_user_id'],
+        ['presence_sessions','user_id'], ['user_activity','user_id'],
+        ['users','created_by']
+    ];
+    i int; t text; c text; fk record;
+BEGIN
+    FOR i IN 1 .. array_length(targets, 1) LOOP
+        t := targets[i][1]; c := targets[i][2];
+        FOR fk IN
+            SELECT con.conname
+            FROM pg_constraint con
+            WHERE con.contype = 'f'
+              AND con.conrelid = to_regclass('public.' || t)
+              AND c = ANY (
+                  SELECT a.attname FROM pg_attribute a
+                  WHERE a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+              )
+        LOOP
+            EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', t, fk.conname);
+        END LOOP;
+    END LOOP;
+
+    EXECUTE 'ALTER TABLE users ALTER COLUMN userid TYPE bigint';
+    EXECUTE 'ALTER TABLE users ALTER COLUMN created_by TYPE bigint';
+    FOR i IN 1 .. array_length(targets, 1) LOOP
+        t := targets[i][1]; c := targets[i][2];
+        IF t <> 'users' THEN
+            EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE bigint', t, c);
+        END IF;
+    END LOOP;
+END $$;
+SQL);
+
+        $db->statement(<<<'SQL'
+DO $$
+DECLARE
+    new_admin_id bigint;
+BEGIN
+    IF EXISTS (SELECT 1 FROM users WHERE userid = 1) THEN
+        SELECT COALESCE(MAX(userid), 1) + 1 INTO new_admin_id FROM users;
+
+        UPDATE users             SET userid          = new_admin_id WHERE userid          = 1;
+        UPDATE chat_messages     SET user_id         = new_admin_id WHERE user_id         = 1;
+        UPDATE private_messages  SET from_user_id    = new_admin_id WHERE from_user_id    = 1;
+        UPDATE private_messages  SET to_user_id      = new_admin_id WHERE to_user_id      = 1;
+        UPDATE presence_sessions SET user_id         = new_admin_id WHERE user_id         = 1;
+        UPDATE user_activity     SET user_id         = new_admin_id WHERE user_id         = 1;
+        UPDATE dm_blocks         SET blocker_user_id = new_admin_id WHERE blocker_user_id = 1;
+        UPDATE dm_blocks         SET blocked_user_id = new_admin_id WHERE blocked_user_id = 1;
+        UPDATE users             SET created_by      = new_admin_id WHERE created_by      = 1;
+    END IF;
+
+    INSERT INTO users (userid, username, password, email, usertype, active, validated,
+                       regdate, modified, role, is_active, created_at, updated_at)
+    VALUES (1, 'Guest', '', '', 0, 1, 1,
+            EXTRACT(EPOCH FROM now())::int, EXTRACT(EPOCH FROM now())::int,
+            'simple_user', true, now(), now())
+    ON CONFLICT (userid) DO NOTHING;
+END $$;
+SQL);
+
+        $db->statement("SELECT setval(pg_get_serial_sequence('users','userid'), (SELECT MAX(userid) FROM users), true);");
+
+        $db->statement(<<<'SQL'
+CREATE OR REPLACE VIEW user_stats AS
+ SELECT username, ip_address, first_seen, last_seen, message_count,
+        is_banned, is_moderator, user_id
+   FROM user_activity
+  ORDER BY last_seen DESC;
+SQL);
+
+        $db->statement('ALTER TABLE dm_blocks        ADD CONSTRAINT dm_blocks_blocker_user_id_fkey FOREIGN KEY (blocker_user_id) REFERENCES users(userid) ON DELETE CASCADE;');
+        $db->statement('ALTER TABLE dm_blocks        ADD CONSTRAINT dm_blocks_blocked_user_id_fkey FOREIGN KEY (blocked_user_id) REFERENCES users(userid) ON DELETE CASCADE;');
+        $db->statement('ALTER TABLE chat_messages    ADD CONSTRAINT fk_messages_user                FOREIGN KEY (user_id)         REFERENCES users(userid) ON DELETE SET NULL;');
+        $db->statement('ALTER TABLE private_messages ADD CONSTRAINT private_messages_to_user_id_fkey   FOREIGN KEY (to_user_id)   REFERENCES users(userid) ON DELETE SET NULL;');
+        $db->statement('ALTER TABLE private_messages ADD CONSTRAINT private_messages_from_user_id_fkey FOREIGN KEY (from_user_id) REFERENCES users(userid) ON DELETE SET NULL;');
+        $db->statement('ALTER TABLE presence_sessions ADD CONSTRAINT fk_sessions_user               FOREIGN KEY (user_id)         REFERENCES users(userid) ON DELETE SET NULL;');
+        $db->statement('ALTER TABLE user_activity     ADD CONSTRAINT fk_user_activity_user          FOREIGN KEY (user_id)         REFERENCES users(userid) ON DELETE SET NULL;');
+        $db->statement('ALTER TABLE users             ADD CONSTRAINT users_created_by_fkey          FOREIGN KEY (created_by)      REFERENCES users(userid);');
+    }
+
+    /** settings → framework shape in place: setting_key→setting, setting_value→
+     *  value (NOT NULL), +"delete"; drop RCB's old unique. */
+    private function convergeSettings(): void
+    {
+        $s  = $this->schema();
+        $db = $this->DB();
+
+        if ($s->hasColumn('settings', 'setting')) {
+            return;
+        }
+
+        $db->statement('ALTER TABLE settings RENAME COLUMN id            TO setting_id;');
+        $db->statement('ALTER TABLE settings RENAME COLUMN setting_key   TO setting;');
+        $db->statement('ALTER TABLE settings RENAME COLUMN setting_value TO value;');
+
+        $db->statement('ALTER TABLE settings ALTER COLUMN setting TYPE varchar(128);');
+        $db->statement("UPDATE settings SET value = '' WHERE value IS NULL;");
+        $db->statement('ALTER TABLE settings ALTER COLUMN value SET NOT NULL;');
+
+        $db->statement('ALTER TABLE settings ADD COLUMN IF NOT EXISTS "delete" smallint NOT NULL DEFAULT 1;');
+
+        $db->statement('ALTER TABLE settings DROP CONSTRAINT IF EXISTS settings_setting_key_key;');
+        $db->statement('DROP INDEX IF EXISTS idx_settings_key_value;');
+    }
+
+    /** Contract: drop the legacy users.role column + user_role enum type. */
+    private function finalizeDropLegacyRole(): void
+    {
+        $s  = $this->schema();
+        $db = $this->DB();
+
+        if (!$s->hasColumn('users', 'userid') || !$s->hasColumn('users', 'usertype')) {
+            throw new \RuntimeException(
+                'create_schema: users.userid/usertype missing — convergence did not run'
+            );
+        }
+
+        if ($s->hasColumn('users', 'role')) {
+            $db->statement('ALTER TABLE users DROP COLUMN role;');
+        }
+        $db->statement('DROP TYPE IF EXISTS user_role;');
     }
 }

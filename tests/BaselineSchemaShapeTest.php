@@ -6,12 +6,14 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Framework\Testing\TestDatabase;
 
 /**
- * Asserts the end state of the PF schema convergence on the freshly-migrated
- * test database (two-phase build in tests/bootstrap.php): users converged to the
- * framework shape, the messages/sessions names freed for the framework, settings
- * converged, and the legacy role enum dropped.
+ * Asserts the end-state schema shape the create_schema baseline must produce on a
+ * freshly-migrated test database (two-phase build in tests/bootstrap.php): users
+ * in the framework shape (userid/usertype, no role), the messages/sessions names
+ * freed for the framework, settings converged, and the framework companion tables
+ * present. This is the guard that the squashed baseline (which folds the former
+ * convergence migrations) still yields the exact framework-converged schema.
  */
-class ConvergenceSchemaTest extends TestCase
+class BaselineSchemaShapeTest extends TestCase
 {
     private static function pdo(): \PDO
     {

@@ -103,16 +103,17 @@ if ($primary) {
         exit(1);
     }
 
-    // Build the schema in two explicit phases (schema convergence, Phase B).
-    // On a FRESH database the un-applied baseline (priority 50) and the framework
-    // create_* migrations (priority 10) would share one batch, where the lower-
-    // priority framework tables sort first and clobber the baseline. So we apply
-    // the app migrations alone first (Phase A: baseline → rename → converge →
-    // repoint → settings), which reshapes users/settings in place and frees the
-    // messages/sessions names, THEN enable the framework set (Phase B), whose
-    // create_users/settings become hasTable() skips and whose sessions/messages
-    // create fresh. RCB_SKIP_AUTO_MIGRATE=1 stops radiochatbox.php's line-48
-    // auto-migrate from pulling everything into one unordered batch first.
+    // Build the schema in two explicit phases. On a FRESH database the un-applied
+    // baseline (priority 50) and the framework create_* migrations (priority 10)
+    // would share one batch, where the lower-priority framework tables sort first
+    // and clobber the baseline. So we apply the app migrations alone first
+    // (Phase A: the single create_schema baseline, which builds the RCB schema and
+    // then reshapes users/settings to the framework shape and frees the
+    // messages/sessions names — the convergence is squashed into the baseline),
+    // THEN enable the framework set (Phase B), whose create_users/settings become
+    // hasTable() skips and whose sessions/messages create fresh.
+    // RCB_SKIP_AUTO_MIGRATE=1 stops radiochatbox.php's line-48 auto-migrate from
+    // pulling everything into one unordered batch first.
     // The subprocesses inherit DB_NAME={$testDb} from putenv() above.
     $php  = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php');
     $envp = 'RCB_SKIP_AUTO_MIGRATE=1 ';
