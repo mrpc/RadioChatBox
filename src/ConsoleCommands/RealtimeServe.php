@@ -49,17 +49,22 @@ final class RealtimeServe extends CommandBase
 
     protected function configure(): void
     {
+        // Defaults resolved from settings at run time (see execute); an explicit
+        // --host/--port still overrides.
         $this->setName('realtime:serve')
             ->setDescription('WebSocket realtime worker (public chat feed + per-user private DMs) fed from Redis pub/sub')
-            ->addOption('host', null, InputOption::VALUE_REQUIRED, 'Bind address', (string) envvar('REALTIME_WS_HOST', '127.0.0.1'))
-            ->addOption('port', 'p', InputOption::VALUE_REQUIRED, 'Listen port', (string) envvar('REALTIME_WS_PORT', '6001'));
+            ->addOption('host', null, InputOption::VALUE_REQUIRED, 'Bind address (default: realtime_ws_bind_host setting)')
+            ->addOption('port', 'p', InputOption::VALUE_REQUIRED, 'Listen port (default: realtime_ws_bind_port setting)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $host   = (string) $input->getOption('host');
-        $port   = (int) $input->getOption('port');
-        $appKey = (string) envvar('REALTIME_APP_KEY', 'radiochatbox');
+        // Admin settings are the source of truth (env/default as fallback); an
+        // explicit CLI option wins over both.
+        $cfg    = \RadioChatBox\Services\RealtimeSettings::resolve();
+        $host   = (string) ($input->getOption('host') ?: $cfg['bindHost']);
+        $port   = (int) ($input->getOption('port') ?: $cfg['bindPort']);
+        $appKey = $cfg['appKey'];
         $secret = (new RealtimeToken())->secret(); // same per-install secret the token signs with
 
         $cm     = ConnectionManager::getInstance();

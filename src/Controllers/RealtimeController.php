@@ -2,13 +2,12 @@
 
 namespace RadioChatBox\Controllers;
 
-use Pramnos\Application\Application;
 use Pramnos\Broadcasting\RealtimeConfig;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\ConsoleCommands\RadioChatBoxDaemons;
 use RadioChatBox\Services\RealtimeToken;
-use RadioChatBox\Services\SettingsService;
+use RadioChatBox\Services\RealtimeSettings;
 
 /**
  * Realtime transport discovery + WS channel authorization.
@@ -28,15 +27,21 @@ final class RealtimeController
     #[Route('/api/realtime-config', methods: 'GET', name: 'realtime.config')]
     public function config(): Response
     {
-        $broadcasting = $this->broadcastingConfig();
-        $wsEnabled    = (new SettingsService())->get('realtime_websocket_enabled', 'false') === 'true';
-        $publicHost   = (string) ($broadcasting['websocket']['host'] ?? '');
+        $c = RealtimeSettings::resolve();
 
-        if ($wsEnabled && $publicHost !== '' && $this->wsWorkerHealthy()) {
-            $cfg = RealtimeConfig::forClient(['transport' => 'websocket'] + $broadcasting);
+        if ($c['enabled'] && $c['publicHost'] !== '' && $this->wsWorkerHealthy()) {
+            $cfg = RealtimeConfig::forClient([
+                'transport' => 'websocket',
+                'websocket' => [
+                    'scheme'  => $c['scheme'],
+                    'host'    => $c['publicHost'],
+                    'port'    => $c['publicPort'],
+                    'app_key' => $c['appKey'],
+                ],
+            ]);
             $cfg['authEndpoint'] = '/api/broadcasting/auth';
         } else {
-            $cfg = RealtimeConfig::forClient(['transport' => 'sse'] + $broadcasting);
+            $cfg = RealtimeConfig::forClient(['transport' => 'sse']);
         }
 
         return Response::json($cfg);
@@ -64,16 +69,9 @@ final class RealtimeController
             return Response::json(['error' => 'Forbidden'], 403);
         }
 
-        $appKey = (string) ($this->broadcastingConfig()['websocket']['app_key'] ?? 'radiochatbox');
+        $appKey = RealtimeSettings::resolve()['appKey'];
 
         return Response::json(['auth' => $rt->pusherChannelAuth($appKey, $socketId, $channel)]);
-    }
-
-    /** @return array<string,mixed> */
-    private function broadcastingConfig(): array
-    {
-        $app = Application::getInstance();
-        return is_array($app->applicationInfo['broadcasting'] ?? null) ? $app->applicationInfo['broadcasting'] : [];
     }
 
     /** Whether the realtime:serve worker is currently supervised and running. */

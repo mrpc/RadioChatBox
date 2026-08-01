@@ -27,22 +27,13 @@ return [
     // users(userid).
     'features'  => ['auth', 'authserver', 'messaging', 'queue'],
 
-    // Realtime transport. The client asks /api/realtime-config which advertises
-    // WebSocket ONLY when the admin enabled it (realtime_websocket_enabled),
-    // REALTIME_WS_PUBLIC_HOST is configured and the realtime:serve worker is
-    // healthy — otherwise it advertises SSE (/api/stream). The `websocket` block
-    // here holds the PUBLIC address a browser dials (behind the TLS reverse proxy),
-    // distinct from the worker's local bind (REALTIME_WS_HOST/PORT).
-    'broadcasting' => [
-        'transport' => 'sse',
-        'sse'       => ['url' => '/api/stream'],
-        'websocket' => [
-            'scheme'  => (string) envvar('REALTIME_WS_PUBLIC_SCHEME', 'wss'),
-            'host'    => (string) envvar('REALTIME_WS_PUBLIC_HOST', ''),
-            'port'    => (int) envvar('REALTIME_WS_PUBLIC_PORT', '443'),
-            'app_key' => (string) envvar('REALTIME_APP_KEY', 'radiochatbox'),
-        ],
-    ],
+    // Realtime transport is resolved from ADMIN SETTINGS (see
+    // RadioChatBox\Services\RealtimeSettings) so it is configurable from the panel
+    // with no redeploy — consistent with realtime_websocket_enabled, which the
+    // daemon orchestrator reads to spawn the worker. /api/realtime-config
+    // advertises WebSocket only when enabled + a public host is set + the worker
+    // is healthy, else SSE. Env vars (REALTIME_WS_*) act only as defaults when a
+    // setting is unset.
 
     // Global HTTP middleware, applied by bootstrap/http.php around every route.
     // CORS reflects the request Origin against ALLOWED_ORIGINS (comma-separated;
