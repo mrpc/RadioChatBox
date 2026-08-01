@@ -37,28 +37,56 @@ final class RcbRepointUserFks extends Migration
             return;
         }
 
-        // (a) Drop the 8 FKs by exact name (the duplicate messages FK will NOT be recreated).
-        $db->statement('ALTER TABLE dm_blocks         DROP CONSTRAINT IF EXISTS dm_blocks_blocker_user_id_fkey;');
-        $db->statement('ALTER TABLE dm_blocks         DROP CONSTRAINT IF EXISTS dm_blocks_blocked_user_id_fkey;');
-        $db->statement('ALTER TABLE chat_messages     DROP CONSTRAINT IF EXISTS fk_messages_user;');
-        $db->statement('ALTER TABLE chat_messages     DROP CONSTRAINT IF EXISTS messages_user_id_fkey;');
-        $db->statement('ALTER TABLE private_messages  DROP CONSTRAINT IF EXISTS private_messages_to_user_id_fkey;');
-        $db->statement('ALTER TABLE private_messages  DROP CONSTRAINT IF EXISTS private_messages_from_user_id_fkey;');
-        $db->statement('ALTER TABLE presence_sessions DROP CONSTRAINT IF EXISTS fk_sessions_user;');
-        $db->statement('ALTER TABLE user_activity     DROP CONSTRAINT IF EXISTS fk_user_activity_user;');
-        $db->statement('ALTER TABLE users             DROP CONSTRAINT IF EXISTS users_created_by_fkey;');
-
-        // (b) Widen every child FK column int4 → int8 to match users.userid.
-        //     The user_stats view SELECTs user_activity.user_id, which blocks the
-        //     column type change, so drop it first and recreate it verbatim after.
+        // (a)+(b) Name-agnostically drop EVERY FK on the user-referencing columns,
+        //     then widen the parent PK + created_by + each child to bigint.
+        //     Dropping by CATALOG LOOKUP (not hard-coded names) is essential: the
+        //     production schema drifted — e.g. sessions_user_id_fkey /
+        //     user_activity_user_id_fkey / admin_users_created_by_fkey instead of
+        //     the create_schema names (the users table was once `admin_users`). A
+        //     column referenced by an FK cannot be retyped, so every FK must go
+        //     before the type change. The user_stats view SELECTs
+        //     user_activity.user_id → drop it first, recreate after.
         $db->statement('DROP VIEW IF EXISTS user_stats;');
-        $db->statement('ALTER TABLE dm_blocks         ALTER COLUMN blocker_user_id TYPE bigint;');
-        $db->statement('ALTER TABLE dm_blocks         ALTER COLUMN blocked_user_id TYPE bigint;');
-        $db->statement('ALTER TABLE chat_messages     ALTER COLUMN user_id         TYPE bigint;');
-        $db->statement('ALTER TABLE private_messages  ALTER COLUMN from_user_id    TYPE bigint;');
-        $db->statement('ALTER TABLE private_messages  ALTER COLUMN to_user_id      TYPE bigint;');
-        $db->statement('ALTER TABLE presence_sessions ALTER COLUMN user_id         TYPE bigint;');
-        $db->statement('ALTER TABLE user_activity     ALTER COLUMN user_id         TYPE bigint;');
+        $db->statement(<<<'SQL'
+DO $$
+DECLARE
+    targets text[][] := ARRAY[
+        ['dm_blocks','blocker_user_id'], ['dm_blocks','blocked_user_id'],
+        ['chat_messages','user_id'],
+        ['private_messages','from_user_id'], ['private_messages','to_user_id'],
+        ['presence_sessions','user_id'], ['user_activity','user_id'],
+        ['users','created_by']
+    ];
+    i int; t text; c text; fk record;
+BEGIN
+    -- Drop every FK on each (table, column), whatever its name.
+    FOR i IN 1 .. array_length(targets, 1) LOOP
+        t := targets[i][1]; c := targets[i][2];
+        FOR fk IN
+            SELECT con.conname
+            FROM pg_constraint con
+            WHERE con.contype = 'f'
+              AND con.conrelid = to_regclass('public.' || t)
+              AND c = ANY (
+                  SELECT a.attname FROM pg_attribute a
+                  WHERE a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+              )
+        LOOP
+            EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', t, fk.conname);
+        END LOOP;
+    END LOOP;
+
+    -- Widen the parent PK + self-ref column, then every child column.
+    EXECUTE 'ALTER TABLE users ALTER COLUMN userid TYPE bigint';
+    EXECUTE 'ALTER TABLE users ALTER COLUMN created_by TYPE bigint';
+    FOR i IN 1 .. array_length(targets, 1) LOOP
+        t := targets[i][1]; c := targets[i][2];
+        IF t <> 'users' THEN
+            EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE bigint', t, c);
+        END IF;
+    END LOOP;
+END $$;
+SQL);
 
         // (c) Reserve userid=1 for Guest: move whoever holds userid=1 to a fresh id
         //     and propagate through all children + self-ref, then insert Guest.

@@ -48,13 +48,15 @@ final class RcbConvergeUsers extends Migration
         $db->statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS valid_email;');
         $db->statement('DROP INDEX IF EXISTS idx_users_email_unique;');
 
-        // 2. PK column id → userid, widen to bigint (sequence users_id_seq stays).
+        // 2. PK column id → userid (metadata-only rename; the PK/sequence follow,
+        //    whatever their names — prod's are admin_users_pkey/admin_users_id_seq).
+        //    The int4 → int8 WIDENING is deferred to rcb_repoint_user_fks, which
+        //    first drops the referencing FKs (a column referenced by an FK cannot
+        //    be retyped). Renaming is safe while FKs exist.
         $db->statement('ALTER TABLE users RENAME COLUMN id TO userid;');
-        $db->statement('ALTER TABLE users ALTER COLUMN userid TYPE bigint;');
 
-        // 3. Secret column + created_by widening.
+        // 3. Secret column rename (created_by widening also deferred to repoint).
         $db->statement('ALTER TABLE users RENAME COLUMN password_hash TO password;');
-        $db->statement('ALTER TABLE users ALTER COLUMN created_by TYPE bigint;');
 
         // 4. email: the framework declares it NOT NULL DEFAULT '', but RCB treats
         //    email as OPTIONAL and writes an explicit NULL when absent. Keep it

@@ -47,3 +47,6 @@ coverage/
 /public/adminer.php
 # PramnosFramework runtime state (locks, daemon orchestrator state, framework logs)
 /var/
+
+# Local production DB dumps used for offline convergence (never commit — huge + data)
+/migrate/
