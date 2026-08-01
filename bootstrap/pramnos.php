@@ -112,6 +112,17 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
                     $db->connect();
                 }
                 \Pramnos\Application\Settings::setDatabase($db);
+
+                // Authenticate RCB accounts (plain bcrypt) through the framework
+                // Auth pipeline, so native lockout/2FA/passkeys can build on it.
+                // Additive: RCB's own login (UserService::authenticate) is
+                // unchanged and nothing yet calls Auth, so this only wires the seam.
+                // Guarded — a registration hiccup must never take down boot.
+                try {
+                    \Pramnos\Auth\Auth::getInstance()->setDriver(new \RadioChatBox\Auth\RcbAuthDriver());
+                } catch (\Throwable $e) {
+                    error_log('RcbAuthDriver registration skipped: ' . $e->getMessage());
+                }
             }
         } catch (\Throwable $e) {
             // Never let framework bootstrap take down the app during the bridge phase.
