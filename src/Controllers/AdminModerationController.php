@@ -300,7 +300,17 @@ final class AdminModerationController
     public function deleteMessage(): Response
     {
         try {
-            $input     = $_POST;
+            // The route accepts DELETE too, whose JSON body the framework decodes
+            // into putData rather than $_POST — fall back to the raw body so a
+            // DELETE call does not lose message_id.
+            $input = $_POST;
+            if (empty($input)) {
+                $raw = file_get_contents('php://input');
+                $decoded = ($raw !== false && $raw !== '') ? json_decode($raw, true) : null;
+                if (is_array($decoded)) {
+                    $input = $decoded;
+                }
+            }
             $messageId = $input['message_id'] ?? null;
 
             if (!$messageId) {

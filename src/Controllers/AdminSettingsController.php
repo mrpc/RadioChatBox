@@ -422,8 +422,17 @@ final class AdminSettingsController
         try {
             $db = Database::getInstance();
 
-            // The framework Request has already decoded the JSON body into $_POST.
+            // PUT bodies are decoded into the framework's putData, not $_POST, so
+            // fall back to the raw JSON body (as the legacy endpoint did). Without
+            // this the mark-all-read PUT always 400s with "Invalid JSON".
             $input = $_POST;
+            if (empty($input)) {
+                $raw = file_get_contents('php://input');
+                $decoded = ($raw !== false && $raw !== '') ? json_decode($raw, true) : null;
+                if (is_array($decoded)) {
+                    $input = $decoded;
+                }
+            }
 
             if (empty($input)) {
                 throw new InvalidArgumentException('Invalid JSON');
