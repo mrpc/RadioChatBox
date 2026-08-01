@@ -46,8 +46,15 @@ DirectoryIndex index.php index.html
 # Security headers.
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "SAMEORIGIN"
     Header always set X-XSS-Protection "1; mode=block"
+
+    # The chat SPA is embedded as an iframe on external radio-station sites (and
+    # the admin dashboard previews it cross-origin), so it must stay framable from
+    # any origin — a blanket SAMEORIGIN breaks every embed. Clickjacking
+    # protection is therefore scoped to the admin shell alone, which is never
+    # meant to be framed.
+    SetEnvIf Request_URI "^/+admin(/|$)" RCB_ADMIN_SHELL=1
+    Header always set X-Frame-Options "SAMEORIGIN" env=RCB_ADMIN_SHELL
 </IfModule>
 
 # Never serve dotfiles (.env, .htaccess, .git, ...).
