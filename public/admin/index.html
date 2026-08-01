@@ -3247,6 +3247,7 @@
         
         // Impersonate chat streaming
         let impersonateChatEventSource = null;
+        let impersonateWs = null;
         let impersonateChatReconnectAttempts = 0;
         let impersonateChatMaxReconnectAttempts = 999;
         let impersonateChatReconnectDelay = 2000;
@@ -3489,10 +3490,92 @@
         // IMPERSONATE CHAT REAL-TIME STREAMING
         // ============================================================================
 
-        function connectImpersonateChatStream(fakeUser, senderUsername) {
-            // Store current conversation info
+        // Impersonation feed: WebSocket (admin-authorized private-pm-<fakeUser>)
+        // when advertised, else SSE — any WS failure falls back to SSE.
+        async function connectImpersonateChatStream(fakeUser, senderUsername) {
             currentImpersonateConversation = { fakeUser, senderUsername };
-            
+            if (impersonateChatEventSource) { impersonateChatEventSource.close(); impersonateChatEventSource = null; }
+            if (impersonateWs) { try { impersonateWs.onclose = null; impersonateWs.close(); } catch (_) {} impersonateWs = null; }
+
+            let cfg = null;
+            try {
+                const r = await fetch('/api/realtime-config', { cache: 'no-store' });
+                if (r.ok) cfg = await r.json();
+            } catch (_) { /* → SSE */ }
+
+            if (cfg && cfg.transport === 'websocket' && typeof WebSocket !== 'undefined') {
+                connectImpersonateChatWS(cfg);
+            } else {
+                connectImpersonateChatSSE();
+            }
+        }
+
+        // Watches a fake user's own private-pm-<name> feed over WebSocket. The
+        // subscription is authorized by the admin Bearer (a fetch can send it), so
+        // the auth endpoint signs another user's channel only for an admin.
+        function connectImpersonateChatWS(cfg) {
+            const conv = currentImpersonateConversation;
+            if (!conv) return;
+            const channel = 'private-pm-' + conv.fakeUser;
+            let established = false, fellBack = false;
+            const fallback = (why) => {
+                if (fellBack) return;
+                fellBack = true;
+                console.warn('impersonate WebSocket unavailable (' + why + ') — SSE fallback');
+                try { if (impersonateWs) { impersonateWs.onclose = null; impersonateWs.close(); } } catch (_) {}
+                impersonateWs = null;
+                connectImpersonateChatSSE();
+            };
+            let ws;
+            try {
+                ws = new WebSocket(`${cfg.scheme}://${cfg.host}:${cfg.port}/app/${cfg.appKey}?protocol=7&client=rcb-imp&version=1.0`);
+            } catch (e) { fallback('construct'); return; }
+            impersonateWs = ws;
+            const openTimer = setTimeout(() => { if (!established) fallback('timeout'); }, 6000);
+
+            ws.onmessage = async (evt) => {
+                let f; try { f = JSON.parse(evt.data); } catch (_) { return; }
+                const ev = f.event;
+                if (ev === 'pusher:connection_established') {
+                    established = true;
+                    clearTimeout(openTimer);
+                    impersonateChatReconnectAttempts = 0;
+                    let sid = ''; try { sid = JSON.parse(f.data).socket_id; } catch (_) {}
+                    try {
+                        const r = await fetch('/api/broadcasting/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                            body: JSON.stringify({ socket_id: sid, channel_name: channel })
+                        });
+                        if (r.ok) {
+                            const { auth } = await r.json();
+                            ws.send(JSON.stringify({ event: 'pusher:subscribe', data: { channel, auth } }));
+                        } else {
+                            console.warn('impersonate channel authorization refused');
+                        }
+                    } catch (e) { console.warn('impersonate channel authorization failed', e); }
+                    return;
+                }
+                if (ev === 'pusher:ping') { try { ws.send(JSON.stringify({ event: 'pusher:pong', data: {} })); } catch (_) {} return; }
+                if (!ev || ev.indexOf('pusher') === 0) return;
+                let data = null;
+                try { data = typeof f.data === 'string' ? JSON.parse(f.data) : f.data; } catch (_) { return; }
+                if (ev === 'private') { handleImpersonateChatMessage(data); }
+            };
+            ws.onerror = () => { if (!established) fallback('error'); };
+            ws.onclose = () => {
+                clearTimeout(openTimer);
+                if (!established) { fallback('closed'); return; }
+                impersonateWs = null;
+                reconnectImpersonateChatStream();
+            };
+        }
+
+        function connectImpersonateChatSSE() {
+            const conv = currentImpersonateConversation;
+            if (!conv) return;
+            const fakeUser = conv.fakeUser, senderUsername = conv.senderUsername;
+
             // Close existing connection if any
             if (impersonateChatEventSource) {
                 impersonateChatEventSource.close();
@@ -3642,6 +3725,10 @@
             if (impersonateChatEventSource) {
                 impersonateChatEventSource.close();
                 impersonateChatEventSource = null;
+            }
+            if (impersonateWs) {
+                try { impersonateWs.onclose = null; impersonateWs.close(); } catch (_) {}
+                impersonateWs = null;
             }
             if (impersonateChatPeriodicReconnectTimer) {
                 clearInterval(impersonateChatPeriodicReconnectTimer);

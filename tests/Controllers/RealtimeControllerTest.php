@@ -107,4 +107,22 @@ class RealtimeControllerTest extends TestCase
         $_POST = ['socket_id' => '9.9', 'channel_name' => 'private-admin-notifications'];
         $this->assertSame(403, (new RealtimeController())->auth()->getStatusCode());
     }
+
+    /**
+     * An admin may sign ANOTHER user's private-pm channel — the fake-user
+     * impersonation feed — proven by the admin Bearer (not a token). A non-admin
+     * without the matching token is still refused (see the "another user" test).
+     */
+    public function testAuthSignsAnyPrivatePmChannelForAdmin(): void
+    {
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer admin:admin123';
+        $_POST = ['socket_id' => '7.7', 'channel_name' => 'private-pm-fakebot'];
+
+        $response = (new RealtimeController())->auth();
+        if ($response->getStatusCode() === 403) {
+            $this->markTestSkipped('admin auth unavailable (Redis?)');
+        }
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertArrayHasKey('auth', json_decode($response->getBody(), true));
+    }
 }

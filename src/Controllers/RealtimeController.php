@@ -69,22 +69,29 @@ final class RealtimeController
         // subscribe (proven by the admin Bearer/session the fetch sends — unlike
         // EventSource, a fetch can carry the Authorization header).
         if ($channel === 'private-admin-notifications') {
-            $admin = AdminAuth::verify() ? AdminAuth::getCurrentUser() : null;
-            if (!is_array($admin) || Authz::usertypeForLabel($admin['role'] ?? '') < Authz::ADMINISTRATOR) {
-                return Response::json(['error' => 'Forbidden'], 403);
+            return $this->callerIsAdmin() ? $sign() : Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        // A private DM channel: authorize its OWNER (proven by the realtime token)
+        // OR any authenticated admin (moderation / fake-user impersonation, which
+        // watches a fake user's own private-pm-<name> feed). Anyone else is refused,
+        // so a DM never reaches a non-participant, non-admin client.
+        if (str_starts_with($channel, 'private-pm-')) {
+            $tokenUser = $token !== '' ? ($rt->verify($token)['u'] ?? null) : null;
+            $isOwner   = $tokenUser !== null && $channel === 'private-pm-' . $tokenUser;
+            if ($isOwner || $this->callerIsAdmin()) {
+                return $sign();
             }
-            return $sign();
         }
 
-        // A chat client may authorize ONLY its own private DM channel, proven by
-        // the realtime token. Anything else — notably another user's private-pm-*
-        // — is refused.
-        $username = $token !== '' ? ($rt->verify($token)['u'] ?? null) : null;
-        if ($username === null || $channel !== 'private-pm-' . $username) {
-            return Response::json(['error' => 'Forbidden'], 403);
-        }
+        return Response::json(['error' => 'Forbidden'], 403);
+    }
 
-        return $sign();
+    /** Whether the request carries a valid admin Bearer/session (>= administrator). */
+    private function callerIsAdmin(): bool
+    {
+        $admin = AdminAuth::verify() ? AdminAuth::getCurrentUser() : null;
+        return is_array($admin) && Authz::usertypeForLabel($admin['role'] ?? '') >= Authz::ADMINISTRATOR;
     }
 
     /** Whether the realtime:serve worker is currently supervised and running. */
