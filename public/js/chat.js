@@ -122,6 +122,14 @@ class RadioChatBox {
             window.addEventListener('focus', () => this.clearTitleNotification());
         this.apiUrl = apiUrl;
         this.eventSource = null;
+        // Realtime transport state. The token proves our username to BOTH the SSE
+        // stream (?token=) and the WS server; the WS fields are only used when the
+        // server advertises the WebSocket transport (else we stay on SSE).
+        this.realtimeToken = null;
+        this._ws = null;
+        this._wsSocketId = null;
+        this._wsAwaitingToken = false;
+        this._wsFellBack = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 999; // Essentially unlimited
         this.reconnectDelay = 2000; // Start with 2 second delay
@@ -243,7 +251,11 @@ class RadioChatBox {
             this.eventSource.close();
             this.eventSource = null;
         }
-        
+        if (this._ws) {
+            try { this._ws.onclose = null; this._ws.close(); } catch (_) {}
+            this._ws = null;
+        }
+
         // Stop heartbeat
         if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
@@ -1775,11 +1787,40 @@ class RadioChatBox {
         this.startHeartbeat();
     }
 
-    connect() {
+    // Realtime transport entry point. Asks the server which transport to use;
+    // WebSocket only when /api/realtime-config advertises it (admin-enabled +
+    // worker healthy), otherwise — or on any WS failure — the SSE default.
+    async connect() {
         this.updateStatus('connecting', 'Connecting...');
 
+        // Hold a fresh realtime token (proves our username to both transports)
+        // before connecting; the beat also refreshes presence immediately.
+        if (!this.realtimeToken && this.username) {
+            await this.sendHeartbeat();
+        }
+
+        let cfg = null;
         try {
-            this.eventSource = new EventSource(`${this.apiUrl}/api/stream?username=${encodeURIComponent(this.username)}`);
+            const res = await fetch(`${this.apiUrl}/api/realtime-config`, { cache: 'no-store' });
+            if (res.ok) cfg = await res.json();
+        } catch (_) { /* fall through to SSE */ }
+
+        if (cfg && cfg.transport === 'websocket' && typeof WebSocket !== 'undefined') {
+            this.connectWebSocket(cfg);
+        } else {
+            this.connectSSE();
+        }
+    }
+
+    connectSSE() {
+        this.updateStatus('connecting', 'Connecting...');
+        try {
+            // EventSource cannot send headers, so the token rides in the query
+            // string; the server derives the *verified* username from it.
+            const tokenParam = this.realtimeToken ? `&token=${encodeURIComponent(this.realtimeToken)}` : '';
+            this.eventSource = new EventSource(
+                `${this.apiUrl}/api/stream?username=${encodeURIComponent(this.username)}${tokenParam}`
+            );
 
             this.eventSource.addEventListener('open', () => {
                 this.updateStatus('connected', 'Connected');
@@ -1787,94 +1828,16 @@ class RadioChatBox {
                 console.log('SSE connection established');
             });
 
-            this.eventSource.addEventListener('message', (e) => {
-                const messageData = JSON.parse(e.data);
-                
-                // Check if this is a special event type
-                if (messageData.type === 'refresh_history') {
-                    // Display name changed: clear local display name cache and refresh
-                    if (this.displayNameCache) {
-                        try { this.displayNameCache.clear(); } catch (_) {}
-                    }
-                    // Proactively reload active users to repopulate cache
-                    this.loadActiveUsers();
-                    // Reload message history to reflect new names
-                    this.reloadHistory();
-                } else {
-                    this.handleMessage(messageData);
-                }
+            // One dispatcher for every data event — shared with the WS transport.
+            const bind = (name) => this.eventSource.addEventListener(name, (e) => {
+                let data = null;
+                try { data = e.data ? JSON.parse(e.data) : null; } catch (_) { return; }
+                this._dispatchRealtimeEvent(name, data);
             });
+            ['message', 'history', 'users', 'config', 'private', 'clear',
+             'message_deleted', 'message_edited', 'reaction'].forEach(bind);
 
-            this.eventSource.addEventListener('history', (e) => {
-                const messages = JSON.parse(e.data);
-                this.loadHistory(messages);
-            });
-
-            this.eventSource.addEventListener('users', (e) => {
-                const data = JSON.parse(e.data);
-                
-                // Handle user kick event
-                if (data.type === 'user_kicked') {
-                    if (data.username === this.username) {
-                        // Current user was kicked
-                        
-                        // Clear all storage (both localStorage and cookies)
-                        this.removeStorage('chatNickname');
-                        this.removeStorage('chatAge');
-                        this.removeStorage('chatLocation');
-                        this.removeStorage('chatSex');
-                        this.removeStorage('chatSessionId');
-                        localStorage.clear();
-                        
-                        alert('You have been kicked from the chat by an administrator.');
-                        this.disconnect();
-                        // Reload to show registration screen
-                        setTimeout(() => window.location.reload(), 1000);
-                    }
-                    // Refresh active users list for everyone
-                    this.loadActiveUsers();
-                } else if (data.count !== undefined && data.users !== undefined) {
-                    // Normal user list update
-                    this.activeUsersCount.textContent = data.count;
-                    this.activeUsersList = data.users; // Store for filtering conversations
-                    this.renderActiveUsers(data.users);
-                    
-                    // Update display names for existing conversations from active users list
-                    this.updateConversationDisplayNames(data.users);
-                }
-            });
-            
-            this.eventSource.addEventListener('config', (e) => {
-                const data = JSON.parse(e.data);
-                this.chatMode = data.chat_mode || 'public';
-                this.updateChatModeUI();
-            });
-            
-            this.eventSource.addEventListener('private', (e) => {
-                const messageData = JSON.parse(e.data);
-                this.handlePrivateMessage(messageData);
-            });
-            
-            this.eventSource.addEventListener('clear', (e) => {
-                this.handleChatClear();
-            });
-
-            this.eventSource.addEventListener('message_deleted', (e) => {
-                const data = JSON.parse(e.data);
-                this.handleMessageDeleted(data.message_id);
-            });
-
-            this.eventSource.addEventListener('message_edited', (e) => {
-                const data = JSON.parse(e.data);
-                this.handleMessageEdited(data.message_id, data.message, data.edited_at);
-            });
-
-            this.eventSource.addEventListener('reaction', (e) => {
-                const data = JSON.parse(e.data);
-                this.handleReactionUpdate(data);
-            });
-
-            this.eventSource.addEventListener('reconnect', (e) => {
+            this.eventSource.addEventListener('reconnect', () => {
                 console.log('Server requested reconnect');
                 this.eventSource.close();
                 this.reconnect();
@@ -1886,12 +1849,154 @@ class RadioChatBox {
                 this.eventSource.close();
                 this.reconnect();
             });
-
         } catch (error) {
             console.error('Failed to connect:', error);
             this.updateStatus('disconnected', 'Connection failed');
             this.reconnect();
         }
+    }
+
+    // Shared dispatch for BOTH transports. The WS worker emits the same event
+    // names the SSE stream does, so one switch serves both — keeping behaviour
+    // identical whichever transport is active.
+    _dispatchRealtimeEvent(event, data) {
+        switch (event) {
+            case 'message':
+                if (data && data.type === 'refresh_history') {
+                    if (this.displayNameCache) { try { this.displayNameCache.clear(); } catch (_) {} }
+                    this.loadActiveUsers();
+                    this.reloadHistory();
+                } else {
+                    this.handleMessage(data);
+                }
+                break;
+            case 'history':         this.loadHistory(data); break;
+            case 'users':           this._handleUsersEvent(data); break;
+            case 'config':          this.chatMode = (data && data.chat_mode) || 'public'; this.updateChatModeUI(); break;
+            case 'private':         this.handlePrivateMessage(data); break;
+            case 'clear':           this.handleChatClear(); break;
+            case 'message_deleted': this.handleMessageDeleted(data.message_id); break;
+            case 'message_edited':  this.handleMessageEdited(data.message_id, data.message, data.edited_at); break;
+            case 'reaction':        this.handleReactionUpdate(data); break;
+        }
+    }
+
+    _handleUsersEvent(data) {
+        if (!data) return;
+        if (data.type === 'user_kicked') {
+            if (data.username === this.username) {
+                this.removeStorage('chatNickname');
+                this.removeStorage('chatAge');
+                this.removeStorage('chatLocation');
+                this.removeStorage('chatSex');
+                this.removeStorage('chatSessionId');
+                localStorage.clear();
+                alert('You have been kicked from the chat by an administrator.');
+                this.disconnect();
+                setTimeout(() => window.location.reload(), 1000);
+            }
+            this.loadActiveUsers();
+        } else if (data.count !== undefined && data.users !== undefined) {
+            this.activeUsersCount.textContent = data.count;
+            this.activeUsersList = data.users;
+            this.renderActiveUsers(data.users);
+            this.updateConversationDisplayNames(data.users);
+        }
+    }
+
+    // --- WebSocket transport (Pusher wire protocol v7) with SSE fallback ------
+    connectWebSocket(cfg) {
+        let established = false;
+        this._wsFellBack = false;
+
+        const fallback = (why) => {
+            if (this._wsFellBack) return;
+            this._wsFellBack = true;
+            console.warn('WebSocket unavailable (' + why + ') — falling back to SSE');
+            try { if (this._ws) { this._ws.onclose = null; this._ws.close(); } } catch (_) {}
+            this._ws = null;
+            this.connectSSE();
+        };
+
+        let ws;
+        try {
+            const url = `${cfg.scheme}://${cfg.host}:${cfg.port}/app/${cfg.appKey}?protocol=7&client=rcb&version=1.0`;
+            ws = new WebSocket(url);
+        } catch (e) { fallback('construct'); return; }
+        this._ws = ws;
+
+        const openTimer = setTimeout(() => { if (!established) fallback('timeout'); }, 6000);
+
+        ws.onmessage = (evt) => {
+            let frame;
+            try { frame = JSON.parse(evt.data); } catch (_) { return; }
+            const event = frame.event;
+
+            if (event === 'pusher:connection_established') {
+                established = true;
+                clearTimeout(openTimer);
+                this.updateStatus('connected', 'Connected');
+                this.reconnectAttempts = 0;
+                try { this._wsSocketId = JSON.parse(frame.data).socket_id; } catch (_) { this._wsSocketId = ''; }
+                // Public channels need no auth; the DM channel needs a signature.
+                this._wsSubscribe('chat:updates');
+                this._wsSubscribe('chat:user_updates');
+                this._subscribePrivateChannel();
+                // WS carries no initial snapshot — pull history + users over REST.
+                this.loadActiveUsers();
+                this.reloadHistory();
+                return;
+            }
+            if (event === 'pusher:ping') { this._wsSend('pusher:pong', {}); return; }
+            if (!event || event.indexOf('pusher') === 0) return; // ignore pusher:* / pusher_internal:*
+
+            let data = null;
+            try { data = typeof frame.data === 'string' ? JSON.parse(frame.data) : frame.data; } catch (_) { return; }
+
+            if (frame.channel && frame.channel.indexOf('private-pm-') === 0) {
+                this._dispatchRealtimeEvent('private', data);
+            } else {
+                this._dispatchRealtimeEvent(event, data);
+            }
+        };
+
+        ws.onerror = () => { if (!established) fallback('error'); };
+        ws.onclose = () => {
+            clearTimeout(openTimer);
+            if (!established) { fallback('closed'); return; }
+            // Dropped after connecting: reconnect (re-checks transport → WS or SSE).
+            this.updateStatus('disconnected', 'Disconnected');
+            this._ws = null;
+            this.reconnect();
+        };
+    }
+
+    _wsSend(event, data) {
+        try { if (this._ws && this._ws.readyState === 1) this._ws.send(JSON.stringify({ event, data })); } catch (_) {}
+    }
+
+    _wsSubscribe(channel, auth) {
+        this._wsSend('pusher:subscribe', auth ? { channel, auth } : { channel });
+    }
+
+    // Subscribe to our OWN private DM channel. The auth endpoint signs only the
+    // channel matching our token's username, so a client can never subscribe to
+    // someone else's DMs. If the token has not arrived yet, retry on next beat.
+    async _subscribePrivateChannel() {
+        if (!this._ws || !this._wsSocketId || !this.username) return;
+        if (!this.realtimeToken) { this._wsAwaitingToken = true; return; }
+        this._wsAwaitingToken = false;
+        const channel = 'private-pm-' + this.username;
+        try {
+            const res = await fetch(`${this.apiUrl}/api/broadcasting/auth`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ socket_id: this._wsSocketId, channel_name: channel, token: this.realtimeToken })
+            });
+            if (!res.ok) { console.warn('DM channel authorization refused'); return; }
+            const { auth } = await res.json();
+            this._wsSubscribe(channel, auth);
+        } catch (e) { console.warn('DM channel authorization failed', e); }
     }
 
     reconnect() {
@@ -1996,22 +2101,31 @@ class RadioChatBox {
     }
 
     startHeartbeat() {
-        // Send heartbeat every 60 seconds
-        this.heartbeatInterval = setInterval(async () => {
-            try {
-                await fetch(`${this.apiUrl}/api/heartbeat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: this.username,
-                        sessionId: this.sessionId
-                    })
-                });
-                // User updates will be pushed via SSE, no need to fetch here
-            } catch (error) {
-                console.error('Heartbeat failed:', error);
+        // Beat immediately (refresh presence + obtain the first realtime token so
+        // the very first connection can present it), then every 60 seconds.
+        this.sendHeartbeat();
+        this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), 60000);
+    }
+
+    // One heartbeat: updates presence and captures the rolling realtime token.
+    async sendHeartbeat() {
+        try {
+            const res = await fetch(`${this.apiUrl}/api/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, sessionId: this.sessionId })
+            });
+            const data = await res.json().catch(() => null);
+            if (data && data.realtime_token) {
+                this.realtimeToken = data.realtime_token;
+                // A WS private subscription that was waiting for the token can proceed.
+                if (this._wsAwaitingToken) this._subscribePrivateChannel();
             }
-        }, 60000);
+            return data;
+        } catch (error) {
+            console.error('Heartbeat failed:', error);
+            return null;
+        }
     }
 
     // Keep this method as a fallback, but it's no longer polled
