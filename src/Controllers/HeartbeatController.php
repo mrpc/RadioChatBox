@@ -8,6 +8,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\StatsService;
+use RadioChatBox\Services\RealtimeToken;
 
 /**
  * POST /api/heartbeat — keep a session alive and return the live user count.
@@ -68,6 +69,10 @@ final class HeartbeatController
                 'activeUsers' => count($chatService->getAllUsers()),
                 'user_id'     => $sessionInfo['user_id'] ?? null,
                 'user_role'   => $sessionInfo['user_role'] ?? null,
+                // Short-lived signed token that proves this username for realtime
+                // delivery — the SSE stream (?token=) and the WS channel-auth both
+                // verify it. Refreshed on every heartbeat so it never goes stale.
+                'realtime_token' => (new RealtimeToken())->issue($username, $sessionId),
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);

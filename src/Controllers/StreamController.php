@@ -11,6 +11,7 @@ use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\ReactionService;
+use RadioChatBox\Services\RealtimeToken;
 
 /**
  * GET /api/stream — the public Server-Sent Events feed.
@@ -41,8 +42,17 @@ final class StreamController
     #[Route('/api/stream', methods: 'GET', name: 'stream.index')]
     public function index(): StreamedResponse
     {
-        $username    = (string) Request::getInstance()->get('username', '', 'get');
-        $username    = $username !== '' ? $username : null;
+        // Prefer the cryptographically-verified username from the realtime token
+        // (EventSource cannot send headers, so it rides in the query string). A
+        // valid token is authoritative — this is what stops a client passing
+        // `?username=someone_else` and receiving that user's private messages. The
+        // raw `?username=` remains a backward-compat fallback for clients that do
+        // not yet send a token (they keep today's behaviour until the client ships
+        // the token); once every client sends one the fallback can be dropped.
+        $token       = (string) Request::getInstance()->get('token', '', 'get');
+        $verified    = $token !== '' ? (new RealtimeToken())->usernameFor($token) : null;
+        $rawUsername = (string) Request::getInstance()->get('username', '', 'get');
+        $username    = $verified ?? ($rawUsername !== '' ? $rawUsername : null);
         $chatService = new ChatService();
         $chatMode    = $chatService->getSetting('chat_mode', 'public');
         $prefix      = ConnectionManager::getInstance()->prefix();
