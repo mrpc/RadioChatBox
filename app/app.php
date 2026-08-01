@@ -27,6 +27,23 @@ return [
     // users(userid).
     'features'  => ['auth', 'authserver', 'messaging', 'queue'],
 
+    // Realtime transport. The client asks /api/realtime-config which advertises
+    // WebSocket ONLY when the admin enabled it (realtime_websocket_enabled),
+    // REALTIME_WS_PUBLIC_HOST is configured and the realtime:serve worker is
+    // healthy — otherwise it advertises SSE (/api/stream). The `websocket` block
+    // here holds the PUBLIC address a browser dials (behind the TLS reverse proxy),
+    // distinct from the worker's local bind (REALTIME_WS_HOST/PORT).
+    'broadcasting' => [
+        'transport' => 'sse',
+        'sse'       => ['url' => '/api/stream'],
+        'websocket' => [
+            'scheme'  => (string) envvar('REALTIME_WS_PUBLIC_SCHEME', 'wss'),
+            'host'    => (string) envvar('REALTIME_WS_PUBLIC_HOST', ''),
+            'port'    => (int) envvar('REALTIME_WS_PUBLIC_PORT', '443'),
+            'app_key' => (string) envvar('REALTIME_APP_KEY', 'radiochatbox'),
+        ],
+    ],
+
     // Global HTTP middleware, applied by bootstrap/http.php around every route.
     // CORS reflects the request Origin against ALLOWED_ORIGINS (comma-separated;
     // '*' by default); JSON response shaping matches the legacy behaviour. NOTE:
