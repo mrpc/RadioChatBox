@@ -22,6 +22,8 @@ class AnalyticsHelper {
         this.enabled = settings.analytics.enabled === true || settings.analytics.enabled === 'true';
         this.provider = settings.analytics.provider || '';
         this.trackingId = settings.analytics.tracking_id || '';
+        // Optional external URL for the 'custom' provider; empty → no-op.
+        this.customEndpoint = settings.analytics.custom_endpoint || '';
 
         if (!this.enabled) {
             console.log('[Analytics] Disabled');
@@ -127,15 +129,22 @@ class AnalyticsHelper {
     }
 
     /**
-     * Send event to custom tracking endpoint
+     * Send an event to a custom tracking endpoint.
+     *
+     * RadioChatBox ships no server-side custom-event sink (the old
+     * api/track-event.php was removed in the framework migration), so this is a
+     * no-op unless a full URL is configured in `settings.analytics.custom_endpoint`.
+     * That keeps the 'custom' provider from POSTing to a dead 404 URL.
      */
     async sendToCustomEndpoint(event) {
+        const endpoint = this.customEndpoint || '';
+        if (!endpoint) {
+            return; // nothing configured — do not hit a non-existent endpoint
+        }
         try {
-            await fetch('/api/track-event.php', {
+            await fetch(endpoint, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(event)
             });
         } catch (error) {
