@@ -4563,8 +4563,10 @@ class RadioChatBox {
             return;
         }
         
-        // Check if GIFs are enabled via settings and load API key
-        fetch('api/settings.php')
+        // Check if GIFs are enabled via settings and load API key. Uses the clean
+        // route (the legacy api/settings.php was removed in the framework
+        // migration and 404s under clean-path routing → the button never showed).
+        fetch(`${this.apiUrl}/api/settings`)
             .then(res => res.json())
             .then(data => {
                 if (data.success && data.settings.gif_enabled === 'true') {
