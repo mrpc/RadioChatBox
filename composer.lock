@@ -954,12 +954,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/mrpc/PramnosFramework.git",
-                "reference": "8a80a2ea1acfbfad9c22ee821f1fd38e2b3ddf51"
+                "reference": "af14ade8a024503c84529acb84f1c9018a80263a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/mrpc/PramnosFramework/zipball/8a80a2ea1acfbfad9c22ee821f1fd38e2b3ddf51",
-                "reference": "8a80a2ea1acfbfad9c22ee821f1fd38e2b3ddf51",
+                "url": "https://api.github.com/repos/mrpc/PramnosFramework/zipball/af14ade8a024503c84529acb84f1c9018a80263a",
+                "reference": "af14ade8a024503c84529acb84f1c9018a80263a",
                 "shasum": ""
             },
             "require": {
@@ -1029,7 +1029,7 @@
                 "source": "https://github.com/mrpc/PramnosFramework/tree/main",
                 "issues": "https://github.com/mrpc/PramnosFramework/issues"
             },
-            "time": "2026-08-01T22:40:07+00:00"
+            "time": "2026-08-01T22:59:57+00:00"
         },
         {
             "name": "nyholm/psr7",

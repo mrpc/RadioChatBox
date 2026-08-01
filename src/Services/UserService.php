@@ -5,6 +5,7 @@ namespace RadioChatBox\Services;
 use RadioChatBox\AdminAuth;
 use Pramnos\Cache\FlatCache;
 use Pramnos\Database\Database;
+use Pramnos\Auth\Loginlockout;
 /**
  * User Service - Admin User Management with RBAC
  * 
@@ -336,6 +337,23 @@ class UserService
      */
     public function authenticate(string $identifier, string $password): ?array
     {
+        // Brute-force protection via the framework's native Loginlockout
+        // (authserver.loginlockouts; progressive 3→60s, 5→5m, 7→15m, 10→1h). This
+        // guards BOTH the chat and admin login, which both come through here.
+        // Fail-open: any lockout-infrastructure error must NEVER block a genuine
+        // login, so every lockout call is guarded.
+        $lockId  = mb_strtolower(trim($identifier));
+        $lockout = $this->loginLockout();
+        if ($lockout !== null && $lockId !== '') {
+            try {
+                if (($lockout->getLockoutStatus('identifier', $lockId)['locked'] ?? false) === true) {
+                    return null; // temporarily locked → treat as a failed login
+                }
+            } catch (\Throwable) {
+                $lockout = null; // lockout store unavailable → don't use it this call
+            }
+        }
+
         try {
             // Try both username and email
             $row = $this->db->queryBuilder()
@@ -346,30 +364,70 @@ class UserService
             $user = ($row && $row->numRows > 0) ? $row->fields : null;
 
             if (!$user) {
-                return null;
-            }
-            
-            // Check if user is active
-            if (!$user['is_active']) {
-                return null;
-            }
-            
-            // Verify password
-            if (!password_verify($password, $user['password'])) {
+                $this->recordAuthFailure($lockout, $lockId);
                 return null;
             }
 
-            // Update last login
+            // Check if user is active
+            if (!$user['is_active']) {
+                $this->recordAuthFailure($lockout, $lockId);
+                return null;
+            }
+
+            // Verify password
+            if (!password_verify($password, $user['password'])) {
+                $this->recordAuthFailure($lockout, $lockId);
+                return null;
+            }
+
+            // Success: reset the failure counter and update last login.
+            $this->clearAuthLockout($lockout, $lockId);
             $this->updateLastLogin($user['userid']);
-            
+
             return $this->sanitizeUser($user);
-            
+
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("UserService::authenticate error: " . $e->getMessage(), 'radiochatbox');
             return null;
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /** Build a Loginlockout, or null if it cannot be constructed (fail-open). */
+    private function loginLockout(): ?Loginlockout
+    {
+        try {
+            return new Loginlockout();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** Record a failed login attempt; never throws into the login path. */
+    private function recordAuthFailure(?Loginlockout $lockout, string $lockId): void
+    {
+        if ($lockout === null || $lockId === '') {
+            return;
+        }
+        try {
+            $lockout->recordFailedAttempt('identifier', $lockId);
+        } catch (\Throwable) {
+            // best effort
+        }
+    }
+
+    /** Clear lockout state after a successful login; never throws. */
+    private function clearAuthLockout(?Loginlockout $lockout, string $lockId): void
+    {
+        if ($lockout === null || $lockId === '') {
+            return;
+        }
+        try {
+            $lockout->clearSuccessfulLoginState('identifier', $lockId);
+        } catch (\Throwable) {
+            // best effort
+        }
     }
     
     /**
