@@ -6024,6 +6024,10 @@
         async function openWorkerStatus() {
             const modal = document.getElementById('worker-status-modal');
             const body  = document.getElementById('worker-status-body');
+            // The modal is authored inside the (display:none) #bot-activity-tab, so
+            // its own display:flex renders nothing unless that tab is active. Move it
+            // to <body> once so it shows from any tab (fixed-position overlay).
+            if (modal.parentElement !== document.body) document.body.appendChild(modal);
             modal.style.display = 'flex';
             if (!workerStatus) {
                 body.innerHTML = 'Loading…';
