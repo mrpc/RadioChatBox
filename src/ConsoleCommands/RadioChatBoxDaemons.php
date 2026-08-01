@@ -66,6 +66,13 @@ final class RadioChatBoxDaemons extends DaemonOrchestrator
             $processes[] = $this->worker('worker', 'bot:start', 'bot replies + LLM housekeeping', 'bot_worker');
         }
 
+        // The WebSocket realtime transport is optional and OFF by default: with it
+        // disabled the app serves realtime over SSE exactly as before. When on, this
+        // worker bridges Redis pub/sub to WS clients (public feed + per-user DMs).
+        if ($settings->get('realtime_websocket_enabled', 'false') === 'true') {
+            $processes[] = $this->worker('realtime', 'realtime:serve', 'websocket realtime (public feed + private DMs)');
+        }
+
         return $processes;
     }
 

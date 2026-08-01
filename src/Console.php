@@ -25,6 +25,7 @@ class Console extends \Pramnos\Console\Application
         $this->add(new \RadioChatBox\ConsoleCommands\TrackerWorker());   // tracker:start
         $this->add(new \RadioChatBox\ConsoleCommands\StatsWorker());     // stats:start
         $this->add(new \RadioChatBox\ConsoleCommands\MaintenanceWorker()); // maintenance:start
+        $this->add(new \RadioChatBox\ConsoleCommands\RealtimeServe());   // realtime:serve (optional WS)
 
         // Bot operational commands (retired the root-level worker.php).
         $this->add(new \RadioChatBox\ConsoleCommands\BotStatus());
