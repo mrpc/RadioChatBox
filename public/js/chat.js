@@ -897,6 +897,109 @@ class RadioChatBox {
     initRadioExtras() {
         try { this.initCharts(); } catch (e) { console.warn('initCharts error', e); }
         try { this.initPlayer(); } catch (e) { console.warn('initPlayer error', e); }
+        try { this.initSongRequests(); } catch (e) { console.warn('initSongRequests error', e); }
+    }
+
+    // ---- Listener song requests -------------------------------------
+
+    initSongRequests() {
+        const btn = document.getElementById('song-request-button');
+        if (!btn) return;
+
+        if (!this._settingOn(this.settings && this.settings.song_requests_enabled)) {
+            btn.style.display = 'none';
+            return;
+        }
+        btn.style.display = 'inline-flex';
+
+        if (this._songReqBound) return;
+        this._songReqBound = true;
+
+        const overlay = document.getElementById('song-request-overlay');
+        btn.addEventListener('click', () => this.openSongRequest());
+        const closeBtn = document.getElementById('song-request-close');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeSongRequest());
+        if (overlay) {
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) this.closeSongRequest(); });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && overlay.style.display === 'flex') this.closeSongRequest();
+            });
+        }
+        const form = document.getElementById('song-request-form');
+        if (form) form.addEventListener('submit', (e) => { e.preventDefault(); this.submitSongRequest(); });
+    }
+
+    openSongRequest() {
+        const overlay = document.getElementById('song-request-overlay');
+        if (!overlay) return;
+        const err = document.getElementById('sr-error');
+        if (err) { err.style.display = 'none'; err.textContent = ''; err.classList.remove('sr-ok'); }
+        overlay.style.display = 'flex';
+        const title = document.getElementById('sr-song-title');
+        if (title) setTimeout(() => title.focus(), 30);
+    }
+
+    closeSongRequest() {
+        const overlay = document.getElementById('song-request-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    async submitSongRequest() {
+        const err = document.getElementById('sr-error');
+        const submitBtn = document.getElementById('sr-submit');
+        const showError = (msg) => {
+            if (!err) return;
+            err.classList.remove('sr-ok');
+            err.textContent = msg;
+            err.style.display = 'block';
+        };
+
+        if (!this.username) {
+            showError('Please join the chat first.');
+            return;
+        }
+        const songTitle = (document.getElementById('sr-song-title').value || '').trim();
+        if (songTitle === '') {
+            showError('Please enter a song title.');
+            return;
+        }
+        const artist = (document.getElementById('sr-artist').value || '').trim();
+        const dedication = (document.getElementById('sr-dedication').value || '').trim();
+
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/songs/request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.username,
+                    session_id: this.sessionId,
+                    song_title: songTitle,
+                    artist,
+                    dedication,
+                }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.success) {
+                // Confirm inline (green), then reset + close shortly after.
+                document.getElementById('song-request-form').reset();
+                if (err) {
+                    err.textContent = '🎵 Your request was sent!';
+                    err.classList.add('sr-ok');
+                    err.style.display = 'block';
+                }
+                setTimeout(() => {
+                    if (err) { err.classList.remove('sr-ok'); err.style.display = 'none'; err.textContent = ''; }
+                    this.closeSongRequest();
+                }, 1400);
+            } else {
+                showError((data && data.error) || 'Could not send your request. Please try again.');
+            }
+        } catch (e) {
+            showError('Network error. Please try again.');
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
     }
 
     // ---- Top charts panel -------------------------------------------

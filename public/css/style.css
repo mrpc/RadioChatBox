@@ -740,6 +740,58 @@ body {
     .charts-list .chart-img { background: #26262e; }
 }
 
+/* Song request modal (reuses .charts-overlay / .charts-modal shell) */
+.sr-modal { max-width: 460px; }
+.sr-form { padding: 16px 18px 20px; }
+.sr-field { margin-bottom: 14px; display: flex; flex-direction: column; gap: 5px; }
+.sr-field label { font-size: 13px; font-weight: 600; color: #374151; }
+.sr-field .sr-req { color: #ef4444; }
+.sr-field input,
+.sr-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 11px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: #1f2937;
+}
+.sr-field textarea { resize: vertical; min-height: 44px; }
+.sr-field input:focus,
+.sr-field textarea:focus { outline: none; border-color: #ef4444; }
+.sr-error {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-radius: 8px;
+    padding: 8px 11px;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+.sr-actions { display: flex; justify-content: flex-end; }
+.sr-actions .btn {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+}
+.sr-actions .btn:hover { background: #dc2626; }
+.sr-actions .btn:disabled { opacity: 0.6; cursor: default; }
+.sr-error.sr-ok { background: #ecfdf5; color: #047857; }
+
+@media (prefers-color-scheme: dark) {
+    .sr-field label { color: #cbd5e1; }
+    .sr-field input,
+    .sr-field textarea { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
+    .sr-error { background: #3a1f22; color: #fca5a5; }
+    .sr-error.sr-ok { background: #113a2b; color: #6ee7b7; }
+}
+
 /* Now-playing cover: fills the header height, flush to the left.
    Fixed height (never align-self:stretch + aspect-ratio, which can blow up to
    the image's intrinsic size when the header wraps). */
@@ -1832,6 +1884,25 @@ body {
 
 .pin-track-btn.active {
     background: rgba(102, 126, 234, 0.18);
+}
+
+/* Song-request button — shares the input-row icon-button look */
+.song-request-btn {
+    padding: 12px;
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s;
+    line-height: 1;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+}
+.song-request-btn:hover { background: #f3f4f6; }
+@media (prefers-color-scheme: dark) {
+    .song-request-btn:hover { background: #2a2a2a; }
 }
 
 /* Chip above the input showing the track that will be pinned */

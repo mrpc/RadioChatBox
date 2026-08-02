@@ -264,6 +264,7 @@
                 <button id="gif-button" class="gif-toggle-btn" title="GIFs" style="display: none;">GIF</button>
                 <button id="photo-button" class="photo-btn" title="Upload Photo" style="display: none;">📷</button>
                 <button id="pin-track-button" class="pin-track-btn" title="Attach the current track to your message" style="display: none;">🎵</button>
+                <button id="song-request-button" class="song-request-btn" title="Request a song" style="display: none;">📻</button>
                 <input
                     type="text"
                     id="message-input"
@@ -325,6 +326,34 @@
                     <ol id="charts-artists" class="charts-list"></ol>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Song request modal (opened by the 📻 button; only when song_requests_enabled) -->
+    <div id="song-request-overlay" class="charts-overlay" style="display: none;">
+        <div class="charts-modal sr-modal" role="dialog" aria-modal="true" aria-label="Request a song">
+            <div class="charts-modal-head">
+                <h3>📻 Request a Song</h3>
+                <button id="song-request-close" class="charts-close" title="Close" aria-label="Close">✕</button>
+            </div>
+            <form id="song-request-form" class="sr-form">
+                <div class="sr-field">
+                    <label for="sr-song-title">Song <span class="sr-req">*</span></label>
+                    <input type="text" id="sr-song-title" maxlength="300" placeholder="Song title" required autocomplete="off">
+                </div>
+                <div class="sr-field">
+                    <label for="sr-artist">Artist</label>
+                    <input type="text" id="sr-artist" maxlength="300" placeholder="Artist (optional)" autocomplete="off">
+                </div>
+                <div class="sr-field">
+                    <label for="sr-dedication">Dedication / shout-out</label>
+                    <textarea id="sr-dedication" maxlength="500" rows="2" placeholder="Optional message to read on air"></textarea>
+                </div>
+                <div id="sr-error" class="sr-error" style="display: none;"></div>
+                <div class="sr-actions">
+                    <button type="submit" id="sr-submit" class="btn">Send request</button>
+                </div>
+            </form>
         </div>
     </div>
 
