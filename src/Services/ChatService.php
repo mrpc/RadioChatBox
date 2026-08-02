@@ -1385,6 +1385,12 @@ class ChatService
         // @codeCoverageIgnoreEnd
     }
 
+    /** Public accessor for whether a nickname is currently banned. */
+    public function nicknameIsBanned(string $nickname): bool
+    {
+        return $this->isNicknameBanned($nickname);
+    }
+
     /**
      * Get all messages from database with pagination
      */

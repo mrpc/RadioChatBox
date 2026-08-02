@@ -187,6 +187,19 @@ class ReportService
             ->getAll();
     }
 
+    /** Count of PENDING reports filed against a user (case-insensitive). */
+    public function countPendingAgainst(string $username): int
+    {
+        if (trim($username) === '') {
+            return 0;
+        }
+        return $this->db->queryBuilder()
+            ->from('message_reports')
+            ->whereRaw('LOWER(reported_username) = LOWER(%s)', [$username])
+            ->where('status', '=', 'pending')
+            ->count();
+    }
+
     /** A single report by id, or null. */
     public function find(int $id): ?array
     {

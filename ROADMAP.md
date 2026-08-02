@@ -252,15 +252,15 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - Add `muted_until` column to `sessions` table
 
 ### Auto-Moderation System
-- [ ] Configurable auto-ban thresholds
+- [x] Configurable auto-ban thresholds — `AutoModService` (report threshold + action in Settings)
 - [x] Track reports per user — `ReportService::forReportedUser` (user dossier) + most-reported ranking in the reports dashboard
-- [ ] Automatic escalation rules (e.g., 5 reports = auto-ban)
+- [x] Automatic escalation rules (e.g., 5 reports = auto-ban) — `AutoModService::onReport` (timeout or ban at threshold)
 - [ ] Reputation score system
 - [ ] Trust levels based on user behavior
 - [ ] Automatic shadow ban for repeat offenders
 - [ ] Configurable automation rules in admin panel
-- [ ] Auto-mod whitelist (exempt trusted users)
-- [ ] Auto-mod activity logs
+- [x] Auto-mod whitelist (exempt trusted users) — staff (moderator+) are always exempt
+- [x] Auto-mod activity logs — actions recorded to the moderation log as `auto_timeout` / `auto_ban`
 
 **Database Changes:**
 - New `auto_mod_rules` table (id, rule_type, threshold, action, duration, is_active, created_at)

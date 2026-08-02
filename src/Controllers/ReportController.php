@@ -57,6 +57,20 @@ class ReportController
                 isset($input['content_snapshot']) ? (string) $input['content_snapshot'] : null
             );
 
+            // Auto-moderation: a new report may push the reported user over the
+            // configured threshold (auto-timeout / auto-ban). Best-effort — never
+            // let it break the report submission itself.
+            $reportedUsername = isset($input['reported_username']) ? (string) $input['reported_username'] : '';
+            if ($reportedUsername !== '') {
+                try {
+                    (new \RadioChatBox\Services\AutoModService())->onReport($reportedUsername);
+                // @codeCoverageIgnoreStart
+                } catch (\Throwable $e) {
+                    \Pramnos\Logs\Logger::log('AutoMod on report failed: ' . $e->getMessage(), 'radiochatbox');
+                }
+                // @codeCoverageIgnoreEnd
+            }
+
             // Live cue for the admin Reports badge/queue (no polling).
             try {
                 \Pramnos\Broadcasting\BroadcastingManager::instance()->broadcast(

@@ -142,6 +142,12 @@ class SettingsService
         'bot_typing_max_delay',
         'bot_read_delay_min',
         'bot_read_delay_max',
+        // Auto-moderation: act automatically once a user collects enough pending
+        // reports (staff are always exempt).
+        'automod_enabled',
+        'automod_report_threshold',
+        'automod_action',
+        'automod_timeout_minutes',
     ];
 
     /**
@@ -156,6 +162,8 @@ class SettingsService
         'slow_mode_seconds' => [0, 3600],
         'warning_auto_timeout_threshold' => [0, 20],
         'warning_auto_timeout_minutes' => [1, 1440],
+        'automod_report_threshold' => [2, 100],
+        'automod_timeout_minutes' => [1, 10080],
         'minimum_users' => [0, 10000],
         'ads_refresh_interval' => [1, 3600],
         'track_poll_seconds' => [10, 3600],
@@ -195,6 +203,8 @@ class SettingsService
         'charts_default_period' => ['day', 'week', 'month'],
         // Minimum role allowed to create a poll with /poll on the front end.
         'poll_min_usertype'     => ['moderator', 'administrator', 'root'],
+        // What auto-moderation does when a user hits the report threshold.
+        'automod_action'        => ['timeout', 'ban'],
     ];
 
     public function __construct()

@@ -3120,6 +3120,34 @@
                     </div>
                 </div>
 
+                <div class="settings-group">
+                    <h3>Auto-moderation (reports)</h3>
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="setting-automod-enabled" style="width:auto;">
+                            Act automatically when a user collects enough pending reports
+                        </label>
+                        <small style="color:#6b7280;">Staff (moderators and above) are always exempt. Every action is written to the moderation log.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Report threshold</label>
+                        <input type="number" id="setting-automod-report-threshold" placeholder="5" min="2" max="100">
+                        <small style="color:#6b7280;">Number of pending reports against a user before auto-mod acts.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Action</label>
+                        <select id="setting-automod-action">
+                            <option value="timeout">Timeout</option>
+                            <option value="ban">Ban nickname</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Timeout duration (minutes)</label>
+                        <input type="number" id="setting-automod-timeout-minutes" placeholder="60" min="1" max="10080">
+                        <small style="color:#6b7280;">Only used when the action is Timeout.</small>
+                    </div>
+                </div>
+
                 <div class="section">
                     <button class="btn btn-success" onclick="saveSettings()" style="width: 100%; font-size: 16px; padding: 12px;">
                         💾 Save All Settings
@@ -8558,6 +8586,10 @@
                     document.getElementById('setting-slow-mode-seconds').value = settings.slow_mode_seconds || '0';
                     document.getElementById('setting-warning-auto-timeout-threshold').value = settings.warning_auto_timeout_threshold ?? '3';
                     document.getElementById('setting-warning-auto-timeout-minutes').value = settings.warning_auto_timeout_minutes ?? '60';
+                    document.getElementById('setting-automod-enabled').checked = settings.automod_enabled === 'true';
+                    document.getElementById('setting-automod-report-threshold').value = settings.automod_report_threshold ?? '5';
+                    document.getElementById('setting-automod-action').value = settings.automod_action || 'timeout';
+                    document.getElementById('setting-automod-timeout-minutes').value = settings.automod_timeout_minutes ?? '60';
 
                     // Fake user auto-replies (bots)
                     botRepliesEnabled = settings.bot_replies_enabled === 'true';
@@ -8993,6 +9025,10 @@
                 slow_mode_seconds: document.getElementById('setting-slow-mode-seconds').value,
                 warning_auto_timeout_threshold: document.getElementById('setting-warning-auto-timeout-threshold').value,
                 warning_auto_timeout_minutes: document.getElementById('setting-warning-auto-timeout-minutes').value,
+                automod_enabled: document.getElementById('setting-automod-enabled').checked ? 'true' : 'false',
+                automod_report_threshold: document.getElementById('setting-automod-report-threshold').value,
+                automod_action: document.getElementById('setting-automod-action').value,
+                automod_timeout_minutes: document.getElementById('setting-automod-timeout-minutes').value,
                 
                 // SEO & Branding
                 site_title: document.getElementById('setting-site-title').value,
