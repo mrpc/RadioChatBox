@@ -265,6 +265,8 @@
                 <div id="conversations-list"></div>
             </div>
 
+            <div id="typing-indicator" class="typing-indicator" style="display: none;"></div>
+
             <div id="chat-input-container">
                 <button id="emoji-button" class="emoji-toggle-btn" title="Emojis">😊</button>
                 <button id="gif-button" class="gif-toggle-btn" title="GIFs" style="display: none;">GIF</button>

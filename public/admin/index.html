@@ -2430,6 +2430,12 @@
                             <small>Listeners rate what's on air; one vote per person per track.</small>
                         </div>
                         <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-typing-indicators-enabled" style="width: auto;">
+                                Show "user is typing…" in public chat
+                            </label>
+                        </div>
+                        <div class="form-group">
                             <label>Charts default period</label>
                             <select id="setting-charts-default-period">
                                 <option value="day">Day</option>
@@ -8239,6 +8245,7 @@
                     document.getElementById('setting-charts-enabled').checked = settings.charts_enabled === 'true';
                     document.getElementById('setting-song-requests-enabled').checked = settings.song_requests_enabled === 'true';
                     document.getElementById('setting-track-voting-enabled').checked = settings.track_voting_enabled === 'true';
+                    document.getElementById('setting-typing-indicators-enabled').checked = settings.typing_indicators_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
                     document.getElementById('setting-player-mode').value = settings.player_mode || 'off';
                     document.getElementById('setting-player-allow-override').checked = settings.player_allow_override !== 'false';
@@ -8691,6 +8698,7 @@
                 charts_enabled: document.getElementById('setting-charts-enabled').checked ? 'true' : 'false',
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',
                 track_voting_enabled: document.getElementById('setting-track-voting-enabled').checked ? 'true' : 'false',
+                typing_indicators_enabled: document.getElementById('setting-typing-indicators-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,
                 player_mode: document.getElementById('setting-player-mode').value,
                 player_allow_override: document.getElementById('setting-player-allow-override').checked ? 'true' : 'false',

@@ -901,6 +901,7 @@ class RadioChatBox {
         try { this.initPlayer(); } catch (e) { console.warn('initPlayer error', e); }
         try { this.initSongRequests(); } catch (e) { console.warn('initSongRequests error', e); }
         try { this.initTrackVoting(); } catch (e) { console.warn('initTrackVoting error', e); }
+        try { this.initTypingIndicators(); } catch (e) { console.warn('initTypingIndicators error', e); }
     }
 
     // ---- Now-playing voting -----------------------------------------
@@ -2415,7 +2416,7 @@ class RadioChatBox {
                 this._dispatchRealtimeEvent(name, data);
             });
             ['message', 'history', 'users', 'config', 'private', 'clear',
-             'message_deleted', 'message_edited', 'reaction', 'now_playing', 'pins_changed'].forEach(bind);
+             'message_deleted', 'message_edited', 'reaction', 'now_playing', 'pins_changed', 'typing'].forEach(bind);
 
             this.eventSource.addEventListener('reconnect', () => {
                 console.log('Server requested reconnect');
@@ -2469,7 +2470,84 @@ class RadioChatBox {
             case 'reaction':        this.handleReactionUpdate(data); break;
             case 'now_playing':     this.renderNowPlaying(data && data.nowPlaying); break;
             case 'pins_changed':    this.refreshPinnedBar(); break;
+            case 'typing':          this.handleTypingEvent(data); break;
         }
+    }
+
+    // ---- Typing indicators ------------------------------------------
+
+    initTypingIndicators() {
+        this._typingEnabled = this._settingOn(this.settings && this.settings.typing_indicators_enabled);
+        this._typingUsers = this._typingUsers || new Map(); // username -> expiry ms
+        if (!this._typingEnabled || this._typingBound) return;
+        this._typingBound = true;
+        if (this.messageInput) {
+            this.messageInput.addEventListener('input', () => this.onTypingInput());
+        }
+    }
+
+    /** Throttled "I'm typing" ping while composing a PUBLIC message. */
+    onTypingInput() {
+        if (!this._typingEnabled || !this.username) return;
+        if (this.privateChat && this.privateChat.active) return; // public chat only
+        const now = Date.now();
+        if (!this._typingLastSent || now - this._typingLastSent > 2000) {
+            this._typingLastSent = now;
+            this.sendTypingState(true);
+        }
+        clearTimeout(this._typingStopTimer);
+        this._typingStopTimer = setTimeout(() => {
+            this._typingLastSent = 0;
+            this.sendTypingState(false);
+        }, 3000);
+    }
+
+    async sendTypingState(isTyping) {
+        if (!this._typingEnabled || !this.username) return;
+        try {
+            await fetch(`${this.apiUrl}/api/typing`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, is_typing: !!isTyping }),
+            });
+        } catch (e) { /* best-effort */ }
+    }
+
+    handleTypingEvent(data) {
+        if (!data || !data.username || data.username === this.username) return;
+        this._typingUsers = this._typingUsers || new Map();
+        if (data.is_typing) {
+            this._typingUsers.set(data.username, Date.now() + 4000);
+        } else {
+            this._typingUsers.delete(data.username);
+        }
+        this.renderTypingIndicator();
+        // Re-render shortly to drop stale entries even without a "stop" event.
+        clearTimeout(this._typingRenderTimer);
+        this._typingRenderTimer = setTimeout(() => this.renderTypingIndicator(), 4100);
+    }
+
+    renderTypingIndicator() {
+        const el = document.getElementById('typing-indicator');
+        if (!el) return;
+        const now = Date.now();
+        const names = [];
+        for (const [user, expiry] of (this._typingUsers || new Map())) {
+            if (expiry > now && user !== this.username) names.push(user);
+            else if (expiry <= now) this._typingUsers.delete(user);
+        }
+        // Hide while viewing a private conversation.
+        if (!names.length || (this.privateChat && this.privateChat.active)) {
+            el.style.display = 'none';
+            el.textContent = '';
+            return;
+        }
+        let text;
+        if (names.length === 1) text = `${names[0]} is typing…`;
+        else if (names.length === 2) text = `${names[0]} and ${names[1]} are typing…`;
+        else text = `${names.length} people are typing…`;
+        el.textContent = text;
+        el.style.display = 'block';
     }
 
     // ---- Pinned messages bar ----------------------------------------
@@ -4604,6 +4682,13 @@ class RadioChatBox {
 
                 // Clear reply state after sending
                 this.clearReplyState();
+
+                // We just sent — we're no longer "typing".
+                if (this._typingEnabled) {
+                    clearTimeout(this._typingStopTimer);
+                    this._typingLastSent = 0;
+                    this.sendTypingState(false);
+                }
 
                 // Clear the pinned-track attachment after sending
                 this.setPinTrack(false);

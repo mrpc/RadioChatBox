@@ -341,7 +341,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Edit history tracking
 - [ ] @mentions with autocomplete
 - [ ] Mention notifications
-- [ ] Typing indicators ("User is typing...")
+- [x] Typing indicators ("User is typing...")
 - [ ] Message read receipts (for private messages)
 - [ ] Link previews (title, description, thumbnail)
 - [ ] Message search functionality

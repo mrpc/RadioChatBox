@@ -1959,6 +1959,18 @@ body {
     .song-request-btn:hover { background: #2a2a2a; }
 }
 
+/* "User is typing…" indicator (above the input) */
+.typing-indicator {
+    padding: 2px 14px 4px;
+    font-size: 12px;
+    font-style: italic;
+    color: #6b7280;
+    min-height: 16px;
+}
+@media (prefers-color-scheme: dark) {
+    .typing-indicator { color: #9ca3af; }
+}
+
 /* Now-playing vote widget (header) */
 .track-vote {
     display: inline-flex;
