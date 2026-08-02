@@ -204,6 +204,7 @@
                         💬
                         <span id="unread-badge" class="badge" style="display: none;">0</span>
                     </button>
+                    <button id="schedule-toggle" class="icon-button" title="Show schedule">📅</button>
                     <button id="search-toggle" class="icon-button" title="Search messages">🔍</button>
                     <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
                     <button id="change-nickname" class="icon-button" title="Profile & Settings">
@@ -246,6 +247,14 @@
             </div>
 
             <div id="messages-container">
+                <!-- Upcoming shows overlay (toggled from the header 📅) -->
+                <div id="schedule-panel" style="display: none;">
+                    <div class="search-bar">
+                        <strong style="flex:1;">📅 Upcoming shows</strong>
+                        <button id="schedule-close" class="icon-button" title="Close">✕</button>
+                    </div>
+                    <div id="schedule-list"></div>
+                </div>
                 <!-- Message search overlay (toggled from the header 🔍) -->
                 <div id="search-panel" style="display: none;">
                     <div class="search-bar">

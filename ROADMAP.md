@@ -504,13 +504,13 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### Radio Show Schedule
 **Priority:** LOW - Nice to have for show planning
 
-- [ ] Display upcoming shows/events
+- [x] Display upcoming shows/events — 📅 schedule overlay + `/api/shows/upcoming`
 - [ ] Calendar view of scheduled broadcasts
-- [ ] Show details (host, description, time)
-- [ ] Recurring show support (weekly, daily)
+- [x] Show details (host, description, time) — stored per show, shown in the overlay
+- [x] Recurring show support (weekly) + one-off dates — `ShowService`
 - [ ] Reminders/notifications for favorite shows
 - [ ] Links to past show archives
-- [ ] Time zone display support
+- [x] Time zone display support — next occurrences computed in the app TZ, rendered in the viewer's locale
 - [ ] Subscribe to show notifications
 - [ ] iCal/Google Calendar export
 

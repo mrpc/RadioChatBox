@@ -2325,6 +2325,12 @@ class RadioChatBox {
             this.updateSoundButton();
         }
 
+        // Show schedule
+        const scheduleBtn = document.getElementById('schedule-toggle');
+        if (scheduleBtn) scheduleBtn.addEventListener('click', () => this.toggleSchedule());
+        const scheduleClose = document.getElementById('schedule-close');
+        if (scheduleClose) scheduleClose.addEventListener('click', () => this.toggleSchedule(false));
+
         // Message search
         const searchBtn = document.getElementById('search-toggle');
         if (searchBtn) searchBtn.addEventListener('click', () => this.toggleSearch());
@@ -2732,6 +2738,41 @@ class RadioChatBox {
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         } catch (e) { /* non-fatal */ }
+    }
+
+    // ---- Show schedule ----------------------------------------------
+
+    /** Show/hide the upcoming-shows overlay, loading it on open. */
+    toggleSchedule(force) {
+        const panel = document.getElementById('schedule-panel');
+        if (!panel) return;
+        const show = force === undefined ? panel.style.display === 'none' : force;
+        panel.style.display = show ? 'flex' : 'none';
+        if (show) this.loadSchedule();
+    }
+
+    async loadSchedule() {
+        const box = document.getElementById('schedule-list');
+        if (!box) return;
+        box.innerHTML = '<div class="search-empty">Loading…</div>';
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/shows/upcoming?limit=10`);
+            if (!resp.ok) { box.innerHTML = '<div class="search-empty">Could not load the schedule.</div>'; return; }
+            const data = await resp.json();
+            const shows = (data && data.shows) || [];
+            if (!shows.length) { box.innerHTML = '<div class="search-empty">No upcoming shows.</div>'; return; }
+            box.innerHTML = shows.map(s => {
+                const when = s.next_start ? new Date(s.next_start) : null;
+                const whenStr = when ? when.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                const host = s.host ? ` · ${this.escapeHtml(s.host)}` : '';
+                const desc = s.description ? `<div class="sched-desc">${this.escapeHtml(s.description)}</div>` : '';
+                return `<div class="sched-item">
+                        <div class="sched-when">${this.escapeHtml(whenStr)}</div>
+                        <div class="sched-title">${this.escapeHtml(s.title)}${host}</div>
+                        ${desc}
+                    </div>`;
+            }).join('');
+        } catch (e) { box.innerHTML = '<div class="search-empty">Error loading the schedule.</div>'; }
     }
 
     // ---- Message search ---------------------------------------------

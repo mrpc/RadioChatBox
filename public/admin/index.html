@@ -1254,6 +1254,10 @@
                         <span class="icon">📊</span>
                         <span>Polls</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('shows')" data-tab="shows">
+                        <span class="icon">📅</span>
+                        <span>Schedule</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('url-whitelist')" data-tab="url-whitelist">
                         <span class="icon">✅</span>
                         <span>URL Whitelist</span>
@@ -2290,6 +2294,77 @@
                         </div>
                     </div>
                     <div id="polls-history"></div>
+                </div>
+            </div>
+
+            <!-- Show Schedule Tab -->
+            <div id="shows-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2>Show Schedule</h2>
+                            <p style="color:#6b7280;">Recurring (weekly) or one-off broadcasts shown to listeners as "upcoming shows".</p>
+                        </div>
+                        <button class="btn btn-outline" onclick="loadShows()">🔄 Refresh</button>
+                    </div>
+                    <div class="settings-group" style="margin-bottom:16px;">
+                        <h3 id="show-form-title">Add a show</h3>
+                        <input type="hidden" id="show-id" value="">
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" id="show-title" maxlength="200" placeholder="e.g. Morning Drive">
+                        </div>
+                        <div class="form-group">
+                            <label>Host (optional)</label>
+                            <input type="text" id="show-host" maxlength="150" placeholder="e.g. DJ Alex">
+                        </div>
+                        <div class="form-group">
+                            <label>Description (optional)</label>
+                            <textarea id="show-description" rows="2" style="width:100%;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Type</label>
+                            <select id="show-type" onchange="onShowTypeChange()">
+                                <option value="recurring">Recurring (weekly)</option>
+                                <option value="oneoff">One-off (specific date)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="show-dow-group">
+                            <label>Day of week</label>
+                            <select id="show-dow">
+                                <option value="0">Sunday</option>
+                                <option value="1">Monday</option>
+                                <option value="2">Tuesday</option>
+                                <option value="3">Wednesday</option>
+                                <option value="4">Thursday</option>
+                                <option value="5">Friday</option>
+                                <option value="6">Saturday</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="show-date-group" style="display:none;">
+                            <label>Date</label>
+                            <input type="date" id="show-date">
+                        </div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:120px;">
+                                <label>Start time</label>
+                                <input type="time" id="show-start">
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:120px;">
+                                <label>End time (optional)</label>
+                                <input type="time" id="show-end">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="show-active" checked style="width:auto;"> Active
+                            </label>
+                        </div>
+                        <button type="button" class="btn btn-success" onclick="saveShow()">💾 Save show</button>
+                        <button type="button" class="btn btn-outline" onclick="resetShowForm()" id="show-cancel" style="display:none;">Cancel</button>
+                        <div id="show-error" style="color:#ef4444; font-size:13px; margin-top:6px; display:none;"></div>
+                    </div>
+                    <div id="shows-table"></div>
                 </div>
             </div>
 
@@ -5168,6 +5243,7 @@
                 'reports': {title: 'Abuse Reports', subtitle: 'User-submitted reports queue'},
                 'song-requests': {title: 'Song Requests', subtitle: 'Listener requests and dedications'},
                 'polls': {title: 'Polls', subtitle: 'Chat polls and their results'},
+                'shows': {title: 'Schedule', subtitle: 'Radio show schedule'},
                 'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
@@ -5241,6 +5317,7 @@
                 if (tabName === 'reports') { loadReports(); loadModerationLog(); }
                 if (tabName === 'song-requests') loadSongRequests();
                 if (tabName === 'polls') loadPollsHistory();
+                if (tabName === 'shows') loadShows();
                 if (tabName === 'statistics') loadPopularReactions();
             };
         })();
@@ -9291,6 +9368,128 @@
 
         // ---- Abuse reports queue ----
         const REPORT_REASON_LABELS = { spam:'Spam', harassment:'Harassment', inappropriate:'Inappropriate', offensive:'Offensive', impersonation:'Impersonation', other:'Other' };
+
+        // ---- Show schedule (admin) ----
+        const SHOW_DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+        function onShowTypeChange() {
+            const type = document.getElementById('show-type').value;
+            document.getElementById('show-dow-group').style.display = type === 'recurring' ? '' : 'none';
+            document.getElementById('show-date-group').style.display = type === 'oneoff' ? '' : 'none';
+        }
+
+        function resetShowForm() {
+            document.getElementById('show-id').value = '';
+            document.getElementById('show-title').value = '';
+            document.getElementById('show-host').value = '';
+            document.getElementById('show-description').value = '';
+            document.getElementById('show-type').value = 'recurring';
+            document.getElementById('show-dow').value = '1';
+            document.getElementById('show-date').value = '';
+            document.getElementById('show-start').value = '';
+            document.getElementById('show-end').value = '';
+            document.getElementById('show-active').checked = true;
+            document.getElementById('show-form-title').textContent = 'Add a show';
+            document.getElementById('show-cancel').style.display = 'none';
+            document.getElementById('show-error').style.display = 'none';
+            onShowTypeChange();
+        }
+
+        async function saveShow() {
+            const err = document.getElementById('show-error');
+            const showErr = (m) => { err.textContent = m; err.style.display = 'block'; };
+            err.style.display = 'none';
+            const id = document.getElementById('show-id').value;
+            const type = document.getElementById('show-type').value;
+            const payload = {
+                title: document.getElementById('show-title').value.trim(),
+                host: document.getElementById('show-host').value.trim(),
+                description: document.getElementById('show-description').value.trim(),
+                is_recurring: type === 'recurring' ? 'true' : 'false',
+                day_of_week: document.getElementById('show-dow').value,
+                show_date: document.getElementById('show-date').value,
+                start_time: document.getElementById('show-start').value,
+                end_time: document.getElementById('show-end').value,
+                is_active: document.getElementById('show-active').checked ? 'true' : 'false',
+            };
+            if (!payload.title) { showErr('Title is required.'); return; }
+            if (!payload.start_time) { showErr('Start time is required.'); return; }
+            if (type === 'oneoff' && !payload.show_date) { showErr('Pick a date for a one-off show.'); return; }
+            if (id) payload.id = id;
+            const url = id ? '/api/admin/shows/update' : '/api/admin/shows';
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) { resetShowForm(); loadShows(); }
+                else showErr(data.error || 'Failed to save.');
+            } catch (e) { showErr('Error: ' + e.message); }
+        }
+
+        function editShow(s) {
+            document.getElementById('show-id').value = s.id;
+            document.getElementById('show-title').value = s.title || '';
+            document.getElementById('show-host').value = s.host || '';
+            document.getElementById('show-description').value = s.description || '';
+            const recurring = s.is_recurring === true || s.is_recurring === 't' || s.is_recurring === 'true' || s.is_recurring === 1;
+            document.getElementById('show-type').value = recurring ? 'recurring' : 'oneoff';
+            document.getElementById('show-dow').value = String(s.day_of_week ?? 1);
+            document.getElementById('show-date').value = s.show_date || '';
+            document.getElementById('show-start').value = (s.start_time || '').slice(0, 5);
+            document.getElementById('show-end').value = (s.end_time || '').slice(0, 5);
+            document.getElementById('show-active').checked = (s.is_active === true || s.is_active === 't' || s.is_active === 'true' || s.is_active === 1);
+            document.getElementById('show-form-title').textContent = 'Edit show #' + s.id;
+            document.getElementById('show-cancel').style.display = '';
+            onShowTypeChange();
+            document.getElementById('show-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        async function deleteShow(id) {
+            if (!confirm('Delete this show?')) return;
+            try {
+                await fetch('/api/admin/shows/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ id })
+                });
+                loadShows();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function loadShows() {
+            const table = document.getElementById('shows-table');
+            if (!table) return;
+            table.innerHTML = '<div style="color:#6b7280;padding:12px;">Loading…</div>';
+            try {
+                const res = await fetch('/api/admin/shows', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { table.innerHTML = '<p style="color:#ef4444;">Failed to load.</p>'; return; }
+                const shows = data.shows || [];
+                if (!shows.length) { table.innerHTML = '<p style="color:#6b7280;padding:12px;">No shows scheduled yet.</p>'; return; }
+                table.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+                    <thead><tr style="text-align:left;color:#6b7280;font-size:13px;">
+                        <th style="padding:6px 8px;">Title</th><th style="padding:6px 8px;">When</th><th style="padding:6px 8px;">Host</th><th style="padding:6px 8px;">Active</th><th style="padding:6px 8px;"></th>
+                    </tr></thead><tbody>${shows.map(s => {
+                        const recurring = s.is_recurring === true || s.is_recurring === 't' || s.is_recurring === 'true' || s.is_recurring === 1;
+                        const when = recurring
+                            ? `${SHOW_DOW[s.day_of_week] || '?'} ${(s.start_time || '').slice(0,5)}`
+                            : `${s.show_date || ''} ${(s.start_time || '').slice(0,5)}`;
+                        const active = (s.is_active === true || s.is_active === 't' || s.is_active === 'true' || s.is_active === 1);
+                        return `<tr style="border-top:1px solid #f0f0f0;font-size:13px;">
+                            <td style="padding:6px 8px;"><strong>${escapeHtml(s.title)}</strong></td>
+                            <td style="padding:6px 8px;">${escapeHtml(when)}${s.end_time ? '–' + escapeHtml((s.end_time||'').slice(0,5)) : ''}</td>
+                            <td style="padding:6px 8px;">${escapeHtml(s.host || '—')}</td>
+                            <td style="padding:6px 8px;">${active ? '✅' : '⛔'}</td>
+                            <td style="padding:6px 8px;white-space:nowrap;">
+                                <button class="btn btn-outline" style="padding:3px 8px;font-size:12px;" onclick='editShow(${JSON.stringify(s).replace(/'/g, "&#39;")})'>✎</button>
+                                <button class="btn btn-danger" style="padding:3px 8px;font-size:12px;" onclick="deleteShow(${s.id})">🗑️</button>
+                            </td></tr>`;
+                    }).join('')}</tbody></table>`;
+            } catch (e) { table.innerHTML = '<p style="color:#ef4444;">Error loading shows.</p>'; }
+        }
 
         async function loadPopularReactions() {
             const box = document.getElementById('popular-reactions');
