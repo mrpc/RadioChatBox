@@ -50,6 +50,8 @@ class SettingsService
         'charts_default_period',
         // Listener song requests + dedications
         'song_requests_enabled',
+        // Chat slash-commands (/help, /rules, …)
+        'chat_commands_enabled',
         // In-chat radio player (embedded <audio> above the chat)
         'player_mode',
         'player_allow_override',

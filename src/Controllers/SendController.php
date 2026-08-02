@@ -5,6 +5,7 @@ namespace RadioChatBox\Controllers;
 use InvalidArgumentException;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
+use RadioChatBox\Services\ChatCommandService;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\MessageFilter;
 use RuntimeException;
@@ -44,6 +45,17 @@ final class SendController
                 throw new RuntimeException('Public chat is disabled. Please use private messages.');
             }
 
+            // Slash-commands (when enabled): if the message is a recognised
+            // command, answer the sender directly and DON'T post/broadcast it as a
+            // chat message. An unrecognised /foo falls through as a normal message.
+            if (is_string($message) && str_starts_with(ltrim($message), '/')
+                && $this->commandsEnabled($chatService)) {
+                $reply = (new ChatCommandService())->respondTo($message);
+                if ($reply !== null) {
+                    return Response::json(['success' => true, 'command' => true, 'response' => $reply]);
+                }
+            }
+
             $message = MessageFilter::filterPublicMessage($message)['filtered'];
 
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
@@ -61,5 +73,12 @@ final class SendController
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /** Whether admin-defined slash-commands are switched on. */
+    private function commandsEnabled(ChatService $chatService): bool
+    {
+        $value = $chatService->getSetting('chat_commands_enabled');
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'on', 'yes'], true);
     }
 }
