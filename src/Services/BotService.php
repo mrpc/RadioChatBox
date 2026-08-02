@@ -1745,20 +1745,26 @@ class BotService
             'greeklish' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις ΠΑΝΤΑ με ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες'
                 . ' (φυσικά, καθημερινά ελληνικά, όπως μιλάει ο κόσμος στο chat). ΠΟΤΕ λατινικούς'
                 . ' χαρακτήρες / greeklish, ΑΚΟΜΑ κι αν ο χαρακτήρας ή κάποια άλλη οδηγία σου λέει'
-                . ' να γράφεις greeklish - το σύστημα κάνει μόνο του τη μετατροπή σε greeklish μετά.'
+                . ' να γράφεις greeklish, ΑΚΟΜΑ κι αν ο συνομιλητής σου γράφει σε greeklish - το'
+                . ' σύστημα κάνει μόνο του τη μετατροπή σε greeklish μετά. ΠΑΡΑΔΕΙΓΜΑ: ο άλλος'
+                . ' γράφει "ti kaneis re" → εσύ γράφεις "τι κάνεις ρε" (ΟΧΙ "ti kaneis re").'
                 . ' Emoji επιτρέπονται.',
-            'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.',
+            'greek' => 'ΓΛΩΣΣΑ - ΥΠΟΧΡΕΩΤΙΚΟ: Γράφεις στα ελληνικά, με ελληνικούς χαρακτήρες.'
+                . ' ΠΟΤΕ greeklish/λατινικούς για ελληνικές λέξεις.',
             'english' => 'LANGUAGE - MANDATORY: Reply in English only, in a casual chat tone.',
             // Auto: match the person's LANGUAGE, but never the greeklish SCRIPT.
             // If they write Greek or greeklish, the model writes Greek characters
             // and the system transliterates to greeklish afterwards when needed
             // (see resolveEnforceLanguage/enforceLanguage). The model must never
-            // produce greeklish itself.
+            // produce greeklish itself. A concrete example is included because
+            // models otherwise mirror a greeklish peer's latin script.
             default => 'ΓΛΩΣΣΑ: Αν ο συνομιλητής γράφει ελληνικά Ή greeklish (ελληνικά με'
                 . ' λατινικούς χαρακτήρες), απαντάς με ΕΛΛΗΝΙΚΟΥΣ χαρακτήρες (φυσικά, καθημερινά'
-                . ' ελληνικά). ΠΟΤΕ δεν γράφεις εσύ greeklish/λατινικούς για ελληνικά - το σύστημα'
-                . ' κάνει μόνο του τη μετατροπή σε greeklish αν χρειάζεται. Αν σου γράφει στα'
-                . ' αγγλικά, απάντα στα αγγλικά.',
+                . ' ελληνικά). ΠΟΤΕ δεν γράφεις εσύ greeklish/λατινικούς για ελληνικά, ΑΚΟΜΑ κι αν'
+                . ' ο συνομιλητής σου γράφει έτσι - το σύστημα κάνει μόνο του τη μετατροπή σε'
+                . ' greeklish αν χρειάζεται. ΠΑΡΑΔΕΙΓΜΑ: σου γράφει "ti kaneis" (greeklish) → εσύ'
+                . ' απαντάς "τι κάνεις" με ελληνικούς χαρακτήρες, ΟΧΙ "ti kaneis". Αν σου γράφει'
+                . ' στα αγγλικά, απάντα στα αγγλικά.',
         };
     }
 
