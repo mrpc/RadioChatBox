@@ -2712,6 +2712,28 @@ class RadioChatBox {
         el.style.display = 'block';
     }
 
+    /** Transient toast when someone reacts to one of my messages. */
+    showReactionNotification(fromUser, emoji) {
+        try {
+            let host = document.getElementById('rcb-toast-host');
+            if (!host) {
+                host = document.createElement('div');
+                host.id = 'rcb-toast-host';
+                document.body.appendChild(host);
+            }
+            const toast = document.createElement('div');
+            toast.className = 'rcb-toast';
+            toast.innerHTML = `<span class="rcb-toast-emoji">${this.escapeHtml(emoji || '👍')}</span> <strong>${this.escapeHtml(fromUser || 'Someone')}</strong> reacted to your message`;
+            host.appendChild(toast);
+            // Fade in, then auto-dismiss.
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        } catch (e) { /* non-fatal */ }
+    }
+
     // ---- Message search ---------------------------------------------
 
     /** Show/hide the search overlay. Pass a boolean to force a state. */
@@ -5272,6 +5294,13 @@ class RadioChatBox {
         // A DM typing cue (shares the private channel, tagged type:'typing').
         if (messageData && messageData.type === 'typing') {
             this.handleDmTyping(messageData);
+            return;
+        }
+        // Author-directed reaction notification (someone reacted to my message).
+        if (messageData && messageData.type === 'reaction_notification') {
+            if (messageData.to_username === this.username && messageData.from_username !== this.username) {
+                this.showReactionNotification(messageData.from_username, messageData.emoji);
+            }
             return;
         }
         // A DM reaction update (shares the private channel, tagged type:'reaction')

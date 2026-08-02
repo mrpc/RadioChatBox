@@ -329,7 +329,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Emoji picker UI for reactions
 - [x] View who reacted (reaction details) — hover a reaction pill for the roster (`/api/react/who`)
 - [x] Remove own reactions
-- [ ] Reaction notifications — partial: broadcast to the live feed; no author-directed notification
+- [x] Reaction notifications — author-directed toast when someone reacts to your message (private-channel cue)
 - [x] Most popular reactions tracking — `/api/admin/reactions/popular` + a strip on the Statistics dashboard
 
 **Database Changes:**

@@ -19,6 +19,9 @@ class ReactionService
     /** Redis pub/sub channel reused for real-time chat updates. */
     private const PUBSUB_CHANNEL = 'chat:updates';
 
+    /** Private channel (per-participant fan-out) for author-directed cues. */
+    private const PUBSUB_CHANNEL_PRIVATE = 'chat:private_messages';
+
     /** Allowed reaction emojis (server-enforced whitelist). */
     private const ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🤘'];
 
@@ -65,11 +68,52 @@ class ReactionService
         $reactions = $this->getReactionsForMessage($messageId, $username);
         $this->publishUpdate($messageId, $reactions);
 
+        // Author-directed notification: tell the message's author that someone
+        // reacted (only on 'added', never for a self-reaction). Rides the private
+        // channel so it reaches just that user.
+        if ($action === 'added') {
+            $this->notifyAuthorOfReaction($messageId, $username, $emoji);
+        }
+
         return [
             'message_id' => $messageId,
             'reactions' => $reactions,
             'action' => $action,
         ];
+    }
+
+    /**
+     * Notify a public message's author that someone reacted to it. Best-effort;
+     * skips self-reactions and missing authors.
+     */
+    private function notifyAuthorOfReaction(string $messageId, string $reactor, string $emoji): void
+    {
+        try {
+            $result = $this->db->preparedQuery(
+                'SELECT username FROM chat_messages WHERE message_id = ? LIMIT 1',
+                [$messageId]
+            );
+            $author = $result ? $result->fetchColumn() : false;
+            if ($author === false || $author === null) {
+                return;
+            }
+            $author = (string) $author;
+            if ($author === '' || mb_strtolower($author) === mb_strtolower($reactor)) {
+                return; // no author, or reacting to your own message
+            }
+
+            BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL_PRIVATE, 'private', [
+                'type'          => 'reaction_notification',
+                'to_username'   => $author,
+                'from_username' => $reactor,
+                'emoji'         => $emoji,
+                'message_id'    => $messageId,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReactionService::notifyAuthorOfReaction failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

@@ -113,6 +113,32 @@ class ReactionServiceTest extends TestCase
         $this->assertSame([], $this->service->whoReacted($this->messageId));
     }
 
+    /**
+     * Reacting to another user's message succeeds (the author-directed
+     * notification path runs without affecting the result), and a self-reaction
+     * also toggles cleanly (notification skipped).
+     */
+    public function testReactionNotificationPathDoesNotBreakToggle(): void
+    {
+        // Cross-user: author is __test_author__, reactor is userA.
+        $cross = $this->service->toggleReaction($this->messageId, $this->userA, 'sess', '👍');
+        $this->assertSame('added', $cross['action']);
+
+        // Self-reaction: the author reacts to their own message (notify skipped).
+        $selfMid = 'msg_self_' . bin2hex(random_bytes(6));
+        $this->pdo->prepare(
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
+             VALUES (?, ?, ?, ?, NOW())'
+        )->execute([$selfMid, 'selfy', 'my own message', '127.0.0.1']);
+        try {
+            $self = $this->service->toggleReaction($selfMid, 'selfy', 'sess', '🔥');
+            $this->assertSame('added', $self['action']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM message_reactions WHERE message_id = ?')->execute([$selfMid]);
+            $this->pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$selfMid]);
+        }
+    }
+
     /** popularEmojis ranks emojis by use and includes every allowed emoji. */
     public function testPopularEmojisRanksByUsage(): void
     {
