@@ -185,8 +185,11 @@ final class MediaController
         // Parse Open Graph metadata (limit to first 100KB to avoid huge documents)
         $preview = $this->parseOpenGraph(substr($html, 0, 102400), $url);
 
-        if (empty($preview['title'])) {
-            // Nothing useful to show
+        // Nothing useful to show. A title that is just the URL itself (what a
+        // consent/JS-wall page yields for a scraper) is treated as no preview too —
+        // otherwise we cache a useless "title = the link" card for an hour.
+        $title = trim((string) ($preview['title'] ?? ''));
+        if ($title === '' || $title === trim($url) || rtrim($title, '/') === rtrim($url, '/')) {
             return Response::json(['error' => 'No preview data available'], 422);
         }
 

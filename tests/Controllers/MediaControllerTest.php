@@ -103,6 +103,25 @@ class MediaControllerTest extends TestCase
     }
 
     /**
+     * A scrape whose only "title" is the URL itself (what a consent/JS-wall page
+     * hands a scraper) is treated as no preview — otherwise a useless "title = the
+     * link" card would be cached for an hour.
+     */
+    public function testLinkPreviewRejectsTitleThatIsJustTheUrl(): void
+    {
+        $probe = 'https://example.com/x?probe=' . uniqid();
+        $html  = '<html><head><meta property="og:title" content="' . htmlspecialchars($probe, ENT_QUOTES) . '">'
+            . '</head><body>x</body></html>';
+        Client::fake(['*example.com*' => ClientResponse::make($html, 200, ['content-type' => 'text/html'])]);
+
+        $_GET = ['url' => $probe];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('No preview data available', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
      * link-preview rejects a declared non-HTML Content-Type with 422
      * {error:'URL is not an HTML page'}.
      */
