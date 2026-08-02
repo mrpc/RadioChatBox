@@ -428,20 +428,20 @@ Bot Activity profile shortcuts, DM replies + reactions.
 existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both are
 **settings-gated** so a station opts in.
 
-- [ ] **Top charts panel** — Top 10 **artists** and Top 10 **tracks** for **day / week / month**
-  - [ ] Admin setting to enable/disable the feature (`charts_enabled`)
-  - [ ] Button next to the current-playing widget on the front end that opens the panel
-  - [ ] Period switcher (day / week / month) inside the panel
-  - [ ] Aggregate from the existing track-play history — by artist and by title — over the period
-  - [ ] Cache the aggregates (Redis) so the button is cheap under load
-- [ ] **In-chat radio player** — embed a live audio player instead of only showing track text
-  - [ ] Admin **mode** setting `player_mode` — not just on/off but **where** it shows:
+- [x] **Top charts panel** — Top 10 **artists** and Top 10 **tracks** for **day / week / month**
+  - [x] Admin setting to enable/disable the feature (`charts_enabled`)
+  - [x] Button next to the current-playing widget on the front end that opens the panel
+  - [x] Period switcher (day / week / month) inside the panel
+  - [x] Aggregate from the existing track-play history — by artist and by title — over the period
+  - [x] Cache the aggregates (Redis) so the button is cheap under load
+- [x] **In-chat radio player** — embed a live audio player instead of only showing track text
+  - [x] Admin **mode** setting `player_mode` — not just on/off but **where** it shows:
     `off` (never) · `on` (everywhere) · `iframe_only` (only when embedded in an iframe) ·
     `app_only` (only standalone, i.e. NOT in an iframe). Detect embedding via
     `window.self !== window.top`. Plus stream URL / format settings.
-  - [ ] Play/pause + volume, with live now-playing metadata (artist / title / artwork) in the widget
-  - [ ] Respect browser autoplay policy (start muted / require a tap); mobile-friendly
-  - [ ] Falls back to the text-only now-playing when disabled
+  - [x] Play/pause + volume, with live now-playing metadata (artist / title / artwork) in the widget
+  - [x] Respect browser autoplay policy (start muted / require a tap); mobile-friendly
+  - [x] Falls back to the text-only now-playing when disabled
 
   **Layout** — a single horizontal **bar ABOVE the chat** (dark, rounded), full width:
 
@@ -462,12 +462,12 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
     `player_enabled` is off, the bar is gone and the bottom now-playing returns.
   - Styling follows the active theme; the accent (play button, slider, Live dot) uses
     the app's red accent as in the mockup.
-  - [ ] **Per-embed override via iframe/URL param** — the chat is embedded on station
+  - [x] **Per-embed override via iframe/URL param** — the chat is embedded on station
     sites, so a query param overrides the resolved `player_mode` **for that embed
     only** (e.g. `?player=1` forces it on, `?player=0` forces it off; absent → use the
     mode setting). Precedence: **URL param > mode setting**. Lets one site show the
     player and another hide it without changing the global setting.
-  - [ ] **Admin can forbid overrides** — a setting (`player_allow_override`, default on)
+  - [x] **Admin can forbid overrides** — a setting (`player_allow_override`, default on)
     that, when **off**, makes the app **ignore the `?player=` param entirely** so
     `player_mode` always wins. Full precedence: **if overrides allowed → URL param >
     player_mode; if overrides forbidden → player_mode only** (and `player_mode` itself

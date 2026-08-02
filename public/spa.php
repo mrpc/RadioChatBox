@@ -190,6 +190,7 @@
                 </div>
                 <img id="now-playing-cover" alt="" title="Now playing — click to enlarge" style="display: none;">
                 <h1><span id="mic-logo" style="display: none;">🎙️ </span>Live Chat <span id="now-playing" class="now-playing" style="display: none;"></span></h1>
+                <button id="charts-button" class="icon-button" title="Top charts" style="display: none;">📊</button>
                 <div id="user-info">
                     <button id="sidebar-toggle-mobile" class="icon-button" title="Active Users">
                         👥
@@ -217,6 +218,26 @@
                     <span id="status-indicator" class="status-connecting"></span>
                     <span id="status-text">Connecting...</span>
                 </div>
+            </div>
+
+            <!-- In-chat radio player bar (shown when player_mode resolves to on for
+                 this embed). When shown it replaces the header now-playing widget. -->
+            <div id="radio-player-bar" style="display: none;">
+                <div class="rp-cover">
+                    <img id="rp-cover-img" alt="" style="display: none;">
+                    <span id="rp-cover-ph" class="rp-cover-ph">🎵</span>
+                </div>
+                <button id="rp-play" class="rp-play" title="Play" aria-label="Play">▶</button>
+                <div class="rp-meta">
+                    <div class="rp-label">Now Playing</div>
+                    <div class="rp-title" id="rp-title">Live Radio</div>
+                </div>
+                <div class="rp-right">
+                    <button id="rp-vol-icon" class="rp-vol-icon" title="Mute" aria-label="Mute">🔊</button>
+                    <input type="range" id="rp-volume" class="rp-volume" min="0" max="100" value="80" title="Volume" aria-label="Volume">
+                    <span class="rp-live"><span class="rp-live-dot"></span>Live</span>
+                </div>
+                <audio id="rp-audio" preload="none"></audio>
             </div>
 
             <div id="messages-container">
@@ -276,6 +297,33 @@
                 </div>
                 <div id="gif-grid"></div>
                 <div id="gif-loading" style="display: none;">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top charts panel (opened by the 📊 button; only when charts_enabled) -->
+    <div id="charts-overlay" class="charts-overlay" style="display: none;">
+        <div class="charts-modal" role="dialog" aria-modal="true" aria-label="Top charts">
+            <div class="charts-modal-head">
+                <h3>📊 Top Charts</h3>
+                <button id="charts-close" class="charts-close" title="Close" aria-label="Close">✕</button>
+            </div>
+            <div class="charts-tabs">
+                <div class="charts-periods">
+                    <button class="charts-period active" data-period="day">Day</button>
+                    <button class="charts-period" data-period="week">Week</button>
+                    <button class="charts-period" data-period="month">Month</button>
+                </div>
+            </div>
+            <div class="charts-body">
+                <div class="charts-col">
+                    <h4>Top Tracks</h4>
+                    <ol id="charts-tracks" class="charts-list"></ol>
+                </div>
+                <div class="charts-col">
+                    <h4>Top Artists</h4>
+                    <ol id="charts-artists" class="charts-list"></ol>
+                </div>
             </div>
         </div>
     </div>

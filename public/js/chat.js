@@ -585,6 +585,9 @@ class RadioChatBox {
 
                 // Initialize now playing polling if configured
                 this.initNowPlaying();
+
+                // Top charts button + in-chat radio player (both settings-gated).
+                this.initRadioExtras();
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -773,6 +776,9 @@ class RadioChatBox {
     renderNowPlaying(nowPlaying) {
         const el = document.getElementById('now-playing');
         if (!el) return;
+        // Mirror the track into the in-chat player bar (when it is the active
+        // now-playing surface).
+        this.syncPlayerMeta(nowPlaying);
         if (nowPlaying && nowPlaying.active && nowPlaying.display) {
             el.textContent = `🎵 Now Playing: ${nowPlaying.display}`;
             // Remember the current track so it can be pinned to a message.
@@ -792,7 +798,9 @@ class RadioChatBox {
                 el.removeAttribute('title');
             }
 
-            el.style.display = 'block';
+            // When the player bar is the now-playing surface, the header widget
+            // stays hidden (no duplication) — the bar shows the track instead.
+            el.style.display = this._playerActive ? 'none' : 'block';
         } else {
             el.style.display = 'none';
             this.currentTrack = null;
@@ -831,6 +839,12 @@ class RadioChatBox {
             thumb = feedCover;
         }
 
+        if (full && key === this._coverKey && this._playerActive) {
+            // The player bar owns the cover; keep the header cover hidden.
+            this.syncPlayerCover(thumb || full);
+            return;
+        }
+
         if (full && key === this._coverKey) {
             // Small display uses the thumbnail; the lightbox uses the full image.
             img.src = thumb || full;
@@ -865,6 +879,257 @@ class RadioChatBox {
         // Restore the mic logo if a radio stream is configured.
         const mic = document.getElementById('mic-logo');
         if (mic && this._micConfigured) mic.style.display = 'inline';
+        // Clear the player-bar cover too (falls back to its placeholder icon).
+        this.syncPlayerCover(null);
+    }
+
+    // ==================================================================
+    // Top charts panel + in-chat radio player (roadmap: Now-Playing
+    // Enhancements). Both are settings-gated so a station opts in.
+    // ==================================================================
+
+    /** A setting stored as a string is "on" for true/1/on/yes. */
+    _settingOn(value, defaultOn = false) {
+        if (value === undefined || value === null || value === '') return defaultOn;
+        return ['1', 'true', 'on', 'yes'].includes(String(value).toLowerCase().trim());
+    }
+
+    initRadioExtras() {
+        try { this.initCharts(); } catch (e) { console.warn('initCharts error', e); }
+        try { this.initPlayer(); } catch (e) { console.warn('initPlayer error', e); }
+    }
+
+    // ---- Top charts panel -------------------------------------------
+
+    initCharts() {
+        const btn = document.getElementById('charts-button');
+        if (!btn) return;
+
+        if (!this._settingOn(this.settings && this.settings.charts_enabled)) {
+            btn.style.display = 'none';
+            return;
+        }
+
+        let period = (this.settings && this.settings.charts_default_period) || 'day';
+        if (!['day', 'week', 'month'].includes(period)) period = 'day';
+        this._chartsPeriod = period;
+
+        btn.style.display = 'flex'; // .icon-button is a flex box
+
+        if (this._chartsBound) return;
+        this._chartsBound = true;
+
+        const overlay = document.getElementById('charts-overlay');
+        btn.addEventListener('click', () => this.openCharts());
+        const closeBtn = document.getElementById('charts-close');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeCharts());
+        if (overlay) {
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) this.closeCharts(); });
+            overlay.querySelectorAll('.charts-period').forEach((b) => {
+                b.classList.toggle('active', b.dataset.period === this._chartsPeriod);
+                b.addEventListener('click', () => {
+                    this._chartsPeriod = b.dataset.period;
+                    overlay.querySelectorAll('.charts-period').forEach((x) => x.classList.toggle('active', x === b));
+                    this.loadCharts();
+                });
+            });
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && overlay && overlay.style.display === 'flex') this.closeCharts();
+        });
+    }
+
+    openCharts() {
+        const overlay = document.getElementById('charts-overlay');
+        if (!overlay) return;
+        overlay.style.display = 'flex';
+        this.loadCharts();
+    }
+
+    closeCharts() {
+        const overlay = document.getElementById('charts-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    async loadCharts() {
+        const period = this._chartsPeriod || 'day';
+        const tracksEl = document.getElementById('charts-tracks');
+        const artistsEl = document.getElementById('charts-artists');
+        if (!tracksEl || !artistsEl) return;
+        tracksEl.innerHTML = '<li class="charts-empty">Loading…</li>';
+        artistsEl.innerHTML = '<li class="charts-empty">Loading…</li>';
+        try {
+            const [tracks, artists] = await Promise.all([
+                fetch(`${this.apiUrl}/api/songs/top?type=tracks&period=${period}&limit=10`).then((r) => r.json()),
+                fetch(`${this.apiUrl}/api/songs/top?type=artists&period=${period}&limit=10`).then((r) => r.json()),
+            ]);
+            this.renderChartList(tracksEl, (tracks && tracks.items) || [], 'tracks');
+            this.renderChartList(artistsEl, (artists && artists.items) || [], 'artists');
+        } catch (e) {
+            tracksEl.innerHTML = '<li class="charts-empty">Failed to load</li>';
+            artistsEl.innerHTML = '<li class="charts-empty">Failed to load</li>';
+        }
+    }
+
+    renderChartList(el, items, type) {
+        if (!items.length) {
+            el.innerHTML = '<li class="charts-empty">No plays yet</li>';
+            return;
+        }
+        el.innerHTML = items.map((it) => {
+            const plays = parseInt(it.plays || 0, 10) || 0;
+            if (type === 'artists') {
+                const name = this.escapeHtml(it.artist || 'Unknown');
+                const img = it.image_file
+                    ? `<img class="chart-img" src="${this.escapeHtml(it.image_file)}" alt="" onerror="this.style.visibility='hidden'">`
+                    : '';
+                return `<li>${img}<span class="chart-name">${name}</span><span class="chart-plays">${plays}</span></li>`;
+            }
+            const label = it.display || `${it.artist ? it.artist + ' - ' : ''}${it.title || 'Unknown'}`;
+            return `<li><span class="chart-name">${this.escapeHtml(label)}</span><span class="chart-plays">${plays}</span></li>`;
+        }).join('');
+    }
+
+    // ---- In-chat radio player ---------------------------------------
+
+    /**
+     * Resolve whether the player shows for THIS embed. Precedence:
+     *   if overrides allowed -> URL ?player= param > player_mode
+     *   if overrides forbidden -> player_mode only
+     * player_mode: off | on | iframe_only | app_only (embedding detected via
+     * window.self !== window.top).
+     */
+    resolvePlayerMode() {
+        const s = this.settings || {};
+        const mode = s.player_mode || 'off';
+        const inIframe = window.self !== window.top;
+
+        if (this._settingOn(s.player_allow_override, true)) {
+            const p = new URLSearchParams(window.location.search).get('player');
+            if (p !== null) {
+                if (['1', 'on', 'true', 'yes'].includes(p.toLowerCase())) return true;
+                if (['0', 'off', 'false', 'no'].includes(p.toLowerCase())) return false;
+            }
+        }
+
+        switch (mode) {
+            case 'on': return true;
+            case 'iframe_only': return inIframe;
+            case 'app_only': return !inIframe;
+            default: return false; // 'off' or unknown
+        }
+    }
+
+    initPlayer() {
+        const bar = document.getElementById('radio-player-bar');
+        if (!bar) return;
+
+        const streamUrl = ((this.settings && this.settings.player_stream_url) || '').trim();
+        const show = this.resolvePlayerMode() && streamUrl !== '';
+        this._playerActive = show;
+
+        if (!show) {
+            bar.style.display = 'none';
+            return;
+        }
+
+        // The bar IS the now-playing surface: hide the header widget + cover so
+        // the track is not shown twice.
+        const npEl = document.getElementById('now-playing');
+        if (npEl) npEl.style.display = 'none';
+        this.hideNowPlayingCover();
+        bar.style.display = 'flex';
+
+        if (this._playerBound) {
+            // Settings reloaded — just refresh the source and re-sync the track.
+            const audioEl = document.getElementById('rp-audio');
+            if (audioEl && audioEl.src !== streamUrl) audioEl.src = streamUrl;
+            this.renderNowPlaying(this._lastNowPlaying || null);
+            return;
+        }
+        this._playerBound = true;
+
+        const audio = document.getElementById('rp-audio');
+        const playBtn = document.getElementById('rp-play');
+        const vol = document.getElementById('rp-volume');
+        const volIcon = document.getElementById('rp-vol-icon');
+        audio.src = streamUrl;
+        audio.volume = 0.8;
+
+        const setPlaying = (playing) => {
+            playBtn.textContent = playing ? '⏸' : '▶';
+            playBtn.title = playing ? 'Pause' : 'Play';
+        };
+        const updateVolIcon = () => {
+            volIcon.textContent = (audio.muted || audio.volume === 0) ? '🔇' : '🔊';
+        };
+
+        playBtn.addEventListener('click', () => {
+            if (audio.paused) {
+                // A user gesture: unmute if the only reason it was muted was autoplay.
+                if (audio.muted && !this._userMuted) { audio.muted = false; updateVolIcon(); }
+                audio.play().catch(() => {});
+            } else {
+                audio.pause();
+            }
+        });
+        audio.addEventListener('play', () => setPlaying(true));
+        audio.addEventListener('playing', () => setPlaying(true));
+        audio.addEventListener('pause', () => setPlaying(false));
+
+        vol.addEventListener('input', () => {
+            audio.volume = (parseInt(vol.value, 10) || 0) / 100;
+            audio.muted = audio.volume === 0;
+            this._userMuted = audio.muted;
+            updateVolIcon();
+        });
+        volIcon.addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            this._userMuted = audio.muted;
+            if (!audio.muted && audio.volume === 0) { audio.volume = 0.5; vol.value = 50; }
+            updateVolIcon();
+        });
+
+        updateVolIcon();
+        setPlaying(false);
+
+        // Autoplay policy: a live stream cannot autoplay with sound, so start
+        // muted and let the user's first tap unmute. Only attempt if configured.
+        if (this._settingOn(this.settings.player_autoplay)) {
+            audio.muted = true;
+            this._userMuted = false; // muted by policy, not by the user
+            updateVolIcon();
+            audio.play().catch(() => {});
+        }
+    }
+
+    /** Update the player bar's title from a nowPlaying object (when active). */
+    syncPlayerMeta(nowPlaying) {
+        this._lastNowPlaying = nowPlaying || null;
+        if (!this._playerActive) return;
+        const titleEl = document.getElementById('rp-title');
+        if (!titleEl) return;
+        const s = this.settings || {};
+        titleEl.textContent = (nowPlaying && nowPlaying.active && nowPlaying.display)
+            ? nowPlaying.display
+            : (s.brand_name || s.page_title || 'Live Radio');
+    }
+
+    /** Show/clear the player bar cover (falls back to a music-note placeholder). */
+    syncPlayerCover(url) {
+        if (!this._playerActive) return;
+        const img = document.getElementById('rp-cover-img');
+        const ph = document.getElementById('rp-cover-ph');
+        if (!img) return;
+        if (url) {
+            img.src = url;
+            img.style.display = 'block';
+            if (ph) ph.style.display = 'none';
+        } else {
+            img.removeAttribute('src');
+            img.style.display = 'none';
+            if (ph) ph.style.display = '';
+        }
     }
 
     /** Hover card next to the now-playing cover with track/album/artist info. */
