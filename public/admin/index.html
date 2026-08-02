@@ -6934,6 +6934,7 @@
                         <button class="btn btn-secondary" onclick="botThreadExport()" title="Download this conversation's full log (messages, state and LLM calls) as JSON to share for debugging">📥 Export log</button>
                         <button class="btn btn-secondary" onclick="botThreadPrint()" title="Open a printable view of the whole conversation">🖨️ Print</button>
                         <button class="btn btn-secondary" onclick="botThreadAsk()" title="Ask the LLM a question about this conversation (answer shown to you only)">❓ Ask the LLM</button>
+                        <button class="btn btn-secondary" onclick="botThreadSteer()" title="Give the bot a private steering directive for this conversation (e.g. steer it towards a topic)">🎯 Steer${state.admin_directive ? ' •' : ''}</button>
                     </div>
                     <div id="bot-thread-ask-answer" style="display:none; background:#f9fafb; border:1px solid #e5e7eb; border-left:3px solid #6366f1; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:13px; white-space:pre-wrap;"></div>
                     <h3 style="font-size: 14px; color: #374151;">Calls for this conversation</h3>
@@ -7228,6 +7229,25 @@
             } catch (e) {
                 if (box) box.textContent = '⚠️ ' + e.message;
             }
+        }
+
+        // Give the bot a private steering directive for this conversation.
+        async function botThreadSteer() {
+            if (!currentBotThread) return;
+            const current = (currentBotThreadData && currentBotThreadData.state && currentBotThreadData.state.admin_directive) || '';
+            const directive = prompt('Private steering directive for the bot (e.g. "steer towards asking to meet"). Leave empty to clear:', current);
+            if (directive === null) return;
+            try {
+                const res = await fetch('/api/admin/bot-steer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ fake_user: currentBotThread.fakeUser, peer: currentBotThread.peer, directive })
+                });
+                const data = await res.json();
+                if (!data.success) { alert('Failed: ' + (data.error || 'error')); return; }
+                // Refresh so the new reply (if forced) and the • indicator show.
+                openBotThread(currentBotThread.fakeUser, currentBotThread.peer);
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
         function botCallRows(entries) {

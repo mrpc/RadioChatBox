@@ -428,6 +428,54 @@ final class AdminImpersonationController
     }
 
     /**
+     * POST /api/admin/bot-steer — {fake_user, peer, directive}. Attaches a
+     * steering directive to the thread (empty clears it). A non-empty directive
+     * also forces the bot to reply now so it takes effect immediately. Root/owner
+     * only. 200 {success, directive, replied}; bad input -> 400.
+     */
+    #[Route('/api/admin/bot-steer', methods: 'POST', name: 'admin.bot-steer', middleware: [AdminAuthMiddleware::class])]
+    public function botSteer(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        try {
+            $input = $_POST;
+            $fake = trim((string) ($input['fake_user'] ?? ''));
+            $peer = trim((string) ($input['peer'] ?? ''));
+            $directive = (string) ($input['directive'] ?? '');
+            if ($fake === '' || $peer === '') {
+                return Response::json(['error' => 'fake_user and peer are required'], 400);
+            }
+
+            $bot = new BotService();
+            if (!$bot->setThreadDirective($fake, $peer, $directive)) {
+                return Response::json(['error' => 'Unknown fake user'], 400);
+            }
+
+            // A new directive takes effect on the next reply — force one now so the
+            // admin sees the steer immediately (clearing does not force a reply).
+            $replied = false;
+            if (trim($directive) !== '') {
+                $replied = $bot->forceReply($fake, $peer);
+            }
+
+            return Response::json([
+                'success'   => true,
+                'directive' => $bot->getThreadDirective($fake, $peer),
+                'replied'   => $replied,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('bot-steer error: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * List every active fake user's inbound private conversations
      * (replaces public/api/admin/impersonate-conversations.php).
      *

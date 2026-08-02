@@ -406,6 +406,16 @@ class BotServicePipelineTest extends TestCase
         }
     }
 
+    /** An admin steering directive is stored on the thread and cleared with ''. */
+    public function testThreadDirectiveSetAndClear(): void
+    {
+        $this->assertTrue($this->bot->setThreadDirective($this->nick, $this->peer, 'steer towards X'));
+        $this->assertSame('steer towards X', $this->bot->getThreadDirective($this->nick, $this->peer));
+
+        $this->bot->setThreadDirective($this->nick, $this->peer, '');
+        $this->assertSame('', $this->bot->getThreadDirective($this->nick, $this->peer));
+    }
+
     public function testNothingIsScheduledForAnInactiveFakeUser(): void
     {
         $this->setBotColumn('is_active', false);
