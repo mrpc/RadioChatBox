@@ -435,7 +435,10 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
   - [ ] Aggregate from the existing track-play history — by artist and by title — over the period
   - [ ] Cache the aggregates (Redis) so the button is cheap under load
 - [ ] **In-chat radio player** — embed a live audio player instead of only showing track text
-  - [ ] Admin setting to enable/disable (`player_enabled`) + stream URL / format
+  - [ ] Admin **mode** setting `player_mode` — not just on/off but **where** it shows:
+    `off` (never) · `on` (everywhere) · `iframe_only` (only when embedded in an iframe) ·
+    `app_only` (only standalone, i.e. NOT in an iframe). Detect embedding via
+    `window.self !== window.top`. Plus stream URL / format settings.
   - [ ] Play/pause + volume, with live now-playing metadata (artist / title / artwork) in the widget
   - [ ] Respect browser autoplay policy (start muted / require a tap); mobile-friendly
   - [ ] Falls back to the text-only now-playing when disabled
@@ -460,18 +463,20 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
   - Styling follows the active theme; the accent (play button, slider, Live dot) uses
     the app's red accent as in the mockup.
   - [ ] **Per-embed override via iframe/URL param** — the chat is embedded on station
-    sites, so a query param overrides the global `player_enabled` **for that embed
+    sites, so a query param overrides the resolved `player_mode` **for that embed
     only** (e.g. `?player=1` forces it on, `?player=0` forces it off; absent → use the
-    admin setting). Precedence: **URL param > admin setting**. Lets one site show the
+    mode setting). Precedence: **URL param > mode setting**. Lets one site show the
     player and another hide it without changing the global setting.
   - [ ] **Admin can forbid overrides** — a setting (`player_allow_override`, default on)
-    that, when **off**, makes the app **ignore the `?player=` param entirely** so the
-    global `player_enabled` always wins. Full precedence: **if overrides allowed →
-    URL param > admin setting; if overrides forbidden → admin setting only.**
+    that, when **off**, makes the app **ignore the `?player=` param entirely** so
+    `player_mode` always wins. Full precedence: **if overrides allowed → URL param >
+    player_mode; if overrides forbidden → player_mode only** (and `player_mode` itself
+    already gates on/off/iframe-only/app-only).
 
 **Settings:**
 - `charts_enabled`, `charts_default_period`
-- `player_enabled`, `player_stream_url`, `player_stream_format` (mp3/aac), `player_autoplay`
+- `player_mode` (`off` / `on` / `iframe_only` / `app_only`), `player_allow_override`,
+  `player_stream_url`, `player_stream_format` (mp3/aac), `player_autoplay`
 
 **API Endpoints:**
 - `GET /api/songs/top?type=artists|tracks&period=day|week|month&limit=10` (see also `/api/songs/top` below)
