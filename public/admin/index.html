@@ -2423,6 +2423,13 @@
                             <small>Chat users can request a track with an optional dedication; requests appear in the Song Requests tab.</small>
                         </div>
                         <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-track-voting-enabled" style="width: auto;">
+                                Enable now-playing voting (👍 / 👎 on the current track)
+                            </label>
+                            <small>Listeners rate what's on air; one vote per person per track.</small>
+                        </div>
+                        <div class="form-group">
                             <label>Charts default period</label>
                             <select id="setting-charts-default-period">
                                 <option value="day">Day</option>
@@ -8231,6 +8238,7 @@
                     // Radio player & charts
                     document.getElementById('setting-charts-enabled').checked = settings.charts_enabled === 'true';
                     document.getElementById('setting-song-requests-enabled').checked = settings.song_requests_enabled === 'true';
+                    document.getElementById('setting-track-voting-enabled').checked = settings.track_voting_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
                     document.getElementById('setting-player-mode').value = settings.player_mode || 'off';
                     document.getElementById('setting-player-allow-override').checked = settings.player_allow_override !== 'false';
@@ -8682,6 +8690,7 @@
                 radio_status_url: document.getElementById('setting-radio-status-url').value,
                 charts_enabled: document.getElementById('setting-charts-enabled').checked ? 'true' : 'false',
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',
+                track_voting_enabled: document.getElementById('setting-track-voting-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,
                 player_mode: document.getElementById('setting-player-mode').value,
                 player_allow_override: document.getElementById('setting-player-allow-override').checked ? 'true' : 'false',

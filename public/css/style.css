@@ -1959,6 +1959,37 @@ body {
     .song-request-btn:hover { background: #2a2a2a; }
 }
 
+/* Now-playing vote widget (header) */
+.track-vote {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.track-vote .tv-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1;
+    padding: 4px 9px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+.track-vote .tv-btn:hover { background: rgba(255, 255, 255, 0.28); }
+.track-vote .tv-btn:active { transform: scale(0.94); }
+.track-vote .tv-btn.active {
+    background: #fff;
+    color: #4f46e5;
+    border-color: #fff;
+    font-weight: 700;
+}
+
 /* Local system message (slash-command replies) — centred, muted, non-bubble */
 .system-message {
     align-self: center;

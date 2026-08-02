@@ -779,6 +779,8 @@ class RadioChatBox {
         // Mirror the track into the in-chat player bar (when it is the active
         // now-playing surface).
         this.syncPlayerMeta(nowPlaying);
+        // Refresh the up/down tally for the (possibly new) current track.
+        this.refreshTrackVote();
         if (nowPlaying && nowPlaying.active && nowPlaying.display) {
             el.textContent = `🎵 Now Playing: ${nowPlaying.display}`;
             // Remember the current track so it can be pinned to a message.
@@ -898,6 +900,78 @@ class RadioChatBox {
         try { this.initCharts(); } catch (e) { console.warn('initCharts error', e); }
         try { this.initPlayer(); } catch (e) { console.warn('initPlayer error', e); }
         try { this.initSongRequests(); } catch (e) { console.warn('initSongRequests error', e); }
+        try { this.initTrackVoting(); } catch (e) { console.warn('initTrackVoting error', e); }
+    }
+
+    // ---- Now-playing voting -----------------------------------------
+
+    initTrackVoting() {
+        const widget = document.getElementById('track-vote');
+        if (!widget) return;
+        this._trackVotingEnabled = this._settingOn(this.settings && this.settings.track_voting_enabled);
+        if (!this._trackVotingEnabled) {
+            widget.style.display = 'none';
+            return;
+        }
+        if (!this._trackVoteBound) {
+            this._trackVoteBound = true;
+            const up = document.getElementById('tv-up');
+            const down = document.getElementById('tv-down');
+            if (up) up.addEventListener('click', () => this.castTrackVote('up'));
+            if (down) down.addEventListener('click', () => this.castTrackVote('down'));
+        }
+        // Fetch the tally for whatever is playing now.
+        this.refreshTrackVote();
+    }
+
+    async refreshTrackVote() {
+        const widget = document.getElementById('track-vote');
+        if (!widget || !this._trackVotingEnabled) return;
+        try {
+            const q = this.sessionId ? `?session_id=${encodeURIComponent(this.sessionId)}` : '';
+            const resp = await fetch(`${this.apiUrl}/api/songs/vote${q}`);
+            if (!resp.ok) { widget.style.display = 'none'; return; }
+            const data = await resp.json();
+            if (data && data.success && data.track) {
+                this.renderTrackVote(data);
+            } else {
+                widget.style.display = 'none'; // nothing playing
+            }
+        } catch (e) {
+            widget.style.display = 'none';
+        }
+    }
+
+    renderTrackVote(data) {
+        const widget = document.getElementById('track-vote');
+        if (!widget) return;
+        const upc = document.getElementById('tv-up-count');
+        const downc = document.getElementById('tv-down-count');
+        if (upc) upc.textContent = data.up ?? 0;
+        if (downc) downc.textContent = data.down ?? 0;
+        const up = document.getElementById('tv-up');
+        const down = document.getElementById('tv-down');
+        if (up) up.classList.toggle('active', (data.my_vote || 0) > 0);
+        if (down) down.classList.toggle('active', (data.my_vote || 0) < 0);
+        widget.style.display = 'inline-flex';
+    }
+
+    async castTrackVote(direction) {
+        if (!this._trackVotingEnabled) return;
+        if (!this.username) { alert('Please join the chat first to vote.'); return; }
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/songs/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, direction }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.success) {
+                this.renderTrackVote(data);
+            }
+        } catch (e) {
+            // ignore — the counts just won't update
+        }
     }
 
     // ---- Listener song requests -------------------------------------

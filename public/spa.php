@@ -191,6 +191,10 @@
                 <img id="now-playing-cover" alt="" title="Now playing — click to enlarge" style="display: none;">
                 <h1><span id="mic-logo" style="display: none;">🎙️ </span>Live Chat <span id="now-playing" class="now-playing" style="display: none;"></span></h1>
                 <button id="charts-button" class="icon-button" title="Top charts" style="display: none;">📊</button>
+                <span id="track-vote" class="track-vote" style="display: none;" title="Rate the current track">
+                    <button id="tv-up" class="tv-btn" type="button" aria-label="Thumbs up">👍 <span id="tv-up-count">0</span></button>
+                    <button id="tv-down" class="tv-btn" type="button" aria-label="Thumbs down">👎 <span id="tv-down-count">0</span></button>
+                </span>
                 <div id="user-info">
                     <button id="sidebar-toggle-mobile" class="icon-button" title="Active Users">
                         👥

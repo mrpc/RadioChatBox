@@ -373,13 +373,13 @@ Bot Activity profile shortcuts, DM replies + reactions.
 **Priority:** MEDIUM - Radio-specific engagement
 
 - [x] Song request system
-- [ ] Song voting/rating
+- [x] Song voting/rating (now-playing thumbs up/down)
 - [x] Dedication messages (fold into the request as a shout-out field)
 - [ ] Shout-outs display
 - [x] Request queue management (admin) — Song Requests tab, live pending badge
 - [x] Request approval workflow (approve / played / reject)
 - [ ] Integration with radio automation software (if applicable)
-- [ ] Now-playing voting (thumbs up/down)
+- [x] Now-playing voting (thumbs up/down)
 - [ ] Request history tracking (status filters exist; no full audit trail yet)
 
 **Database Changes:**
