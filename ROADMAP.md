@@ -440,6 +440,26 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
   - [ ] Respect browser autoplay policy (start muted / require a tap); mobile-friendly
   - [ ] Falls back to the text-only now-playing when disabled
 
+  **Layout** — a single horizontal **bar ABOVE the chat** (dark, rounded), full width:
+
+  ```
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │ [cover]  (▶/⏸)   Now Playing              [🔊]──●──── slider      ● Live       │
+  │                  The Gallery Radio                                             │
+  └──────────────────────────────────────────────────────────────────────────────┘
+  ```
+
+  - **Left:** square album-cover thumbnail (placeholder music-note icon when none) →
+    circular red play/pause button → the "Now Playing" label (red, small caps) with
+    the artist/title (or station name) on the line below.
+  - **Right:** volume icon + red volume slider, then a **● Live** indicator (red dot +
+    "Live") pushed to the far right.
+  - **When this bar is shown, the existing text-only now-playing widget below the header
+    is removed** — the player IS the now-playing surface (no duplication). When
+    `player_enabled` is off, the bar is gone and the bottom now-playing returns.
+  - Styling follows the active theme; the accent (play button, slider, Live dot) uses
+    the app's red accent as in the mockup.
+
 **Settings:**
 - `charts_enabled`, `charts_default_period`
 - `player_enabled`, `player_stream_url`, `player_stream_format` (mp3/aac), `player_autoplay`
