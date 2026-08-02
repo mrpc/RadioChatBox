@@ -5160,8 +5160,34 @@ class RadioChatBox {
     }
     
     /**
+     * Extract the 11-char video id from any YouTube URL shape (youtu.be/ID,
+     * youtube.com/watch?v=ID, /embed/ID, /shorts/ID). Null when it isn't YouTube.
+     */
+    _youtubeId(url) {
+        try {
+            const u = new URL(url);
+            const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+            if (host === 'youtu.be') {
+                const id = u.pathname.slice(1).split('/')[0];
+                return /^[\w-]{11}$/.test(id) ? id : null;
+            }
+            if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+                if (u.pathname === '/watch') {
+                    const id = u.searchParams.get('v') || '';
+                    return /^[\w-]{11}$/.test(id) ? id : null;
+                }
+                const m = u.pathname.match(/^\/(?:embed|shorts|v)\/([\w-]{11})/);
+                return m ? m[1] : null;
+            }
+        } catch (_) { /* not a URL */ }
+        return null;
+    }
+
+    /**
      * Fetch Open Graph metadata for any URL links inside a rendered message element
      * and inject a preview card. Only the first URL per message is previewed.
+     * YouTube links are embedded as a real player instead (Open Graph scraping fails
+     * on YouTube's consent wall, and a static card wouldn't play anyway).
      */
     async attachLinkPreviews(element) {
         const links = element.querySelectorAll('a.message-link[data-preview-url]');
@@ -5171,6 +5197,23 @@ class RadioChatBox {
         const link = links[0];
         const url = link.getAttribute('data-preview-url');
         if (!url) return;
+
+        // YouTube → embed a playable iframe from the video id (no OG fetch).
+        const ytId = this._youtubeId(url);
+        if (ytId) {
+            if (element.querySelector('.yt-embed')) return; // already embedded
+            const wrap = document.createElement('div');
+            wrap.className = 'link-preview yt-embed';
+            // Responsive 16:9 (CSS), privacy-friendly nocookie host, lazy-loaded.
+            wrap.innerHTML = `<div class="yt-embed-frame"><iframe`
+                + ` src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(ytId)}"`
+                + ` title="YouTube video player" loading="lazy" frameborder="0"`
+                + ` allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"`
+                + ` referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>`;
+            const msgBody = element.querySelector('.message-body');
+            if (msgBody) { msgBody.after(wrap); }
+            return;
+        }
 
         // Static in-memory cache shared across all messages
         if (!RadioChatBox._previewCache) RadioChatBox._previewCache = {};
