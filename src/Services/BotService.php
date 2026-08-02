@@ -2327,6 +2327,29 @@ class BotService
     }
 
     /**
+     * A human reason why this bot won't actually produce a reply right now, or
+     * null when it can. Used by admin tools (steer/force) to warn that an action
+     * will have no visible effect because the bots feature isn't ready.
+     */
+    public function replyBlockReason(string $fakeNickname): ?string
+    {
+        if (!$this->isEnabled()) {
+            return 'Bot replies are turned OFF (Settings → Fake User Auto-Replies), so no bot will reply.';
+        }
+        $fakeUser = $this->getBotUser($fakeNickname);
+        if ($fakeUser === null) {
+            return 'Unknown fake user.';
+        }
+        if (empty($fakeUser['bot_enabled'])) {
+            return 'This fake user has its bot disabled, so it will not reply.';
+        }
+        if (!$this->llm($fakeUser)->isConfigured()) {
+            return 'No LLM API key is configured, so the bot cannot generate a reply.';
+        }
+        return null;
+    }
+
+    /**
      * Whether an AI bot will answer DMs to this fake user on its own - true only
      * when the fake user has its bot enabled AND replies are on globally. Callers
      * use it to skip work a bot makes unnecessary, e.g. alerting an admin about a

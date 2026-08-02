@@ -466,6 +466,9 @@ final class AdminImpersonationController
                 'success'   => true,
                 'directive' => $bot->getThreadDirective($fake, $peer),
                 'replied'   => $replied,
+                // Warn if the directive is saved but no reply will actually appear
+                // (bots off / no LLM key), so the admin isn't left wondering.
+                'warning'   => $replied ? $bot->replyBlockReason($fake) : null,
             ]);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {

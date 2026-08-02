@@ -7290,6 +7290,10 @@
                 });
                 const data = await res.json();
                 if (!data.success) { alert('Failed: ' + (data.error || 'error')); return; }
+                // If the directive was saved but the bot can't actually reply, say so.
+                if (data.warning) {
+                    alert('⚠️ Directive saved, but: ' + data.warning);
+                }
                 // Refresh so the new reply (if forced) and the • indicator show.
                 openBotThread(currentBotThread.fakeUser, currentBotThread.peer);
             } catch (e) { alert('Error: ' + e.message); }
