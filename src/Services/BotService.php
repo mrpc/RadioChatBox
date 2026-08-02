@@ -1150,11 +1150,15 @@ class BotService
             'limit' => max(1, min(500, $limit)),
         ]);
 
+        // Resolve attachment_id -> attachment object so the Bot Activity thread can
+        // render DM photos (otherwise an attachment-only message shows [attachment]).
+        $rows = (new ChatService())->attachPhotoData($result ? $result->fetchAll() : []);
+
         // Fetched newest-first (so a long thread keeps its RECENT messages, not its
         // oldest), then flipped back to chronological order for display.
         return array_reverse(array_map(
             static fn (array $row): array => $row + ['is_bot' => $row['from_username'] === $fakeNickname],
-            $result ? $result->fetchAll() : []
+            $rows
         ));
     }
 

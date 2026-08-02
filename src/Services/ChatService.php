@@ -1469,15 +1469,17 @@ class ChatService
     }
 
     /**
-     * Attach photo data to messages that carry an attachment_id, so the admin
-     * message-history view can render DM photos (bug: they were invisible there).
-     * Batches one query for all referenced attachments; each message gets an
-     * `attachment` object (or null) and its `attachment_id` is dropped.
+     * Attach photo data to messages that carry an attachment_id, so admin views
+     * (message history, Bot Activity thread) can render DM photos (bug: they were
+     * invisible there). Batches one query for all referenced attachments; each
+     * message gets an `attachment` object (or null) and its `attachment_id` is
+     * dropped. Public so other services (BotService::threadMessages) can reuse the
+     * same resolution instead of duplicating it.
      *
      * @param array<int, array<string, mixed>> $messages
      * @return array<int, array<string, mixed>>
      */
-    private function attachPhotoData(array $messages): array
+    public function attachPhotoData(array $messages): array
     {
         $ids = [];
         foreach ($messages as $m) {

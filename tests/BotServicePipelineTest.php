@@ -342,6 +342,48 @@ class BotServicePipelineTest extends TestCase
         $this->assertFalse($this->bot->getThreadState($this->nick, $this->peer)['is_active']);
     }
 
+    /**
+     * Regression: an attachment-only DM (a shared photo, no caption) showed
+     * "[attachment]" in the Bot Activity thread because threadMessages() returned
+     * the raw attachment_id instead of a resolved `attachment` object. It now
+     * reuses ChatService::attachPhotoData(), so the bubble can render the photo.
+     */
+    public function testThreadMessagesResolveAttachmentPhotos(): void
+    {
+        $attId = 'att_' . substr(bin2hex(random_bytes(6)), 0, 12);
+        $path  = '/uploads/photos/' . $attId . '.jpg';
+        $this->pdo->prepare(
+            'INSERT INTO attachments
+                (attachment_id, filename, original_filename, file_path, file_size,
+                 mime_type, width, height, uploaded_by, ip_address, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)'
+        )->execute([
+            $attId, $attId . '.jpg', 'holiday.jpg', $path, 12345,
+            'image/jpeg', 800, 600, $this->peer, '203.0.113.7',
+        ]);
+
+        // The peer sends a photo with no caption (message left empty).
+        $this->pdo->prepare(
+            'INSERT INTO private_messages
+                (from_username, from_session_id, to_username, to_session_id, message, attachment_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())'
+        )->execute([$this->peer, $this->peerSession, $this->nick, 'fake_' . md5($this->nick), '', $attId]);
+
+        try {
+            $messages = $this->bot->threadMessages($this->nick, $this->peer);
+
+            $this->assertCount(1, $messages);
+            $msg = $messages[0];
+            // The raw column is dropped in favour of the resolved object.
+            $this->assertArrayNotHasKey('attachment_id', $msg);
+            $this->assertIsArray($msg['attachment']);
+            $this->assertSame($path, $msg['attachment']['file_path']);
+            $this->assertSame($attId . '.jpg', $msg['attachment']['filename']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$attId]);
+        }
+    }
+
     public function testNothingIsScheduledForAnInactiveFakeUser(): void
     {
         $this->setBotColumn('is_active', false);
