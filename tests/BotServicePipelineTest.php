@@ -384,6 +384,28 @@ class BotServicePipelineTest extends TestCase
         }
     }
 
+    /**
+     * A bot always replies to STAFF (moderator/admin/root) — no ignore roll —
+     * so it can be tested by DMing it from an admin account. Here the ignore
+     * chance is forced to 100%, which would silence a normal user.
+     */
+    public function testBotAlwaysRepliesToStaffDespiteIgnore(): void
+    {
+        $staff = 'admin_' . substr(bin2hex(random_bytes(4)), 0, 6);
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, 90)')
+            ->execute([$staff, 'x']);
+        $this->settings->values['bot_ignore_chance'] = '100'; // a normal user would be ignored
+
+        try {
+            $scheduled = $this->bot->onIncomingMessage($this->nick, $staff, 'sess_' . $staff, 'geia');
+            $this->assertTrue($scheduled, 'the bot must reply to staff even at 100% ignore');
+        } finally {
+            $this->pdo->prepare('DELETE FROM private_messages WHERE from_username = ? OR to_username = ?')->execute([$staff, $staff]);
+            $this->pdo->prepare('DELETE FROM bot_threads WHERE peer_username = ?')->execute([$staff]);
+            $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$staff]);
+        }
+    }
+
     public function testNothingIsScheduledForAnInactiveFakeUser(): void
     {
         $this->setBotColumn('is_active', false);

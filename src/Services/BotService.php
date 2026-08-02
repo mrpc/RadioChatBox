@@ -530,7 +530,17 @@ class BotService
 
             $thread = $this->getOrCreateThread((int) $fakeUser['id'], $fromUsername);
 
-            if ($thread['is_taken_over'] || $thread['farewell_sent_at'] !== null) {
+            // Staff (moderator/admin/root) always get a reply — no ignore roll, no
+            // message cap, and a prior farewell is revived — so a bot is easy to
+            // test by DMing it from an admin account.
+            $isStaff = $this->peerIsStaff($fromUsername);
+
+            // An admin who explicitly took over answers themselves; that always wins.
+            if ($thread['is_taken_over']) {
+                return false;
+            }
+            // A natural farewell ends the chat for normal users, but staff revive it.
+            if (!$isStaff && $thread['farewell_sent_at'] !== null) {
                 return false;
             }
 
@@ -539,8 +549,9 @@ class BotService
                 return false;
             }
 
-            // Some conversations are never picked up at all, like in a real chat.
-            if ($this->decideIgnore($fakeUser, $thread, $fromUsername)) {
+            // Some conversations are never picked up at all, like in a real chat —
+            // but a bot never ignores staff.
+            if (!$isStaff && $this->decideIgnore($fakeUser, $thread, $fromUsername)) {
                 return false;
             }
 
@@ -631,7 +642,8 @@ class BotService
         // Budget spent: this is the bot's closing message. It is still written
         // by the LLM so the goodbye fits what was actually being discussed -
         // the hardcoded variants are only the fallback when the API fails.
-        $isFarewell = (int) $thread['messages_sent'] >= $maxMessages;
+        // Staff never hit the cap (they always get a real reply — see onIncomingMessage).
+        $isFarewell = !$this->peerIsStaff($peer) && (int) $thread['messages_sent'] >= $maxMessages;
 
         $llm = $this->llm($fakeUser, $peer)->withLogContext([
             'fake_nickname' => (string) $fakeUser['nickname'],
@@ -1605,6 +1617,28 @@ class BotService
         );
 
         return $ignore;
+    }
+
+    /**
+     * Whether a peer is a staff member (moderator/admin/root). Bots always reply
+     * to staff — no ignore roll, no message cap — so a bot is easy to test from an
+     * admin account. Guests (no users row) are never staff.
+     */
+    private function peerIsStaff(string $peer): bool
+    {
+        if (trim($peer) === '') {
+            return false;
+        }
+        try {
+            $row = $this->db->preparedQuery(
+                'SELECT usertype FROM users WHERE username = :u LIMIT 1',
+                ['u' => $peer]
+            );
+            $usertype = $row ? $row->fetchColumn() : false;
+            return $usertype !== false && (int) $usertype >= Authz::MODERATOR;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**
