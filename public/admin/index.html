@@ -2197,6 +2197,13 @@
                     </div>
                     <div id="reports-table"></div>
                 </div>
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Recent Moderation Actions</h2>
+                        <button class="btn btn-outline" onclick="loadModerationLog()">🔄 Refresh</button>
+                    </div>
+                    <div id="moderation-log-table"></div>
+                </div>
             </div>
 
             <!-- URL Whitelist Tab -->
@@ -4932,7 +4939,7 @@
             switchTab = function(tabName, updateHistory = true) {
                 origSwitchTab(tabName, updateHistory);
                 if (tabName === 'nickname-bans') loadKickedUsers();
-                if (tabName === 'reports') loadReports();
+                if (tabName === 'reports') { loadReports(); loadModerationLog(); }
             };
         })();
         
@@ -8755,6 +8762,38 @@
                 const data = await res.json();
                 if (data.success) { loadReports(); } else { alert('Failed: ' + (data.error || 'error')); }
             } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        const MOD_ACTION_LABELS = { kick:'Kick', ban_nickname:'Ban nickname', unban_nickname:'Unban nickname', timeout:'Timeout', untimeout:'Lift timeout', report_resolve:'Resolved report', report_dismiss:'Dismissed report' };
+        async function loadModerationLog() {
+            const table = document.getElementById('moderation-log-table');
+            if (!table) return;
+            table.innerHTML = '<div style="color:#6b7280;padding:16px;">Loading…</div>';
+            try {
+                const res = await fetch('/api/admin/moderation-log?limit=100', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success || !data.log.length) {
+                    table.innerHTML = '<p style="color:#6b7280;padding:16px;text-align:center;">No moderation actions yet.</p>';
+                    return;
+                }
+                table.innerHTML = `
+                    <table>
+                        <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+                        <tbody>
+                            ${data.log.map(r => `
+                                <tr>
+                                    <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleString()}</td>
+                                    <td>${escapeHtml(r.admin_username || '-')}</td>
+                                    <td><span style="font-size:12px;color:#374151;">${escapeHtml(MOD_ACTION_LABELS[r.action] || r.action)}</span></td>
+                                    <td>${escapeHtml(r.target || '-')}</td>
+                                    <td style="color:#6b7280;font-size:12px;">${escapeHtml(r.details || '')}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) {
+                table.innerHTML = '<p style="color:#ef4444;padding:16px;">Error loading log.</p>';
+            }
         }
 
         function updateReportsBadge(count) {

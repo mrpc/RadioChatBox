@@ -139,6 +139,12 @@ class ReportController
             $adminName = (string) ($admin['username'] ?? 'admin');
 
             (new ReportService())->setStatus($id, $status, $adminName);
+            (new \RadioChatBox\Services\ModerationLog())->record(
+                $adminName,
+                $status === 'dismissed' ? 'report_dismiss' : 'report_resolve',
+                null,
+                'report #' . $id
+            );
             return Response::json(['success' => true]);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {

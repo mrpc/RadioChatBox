@@ -8,7 +8,9 @@ use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use Pramnos\Broadcasting\BroadcastingManager;
 use Pramnos\Cache\FlatCache;
+use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\ChatService;
+use RadioChatBox\Services\ModerationLog;
 use Pramnos\Database\Database;
 use RadioChatBox\KickRegistry;
 use RadioChatBox\MessageHistory;
@@ -131,6 +133,7 @@ final class AdminModerationController
                 $success = $chatService->banNickname($nickname, $reason, 'admin');
                 if ($success) {
                     self::signalModerationChanged();
+                    (new ModerationLog())->record(self::adminName(), 'ban_nickname', $nickname, $reason ?: null);
                 }
 
                 return Response::json([
@@ -150,6 +153,7 @@ final class AdminModerationController
             $success = $chatService->unbanNickname($nickname);
             if ($success) {
                 self::signalModerationChanged();
+                (new ModerationLog())->record(self::adminName(), 'unban_nickname', $nickname);
             }
 
             return Response::json([
@@ -223,6 +227,7 @@ final class AdminModerationController
 
                 // Refresh the admin's kicked/banned list live (no polling).
                 self::signalModerationChanged();
+                (new ModerationLog())->record(self::adminName(), 'kick', $username);
 
                 return Response::json([
                     'success' => true,
@@ -259,6 +264,7 @@ final class AdminModerationController
 
             if ($duration <= 0) {
                 $chatService->clearUserTimeout($username);
+                (new ModerationLog())->record(self::adminName(), 'untimeout', $username);
                 return Response::json([
                     'success'   => true,
                     'message'   => "Timeout lifted for {$username}",
@@ -268,6 +274,7 @@ final class AdminModerationController
 
             $chatService->timeoutUser($username, $duration);
             $remaining = $chatService->getTimeoutRemaining($username);
+            (new ModerationLog())->record(self::adminName(), 'timeout', $username, $duration . 's');
             return Response::json([
                 'success'   => true,
                 'message'   => "{$username} is muted for {$remaining}s",
@@ -285,6 +292,13 @@ final class AdminModerationController
      * refreshes live instead of polling every 60s. Rides the admin channel as a
      * 'notification' payload with a `signal` discriminator. Best-effort.
      */
+    /** The current admin's username for the moderation audit log. */
+    private static function adminName(): string
+    {
+        $u = AdminAuth::getCurrentUser();
+        return (string) ($u['username'] ?? 'admin');
+    }
+
     private static function signalModerationChanged(): void
     {
         try {
@@ -307,6 +321,26 @@ final class AdminModerationController
      * {kicked_sessions:[{session_id, username, reason, kicked_at, expires_in}]}.
      * The legacy file had no try/catch and no success key — preserved as-is.
      */
+    /**
+     * GET /api/admin/moderation-log?limit=100&action= — the moderator audit trail,
+     * newest first. 200 {success, log}.
+     */
+    #[Route('/api/admin/moderation-log', methods: 'GET', name: 'admin.moderation-log', middleware: [AdminAuthMiddleware::class])]
+    public function moderationLog(): Response
+    {
+        try {
+            $request = Request::getInstance();
+            $limit = min((int) $request->get('limit', 100, 'get'), 500);
+            $action = (string) $request->get('action', '', 'get');
+            $log = (new ModerationLog())->recent($limit, 0, $action);
+            return Response::json(['success' => true, 'log' => $log]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
     #[Route('/api/admin/list-kicked-users', methods: 'GET', name: 'admin.list-kicked-users', middleware: [AdminAuthMiddleware::class])]
     public function listKicked(): Response
     {
