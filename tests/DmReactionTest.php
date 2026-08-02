@@ -76,6 +76,26 @@ class DmReactionTest extends TestCase
         $this->assertTrue($reactions[0]['mine'], 'the reactor sees it as their own');
     }
 
+    public function testAttachToMessagesWorksWithAnIntegerMessageId(): void
+    {
+        // DM ids are an integer column; a message loaded from the DB may carry its
+        // id as an int, not a string. attachToMessages must still find reactions
+        // (it used to skip non-string ids, so DM reactions vanished from history).
+        $this->dmId = $this->makeDm('erin_' . uniqid(), 'frank_' . uniqid());
+        $svc = new ReactionService();
+        $svc->toggleDmReaction($this->dmId, 'erin', 'sess-e', '❤️');
+
+        $attached = $svc->attachToMessages(
+            [['id' => $this->dmId]],           // INT id, as it comes off the row
+            'erin',
+            'private_message_reactions'
+        );
+        $reactions = $attached[0]['reactions'] ?? [];
+        $this->assertNotEmpty($reactions, 'reactions attach even when the id is an int');
+        $this->assertSame('❤️', $reactions[0]['emoji']);
+        $this->assertTrue($reactions[0]['mine']);
+    }
+
     public function testToggleDmReactionRejectsUnknownMessage(): void
     {
         $this->expectException(\RuntimeException::class);

@@ -528,49 +528,51 @@ final class MessageActionController
             );
             $recipient = ($result && $result->numRows > 0) ? $result->fields : false;
 
+            // Fake-user status is determined INDEPENDENTLY of whether the recipient
+            // has a live presence session — an "online" fake user (one with a
+            // session) must still notify the admin / schedule the bot, which the old
+            // "only in the no-session branch" check silently skipped.
             $isFakeUser = false;
             $fakeUserBotEnabled = false;
+            $fuResult = $db->preparedQuery(
+                "SELECT bot_enabled FROM fake_users WHERE nickname = ? AND is_active = TRUE",
+                [$toUsername]
+            );
+            if ($fuResult && $fuResult->numRows > 0) {
+                $isFakeUser = true;
+                $fakeUserBotEnabled = (bool) $fuResult->fields['bot_enabled'];
+            }
+
             if ($recipient) {
                 $toSessionId = $recipient['session_id'];
+            } elseif ($isFakeUser) {
+                // No live session: deliver to the fake user's derived session id.
+                $toSessionId = 'fake_' . md5($toUsername);
             } else {
-                // No live session. Check if it's an active fake user.
-                $result   = $db->preparedQuery(
-                    "SELECT nickname, bot_enabled FROM fake_users WHERE nickname = ? AND is_active = TRUE",
-                    [$toUsername]
-                );
-                $fakeUser = ($result && $result->numRows > 0) ? $result->fields : false;
+                // Grace period: the recipient has no live session, but they may
+                // have just gone offline (browser reload / unstable connection).
+                // Fall back to their most recent known session id from previous
+                // messages so the DM is delivered when they reconnect (the client
+                // keeps the same session id in localStorage). This lets short
+                // disconnects continue a conversation instead of hard-failing.
+                $result = $db->preparedQuery("
+                    SELECT session_id FROM (
+                        SELECT to_session_id AS session_id, created_at
+                        FROM private_messages WHERE to_username = ?
+                        UNION ALL
+                        SELECT from_session_id AS session_id, created_at
+                        FROM private_messages WHERE from_username = ?
+                    ) recent
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ", [$toUsername, $toUsername]);
+                $recentSessionId = $result ? $result->fetchColumn() : false;
 
-                if ($fakeUser) {
-                    // Create a fake session ID for the fake user
-                    $toSessionId = 'fake_' . md5($toUsername);
-                    $isFakeUser = true;
-                    $fakeUserBotEnabled = (bool) $fakeUser['bot_enabled'];
+                if ($recentSessionId) {
+                    $toSessionId = $recentSessionId;
                 } else {
-                    // Grace period: the recipient has no live session, but they may
-                    // have just gone offline (browser reload / unstable connection).
-                    // Fall back to their most recent known session id from previous
-                    // messages so the DM is delivered when they reconnect (the client
-                    // keeps the same session id in localStorage). This lets short
-                    // disconnects continue a conversation instead of hard-failing.
-                    $result = $db->preparedQuery("
-                        SELECT session_id FROM (
-                            SELECT to_session_id AS session_id, created_at
-                            FROM private_messages WHERE to_username = ?
-                            UNION ALL
-                            SELECT from_session_id AS session_id, created_at
-                            FROM private_messages WHERE from_username = ?
-                        ) recent
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    ", [$toUsername, $toUsername]);
-                    $recentSessionId = $result ? $result->fetchColumn() : false;
-
-                    if ($recentSessionId) {
-                        $toSessionId = $recentSessionId;
-                    } else {
-                        // Never had a session and is not a fake user: unknown recipient.
-                        throw new RuntimeException('Recipient is not online');
-                    }
+                    // Never had a session and is not a fake user: unknown recipient.
+                    throw new RuntimeException('Recipient is not online');
                 }
             }
 

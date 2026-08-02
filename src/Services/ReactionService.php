@@ -206,12 +206,15 @@ class ReactionService
      */
     public function attachToMessages(array $messages, ?string $username = null, string $table = 'message_reactions'): array
     {
-        // Collect message ids.
+        // Collect message ids. DM ids are an INTEGER column (returned as int or
+        // string depending on the driver), while public ids are varchar — normalise
+        // to string so the count/mine maps below key consistently either way. (This
+        // is why DM reactions came back empty from history: an int id was skipped.)
         $ids = [];
         foreach ($messages as $msg) {
             $id = $msg['id'] ?? ($msg['message_id'] ?? null);
-            if (is_string($id) && $id !== '') {
-                $ids[] = $id;
+            if ((is_string($id) || is_int($id)) && (string) $id !== '') {
+                $ids[] = (string) $id;
             }
         }
         $ids = array_values(array_unique($ids));
@@ -233,7 +236,7 @@ class ReactionService
                 ->groupBy(['message_id', 'emoji'])
                 ->getAll();
             foreach ($rows as $row) {
-                $counts[$row['message_id']][$row['emoji']] = (int)$row['cnt'];
+                $counts[(string) $row['message_id']][$row['emoji']] = (int)$row['cnt'];
             }
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
@@ -252,7 +255,7 @@ class ReactionService
                     ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
                     ->getAll();
                 foreach ($rows as $row) {
-                    $mine[$row['message_id']][$row['emoji']] = true;
+                    $mine[(string) $row['message_id']][$row['emoji']] = true;
                 }
             // @codeCoverageIgnoreStart
             } catch (\Throwable $e) {
@@ -262,7 +265,7 @@ class ReactionService
         }
 
         foreach ($messages as &$m) {
-            $id = $m['id'] ?? ($m['message_id'] ?? null);
+            $id = (string) ($m['id'] ?? ($m['message_id'] ?? ''));
             $m['reactions'] = $this->buildReactionList(
                 $counts[$id] ?? [],
                 $mine[$id] ?? []

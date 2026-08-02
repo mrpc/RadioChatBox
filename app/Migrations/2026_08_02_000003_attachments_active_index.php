@@ -23,10 +23,22 @@ final class AttachmentsActiveIndex extends Migration
     public function up(): void
     {
         $s = $this->schema();
-        $s->table('attachments', function ($t) {
-            $t->index(['uploaded_at DESC'], 'idx_attachments_active_uploaded')
-                ->where('is_deleted IS NOT TRUE');
-        });
+
+        // Idempotency guard: on databases where a prior run created the index but
+        // the migration was recorded failed (so it re-runs), creating it again errors
+        // with "already exists". Skip when it is already present. (SchemaBuilder has
+        // no hasIndex yet; a small pg_indexes read is the least-intrusive guard.)
+        $res = $this->DB()->query(
+            "SELECT COUNT(*) AS c FROM pg_indexes WHERE indexname = 'idx_attachments_active_uploaded'"
+        );
+        $already = $res && (int) ($res->fields['c'] ?? 0) > 0;
+
+        if (!$already) {
+            $s->table('attachments', function ($t) {
+                $t->index(['uploaded_at DESC'], 'idx_attachments_active_uploaded')
+                    ->where('is_deleted IS NOT TRUE');
+            });
+        }
     }
 
     public function down(): void
