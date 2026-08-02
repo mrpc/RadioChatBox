@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Abuse reporting system**: users flag a message/user (🚩 → reason picker),
+  admins work a Reports queue (pending/resolved/dismissed) with a live pending
+  badge (socket-driven), Resolve/Dismiss actions, and a content snapshot that
+  survives message deletion.
+- **Moderation — timeout (mute)**: temporarily silence a user without
+  disconnecting them (enforced on every send path), with a ⏱️ button on Active
+  Users; complements kick.
+- **Slow mode**: an admin-set minimum gap between a user's messages (spam
+  control), in Settings → Limits.
+- **Settings export/import**: download all admin-editable settings as a JSON
+  backup and restore from one (whitelisted/validated on import).
 - **Message replies + reactions in direct messages** — DMs now get the same
   reply-quote, reply action and emoji-reaction pills as public chat. DM
   reactions live in their own `private_message_reactions` table (a schema-builder
@@ -46,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native 2FA/passkeys, no forced password reset).
 
 ### Fixed
+- **Mobile: clipped layout + missed messages**: the chat containers use `100dvh`
+  so the input/messages fit the visible viewport (no clipping behind the mobile
+  address bar), and returning to the foreground (or the network coming back) now
+  forces a fresh realtime connection when the socket was suspended and reconciles
+  public + DM history so nothing is missed.
 - **Bot writing greeklish mid-Greek-chat**: an emoji/number/punctuation-only
   peer message no longer flips the reply to greeklish (it required "no Greek
   chars" but not "has latin letters"). Separately, the model's transliterated

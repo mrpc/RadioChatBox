@@ -27,8 +27,9 @@ This document outlines the planned features and enhancements for RadioChatBox.
   SPA) — see `docs/ADMIN_REWRITE_PLAN.md`. Plan only; implementation open. (The
   anchorless-nav / incomplete-user-history / no-take-over-from-history complaints
   that motivated it are now fixed in the current admin.)
-- **Mobile front-end**: messages clipped, frequent disconnects / missed messages
-  (needs a mobile-first pass on the chat SPA + WS/SSE reconnect robustness).
+- **Mobile front-end** (partly addressed): dvh layout fix + foreground/online
+  reconnect-and-catch-up shipped. Remaining: a fuller mobile-first UX pass (PWA,
+  install-to-home, touch ergonomics).
 - Minor (deferred, low value): baseline seed of the lazily-created gif_* settings
   — they fall back to defaults today, and seeding them touches the byte-verified
   golden create_schema baseline, so it is not worth the risk yet.
@@ -101,12 +102,12 @@ Bot Activity profile shortcuts, DM replies + reactions.
 ### User Reporting System
 **Priority:** CRITICAL - Most important missing feature
 
-- [ ] Report user/message/photo functionality
+- [x] Report user/message functionality (message reports MVP)
 - [ ] Report submission form with reason selection
-- [ ] Report categories (spam, harassment, inappropriate content, offensive language, impersonation, other)
+- [x] Report categories (spam, harassment, inappropriate, offensive, impersonation, other)
 - [ ] Reporter anonymity option
-- [ ] Dedicated admin reports panel
-- [ ] Pending reports queue with filtering
+- [x] Dedicated admin reports panel
+- [x] Pending reports queue with filtering (status filter)
 - [ ] Report details view (reporter, reported user, content, history)
 - [ ] Quick actions from reports (dismiss, warn, timeout, ban)
 - [ ] Bulk report actions
@@ -164,8 +165,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Export statistics to PDF
 - [ ] Export user data (GDPR data download)
 - [ ] Export chat history
-- [ ] Settings export (JSON/backup file)
-- [ ] Settings import (restore from backup)
+- [x] Settings export (JSON/backup file)
+- [x] Settings import (restore from backup)
 - [ ] Automated daily database backups
 - [ ] Backup rotation and retention policy
 - [ ] Manual backup trigger from admin panel
@@ -192,7 +193,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Pin expiration time
 - [ ] Chat commands system (/help, /rules, /tip, etc.)
 - [ ] Custom command creation in admin panel
-- [ ] Slow mode (configurable message delay)
+- [x] Slow mode (configurable message delay)
 - [ ] Different rate limits for new vs trusted users
 
 **Database Changes:**
@@ -237,7 +238,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 
 ### Enhanced Moderator Controls
 - [ ] Mute user (temporary silence with duration)
-- [ ] Timeout user (5min, 1hr, 24hr, custom duration options)
+- [x] Timeout user (temporary mute, custom duration)
 - [ ] Warning system (escalating warnings with auto-timeout after 3 warnings)
 - [ ] In-chat moderator action buttons
 - [ ] Moderator activity audit logs
