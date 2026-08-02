@@ -32,6 +32,9 @@ class SettingsService
         'rate_limit_messages',
         'rate_limit_window',
         'slow_mode_seconds',
+        // Escalating warnings → auto-timeout
+        'warning_auto_timeout_threshold',
+        'warning_auto_timeout_minutes',
         'color_scheme',
         'page_title',
         'require_profile',
@@ -147,6 +150,8 @@ class SettingsService
         'rate_limit_messages' => [1, 1000],
         'rate_limit_window' => [1, 3600],
         'slow_mode_seconds' => [0, 3600],
+        'warning_auto_timeout_threshold' => [0, 20],
+        'warning_auto_timeout_minutes' => [1, 1440],
         'minimum_users' => [0, 10000],
         'ads_refresh_interval' => [1, 3600],
         'track_poll_seconds' => [10, 3600],
