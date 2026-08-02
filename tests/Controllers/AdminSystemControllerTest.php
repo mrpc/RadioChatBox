@@ -168,6 +168,34 @@ class AdminSystemControllerTest extends TestCase
     }
 
     /**
+     * GET /api/admin/messages/export returns a downloadable CSV with the header
+     * row and any seeded public message. Unauthenticated-in-process, so private
+     * messages are excluded.
+     */
+    public function testMessagesExportReturnsCsv(): void
+    {
+        $pdo = TestDatabase::connection();
+        $messageId = 'msg_export_' . bin2hex(random_bytes(6));
+        $pdo->prepare(
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
+             VALUES (?, ?, ?, ?, NOW())'
+        )->execute([$messageId, 'export_author', 'hello export', '127.0.0.1']);
+
+        try {
+            $_GET = ['type' => 'public'];
+            $response = (new AdminSystemController())->messagesExport();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertStringContainsString('text/csv', (string) $response->getHeaderLine('Content-Type'));
+            $body = (string) $response->getBody();
+            $this->assertStringContainsString('created_at,type,from,to,message,deleted', $body);
+            $this->assertStringContainsString('hello export', $body);
+        } finally {
+            $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$messageId]);
+        }
+    }
+
+    /**
      * GET /api/admin/photos with the default list action returns success=true, a
      * photos array and the pagination block.
      */

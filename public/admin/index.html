@@ -1521,6 +1521,9 @@
                                     <option value="public">Public Only</option>
                                     <option value="private">Private Only</option>
                                 </select>
+                                <button class="btn btn-outline" onclick="downloadCsv('/api/admin/messages/export?type=' + (document.getElementById('message-type-filter')?.value || 'all'), 'chat-history.csv')">
+                                    ⬇️ Export CSV
+                                </button>
                                 <button class="btn btn-warning" onclick="flushRedisCache()" id="messages-flush-redis-btn">
                                     🔄 Flush Cache
                                 </button>

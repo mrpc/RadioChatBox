@@ -164,7 +164,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Export statistics to CSV (song stats + reports)
 - [ ] Export statistics to PDF
 - [ ] Export user data (GDPR data download)
-- [ ] Export chat history
+- [x] Export chat history — admin CSV export (`/api/admin/messages/export`); private messages root-only
 - [x] Settings export (JSON/backup file)
 - [x] Settings import (restore from backup)
 - [ ] Automated daily database backups

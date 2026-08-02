@@ -8,6 +8,7 @@ use Pramnos\Http\Response;
 use Pramnos\Redis\ConnectionManager;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\Http\Csv;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\ArtworkService;
 use RadioChatBox\Services\ChatService;
@@ -365,6 +366,53 @@ final class AdminSystemController
                     'total_pages' => $totalPages,
                 ],
             ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * GET /api/admin/messages/export?type=public — download the chat history as a
+     * CSV file. Private messages are only included for root admins (same rule as
+     * the listing). `type` is all|public|private; capped at 10k rows.
+     */
+    #[Route('/api/admin/messages/export', methods: 'GET', name: 'admin.system.messages.export', middleware: [AdminAuthMiddleware::class])]
+    public function messagesExport(): Response
+    {
+        try {
+            $chatService = new ChatService();
+            $currentUser = AdminAuth::getCurrentUser();
+            $type = (string) Request::getInstance()->get('type', 'all', 'get');
+            $includePrivate = $currentUser && $currentUser['role'] === 'root';
+
+            $rows = [];
+            $limit = 2000;
+            $offset = 0;
+            $max = 10000;
+            // Page through the history so a large chat doesn't need one huge query.
+            do {
+                $batch = $chatService->getAllMessages($limit, $offset, $includePrivate, $type);
+                foreach ($batch as $m) {
+                    $rows[] = [
+                        $m['created_at'] ?? '',
+                        $m['message_type'] ?? 'public',
+                        $m['username'] ?? '',
+                        $m['to_username'] ?? '',
+                        $m['message'] ?? '',
+                        !empty($m['is_deleted']) ? 'yes' : '',
+                    ];
+                }
+                $offset += $limit;
+            } while (count($batch) === $limit && $offset < $max);
+
+            $csv = Csv::build(
+                ['created_at', 'type', 'from', 'to', 'message', 'deleted'],
+                $rows
+            );
+            return Csv::download($csv, 'chat-history.csv');
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
