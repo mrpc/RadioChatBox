@@ -193,6 +193,29 @@ class ReportController
     }
 
     /**
+     * GET /api/admin/moderation/performance?days=30 — moderator performance:
+     * per-moderator action counts (moderation log) and report resolution stats
+     * (how many handled + average time-to-resolution). Admin-only.
+     */
+    #[Route('/api/admin/moderation/performance', methods: 'GET', name: 'admin.moderation.performance', middleware: [AdminAuthMiddleware::class])]
+    public function performance(): Response
+    {
+        try {
+            $days = (int) Request::getInstance()->get('days', 30, 'get');
+            return Response::json([
+                'success'    => true,
+                'moderators' => (new \RadioChatBox\Services\ModerationLog())->statsByModerator($days),
+                'resolution' => (new ReportService())->resolutionStats($days),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReportController::performance failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/reports/details?id= — one report plus context: every other
      * report filed against the same user and how many are still pending. Backs the
      * admin report-details modal. 200 {success, report, against_user, pending_against}.

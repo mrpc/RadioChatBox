@@ -51,4 +51,40 @@ class ModerationLog
         }
         return $qb->orderBy('created_at', 'desc')->limit($limit)->offset($offset)->getAll();
     }
+
+    /**
+     * Per-moderator action counts over the last $days, most active first. Each row
+     * is {moderator, total, by_action:{action=>count}}. The synthetic 'auto-mod'
+     * and 'system' actors are included so automated actions are visible too.
+     *
+     * @return array<int, array{moderator:string, total:int, by_action:array<string,int>}>
+     */
+    public function statsByModerator(int $days = 30): array
+    {
+        $days = max(1, min($days, 365));
+        $since = date('Y-m-d H:i:s', time() - $days * 86400);
+
+        $rows = $this->db->queryBuilder()
+            ->from('moderation_log')
+            ->select(['admin_username', 'action', 'COUNT(*) AS c'])
+            ->whereRaw('created_at >= %s', [$since])
+            ->groupBy(['admin_username', 'action'])
+            ->getAll();
+
+        $byMod = [];
+        foreach ($rows as $row) {
+            $mod = (string) ($row['admin_username'] ?? '') ?: 'unknown';
+            $action = (string) $row['action'];
+            $count = (int) $row['c'];
+            if (!isset($byMod[$mod])) {
+                $byMod[$mod] = ['moderator' => $mod, 'total' => 0, 'by_action' => []];
+            }
+            $byMod[$mod]['total'] += $count;
+            $byMod[$mod]['by_action'][$action] = $count;
+        }
+
+        $out = array_values($byMod);
+        usort($out, static fn ($a, $b): int => $b['total'] <=> $a['total']);
+        return $out;
+    }
 }

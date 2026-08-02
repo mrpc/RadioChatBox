@@ -121,6 +121,30 @@ class ReportServiceTest extends TestCase
         }
     }
 
+    /** resolutionStats() counts handled reports and averages time-to-resolution. */
+    public function testResolutionStatsCountsHandled(): void
+    {
+        $svc = $this->svc();
+        $resolver = 'res_' . substr(bin2hex(random_bytes(4)), 0, 6);
+        $a = $svc->create('rr1', null, null, 'public', 'rtarget', 'spam');
+        $b = $svc->create('rr2', null, null, 'public', 'rtarget', 'spam');
+        $this->ids[] = $a;
+        $this->ids[] = $b;
+        $svc->setStatus($a, 'resolved', $resolver);
+        $svc->setStatus($b, 'dismissed', $resolver);
+
+        $stats = $svc->resolutionStats(30);
+        $this->assertGreaterThanOrEqual(2, $stats['handled']);
+        $this->assertIsInt($stats['avg_seconds']);
+
+        $mine = null;
+        foreach ($stats['by_resolver'] as $row) {
+            if ($row['resolver'] === $resolver) { $mine = $row; break; }
+        }
+        $this->assertNotNull($mine, 'the resolver appears in the breakdown');
+        $this->assertSame(2, $mine['handled']);
+    }
+
     /** stats() aggregates by status, by reason, and ranks the most-reported users. */
     public function testStatsAggregatesByStatusReasonAndTopUsers(): void
     {

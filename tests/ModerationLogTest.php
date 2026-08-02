@@ -61,4 +61,26 @@ class ModerationLogTest extends TestCase
         $mineInBans = array_filter($bans, fn ($r) => ($r['target'] ?? null) === $this->marker);
         $this->assertEmpty($mineInBans, 'our kick is absent from the ban filter');
     }
+
+    /** statsByModerator aggregates per-moderator totals and per-action breakdown. */
+    public function testStatsByModeratorAggregates(): void
+    {
+        $mod = 'perf_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $log = new ModerationLog();
+        $log->record($mod, 'timeout', $this->marker);
+        $log->record($mod, 'timeout', $this->marker);
+        $log->record($mod, 'ban', $this->marker);
+
+        $stats = $log->statsByModerator(30);
+        $mine = null;
+        foreach ($stats as $row) {
+            if ($row['moderator'] === $mod) { $mine = $row; break; }
+        }
+        $this->assertNotNull($mine);
+        $this->assertSame(3, $mine['total']);
+        $this->assertSame(2, $mine['by_action']['timeout']);
+        $this->assertSame(1, $mine['by_action']['ban']);
+
+        // Cleanup this test's extra rows (tearDown deletes by target, which covers them).
+    }
 }

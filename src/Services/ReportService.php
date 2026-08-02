@@ -187,6 +187,61 @@ class ReportService
             ->getAll();
     }
 
+    /**
+     * Report-handling stats over the last $days: how many reports were resolved
+     * or dismissed, the average time-to-resolution (seconds), and a per-resolver
+     * breakdown. Backs the moderator performance dashboard.
+     *
+     * @return array{
+     *   window_days:int, handled:int, avg_seconds:int,
+     *   by_resolver:array<int, array{resolver:string, handled:int, avg_seconds:int}>
+     * }
+     */
+    public function resolutionStats(int $days = 30): array
+    {
+        $days = max(1, min($days, 365));
+        $since = date('Y-m-d H:i:s', time() - $days * 86400);
+
+        $overall = $this->db->preparedQuery(
+            "SELECT COUNT(*) AS handled,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))), 0) AS avg_seconds
+             FROM message_reports
+             WHERE status IN ('resolved', 'dismissed')
+               AND resolved_at IS NOT NULL
+               AND resolved_at >= :since",
+            ['since' => $since]
+        );
+        $overallRow = ($overall && $overall->numRows > 0) ? $overall->fields : ['handled' => 0, 'avg_seconds' => 0];
+
+        $perResolver = $this->db->preparedQuery(
+            "SELECT COALESCE(resolved_by, 'unknown') AS resolver,
+                    COUNT(*) AS handled,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))), 0) AS avg_seconds
+             FROM message_reports
+             WHERE status IN ('resolved', 'dismissed')
+               AND resolved_at IS NOT NULL
+               AND resolved_at >= :since
+             GROUP BY resolved_by
+             ORDER BY handled DESC",
+            ['since' => $since]
+        );
+        $byResolver = [];
+        foreach (($perResolver ? $perResolver->fetchAll() : []) as $row) {
+            $byResolver[] = [
+                'resolver'    => (string) $row['resolver'],
+                'handled'     => (int) $row['handled'],
+                'avg_seconds' => (int) round((float) $row['avg_seconds']),
+            ];
+        }
+
+        return [
+            'window_days' => $days,
+            'handled'     => (int) $overallRow['handled'],
+            'avg_seconds' => (int) round((float) $overallRow['avg_seconds']),
+            'by_resolver' => $byResolver,
+        ];
+    }
+
     /** Count of PENDING reports filed against a user (case-insensitive). */
     public function countPendingAgainst(string $username): int
     {

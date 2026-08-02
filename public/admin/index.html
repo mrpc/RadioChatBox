@@ -2230,6 +2230,13 @@
                 </div>
                 <div class="section">
                     <div class="section-header">
+                        <h2>Moderator Performance (30 days)</h2>
+                        <button class="btn btn-outline" onclick="loadModeratorPerformance()">🔄 Refresh</button>
+                    </div>
+                    <div id="moderator-performance"></div>
+                </div>
+                <div class="section">
+                    <div class="section-header">
                         <h2>Recent Moderation Actions</h2>
                         <button class="btn btn-outline" onclick="loadModerationLog()">🔄 Refresh</button>
                     </div>
@@ -9338,8 +9345,66 @@
             } catch (e) { box.innerHTML = ''; }
         }
 
+        function humanDuration(seconds) {
+            seconds = Math.max(0, Math.round(seconds || 0));
+            if (seconds < 60) return seconds + 's';
+            if (seconds < 3600) return Math.round(seconds / 60) + 'm';
+            if (seconds < 86400) return (seconds / 3600).toFixed(1) + 'h';
+            return (seconds / 86400).toFixed(1) + 'd';
+        }
+
+        async function loadModeratorPerformance() {
+            const box = document.getElementById('moderator-performance');
+            if (!box) return;
+            box.innerHTML = '<div style="color:#6b7280;padding:12px;">Loading…</div>';
+            try {
+                const res = await fetch('/api/admin/moderation/performance?days=30', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = ''; return; }
+                const mods = data.moderators || [];
+                const resv = data.resolution || {};
+                const modRows = mods.length ? mods.map(m => {
+                    const actions = Object.entries(m.by_action || {})
+                        .map(([a, c]) => `<span style="background:#eef2ff;color:#3730a3;border-radius:10px;font-size:11px;padding:1px 8px;">${escapeHtml(a)} · ${c}</span>`)
+                        .join(' ');
+                    return `<tr><td style="padding:6px 8px;"><strong>${escapeHtml(m.moderator)}</strong></td>
+                        <td style="padding:6px 8px;">${m.total}</td>
+                        <td style="padding:6px 8px;">${actions}</td></tr>`;
+                }).join('') : '<tr><td colspan="3" style="padding:10px;color:#6b7280;">No moderation actions in the window.</td></tr>';
+
+                const resolverRows = (resv.by_resolver || []).map(r =>
+                    `<tr><td style="padding:6px 8px;">${escapeHtml(r.resolver)}</td>
+                        <td style="padding:6px 8px;">${r.handled}</td>
+                        <td style="padding:6px 8px;">${humanDuration(r.avg_seconds)}</td></tr>`
+                ).join('') || '<tr><td colspan="3" style="padding:10px;color:#6b7280;">No reports handled in the window.</td></tr>';
+
+                box.innerHTML = `
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;">
+                            <div style="font-size:22px;font-weight:700;">${resv.handled || 0}</div>
+                            <div style="font-size:12px;color:#6b7280;">Reports handled</div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;">
+                            <div style="font-size:22px;font-weight:700;">${humanDuration(resv.avg_seconds)}</div>
+                            <div style="font-size:12px;color:#6b7280;">Avg. resolution time</div>
+                        </div>
+                    </div>
+                    <h4 style="margin:6px 0;">Actions by moderator</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="text-align:left;color:#6b7280;"><th style="padding:6px 8px;">Moderator</th><th style="padding:6px 8px;">Total</th><th style="padding:6px 8px;">By action</th></tr></thead>
+                        <tbody>${modRows}</tbody>
+                    </table>
+                    <h4 style="margin:14px 0 6px;">Report handling by resolver</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="text-align:left;color:#6b7280;"><th style="padding:6px 8px;">Resolver</th><th style="padding:6px 8px;">Handled</th><th style="padding:6px 8px;">Avg. time</th></tr></thead>
+                        <tbody>${resolverRows}</tbody>
+                    </table>`;
+            } catch (e) { box.innerHTML = '<div style="color:#ef4444;padding:12px;">Failed to load performance.</div>'; }
+        }
+
         async function loadReports() {
             loadReportStats();
+            loadModeratorPerformance();
             const table = document.getElementById('reports-table');
             if (!table) return;
             const status = document.getElementById('reports-status-filter')?.value || 'pending';

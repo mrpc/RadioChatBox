@@ -243,7 +243,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] In-chat moderator action buttons (inline delete + pin for admins)
 - [x] Moderator activity audit logs — `ModerationLog` (admin moderation-log panel)
 - [x] Moderator commands (`/mute @user [min]`, `/unmute @user`, `/warn @user [reason]`, `/ban @user [reason]`) — `ModeratorCommandService`, moderator-gated
-- [ ] Moderator performance dashboard
+- [x] Moderator performance dashboard — per-moderator action counts + report resolution stats on the Reports tab
 
 **Database Changes:**
 - New `moderator_actions` table (id, moderator_id, action_type, target_user_id, target_content_id, reason, duration, created_at)
@@ -593,8 +593,8 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### Enhanced Analytics
 - [ ] Peak usage times heatmap visualization
 - [ ] User retention metrics (daily/weekly/monthly active users)
-- [ ] Moderator performance metrics
-- [ ] Report resolution time tracking
+- [x] Moderator performance metrics — `/api/admin/moderation/performance` (actions per moderator, handled counts)
+- [x] Report resolution time tracking — avg time-to-resolution overall + per resolver (`ReportService::resolutionStats`)
 - [ ] Room-specific analytics (if multi-room implemented)
 - [ ] Export analytics to PDF
 - [ ] Customizable dashboard widgets
