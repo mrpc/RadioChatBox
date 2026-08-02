@@ -1387,7 +1387,40 @@ class BotService
         // of the cacheable prefix.
         $prompt .= "\n\n" . self::languageInstruction(self::replyLanguage($fakeUser));
 
+        // If the persona/custom prompt names a link the bot is meant to promote,
+        // spell out that it MAY and SHOULD share it in full — otherwise the generic
+        // "never point to a profile/link" context rule makes the model hedge with
+        // "you know where to find me" and never actually give the URL.
+        $promo = self::promoLink($custom . "\n" . $persona);
+        if ($promo !== '') {
+            $prompt .= "\n\nΣΥΝΔΕΣΜΟΣ (ΣΗΜΑΝΤΙΚΟ): Έχεις έναν συγκεκριμένο σύνδεσμο που"
+                . " ΘΕΛΕΙΣ και ΕΠΙΤΡΕΠΕΤΑΙ να μοιραστείς: {$promo}. Όταν ταιριάζει στη ροή"
+                . " (σε καλεί κάπου αλλού, θέλει να συνεχίσετε, δείχνει ενδιαφέρον), δώσ' τον"
+                . " ΟΛΟΚΛΗΡΟ ακριβώς όπως είναι — ΜΗΝ πεις αόριστα «ξέρεις πού να με βρεις» ή"
+                . " «ψάξε με», γράψε τον σύνδεσμο κανονικά. Η γενική οδηγία περί «μην παραπέμπεις"
+                . " σε link/προφίλ» αφορά ΨΕΥΤΙΚΑ προφίλ μέσα σε αυτή την πλατφόρμα, ΟΧΙ αυτόν"
+                . " τον σύνδεσμο.";
+        }
+
         return $context . "\n\n" . $prompt;
+    }
+
+    /**
+     * The first URL found in a bot's persona / custom prompt, if any — the link an
+     * admin put there for the bot to advertise. Matches http(s)://, www. and bare
+     * domains with a common TLD. Returns '' when there is none.
+     */
+    public static function promoLink(string $text): string
+    {
+        if (trim($text) === '') {
+            return '';
+        }
+        $pattern = '~(?:https?://|www\.)\S+'
+            . '|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|gr|net|org|io|me|fans|xyz|link|app|tv|cc|onl)(?:/\S*)?~i';
+        if (preg_match($pattern, $text, $m) === 1) {
+            return rtrim($m[0], '.,;:!)]}»"\'');
+        }
+        return '';
     }
 
     /**

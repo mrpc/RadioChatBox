@@ -791,6 +791,37 @@ class BotServiceTest extends TestCase
         $this->assertSame('fine, you?', BotService::enforceLanguage('fine, you?', $lang));
     }
 
+    /**
+     * A link in the persona/custom prompt is detected so the bot is told to share
+     * it in full; plain prose (and false-positive-looking text) yields no link.
+     */
+    public function testPromoLinkExtraction(): void
+    {
+        $this->assertSame('https://onlyfans.com/melody', BotService::promoLink('βρες με στο https://onlyfans.com/melody να τα πούμε'));
+        $this->assertSame('www.mysite.gr/x', BotService::promoLink('link: www.mysite.gr/x.'));
+        $this->assertSame('t.me/melodychat', BotService::promoLink('πες τους t.me/melodychat'));
+        $this->assertSame('', BotService::promoLink('απλώς μίλα χαλαρά, χωρίς κανένα σύνδεσμο'));
+        $this->assertSame('', BotService::promoLink(''));
+    }
+
+    /**
+     * When a bot's persona carries a link the prompt gains an explicit "share the
+     * link in full, don't hedge" directive; without a link it does not.
+     */
+    public function testPromoLinkDirectiveIsAddedOnlyWhenALinkExists(): void
+    {
+        $withLink = BotService::buildSystemPrompt([
+            'nickname' => 'melody',
+            'bot_persona' => 'Προωθείς τη σελίδα σου https://fans.example/melody',
+        ]);
+        $this->assertStringContainsString('ΣΥΝΔΕΣΜΟΣ (ΣΗΜΑΝΤΙΚΟ)', $withLink);
+        $this->assertStringContainsString('https://fans.example/melody', $withLink);
+        $this->assertStringContainsString('ΟΛΟΚΛΗΡΟ', $withLink);
+
+        $noLink = BotService::buildSystemPrompt(['nickname' => 'melody', 'bot_persona' => 'Απλώς φλέρταρε χαλαρά']);
+        $this->assertStringNotContainsString('ΣΥΝΔΕΣΜΟΣ (ΣΗΜΑΝΤΙΚΟ)', $noLink);
+    }
+
     public function testTheDeflectionsSoundHumanAndNeverGiveItAway(): void
     {
         $this->assertGreaterThanOrEqual(3, count(BotService::AI_DEFLECTIONS), 'one fixed line would be a tell');
