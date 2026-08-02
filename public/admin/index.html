@@ -6625,8 +6625,17 @@
                     ? (prevMsgs.scrollHeight - prevMsgs.scrollTop - prevMsgs.clientHeight) < 60
                     : true;
 
+                const jsFake = String(fakeUser).replace(/'/g, "\\'");
+                const jsPeer = String(peer).replace(/'/g, "\\'");
                 box.innerHTML = `
-                    <h2>${escapeHtml(fakeUser)} ↔ ${escapeHtml(peer)}</h2>
+                    <h2 style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:18px;">
+                        <span>${escapeHtml(fakeUser)}</span>
+                        <button class="btn btn-secondary" style="padding:2px 8px;font-size:12px;" onclick="openFakeBotFromThread('${jsFake}')" title="Edit this fake user's bot settings">🤖</button>
+                        <button class="btn btn-secondary" style="padding:2px 8px;font-size:12px;" onclick="openFakeProfileFromThread('${jsFake}')" title="Edit this fake user's profile">✏️</button>
+                        <span style="color:#9ca3af;">↔</span>
+                        <span>${escapeHtml(peer)}</span>
+                        <button class="btn btn-secondary" style="padding:2px 8px;font-size:12px;" onclick="openPeerProfileFromThread('${jsPeer}')" title="View this user's profile">👤</button>
+                    </h2>
                     <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4b5563; margin-bottom: 12px;">
                         <span>Budget: <strong>${state.messages_sent ?? 0}/${state.max_messages ?? '-'}</strong></span>
                         <span>${state.is_active === false
@@ -6997,6 +7006,31 @@
         function closeFakeEditModal() {
             document.getElementById('fake-edit-modal-overlay').style.display = 'none';
             editingFakeUserId = null;
+        }
+
+        // Resolve a fake user by nickname (loading the list if Bot Activity was
+        // opened without visiting Fake Users first) and open one of its editors —
+        // lets the admin tweak a bot's parameters straight from a conversation.
+        async function fakeUserIdByNickname(nickname) {
+            if (!fakeUsersCache || !fakeUsersCache.length) {
+                await loadFakeUsers();
+            }
+            const u = (fakeUsersCache || []).find(x => x.nickname === nickname);
+            if (!u) { alert('Fake user not found — refresh the Fake Users list.'); return null; }
+            return u.id;
+        }
+        async function openFakeBotFromThread(nickname) {
+            const id = await fakeUserIdByNickname(nickname);
+            if (id !== null) openFakeBotModal(id);
+        }
+        async function openFakeProfileFromThread(nickname) {
+            const id = await fakeUserIdByNickname(nickname);
+            if (id !== null) openFakeEditModal(id);
+        }
+        // The peer is a real user: open their details panel on the Users tab.
+        function openPeerProfileFromThread(username) {
+            switchTab('users');
+            viewUserDetails(username);
         }
 
         async function saveFakeUserEdit() {
