@@ -23,19 +23,23 @@ This document outlines the planned features and enhancements for RadioChatBox.
 - **Native auth completion**: usertokens-backed API sessions, TOTP **2FA** and
   WebAuthn **passkeys** + login step-up (route the live login through `LoginFlow`).
   Needs UX validation — deferred from the autonomous batch.
-- **Admin UX rewrite** to a modern SPA (proposed: **Svelte + DaisyUI**) — see
-  `docs/ADMIN_REWRITE_PLAN.md`. Current admin has anchorless nav (no open-in-new-tab),
-  incomplete user-history view, no easy take-over from history, etc.
+- **Admin UX rewrite** to a modern SPA (**Svelte + DaisyUI**, generalised to any
+  SPA) — see `docs/ADMIN_REWRITE_PLAN.md`. Plan only; implementation open. (The
+  anchorless-nav / incomplete-user-history / no-take-over-from-history complaints
+  that motivated it are now fixed in the current admin.)
 - **Mobile front-end**: messages clipped, frequent disconnects / missed messages
   (needs a mobile-first pass on the chat SPA + WS/SSE reconnect robustness).
-- **Bot greeklish leak**: `BotService::buildHistory()` feeds the LLM its own
-  *transliterated* (greeklish) replies, so models mimic greeklish despite the
-  "write Greek" instruction. Fix = keep the original Greek for history (extra
-  column or Redis) and transliterate only at delivery. (Needs LLM testing.)
 - **All-messages photos** (bug 7): the `/api/admin/messages` endpoint does not
-  return attachment data, so private-message photos are not shown there.
-- Minor: "Restart realtime worker" affordance for bind-port/app-key changes;
-  push live `chat_mode` over WS; baseline seed of lazily-created settings (gif_*).
+  return attachment data, so private-message photos are not shown in that view.
+- Minor: push live `chat_mode` over WS; baseline seed of lazily-created settings
+  (gif_*); a mobile-first PWA pass.
+
+### Recently closed (this batch)
+Greeklish leak (both the emoji-flip and the transliterated-history feedback),
+take-over from Bot Activity, full user private-conversation history, admin
+photo-gallery perf + live refresh, no-polling migration (admin + now-playing),
+private-mode "messages today" KPI, bot reply brevity, admin list search,
+Bot Activity profile shortcuts, DM replies + reactions.
 
 ---
 
