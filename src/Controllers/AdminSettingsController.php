@@ -186,6 +186,24 @@ final class AdminSettingsController
                 $response['message'] = 'Saved, except: ' . implode(' ', $result['rejected']);
             }
 
+            // If chat_mode was part of this update, push the resolved value live so
+            // open clients switch mode without reconnecting (they already handle the
+            // 'config' event). Best-effort.
+            if (array_key_exists('chat_mode', $data)) {
+                try {
+                    $mode = (new SettingsService())->get('chat_mode', 'both');
+                    \Pramnos\Broadcasting\BroadcastingManager::instance()->broadcast(
+                        'chat:updates',
+                        'config',
+                        ['type' => 'config', 'chat_mode' => $mode]
+                    );
+                // @codeCoverageIgnoreStart
+                } catch (\Throwable $e) {
+                    \Pramnos\Logs\Logger::log('config broadcast failed: ' . $e->getMessage(), 'radiochatbox');
+                }
+                // @codeCoverageIgnoreEnd
+            }
+
             return Response::json($response);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
