@@ -185,9 +185,9 @@ Bot Activity profile shortcuts, DM replies + reactions.
 ### User Engagement Features
 **Priority:** MEDIUM - Improve user experience and interaction
 
-- [ ] User blocking/ignoring system
-- [ ] Blocked users' messages hidden from view
-- [ ] Prevent private messages from blocked users
+- [x] User blocking/ignoring system (user-initiated, DM-scoped)
+- [ ] Blocked users' messages hidden from view — partial: blocks are DM-scoped; public messages not hidden
+- [x] Prevent private messages from blocked users
 - [x] Message pinning (moderators/admins)
 - [x] Pinned messages display at top of chat
 - [x] Pin expiration time (optional auto-unpin)
@@ -240,7 +240,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Mute user (temporary silence with duration)
 - [x] Timeout user (temporary mute, custom duration)
 - [ ] Warning system (escalating warnings with auto-timeout after 3 warnings)
-- [ ] In-chat moderator action buttons
+- [x] In-chat moderator action buttons (inline delete + pin for admins)
 - [ ] Moderator activity audit logs
 - [ ] Moderator commands (/mute @user, /timeout @user 1h, /warn @user, /ban @user)
 - [ ] Moderator performance dashboard
@@ -392,8 +392,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 
 - [x] Automatic song play tracking from Shoutcast/Icecast
 - [x] Record song title, artist, album, duration
-- [ ] Track listener count per song
-- [ ] Timestamp when song started/ended — partial: start only (played_at); no end timestamp
+- [x] Track listener count per song (track_plays.listeners per play)
+- [x] Record play start time (played_at) — exact start/end not tracked (polling every few seconds)
 - [x] Song play history
 - [x] Song popularity rankings (most played, most listeners)
 - [ ] Peak listeners during specific songs
@@ -808,7 +808,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### Performance Optimizations
 - [x] WebSocket support (upgrade from SSE for bidirectional real-time communication)
 - [ ] Redis clustering for high availability
-- [ ] PostgreSQL read replicas
+- [x] PostgreSQL read replicas (supported natively by the Pramnos Framework)
 - [ ] CDN integration for static assets
 - [ ] Lazy loading for images
 - [ ] Image optimization pipeline (WebP conversion)
