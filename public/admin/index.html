@@ -6839,18 +6839,36 @@
         // KPI — debounced so a burst of join/leave signals collapses into one refresh.
         // (The server already throttles user updates to ~10s, but a kick/ban can emit
         // one directly, hence the client-side debounce.)
+        // Lightweight refresh of JUST the dashboard "Active Users (Real)" number —
+        // a single active-users fetch, without reloading the whole dashboard (bot
+        // usage, worker status, stats, messages, listeners) the way loadDashboardKPIs
+        // does. The KPI element stays in the DOM even when another tab is showing, so
+        // keeping it current means it is already correct when the admin returns to it.
+        async function refreshActiveUsersKpi() {
+            const el = document.getElementById('kpi-active-users');
+            if (!el || !authToken) return;
+            try {
+                const r = await fetch('/api/admin/active-users', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                if (!r.ok) return;
+                const d = await r.json();
+                if (d.success && Array.isArray(d.users)) {
+                    el.textContent = d.users.filter(u => !u.is_fake).length; // real users only
+                }
+            } catch (_) { /* best effort */ }
+        }
+
         let _usersChangedTimer = null;
         function onUsersChangedSignal() {
             if (document.hidden) return;
             if (_usersChangedTimer) return; // a refresh is already scheduled
             _usersChangedTimer = setTimeout(() => {
                 _usersChangedTimer = null;
+                // Always keep the dashboard active-users NUMBER live (cheap, one fetch).
+                refreshActiveUsersKpi();
+                // And refresh the full Active Users LIST when that tab is open.
                 const active = document.querySelector('.tab-content.active');
-                if (!active) return;
-                if (active.id === 'users-tab') {
-                    if (typeof loadUsers === 'function') loadUsers();
-                } else if (active.id === 'dashboard-tab') {
-                    if (typeof loadDashboardKPIs === 'function') loadDashboardKPIs();
+                if (active && active.id === 'users-tab' && typeof loadUsers === 'function') {
+                    loadUsers();
                 }
             }, 1200);
         }
