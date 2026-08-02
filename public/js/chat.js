@@ -2486,33 +2486,38 @@ class RadioChatBox {
         }
     }
 
-    /** Throttled "I'm typing" ping while composing a PUBLIC message. */
+    /** Throttled "I'm typing" ping — DM-aware (rides the private channel in a DM). */
     onTypingInput() {
         if (!this._typingEnabled || !this.username) return;
-        if (this.privateChat && this.privateChat.active) return; // public chat only
+        const inDm = !!(this.privateChat && this.privateChat.active && this.privateChat.withUser);
+        const to = inDm ? this.privateChat.withUser : null;
         const now = Date.now();
-        if (!this._typingLastSent || now - this._typingLastSent > 2000) {
+        if (!this._typingLastSent || now - this._typingLastSent > 2000 || this._typingLastTo !== to) {
             this._typingLastSent = now;
-            this.sendTypingState(true);
+            this._typingLastTo = to;
+            this.sendTypingState(true, to);
         }
         clearTimeout(this._typingStopTimer);
         this._typingStopTimer = setTimeout(() => {
             this._typingLastSent = 0;
-            this.sendTypingState(false);
+            this.sendTypingState(false, to);
         }, 3000);
     }
 
-    async sendTypingState(isTyping) {
+    async sendTypingState(isTyping, to = null) {
         if (!this._typingEnabled || !this.username) return;
         try {
+            const body = { username: this.username, session_id: this.sessionId, is_typing: !!isTyping };
+            if (to) body.to = to;
             await fetch(`${this.apiUrl}/api/typing`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: this.username, session_id: this.sessionId, is_typing: !!isTyping }),
+                body: JSON.stringify(body),
             });
         } catch (e) { /* best-effort */ }
     }
 
+    /** Public-feed typing cue (chat:updates). */
     handleTypingEvent(data) {
         if (!data || !data.username || data.username === this.username) return;
         this._typingUsers = this._typingUsers || new Map();
@@ -2522,7 +2527,20 @@ class RadioChatBox {
             this._typingUsers.delete(data.username);
         }
         this.renderTypingIndicator();
-        // Re-render shortly to drop stale entries even without a "stop" event.
+        clearTimeout(this._typingRenderTimer);
+        this._typingRenderTimer = setTimeout(() => this.renderTypingIndicator(), 4100);
+    }
+
+    /** DM typing cue (private channel): only the peer I'm currently viewing. */
+    handleDmTyping(data) {
+        if (!data || data.from_username === this.username) return;
+        // Only track the peer of the conversation I have open.
+        if (!(this.privateChat && this.privateChat.active) || data.from_username !== this.privateChat.withUser) {
+            return;
+        }
+        this._dmPeerTypingUntil = data.is_typing ? Date.now() + 4000 : 0;
+        this._dmPeerTypingWho = data.from_username;
+        this.renderTypingIndicator();
         clearTimeout(this._typingRenderTimer);
         this._typingRenderTimer = setTimeout(() => this.renderTypingIndicator(), 4100);
     }
@@ -2531,13 +2549,28 @@ class RadioChatBox {
         const el = document.getElementById('typing-indicator');
         if (!el) return;
         const now = Date.now();
+        const inDm = !!(this.privateChat && this.privateChat.active && this.privateChat.withUser);
+
+        if (inDm) {
+            // Show only if the current peer is typing to me.
+            const active = this._dmPeerTypingUntil > now && this._dmPeerTypingWho === this.privateChat.withUser;
+            if (active) {
+                el.textContent = `${this.privateChat.withUser} is typing…`;
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+                el.textContent = '';
+            }
+            return;
+        }
+
+        // Public feed.
         const names = [];
         for (const [user, expiry] of (this._typingUsers || new Map())) {
             if (expiry > now && user !== this.username) names.push(user);
             else if (expiry <= now) this._typingUsers.delete(user);
         }
-        // Hide while viewing a private conversation.
-        if (!names.length || (this.privateChat && this.privateChat.active)) {
+        if (!names.length) {
             el.style.display = 'none';
             el.textContent = '';
             return;
@@ -2982,6 +3015,10 @@ class RadioChatBox {
             alert('Private messaging is currently disabled.');
             return;
         }
+
+        // Reset any DM typing cue carried over from a previous conversation.
+        this._dmPeerTypingUntil = 0;
+        this._dmPeerTypingWho = null;
         
         // Track analytics event
         if (window.analytics) {
@@ -3120,6 +3157,10 @@ class RadioChatBox {
         this.privateChat.withUser = null;
         this.privateChat.messages = [];
         this.privateChat.startTime = null;
+
+        // Drop any stale DM typing cue and refresh the indicator for public view.
+        this._dmPeerTypingUntil = 0;
+        this.renderTypingIndicator();
         
         // Update UI
         if (this.privateChatHeader) {
@@ -4634,6 +4675,13 @@ class RadioChatBox {
                 await this.sendPrivateMessage(this.privateChat.withUser, message, attachmentId, replyTo);
                 this.clearReplyState();
 
+                // We just sent — stop the "typing" cue to this peer.
+                if (this._typingEnabled) {
+                    clearTimeout(this._typingStopTimer);
+                    this._typingLastSent = 0;
+                    this.sendTypingState(false, this.privateChat.withUser);
+                }
+
                 // Track analytics event
                 if (window.analytics) {
                     window.analytics.trackMessageSent('private');
@@ -4958,6 +5006,11 @@ class RadioChatBox {
     }
     
     handlePrivateMessage(messageData) {
+        // A DM typing cue (shares the private channel, tagged type:'typing').
+        if (messageData && messageData.type === 'typing') {
+            this.handleDmTyping(messageData);
+            return;
+        }
         // A DM reaction update (shares the private channel, tagged type:'reaction')
         // is not a new message: update the pills on the target bubble in place.
         if (messageData && messageData.type === 'reaction') {

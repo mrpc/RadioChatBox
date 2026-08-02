@@ -17,9 +17,10 @@ use RadioChatBox\Services\SettingsService;
 class TypingController
 {
     /**
-     * POST /api/typing — {username, session_id, is_typing?}. Broadcasts a typing
-     * cue. 200 {success}; feature off -> 404; bad input -> 400; invalid session
-     * -> 403.
+     * POST /api/typing — {username, session_id, is_typing?, to?}. Broadcasts a
+     * typing cue: on the public feed, or — when `to` (a peer) is given — on the
+     * private channel to just that DM's two participants. 200 {success}; feature
+     * off -> 404; bad input -> 400; invalid session -> 403.
      */
     #[Route('/api/typing', methods: 'POST', name: 'typing.ping')]
     public function ping(): Response
@@ -32,6 +33,7 @@ class TypingController
             $input = $_POST;
             $username = trim((string) ($input['username'] ?? ''));
             $sessionId = trim((string) ($input['session_id'] ?? ''));
+            $to = trim((string) ($input['to'] ?? ''));
             $isTyping = !array_key_exists('is_typing', $input)
                 || in_array(strtolower((string) $input['is_typing']), ['1', 'true', 'on', 'yes'], true);
 
@@ -45,11 +47,22 @@ class TypingController
             }
 
             try {
-                BroadcastingManager::instance()->broadcast('chat:updates', 'typing', [
-                    'type'      => 'typing',
-                    'username'  => $username,
-                    'is_typing' => $isTyping,
-                ]);
+                if ($to !== '') {
+                    // DM typing: rides the private channel, delivered only to the
+                    // two participants (whole payload passes through as 'private').
+                    BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', [
+                        'type'          => 'typing',
+                        'from_username' => $username,
+                        'to_username'   => $to,
+                        'is_typing'     => $isTyping,
+                    ]);
+                } else {
+                    BroadcastingManager::instance()->broadcast('chat:updates', 'typing', [
+                        'type'      => 'typing',
+                        'username'  => $username,
+                        'is_typing' => $isTyping,
+                    ]);
+                }
             // @codeCoverageIgnoreStart
             } catch (\Throwable $e) {
                 \Pramnos\Logs\Logger::log('typing broadcast failed: ' . $e->getMessage(), 'radiochatbox');

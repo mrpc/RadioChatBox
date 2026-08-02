@@ -79,4 +79,20 @@ class TypingControllerTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertTrue(json_decode($response->getBody(), true)['success']);
     }
+
+    /** A DM ping (with `to`) is also accepted for a verified session. */
+    public function testDmPingSucceeds(): void
+    {
+        $this->enable();
+        $_POST = [
+            'username'   => $this->user,
+            'session_id' => $this->session,
+            'to'         => 'somepeer',
+            'is_typing'  => 'true',
+        ];
+
+        $response = (new TypingController())->ping();
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue(json_decode($response->getBody(), true)['success']);
+    }
 }
