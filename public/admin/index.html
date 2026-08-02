@@ -3148,6 +3148,24 @@
                     </div>
                 </div>
 
+                <div class="settings-group">
+                    <h3>Profanity filter</h3>
+                    <div class="form-group">
+                        <label>Mode</label>
+                        <select id="setting-profanity-filter-mode">
+                            <option value="off">Off</option>
+                            <option value="mask">Mask (replace with ***)</option>
+                            <option value="block">Block (reject the message)</option>
+                        </select>
+                        <small style="color:#6b7280;">Applies to public chat. In private messages, Block is downgraded to masking.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Blocked words (one per line, or comma-separated)</label>
+                        <textarea id="setting-profanity-words" rows="5" placeholder="badword&#10;another&#10;μαλάκας" style="width:100%;"></textarea>
+                        <small style="color:#6b7280;">Whole-word, case-insensitive match (Greek supported).</small>
+                    </div>
+                </div>
+
                 <div class="section">
                     <button class="btn btn-success" onclick="saveSettings()" style="width: 100%; font-size: 16px; padding: 12px;">
                         💾 Save All Settings
@@ -8590,6 +8608,8 @@
                     document.getElementById('setting-automod-report-threshold').value = settings.automod_report_threshold ?? '5';
                     document.getElementById('setting-automod-action').value = settings.automod_action || 'timeout';
                     document.getElementById('setting-automod-timeout-minutes').value = settings.automod_timeout_minutes ?? '60';
+                    document.getElementById('setting-profanity-filter-mode').value = settings.profanity_filter_mode || 'off';
+                    document.getElementById('setting-profanity-words').value = settings.profanity_words || '';
 
                     // Fake user auto-replies (bots)
                     botRepliesEnabled = settings.bot_replies_enabled === 'true';
@@ -9029,6 +9049,8 @@
                 automod_report_threshold: document.getElementById('setting-automod-report-threshold').value,
                 automod_action: document.getElementById('setting-automod-action').value,
                 automod_timeout_minutes: document.getElementById('setting-automod-timeout-minutes').value,
+                profanity_filter_mode: document.getElementById('setting-profanity-filter-mode').value,
+                profanity_words: document.getElementById('setting-profanity-words').value,
                 
                 // SEO & Branding
                 site_title: document.getElementById('setting-site-title').value,

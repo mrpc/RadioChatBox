@@ -75,7 +75,12 @@ final class SendController
                 }
             }
 
-            $message = MessageFilter::filterPublicMessage($message)['filtered'];
+            $filtered = MessageFilter::filterPublicMessage($message);
+            if (($filtered['allowed'] ?? true) === false) {
+                // e.g. the profanity filter in 'block' mode rejects the message.
+                throw new InvalidArgumentException($filtered['reason'] ?: 'Message not allowed');
+            }
+            $message = $filtered['filtered'];
 
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 

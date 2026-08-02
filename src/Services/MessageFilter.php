@@ -14,6 +14,9 @@ class MessageFilter
      */
     private static ?bool $gifEnabledCache = null;
 
+    /** Memoized profanity config: ['mode'=>string,'words'=>string[]]. */
+    private static ?array $profanityCache = null;
+
     /**
      * Test seam: forget cached settings-derived state so a changed setting is
      * re-read on the next call. Mirrors Database::reset(); only needed in tests.
@@ -21,6 +24,7 @@ class MessageFilter
     public static function resetCaches(): void
     {
         self::$gifEnabledCache = null;
+        self::$profanityCache = null;
     }
 
     /**
@@ -60,6 +64,24 @@ class MessageFilter
             $replacements[] = 'Phone number removed';
         }
 
+        // Custom profanity filter (admin word list). In 'block' mode a match makes
+        // the whole message not allowed; in 'mask' mode the words are starred out.
+        $profanity = self::applyProfanityFilter($message);
+        if ($profanity['blocked']) {
+            $message = self::restoreGifUrls($message, $gifUrls);
+            return [
+                'allowed' => false,
+                'reason' => 'Message blocked by the profanity filter',
+                'filtered' => $message,
+                'modified' => false,
+                'replacements' => ['Profanity blocked'],
+            ];
+        }
+        if ($profanity['modified']) {
+            $message = $profanity['message'];
+            $replacements[] = 'Profanity masked';
+        }
+
         // Restore protected GIF URLs
         $message = self::restoreGifUrls($message, $gifUrls);
 
@@ -70,6 +92,69 @@ class MessageFilter
             'modified' => $message !== $originalMessage,
             'replacements' => $replacements
         ];
+    }
+
+    /**
+     * Apply the admin-configured custom profanity word list.
+     *
+     * @return array{message:string, modified:bool, blocked:bool}
+     */
+    public static function applyProfanityFilter(string $message): array
+    {
+        $config = self::profanityConfig();
+        if ($config['mode'] === 'off' || $config['words'] === []) {
+            return ['message' => $message, 'modified' => false, 'blocked' => false];
+        }
+
+        // One alternation of word-bounded, case-insensitive terms. Unicode-aware so
+        // Greek words match too; \b doesn't work for Greek, so we bound on
+        // whitespace / start / end / punctuation via lookarounds.
+        $escaped = array_map(static fn (string $w): string => preg_quote($w, '/'), $config['words']);
+        $pattern = '/(?<![\p{L}\p{N}])(?:' . implode('|', $escaped) . ')(?![\p{L}\p{N}])/iu';
+
+        if ($config['mode'] === 'block') {
+            $blocked = preg_match($pattern, $message) === 1;
+            return ['message' => $message, 'modified' => false, 'blocked' => $blocked];
+        }
+
+        // 'mask': replace each match with the same number of asterisks.
+        $masked = preg_replace_callback(
+            $pattern,
+            static fn (array $m): string => str_repeat('*', max(1, mb_strlen($m[0]))),
+            $message
+        );
+        $masked = $masked ?? $message;
+
+        return ['message' => $masked, 'modified' => $masked !== $message, 'blocked' => false];
+    }
+
+    /**
+     * Resolve and memoize the profanity mode + word list from settings.
+     *
+     * @return array{mode:string, words:string[]}
+     */
+    private static function profanityConfig(): array
+    {
+        if (self::$profanityCache !== null) {
+            return self::$profanityCache;
+        }
+        try {
+            $settings = new SettingsService();
+            $mode = (string) $settings->get('profanity_filter_mode', 'off');
+            if (!in_array($mode, ['off', 'mask', 'block'], true)) {
+                $mode = 'off';
+            }
+            $raw = (string) $settings->get('profanity_words', '');
+            // Words separated by commas or newlines; trimmed, de-duplicated, non-empty.
+            $words = array_values(array_unique(array_filter(array_map(
+                'trim',
+                preg_split('/[\r\n,]+/', $raw) ?: []
+            ), static fn (string $w): bool => $w !== '')));
+            self::$profanityCache = ['mode' => $mode, 'words' => $words];
+        } catch (\Throwable $e) {
+            self::$profanityCache = ['mode' => 'off', 'words' => []];
+        }
+        return self::$profanityCache;
     }
 
     /**
@@ -95,6 +180,18 @@ class MessageFilter
             $replacements[] = 'Blacklisted URL removed';
         }
 
+        // Custom profanity filter. In DMs 'block' is downgraded to masking — a
+        // private message is never silently dropped, just cleaned.
+        $profanity = self::applyProfanityFilter($message);
+        if ($profanity['blocked']) {
+            // Re-run in mask semantics so the words are starred rather than blocked.
+            $profanity = ['message' => self::maskProfanity($message), 'modified' => true, 'blocked' => false];
+        }
+        if ($profanity['modified']) {
+            $message = $profanity['message'];
+            $replacements[] = 'Profanity masked';
+        }
+
         return [
             'allowed' => true,
             'reason' => '',
@@ -102,6 +199,22 @@ class MessageFilter
             'modified' => $message !== $originalMessage,
             'replacements' => $replacements
         ];
+    }
+
+    /** Mask profanity in a string regardless of the configured mode. */
+    private static function maskProfanity(string $message): string
+    {
+        $config = self::profanityConfig();
+        if ($config['words'] === []) {
+            return $message;
+        }
+        $escaped = array_map(static fn (string $w): string => preg_quote($w, '/'), $config['words']);
+        $pattern = '/(?<![\p{L}\p{N}])(?:' . implode('|', $escaped) . ')(?![\p{L}\p{N}])/iu';
+        return preg_replace_callback(
+            $pattern,
+            static fn (array $m): string => str_repeat('*', max(1, mb_strlen($m[0]))),
+            $message
+        ) ?? $message;
     }
 
     /**

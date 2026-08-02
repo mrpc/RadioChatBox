@@ -554,13 +554,13 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### Content Filtering & Safety
 **Priority:** HIGH for production environments
 
-- [ ] Profanity filter with custom word lists
+- [x] Profanity filter with custom word lists — `profanity_words` + mode (off/mask/block) in `MessageFilter`
 - [ ] AI-powered content moderation (OpenAI Moderation API)
 - [ ] NSFW image detection for uploaded photos
 - [ ] Spam detection algorithms
 - [ ] Link safety checking (phishing/malware detection)
 - [ ] CAPTCHA for suspicious activity
-- [ ] Configurable filter strictness levels
+- [x] Configurable filter strictness levels — profanity mode off/mask/block
 - [ ] User-level filter preferences (hide profanity vs see warnings)
 
 **Database Changes:**

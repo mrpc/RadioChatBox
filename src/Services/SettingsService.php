@@ -148,6 +148,9 @@ class SettingsService
         'automod_report_threshold',
         'automod_action',
         'automod_timeout_minutes',
+        // Custom profanity filter: off / mask (star out) / block (reject message).
+        'profanity_filter_mode',
+        'profanity_words',
     ];
 
     /**
@@ -205,6 +208,8 @@ class SettingsService
         'poll_min_usertype'     => ['moderator', 'administrator', 'root'],
         // What auto-moderation does when a user hits the report threshold.
         'automod_action'        => ['timeout', 'ban'],
+        // Custom profanity filter behaviour.
+        'profanity_filter_mode' => ['off', 'mask', 'block'],
     ];
 
     public function __construct()
