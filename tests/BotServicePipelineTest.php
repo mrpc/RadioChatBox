@@ -1707,6 +1707,43 @@ class BotServicePipelineTest extends TestCase
         $this->assertNotNull($this->threadRow()['blocked_at']);
     }
 
+    /** Force/Steer also lift an abuse block so the bot talks again. */
+    public function testForceReplyLiftsAnAbuseBlock(): void
+    {
+        // Put the thread in a blocked state and add the DM block.
+        $this->pdo->prepare(
+            'UPDATE bot_threads SET blocked_at = NOW(), insult_count = 3
+             WHERE fake_user_id = ? AND peer_username = ?'
+        )->execute([$this->fakeUserId, $this->peer]);
+        // Ensure a thread row exists first.
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'geia');
+        $this->pdo->prepare(
+            'UPDATE bot_threads SET blocked_at = NOW(), insult_count = 3
+             WHERE fake_user_id = ? AND peer_username = ?'
+        )->execute([$this->fakeUserId, $this->peer]);
+
+        $this->bot->forceReply($this->nick, $this->peer);
+
+        $row = $this->threadRow();
+        $this->assertNull($row['blocked_at']);
+        $this->assertSame(0, (int) $row['insult_count']);
+    }
+
+    /** Unblock lifts the block WITHOUT forcing a reply. */
+    public function testUnblockThreadClearsTheBlock(): void
+    {
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'geia');
+        $this->pdo->prepare(
+            'UPDATE bot_threads SET blocked_at = NOW(), insult_count = 2
+             WHERE fake_user_id = ? AND peer_username = ?'
+        )->execute([$this->fakeUserId, $this->peer]);
+
+        $this->assertTrue($this->bot->unblockThread($this->nick, $this->peer));
+        $row = $this->threadRow();
+        $this->assertNull($row['blocked_at']);
+        $this->assertSame(0, (int) $row['insult_count']);
+    }
+
     /** Force/Steer bring an inactive/disabled fake user back online so it can reply. */
     public function testForceReplyReactivatesTheFakeUser(): void
     {

@@ -1073,6 +1073,30 @@ class BotService
         return ($val === false || $val === null) ? '' : (string) $val;
     }
 
+    /**
+     * Lift an abuse block on a thread WITHOUT forcing a reply: clears the thread's
+     * blocked_at/insult_count and removes the fake user's DM block on the peer, so
+     * the bot will answer the peer's next message again.
+     */
+    public function unblockThread(string $fakeNickname, string $peer): bool
+    {
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+        if ($fakeUserId === null) {
+            return false;
+        }
+        $this->db->preparedQuery(
+            'UPDATE bot_threads SET blocked_at = NULL, insult_count = 0, updated_at = NOW()
+             WHERE fake_user_id = :fake AND peer_username = :peer',
+            ['fake' => $fakeUserId, 'peer' => $peer]
+        );
+        try {
+            (new BlockService())->unblockUser($fakeNickname, $peer);
+        } catch (\Throwable $e) {
+            // Non-fatal.
+        }
+        return true;
+    }
+
     public function forceReply(string $fakeNickname, string $peer): bool
     {
         $fakeUserId = $this->getFakeUserId($fakeNickname);
@@ -1190,7 +1214,12 @@ class BotService
                    (SELECT MAX(created_at) FROM private_messages pm
                      WHERE (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
                         OR (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
-                   ) AS last_message_at
+                   ) AS last_message_at,
+                   (SELECT pm.message FROM private_messages pm
+                     WHERE (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
+                        OR (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
+                     ORDER BY pm.created_at DESC, pm.id DESC LIMIT 1
+                   ) AS last_message
             FROM bot_threads t
             JOIN fake_users f ON f.id = t.fake_user_id
             ORDER BY COALESCE(t.last_reply_at, t.created_at) DESC

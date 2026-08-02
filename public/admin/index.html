@@ -5170,6 +5170,13 @@
                 setTimeout(() => viewInactiveUserDetails(username), 100);
             } else if (hash.startsWith('track-stats')) {
                 maybeRestoreTrackStats();
+            } else if (hash.startsWith('bot-activity/')) {
+                // Reopen a specific bot conversation from the URL (so refresh keeps it).
+                const rest = hash.substring('bot-activity/'.length).split('/');
+                const fake = decodeURIComponent(rest[0] || '');
+                const peer = decodeURIComponent(rest.slice(1).join('/') || '');
+                switchTab('bot-activity', false);
+                if (fake && peer) setTimeout(() => openBotThread(fake, peer, true), 150);
             } else {
                 const initialTab = hash || 'dashboard';
                 // Replace state for initial load so back button works correctly
@@ -6846,6 +6853,14 @@
                                 const forceBtn = t.is_ignored
                                     ? `<button class="btn btn-secondary" style="margin-left:6px;" title="The bot ignored this conversation from the start — reply anyway" onclick="botRowForce('${nk}', '${pk}')">▶️ Reply anyway</button>`
                                     : `<button class="btn btn-secondary" style="margin-left:6px;" title="Clear stuck states (ended, spent budget) and make the bot reply now" onclick="botRowForce('${nk}', '${pk}')">⚡ Force</button>`;
+                                const blockBtn = t.blocked_at
+                                    ? `<button class="btn btn-secondary" style="margin-left:6px;" title="Lift the abuse block so the bot answers again" onclick="botRowUnblock('${nk}', '${pk}')">✅ Unblock</button>`
+                                    : `<button class="btn btn-danger" style="margin-left:6px;" title="The fake user blocks this user (DM block) and the bot stops" onclick="botRowBlock('${nk}', '${pk}')">🚫 Block</button>`;
+                                // Preview of the last message in the conversation.
+                                const lastMsg = (t.last_message || '').trim();
+                                const lastMsgHtml = lastMsg
+                                    ? `<div style="color:#6b7280; font-size:12px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(lastMsg)}">${escapeHtml(lastMsg.substring(0, 80))}</div>`
+                                    : '';
 
                                 return `
                                     <tr>
@@ -6854,8 +6869,8 @@
                                         <td>${t.messages_sent}/${t.max_messages}</td>
                                         <td>${t.message_count}</td>
                                         <td style="color: ${color};">${state}${strikeNote}</td>
-                                        <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}</td>
-                                        <td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="openBotThread('${nk}', '${pk}', true)">View</button>${forceBtn}<button class="btn btn-secondary" style="margin-left:6px;" title="Stop the bot in this conversation (reversible with Force)" onclick="botRowStop('${nk}', '${pk}')">⏹️ Stop</button><button class="btn btn-danger" style="margin-left:6px;" title="The fake user blocks this user (DM block) and the bot stops" onclick="botRowBlock('${nk}', '${pk}')">🚫 Block</button></td>
+                                        <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}${lastMsgHtml}</td>
+                                        <td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="openBotThread('${nk}', '${pk}', true)">View</button>${forceBtn}<button class="btn btn-secondary" style="margin-left:6px;" title="Stop the bot in this conversation (reversible with Force)" onclick="botRowStop('${nk}', '${pk}')">⏹️ Stop</button>${blockBtn}</td>
                                     </tr>`;
                             }).join('')}
                         </tbody>
@@ -6879,6 +6894,12 @@
             box.style.display = 'block';
             if (!box.dataset.loaded) {
                 box.innerHTML = '<p style="color: #6b7280;">Loading…</p>';
+            }
+
+            // On an explicit View, put the conversation in the URL so a refresh
+            // reopens it (background refreshes pass scroll=false and don't touch it).
+            if (scroll) {
+                try { history.replaceState({ tab: 'bot-activity' }, '', '#bot-activity/' + encodeURIComponent(fakeUser) + '/' + encodeURIComponent(peer)); } catch (e) { /* ignore */ }
             }
 
             try {
@@ -6959,7 +6980,9 @@
                             ? '<button class="btn btn-secondary" onclick="botThreadForce()" title="The bot chose to ignore this conversation from the start — reply anyway">▶️ Reply anyway (override ignore)</button>'
                             : '<button class="btn btn-secondary" onclick="botThreadForce()" title="Clear stuck states (ended, spent budget) and make the bot reply now">⚡ Force continue</button>'}
                         <button class="btn btn-secondary" onclick="botThreadStop()" title="Stop the bot in this conversation (reversible with Force)">⏹️ Force stop</button>
-                        <button class="btn btn-danger" onclick="botThreadBlock()" title="The fake user blocks this user (DM block) and the bot stops">🚫 Block user</button>
+                        ${state.blocked_at
+                            ? '<button class="btn btn-secondary" onclick="botThreadUnblock()" title="Lift the abuse block so the bot answers this user again (does not force a reply)">✅ Unblock user</button>'
+                            : '<button class="btn btn-danger" onclick="botThreadBlock()" title="The fake user blocks this user (DM block) and the bot stops">🚫 Block user</button>'}
                         <button class="btn btn-secondary" onclick="botThreadExport()" title="Download this conversation's full log (messages, state and LLM calls) as JSON to share for debugging">📥 Export log</button>
                         <button class="btn btn-secondary" onclick="botThreadPrint()" title="Open a printable view of the whole conversation">🖨️ Print</button>
                         <button class="btn btn-secondary" onclick="botThreadAsk()" title="Ask the LLM a question about this conversation (answer shown to you only)">❓ Ask the LLM</button>
@@ -7105,6 +7128,12 @@
             botAskAnswerKey = '';
             const box = document.getElementById('bot-activity-thread-detail');
             if (box) { box.style.display = 'none'; delete box.dataset.loaded; }
+            // Drop the conversation from the URL, back to the plain tab.
+            try {
+                if ((window.location.hash || '').indexOf('#bot-activity/') === 0) {
+                    history.replaceState({ tab: 'bot-activity' }, '', '#bot-activity');
+                }
+            } catch (e) { /* ignore */ }
         }
 
         // take/release/reset/force on a bot conversation, by fake user + peer.
@@ -7179,6 +7208,23 @@
             if (!(await botThreadAction('block'))) return;
             loadBotActivityThreads();
             openBotThread(t.fakeUser, t.peer);
+        }
+
+        async function botThreadUnblock() {
+            const t = currentBotThread;
+            if (!t) return;
+            if (!(await botThreadAction('unblock'))) return;
+            loadBotActivityThreads();
+            openBotThread(t.fakeUser, t.peer);
+        }
+
+        // Unblock from a Conversations table row.
+        async function botRowUnblock(fakeUser, peer) {
+            if (!(await botConversationAction(fakeUser, peer, 'unblock'))) return;
+            loadBotActivityThreads();
+            if (currentBotThread && currentBotThread.fakeUser === fakeUser && currentBotThread.peer === peer) {
+                openBotThread(fakeUser, peer);
+            }
         }
 
         // Force-stop from a Conversations table row.

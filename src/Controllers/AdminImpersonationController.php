@@ -90,11 +90,13 @@ final class AdminImpersonationController
                 // because a fake user is not a registered account but its block must stick.
                 // Stop the bot here too, so no reply is in flight.
                 'block'   => (new BlockService())->blockUser($fakeUser, $peer, true) && $bot->stopThread($fakeUser, $peer),
+                // Unblock: lift an abuse block (thread + DM block) without forcing a reply.
+                'unblock' => $bot->unblockThread($fakeUser, $peer),
                 default   => null,
             };
 
             if ($ok === null) {
-                return Response::json(['error' => 'Unknown action (expected take, release, reset, force, stop or block)'], 400);
+                return Response::json(['error' => 'Unknown action (expected take, release, reset, force, stop, block or unblock)'], 400);
             }
 
             if (!$ok) {
