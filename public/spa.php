@@ -247,6 +247,8 @@
             <div id="messages-container">
                 <!-- Moderator-pinned messages (shown when there are active pins) -->
                 <div id="pinned-bar" class="pinned-bar" style="display: none;"></div>
+                <!-- Live poll (shown when there is an active poll and polls are on) -->
+                <div id="poll-widget" class="poll-widget" style="display: none;"></div>
                 <div id="private-chat-header" style="display: none;">
                     <span id="private-chat-with"></span>
                     <button id="gallery-btn" class="btn" style="display: none;">🖼️ Gallery</button>

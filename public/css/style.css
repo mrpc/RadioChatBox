@@ -1974,6 +1974,45 @@ body {
     .typing-indicator { color: #9ca3af; }
 }
 
+/* ---- Live poll widget (top of the chat) ---- */
+.poll-widget {
+    margin: 10px 12px 0;
+    padding: 12px 14px;
+    background: rgba(102, 126, 234, 0.08);
+    border: 1px solid rgba(102, 126, 234, 0.22);
+    border-radius: 12px;
+}
+.poll-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.poll-badge {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #4f46e5; background: rgba(99, 102, 241, 0.14); padding: 2px 8px; border-radius: 999px;
+}
+.poll-question { font-weight: 600; font-size: 14px; color: #1f2937; }
+.poll-closed { font-size: 11px; color: #9ca3af; margin-left: auto; }
+.poll-body { display: flex; flex-direction: column; gap: 6px; }
+.poll-option {
+    text-align: left; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+    background: #fff; color: #1f2937; font-size: 14px; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.poll-option:hover { background: #f3f4f6; border-color: #6366f1; }
+.poll-result {
+    position: relative; overflow: hidden; padding: 9px 12px; border-radius: 8px;
+    background: #eef0f3; display: flex; align-items: center; gap: 8px; font-size: 13px;
+}
+.poll-result.mine { outline: 2px solid #6366f1; }
+.poll-result-fill { position: absolute; inset: 0 auto 0 0; background: rgba(99, 102, 241, 0.22); z-index: 0; transition: width 0.4s; }
+.poll-result-label { position: relative; z-index: 1; flex: 1 1 auto; color: #1f2937; }
+.poll-result-pct { position: relative; z-index: 1; font-weight: 600; color: #4f46e5; }
+.poll-foot { margin-top: 8px; font-size: 12px; color: #6b7280; }
+@media (prefers-color-scheme: dark) {
+    .poll-widget { background: rgba(129, 140, 248, 0.12); border-color: rgba(129, 140, 248, 0.28); }
+    .poll-question { color: #e5e7eb; }
+    .poll-option { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
+    .poll-option:hover { background: #2f2f38; }
+    .poll-result { background: #26262e; }
+    .poll-result-label { color: #e5e7eb; }
+}
+
 /* Now-playing vote widget (header) */
 .track-vote {
     display: inline-flex;

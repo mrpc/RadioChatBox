@@ -902,6 +902,7 @@ class RadioChatBox {
         try { this.initSongRequests(); } catch (e) { console.warn('initSongRequests error', e); }
         try { this.initTrackVoting(); } catch (e) { console.warn('initTrackVoting error', e); }
         try { this.initTypingIndicators(); } catch (e) { console.warn('initTypingIndicators error', e); }
+        try { this.initPolls(); } catch (e) { console.warn('initPolls error', e); }
     }
 
     // ---- Now-playing voting -----------------------------------------
@@ -2433,7 +2434,7 @@ class RadioChatBox {
                 this._dispatchRealtimeEvent(name, data);
             });
             ['message', 'history', 'users', 'config', 'private', 'clear',
-             'message_deleted', 'message_edited', 'reaction', 'now_playing', 'pins_changed', 'typing'].forEach(bind);
+             'message_deleted', 'message_edited', 'reaction', 'now_playing', 'pins_changed', 'typing', 'poll'].forEach(bind);
 
             this.eventSource.addEventListener('reconnect', () => {
                 console.log('Server requested reconnect');
@@ -2482,6 +2483,8 @@ class RadioChatBox {
                 // Now that chatMode is known, restore a DM named in the URL (#dm/…)
                 // so a refresh keeps the open conversation. Guarded against re-opening.
                 this.restoreConversationFromHash();
+                // Re-sync the live poll (one may have opened/closed while away).
+                this.refreshPoll();
                 break;
             case 'private':         this.handlePrivateMessage(data); break;
             case 'clear':           this.handleChatClear(); break;
@@ -2491,7 +2494,88 @@ class RadioChatBox {
             case 'now_playing':     this.renderNowPlaying(data && data.nowPlaying); break;
             case 'pins_changed':    this.refreshPinnedBar(); break;
             case 'typing':          this.handleTypingEvent(data); break;
+            case 'poll':            this.renderPoll(data && data.poll); break;
         }
+    }
+
+    // ---- Live polls -------------------------------------------------
+
+    initPolls() {
+        this._pollsEnabled = this._settingOn(this.settings && this.settings.polls_enabled);
+        if (!this._pollsEnabled) {
+            const w = document.getElementById('poll-widget');
+            if (w) w.style.display = 'none';
+            return;
+        }
+        this.refreshPoll();
+    }
+
+    async refreshPoll() {
+        if (!this._pollsEnabled) return;
+        try {
+            const q = this.sessionId ? `?session_id=${encodeURIComponent(this.sessionId)}` : '';
+            const resp = await fetch(`${this.apiUrl}/api/polls/active${q}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            this.renderPoll(data && data.poll);
+        } catch (e) { /* non-fatal */ }
+    }
+
+    renderPoll(poll) {
+        const w = document.getElementById('poll-widget');
+        if (!w) return;
+        // No poll, or a closed poll nobody in view voted on → hide.
+        if (!poll || !poll.id || (!poll.is_active && (poll.total || 0) === 0)) {
+            w.style.display = 'none';
+            w.innerHTML = '';
+            return;
+        }
+        this._currentPollId = poll.id;
+        const total = poll.total || 0;
+        const voted = poll.my_vote !== null && poll.my_vote !== undefined;
+        const showResults = voted || !poll.is_active;
+
+        const rows = (poll.options || []).map((opt, i) => {
+            const count = (poll.counts && poll.counts[i]) || 0;
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+            const mine = poll.my_vote === i;
+            if (showResults) {
+                return `<div class="poll-result ${mine ? 'mine' : ''}">
+                            <div class="poll-result-fill" style="width:${pct}%"></div>
+                            <span class="poll-result-label">${this.escapeHtml(opt)}${mine ? ' ✓' : ''}</span>
+                            <span class="poll-result-pct">${pct}% (${count})</span>
+                        </div>`;
+            }
+            return `<button class="poll-option" onclick="window.chatBox.votePoll(${poll.id}, ${i})">${this.escapeHtml(opt)}</button>`;
+        }).join('');
+
+        w.innerHTML = `
+            <div class="poll-head">
+                <span class="poll-badge">📊 Poll</span>
+                <span class="poll-question">${this.escapeHtml(poll.question)}</span>
+                ${poll.is_active ? '' : '<span class="poll-closed">closed</span>'}
+            </div>
+            <div class="poll-body">${rows}</div>
+            <div class="poll-foot">${total} vote${total === 1 ? '' : 's'}</div>`;
+        w.style.display = 'block';
+    }
+
+    async votePoll(pollId, optionIndex) {
+        if (!this.username) { alert('Please join the chat first to vote.'); return; }
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/polls/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ poll_id: pollId, option_index: optionIndex, username: this.username, session_id: this.sessionId }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.success) {
+                this.renderPoll(data.poll);
+            } else if (data && data.error) {
+                // A closed poll or a stale widget — refresh to the current state.
+                this.refreshPoll();
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // ---- Typing indicators ------------------------------------------
