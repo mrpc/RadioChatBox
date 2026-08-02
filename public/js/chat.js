@@ -2226,6 +2226,10 @@ class RadioChatBox {
         this.messageInput.addEventListener('input', () => this.handleMentionInput());
         this.messageInput.addEventListener('keydown', (e) => this.handleMentionKeydown(e));
         this.messageInput.addEventListener('blur', () => setTimeout(() => this.closeMentionDropdown(), 150));
+        // Typing indicator ping (onTypingInput self-guards on the feature flag).
+        // Wired here — not in initTypingIndicators — because the input element
+        // only exists after the chat view is built (settings load runs earlier).
+        this.messageInput.addEventListener('input', () => this.onTypingInput());
 
         // Click a username inside the conversation (sender name or @mention) to
         // open a small popover offering to start a private chat with them.
@@ -2477,13 +2481,10 @@ class RadioChatBox {
     // ---- Typing indicators ------------------------------------------
 
     initTypingIndicators() {
+        // Just record the flag; the input listener is wired in setupEventListeners
+        // (the input element doesn't exist yet when settings first load).
         this._typingEnabled = this._settingOn(this.settings && this.settings.typing_indicators_enabled);
         this._typingUsers = this._typingUsers || new Map(); // username -> expiry ms
-        if (!this._typingEnabled || this._typingBound) return;
-        this._typingBound = true;
-        if (this.messageInput) {
-            this.messageInput.addEventListener('input', () => this.onTypingInput());
-        }
     }
 
     /** Throttled "I'm typing" ping — DM-aware (rides the private channel in a DM). */
