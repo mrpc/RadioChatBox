@@ -3020,6 +3020,15 @@
                         <input type="number" id="setting-slow-mode-seconds" placeholder="0" min="0" max="3600">
                         <small style="color:#6b7280;">0 = off. A higher value makes each user wait between messages (spam control).</small>
                     </div>
+                    <div class="form-group">
+                        <label>Auto-timeout after N warnings</label>
+                        <input type="number" id="setting-warning-auto-timeout-threshold" placeholder="3" min="0" max="20">
+                        <small style="color:#6b7280;">0 = off. When a user reaches this many active warnings, they're auto-timed-out.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Auto-timeout duration (minutes)</label>
+                        <input type="number" id="setting-warning-auto-timeout-minutes" placeholder="60" min="1" max="1440">
+                    </div>
                     </div>
                 </div>
 
@@ -8306,6 +8315,8 @@
                     document.getElementById('setting-rate-limit-messages').value = settings.rate_limit_messages || '10';
                     document.getElementById('setting-rate-limit-window').value = settings.rate_limit_window || '60';
                     document.getElementById('setting-slow-mode-seconds').value = settings.slow_mode_seconds || '0';
+                    document.getElementById('setting-warning-auto-timeout-threshold').value = settings.warning_auto_timeout_threshold ?? '3';
+                    document.getElementById('setting-warning-auto-timeout-minutes').value = settings.warning_auto_timeout_minutes ?? '60';
 
                     // Fake user auto-replies (bots)
                     botRepliesEnabled = settings.bot_replies_enabled === 'true';
@@ -8736,6 +8747,8 @@
                 rate_limit_messages: document.getElementById('setting-rate-limit-messages').value,
                 rate_limit_window: document.getElementById('setting-rate-limit-window').value,
                 slow_mode_seconds: document.getElementById('setting-slow-mode-seconds').value,
+                warning_auto_timeout_threshold: document.getElementById('setting-warning-auto-timeout-threshold').value,
+                warning_auto_timeout_minutes: document.getElementById('setting-warning-auto-timeout-minutes').value,
                 
                 // SEO & Branding
                 site_title: document.getElementById('setting-site-title').value,
@@ -8945,6 +8958,7 @@
                                 const details = r.details ? `<div style="color:#6b7280;font-size:12px;margin-top:4px;">“${escapeHtml(r.details)}”</div>` : '';
                                 const reportedArg = r.reported_username ? escapeHtml(r.reported_username).replace(/'/g, "\\'") : '';
                                 const modButtons = r.reported_username ? `
+                                    <button class="btn btn-secondary" onclick="warnUser('${reportedArg}')" title="Warn the reported user (auto-timeout after enough warnings)">⚠️ Warn</button>
                                     <button class="btn btn-secondary" onclick="reportAction(${r.id}, 'timeout', '${reportedArg}')" title="Timeout the reported user">⏱️ Timeout</button>
                                     <button class="btn btn-danger" onclick="reportAction(${r.id}, 'ban', '${reportedArg}')" title="Ban the reported nickname">🚫 Ban</button>` : '';
                                 const actions = status === 'pending'
@@ -8989,6 +9003,26 @@
         }
 
         // Act on the reported user straight from a report (timeout or nickname ban),
+        // Issue a warning to a user (auto-timeout kicks in after the threshold).
+        async function warnUser(username) {
+            const reason = prompt(`Warn "${username}" — reason (optional):`, '');
+            if (reason === null) return; // cancelled
+            try {
+                const res = await fetch('/api/admin/warn-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ username, reason })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`Warned "${username}". Active warnings: ${data.active_count}.` +
+                        (data.auto_timed_out ? '\n\n⏱️ Threshold reached — the user was auto-timed-out.' : ''));
+                } else {
+                    alert('Failed: ' + (data.error || 'error'));
+                }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
         // then offer to resolve the report (carrying the note field along).
         async function reportAction(id, action, reportedUser) {
             try {
