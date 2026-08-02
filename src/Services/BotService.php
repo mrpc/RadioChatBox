@@ -555,7 +555,9 @@ class BotService
                 return false;
             }
 
-            // Repeated abuse ends the conversation with a block, not a reply.
+            // Repeated abuse ends the conversation with a block, not a reply. For an
+            // explicit persona, sexual words don't count (see handleAbuse), but a
+            // genuinely HOSTILE insult still does.
             $message ??= $this->latestInboundMessage($fakeNickname, $fromUsername);
 
             if ($this->handleAbuse($fakeUser, $thread, $fromUsername, (string) $message)) {
@@ -1078,6 +1080,14 @@ class BotService
             return false;
         }
 
+        // Force/Steer mean "make this bot reply now" — so bring the fake user back
+        // online and enable its bot, otherwise the reply job is dropped (the worker
+        // skips an inactive/bot-disabled user) and nothing happens.
+        $this->db->preparedQuery(
+            'UPDATE fake_users SET is_active = TRUE, bot_enabled = TRUE WHERE id = ?',
+            [$fakeUserId]
+        );
+
         $this->getOrCreateThread($fakeUserId, $peer);
 
         $this->db->preparedQuery('
@@ -1089,10 +1099,20 @@ class BotService
                 ignore_decided_at = NULL,
                 farewell_sent_at = NULL,
                 messages_sent = 0,
+                blocked_at = NULL,
+                insult_count = 0,
                 last_error = NULL,
                 updated_at = NOW()
             WHERE fake_user_id = :fake_user_id AND peer_username = :peer
         ', ['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+
+        // Forcing a reply also lifts an abuse block: the bot blocked the peer over
+        // abuse, but the admin is overriding that decision to make it talk again.
+        try {
+            (new BlockService())->unblockUser($fakeNickname, $peer);
+        } catch (\Throwable $e) {
+            // Non-fatal — the thread reset above is the important part.
+        }
 
         // Newer epoch so any stale queued job is a no-op and this one is the live
         // reply.
@@ -1570,12 +1590,19 @@ class BotService
      * detector that treats banter as abuse would have bots blocking people who are
      * getting along - so the mild-banter words are NOT here, and the ones that are
      * still need repeating before anything happens.
+     *
+     * Context matters: HOSTILE/dismissive words ("άντε γαμήσου", "ηλίθια") are an
+     * insult no matter what. SEXUAL/anatomical words ("αρχίδια", "πουτάνα") are an
+     * insult in a normal chat but part of the game in an EROTIC one — so when
+     * $allowExplicit is set (an NSFW persona) they don't count, while the hostile
+     * ones still block. This is what stops a bot getting "offended" and blocking a
+     * user mid-roleplay for saying "γλύψε μου τα αρχίδια", yet still blocks a plain
+     * "άντε γαμήσου".
      */
-    public static function looksAbusive(string $text): bool
+    public static function looksAbusive(string $text, bool $allowExplicit = false): bool
     {
-        $patterns = [
-            // Sexual and gendered abuse - the common case against a female persona.
-            '/πουτ[άα]ν|poutan|τσο[ύυ]λ|tsoul|καρι[όο]λ|kariol|σκ[ύυ]λα\b|skyla\b|αρχ[ίι]δ|arxid|πο[ύυ]στ|poust/iu',
+        // Hostile — dismissive / name-calling / body-shaming. Always abuse.
+        $hostile = [
             // Telling it to get lost, in the usual forms.
             '/γαμ[ώώη]σου|gamisou|γ[άα]μα\s*τα|αντε\s*γαμ|ante\s*gam|α[ίι]διαμ|χ[έε]σε\s*με/iu',
             // Direct name-calling.
@@ -1583,11 +1610,17 @@ class BotService
             // Body shaming.
             '/χοντρ[ήη]\b|xontri\b|[άα]σχημ|asxim|φ[άα]τσα\s*σου/iu',
         ];
-
-        foreach ($patterns as $pattern) {
+        foreach ($hostile as $pattern) {
             if (preg_match($pattern, $text) === 1) {
                 return true;
             }
+        }
+
+        // Sexual / gendered words: an insult in a normal chat, but consensual dirty
+        // talk in an erotic one — so skip them entirely for an explicit persona.
+        if (!$allowExplicit
+            && preg_match('/πουτ[άα]ν|poutan|τσο[ύυ]λ|tsoul|καρι[όο]λ|kariol|σκ[ύυ]λα\b|skyla\b|αρχ[ίι]δ|arxid|πο[ύυ]στ|poust/iu', $text) === 1) {
+            return true;
         }
 
         return false;
@@ -1627,7 +1660,9 @@ class BotService
     {
         $threshold = $this->insultBlockThreshold();
 
-        if ($threshold === 0 || !self::looksAbusive($message)) {
+        // An explicit persona doesn't count sexual words as abuse (only hostile ones).
+        $allowExplicit = !empty($fakeUser['bot_allow_explicit']);
+        if ($threshold === 0 || !self::looksAbusive($message, $allowExplicit)) {
             return false;
         }
 
@@ -2938,7 +2973,7 @@ class BotService
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
-                   bot_reply_language, bot_ignore_chance, bot_self_facts
+                   bot_reply_language, bot_ignore_chance, bot_self_facts, bot_allow_explicit
             FROM fake_users
             WHERE nickname = ? AND is_active = TRUE AND bot_enabled = TRUE
         ', [$nickname]);
@@ -2965,7 +3000,7 @@ class BotService
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
                    bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
-                   bot_reply_language, bot_ignore_chance, bot_self_facts
+                   bot_reply_language, bot_ignore_chance, bot_self_facts, bot_allow_explicit
             FROM fake_users
             WHERE id = ? ' . $activeClause . 'AND bot_enabled = TRUE
         ', [$id]);

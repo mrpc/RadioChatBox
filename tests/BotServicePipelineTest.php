@@ -1666,6 +1666,62 @@ class BotServicePipelineTest extends TestCase
         $this->assertTrue((new BlockService())->hasBlocked($this->nick, $this->peer));
     }
 
+    /**
+     * Context matters: hostile/dismissive words are always abuse, but sexual/
+     * anatomical words are only abuse OUTSIDE an erotic (explicit) persona's chat.
+     */
+    public function testLooksAbusiveSplitsHostileFromSexual(): void
+    {
+        // Hostile — abuse regardless of the explicit flag.
+        $this->assertTrue(BotService::looksAbusive('αντε γαμησου', false));
+        $this->assertTrue(BotService::looksAbusive('αντε γαμησου', true));
+        $this->assertTrue(BotService::looksAbusive('εισαι ηλιθια', true));
+
+        // Sexual/anatomical — abuse only when NOT explicit.
+        $this->assertTrue(BotService::looksAbusive('γλυψε μου τα αρχιδια', false));
+        $this->assertFalse(BotService::looksAbusive('γλυψε μου τα αρχιδια', true));
+        $this->assertFalse(BotService::looksAbusive('πουτανα', true));
+    }
+
+    /** An explicit persona doesn't block on consensual dirty talk. */
+    public function testExplicitBotDoesNotBlockOnSexualWords(): void
+    {
+        $this->setBotColumn('bot_allow_explicit', true);
+        $this->settings->values['bot_immediate_block_chance'] = '100'; // would block if flagged
+
+        $replied = $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'γλυψε μου τα αρχιδια');
+
+        $this->assertTrue($replied, 'an explicit persona replies — sexual words are not abuse');
+        $this->assertNull($this->threadRow()['blocked_at']);
+    }
+
+    /** …but a hostile insult still blocks, even for an explicit persona. */
+    public function testExplicitBotStillBlocksOnHostileInsult(): void
+    {
+        $this->setBotColumn('bot_allow_explicit', true);
+        $this->settings->values['bot_immediate_block_chance'] = '100';
+
+        $replied = $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'αντε γαμησου');
+
+        $this->assertFalse($replied, 'a hostile insult still blocks');
+        $this->assertNotNull($this->threadRow()['blocked_at']);
+    }
+
+    /** Force/Steer bring an inactive/disabled fake user back online so it can reply. */
+    public function testForceReplyReactivatesTheFakeUser(): void
+    {
+        $this->setBotColumn('is_active', false);
+        $this->setBotColumn('bot_enabled', false);
+
+        $this->assertTrue($this->bot->forceReply($this->nick, $this->peer));
+
+        $stmt = $this->pdo->prepare('SELECT is_active, bot_enabled FROM fake_users WHERE id = ?');
+        $stmt->execute([$this->fakeUserId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertTrue((bool) $row['is_active']);
+        $this->assertTrue((bool) $row['bot_enabled']);
+    }
+
     public function testRepeatedAbuseMakesTheBotBlockThePeer(): void
     {
 

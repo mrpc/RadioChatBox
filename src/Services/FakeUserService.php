@@ -32,6 +32,7 @@ class FakeUserService
         'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_max_messages',
         'bot_typing_seconds_per_word', 'bot_farewell_messages',
         'bot_llm_provider', 'bot_llm_model', 'bot_reply_language', 'bot_ignore_chance', 'bot_self_facts',
+        'bot_allow_explicit',
     ];
 
     public function __construct()
@@ -83,7 +84,7 @@ class FakeUserService
         // value by its PHP type (bool/int/null), so no explicit PDO type map is
         // needed any more.
         $columns = [
-            'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_self_facts',
+            'bot_enabled', 'bot_allow_explicit', 'bot_persona', 'bot_custom_prompt', 'bot_self_facts',
             'bot_farewell_messages', 'bot_max_messages', 'bot_ignore_chance',
             'bot_typing_seconds_per_word',
             // Per-bot overrides, so bots can run on different LLMs side by side
@@ -99,7 +100,7 @@ class FakeUserService
 
             $value = $options[$column];
 
-            if ($column === 'bot_enabled') {
+            if ($column === 'bot_enabled' || $column === 'bot_allow_explicit') {
                 $value = (bool) $value;
             } elseif ($value === '' || $value === null) {
                 // Empty means "fall back to the global setting".

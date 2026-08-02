@@ -1810,6 +1810,14 @@
                             </div>
 
                             <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" id="fake-bot-allow-explicit" style="width: auto;">
+                                    <span>Allow explicit content (NSFW)</span>
+                                </label>
+                                <small style="color: #6b7280;">In this bot's conversations, sexual/anatomical words are NOT treated as abuse, so it won't get "offended" and block the user during erotic roleplay.</small>
+                            </div>
+
+                            <div class="form-group">
                                 <label>Personality / interests</label>
                                 <textarea id="fake-bot-persona" rows="3" maxlength="2000" placeholder="e.g. Δουλεύει σε καφετέρια, ακούει ροκ, λατρεύει τις γάτες, λίγο πειραχτήρι" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
                                 <small style="color: #6b7280;">Appended to the generated prompt. Name, age and sex are added automatically.</small>
@@ -7566,6 +7574,7 @@
 
             document.getElementById('fake-bot-nickname').textContent = user.nickname;
             document.getElementById('fake-bot-enabled').checked = !!user.bot_enabled;
+            document.getElementById('fake-bot-allow-explicit').checked = !!user.bot_allow_explicit;
             document.getElementById('fake-bot-persona').value = user.bot_persona || '';
             document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
             document.getElementById('fake-bot-self-facts').value = user.bot_self_facts || '';
@@ -7661,6 +7670,7 @@
             const payload = {
                 id: editingFakeBotId,
                 bot_enabled: document.getElementById('fake-bot-enabled').checked,
+                bot_allow_explicit: document.getElementById('fake-bot-allow-explicit').checked,
                 bot_persona: document.getElementById('fake-bot-persona').value.trim(),
                 bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
                 bot_self_facts: document.getElementById('fake-bot-self-facts').value.trim(),
