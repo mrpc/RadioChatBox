@@ -48,6 +48,32 @@ class BotServiceTest extends TestCase
     }
 
     /**
+     * A long single-paragraph reply (no line breaks — the model often ignores the
+     * "few short messages" hint) is split into sentence-sized bubbles instead of
+     * arriving as one wall of text.
+     */
+    public function testSplitIntoMessagesBreaksALongParagraphBySentences(): void
+    {
+        $long = 'Σήμερα το πρωί ξύπνησα νωρίς και βγήκα για μια βόλτα στην παραλία. '
+            . 'Ο καιρός ήταν υπέροχος, με λίγο αεράκι και καθαρό ουρανό πάνω από τη θάλασσα. '
+            . 'Μετά πέρασα από τον φούρνο για φρέσκο ψωμί και έναν ζεστό καφέ να πάρω μαζί μου. '
+            . 'Γυρνώντας σπίτι μαγείρεψα ένα ελαφρύ μεσημεριανό και διάβασα λίγες σελίδες από το βιβλίο μου.';
+
+        $parts = BotService::splitIntoMessages($long);
+
+        $this->assertGreaterThan(1, count($parts), 'a long paragraph becomes several bubbles');
+        $this->assertLessThanOrEqual(4, count($parts), 'still capped at MAX_MESSAGE_PARTS');
+        $this->assertStringContainsString('Σήμερα το πρωί', $parts[0]);
+        foreach ($parts as $part) {
+            // No single bubble is the whole wall of text.
+            $this->assertLessThan(mb_strlen($long), mb_strlen($part));
+        }
+
+        // A short reply is left as a single message (no over-splitting).
+        $this->assertCount(1, BotService::splitIntoMessages('Γεια σου, τι κάνεις;'));
+    }
+
+    /**
      * Emoji policy: only common emoji survive and at most one, and only when
      * keeping is allowed. Unusual emoji and extras are always stripped.
      */

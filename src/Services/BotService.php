@@ -231,6 +231,14 @@ class BotService
     private const MAX_MESSAGE_PARTS = 4;
 
     /**
+     * A single line longer than this (chars) is split into sentence-sized bubbles
+     * so a long paragraph reads like a few messages in a row, not a wall of text.
+     * TARGET is the size each bubble aims for when grouping sentences.
+     */
+    private const MESSAGE_SPLIT_THRESHOLD = 160;
+    private const MESSAGE_SPLIT_TARGET = 140;
+
+    /**
      * Chance (%) that a delivered message keeps an emoji at all. Emojis on every
      * message are a strong bot tell, so most messages get none and only this
      * small fraction keep one (at most).
@@ -2344,11 +2352,29 @@ class BotService
      */
     public static function splitIntoMessages(string $text): array
     {
-        $parts = [];
+        // First honour any explicit line breaks the model used.
+        $lines = [];
         foreach (preg_split('/\R+/u', $text) ?: [] as $line) {
             $line = trim((string) $line);
             if ($line !== '') {
+                $lines[] = $line;
+            }
+        }
+        if ($lines === []) {
+            $lines = [trim($text)];
+        }
+
+        // Then split any long line into sentence-sized bubbles, so a single long
+        // paragraph (the model often ignores the "reply in a few short messages"
+        // hint) still arrives as a few messages in a row instead of a wall.
+        $parts = [];
+        foreach ($lines as $line) {
+            if (mb_strlen($line) <= self::MESSAGE_SPLIT_THRESHOLD) {
                 $parts[] = $line;
+            } else {
+                foreach (self::splitLongLine($line) as $chunk) {
+                    $parts[] = $chunk;
+                }
             }
         }
 
@@ -2365,6 +2391,40 @@ class BotService
         }
 
         return $parts;
+    }
+
+    /**
+     * Break a long line into bubbles at sentence boundaries (. ! ; … ?), grouping
+     * consecutive sentences up to ~MESSAGE_SPLIT_TARGET chars so each bubble is a
+     * natural chat-sized chunk. Commas are never split on.
+     *
+     * @return list<string>
+     */
+    private static function splitLongLine(string $line): array
+    {
+        $sentences = preg_split('/(?<=[.!;…?])\s+/u', $line) ?: [$line];
+
+        $chunks = [];
+        $buf = '';
+        foreach ($sentences as $sentence) {
+            $sentence = trim((string) $sentence);
+            if ($sentence === '') {
+                continue;
+            }
+            if ($buf === '') {
+                $buf = $sentence;
+            } elseif (mb_strlen($buf) + 1 + mb_strlen($sentence) <= self::MESSAGE_SPLIT_TARGET) {
+                $buf .= ' ' . $sentence;
+            } else {
+                $chunks[] = $buf;
+                $buf = $sentence;
+            }
+        }
+        if ($buf !== '') {
+            $chunks[] = $buf;
+        }
+
+        return $chunks !== [] ? $chunks : [$line];
     }
 
     /**
