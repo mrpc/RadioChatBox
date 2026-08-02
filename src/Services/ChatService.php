@@ -95,6 +95,11 @@ class ChatService
             'message' => $messageData['message'],
         ]);
 
+        // Sending a message IS activity: refresh the sender's presence so a user
+        // whose heartbeat lapsed (mobile background, flaky network) does not show
+        // as offline while actively chatting.
+        $this->touchPresence($username, $sessionId);
+
         // Publish to subscribers
         BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL, 'message', $messageData);
 
@@ -102,6 +107,27 @@ class ChatService
         $this->storeMessageInDB($messageData);
 
         return $messageData;
+    }
+
+    /**
+     * Lightweight presence refresh (no cleanup/publish overhead): bumps
+     * last_heartbeat for the sender's session. Any interaction that reaches this
+     * keeps the user "online". Best-effort — never fails the surrounding action.
+     */
+    private function touchPresence(string $username, string $sessionId): void
+    {
+        if ($username === '' || $sessionId === '') {
+            return;
+        }
+        try {
+            $this->db->preparedQuery(
+                'UPDATE presence_sessions SET last_heartbeat = NOW()
+                 WHERE username = :username AND session_id = :session_id',
+                ['username' => $username, 'session_id' => $sessionId]
+            );
+        } catch (\Throwable) {
+            // presence is best-effort
+        }
     }
 
     /**

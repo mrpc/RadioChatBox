@@ -3404,9 +3404,11 @@
                         const data = JSON.parse(e.data);
                         // Refresh message history if we're on the messages tab
                         const activeTab = document.querySelector('.tab-content.active');
-                        if (activeTab && activeTab.id === 'messages-tab') {
+                        if (activeTab && activeTab.id === 'messages-tab' && (window.currentMessagesPage || 1) === 1) {
+                            // Only auto-refresh when viewing page 1 (where new messages
+                            // appear); never disrupt browsing of older pages.
                             console.log('New message received, refreshing message history...');
-                            loadMessages(1); // Refresh to first page to show new messages
+                            loadMessages(1);
                         }
                     } catch (error) {
                         console.error('Failed to parse message event:', error);
@@ -3714,11 +3716,16 @@
             }
             
             msgDiv.innerHTML = content;
+            // Was the admin already at the bottom? Capture BEFORE appending.
+            const nearBottom = (messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight) < 80;
             wrapperDiv.appendChild(msgDiv);
             messagesDiv.appendChild(wrapperDiv);
-            
-            // Scroll to bottom
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Only auto-scroll if they were at the bottom, so scrolling up to read
+            // history is not interrupted by incoming messages.
+            if (nearBottom) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
         }
 
         function disconnectImpersonateChatStream() {
@@ -4832,10 +4839,14 @@
                 }, 10000);
             } else if (tabName === 'messages') {
                 loadMessages(1);
-                // Start live refresh for messages (every 20 seconds)
+                // Start live refresh for messages (every 20 seconds), but ONLY while
+                // viewing page 1 — otherwise browsing older pages would keep getting
+                // yanked back to page 1.
                 clearInterval(window.messagesRefreshInterval); // Clear any existing interval
                 window.messagesRefreshInterval = setInterval(() => {
-                    loadMessages(1);
+                    if ((window.currentMessagesPage || 1) === 1) {
+                        loadMessages(1);
+                    }
                 }, 20000);
             } else if (tabName === 'statistics') {
                 loadStatsTab('summary');
@@ -5362,6 +5373,9 @@
         }
 
         async function loadMessages(page = 1) {
+            // Remember the page being viewed so an incoming-message refresh does not
+            // yank the admin back to page 1 while they browse older pages.
+            window.currentMessagesPage = page;
             try {
                 const filterDropdown = document.getElementById('message-type-filter');
                 const filter = filterDropdown ? filterDropdown.value : 'all';
