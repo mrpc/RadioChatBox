@@ -1152,6 +1152,66 @@ class BotService
      *
      * @return list<array<string,mixed>>
      */
+    /**
+     * Answer an admin's question ABOUT a conversation (not as the character):
+     * feeds the transcript to the LLM with the admin's question and returns the
+     * model's reply, for the Bot Activity "Ask the LLM" tool. Nothing is stored
+     * or sent to the peer.
+     *
+     * @return array{answer:string, error?:string}
+     * @throws \InvalidArgumentException on empty question / unknown fake user.
+     */
+    public function answerAdminQuestion(string $fakeNickname, string $peer, string $question): array
+    {
+        $question = trim($question);
+        if ($question === '') {
+            throw new \InvalidArgumentException('question is required');
+        }
+        $fakeUser = $this->getBotUser($fakeNickname);
+        if ($fakeUser === null) {
+            throw new \InvalidArgumentException('unknown fake user');
+        }
+
+        $llm = $this->llm($fakeUser, $peer);
+        if (!$llm->isConfigured()) {
+            return ['answer' => '', 'error' => 'LLM API key is not configured'];
+        }
+
+        $transcript = $this->transcriptFor($fakeNickname, $peer);
+        if ($transcript === '') {
+            return ['answer' => '', 'error' => 'No conversation yet'];
+        }
+
+        $system = "You are an assistant helping a chat administrator analyse a conversation "
+            . "between the user \"{$peer}\" and the (fake) user \"{$fakeNickname}\". The administrator "
+            . "will ask a question about it. Answer the ADMINISTRATOR directly, briefly and factually — "
+            . "do NOT continue the character's role-play. Answer in the same language as the conversation.";
+        $user = "Conversation transcript:\n{$transcript}\n\nAdministrator's question: {$question}";
+
+        try {
+            $result = $llm->chat($system, [['role' => 'user', 'content' => $user]]);
+            return ['answer' => trim((string) ($result['text'] ?? ''))];
+        } catch (\Throwable $e) {
+            return ['answer' => '', 'error' => $e->getMessage()];
+        }
+    }
+
+    /** A plain-text transcript of a thread (chronological), one "who: text" per line. */
+    private function transcriptFor(string $fakeNickname, string $peer): string
+    {
+        $lines = [];
+        foreach ($this->threadMessages($fakeNickname, $peer) as $m) {
+            $who = ($m['from_username'] ?? '') === $fakeNickname ? $fakeNickname : $peer;
+            $text = trim((string) ($m['bot_original_message'] ?? '')) !== ''
+                ? trim((string) $m['bot_original_message'])
+                : trim((string) ($m['message'] ?? ''));
+            if ($text !== '') {
+                $lines[] = "{$who}: {$text}";
+            }
+        }
+        return implode("\n", $lines);
+    }
+
     public function threadMessages(string $fakeNickname, string $peer, int $limit = 200): array
     {
         $result = $this->db->preparedQuery('

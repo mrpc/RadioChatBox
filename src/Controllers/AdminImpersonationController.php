@@ -390,6 +390,44 @@ final class AdminImpersonationController
     }
 
     /**
+     * POST /api/admin/bot-ask — {fake_user, peer, question}. Asks the LLM a
+     * question ABOUT the conversation (not as the character) and returns the
+     * answer to the admin. Nothing is stored or sent to the peer. Root/owner only.
+     * 200 {success, answer} or {success:false, error}; bad input -> 400.
+     */
+    #[Route('/api/admin/bot-ask', methods: 'POST', name: 'admin.bot-ask', middleware: [AdminAuthMiddleware::class])]
+    public function botAsk(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        try {
+            $input = $_POST;
+            $fake = trim((string) ($input['fake_user'] ?? ''));
+            $peer = trim((string) ($input['peer'] ?? ''));
+            $question = trim((string) ($input['question'] ?? ''));
+            if ($fake === '' || $peer === '' || $question === '') {
+                return Response::json(['error' => 'fake_user, peer and question are required'], 400);
+            }
+
+            $result = (new BotService())->answerAdminQuestion($fake, $peer, $question);
+            if (($result['answer'] ?? '') === '') {
+                return Response::json(['success' => false, 'error' => $result['error'] ?? 'No answer'], 200);
+            }
+            return Response::json(['success' => true, 'answer' => $result['answer']]);
+        } catch (InvalidArgumentException $e) {
+            return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('bot-ask error: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * List every active fake user's inbound private conversations
      * (replaces public/api/admin/impersonate-conversations.php).
      *

@@ -527,6 +527,33 @@ class AdminImpersonationControllerTest extends TestCase
         }
     }
 
+    /** bot-ask refuses non-root callers with 403. */
+    public function testBotAskForbiddenWithoutRootRole(): void
+    {
+        $this->unauthenticate();
+        $_POST = ['fake_user' => 'bot', 'peer' => 'peer', 'question' => 'q?'];
+
+        $this->assertSame(403, (new AdminImpersonationController())->botAsk()->getStatusCode());
+    }
+
+    /** bot-ask requires fake_user, peer and question. */
+    public function testBotAskValidatesInput(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['fake_user' => 'bot', 'peer' => 'peer']; // no question
+
+        $this->assertSame(400, (new AdminImpersonationController())->botAsk()->getStatusCode());
+    }
+
+    /** bot-ask on an unknown fake user is a 400 (InvalidArgument -> 400). */
+    public function testBotAskUnknownFakeUserIs400(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['fake_user' => 'no_such_bot_' . bin2hex(random_bytes(3)), 'peer' => 'peer', 'question' => 'what?'];
+
+        $this->assertSame(400, (new AdminImpersonationController())->botAsk()->getStatusCode());
+    }
+
     /** The impersonate typing cue refuses non-root callers with 403. */
     public function testTypingForbiddenWithoutRootRole(): void
     {

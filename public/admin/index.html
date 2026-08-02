@@ -6932,7 +6932,10 @@
                         <button class="btn btn-secondary" onclick="botThreadStop()" title="Stop the bot in this conversation (reversible with Force)">⏹️ Force stop</button>
                         <button class="btn btn-danger" onclick="botThreadBlock()" title="The fake user blocks this user (DM block) and the bot stops">🚫 Block user</button>
                         <button class="btn btn-secondary" onclick="botThreadExport()" title="Download this conversation's full log (messages, state and LLM calls) as JSON to share for debugging">📥 Export log</button>
+                        <button class="btn btn-secondary" onclick="botThreadPrint()" title="Open a printable view of the whole conversation">🖨️ Print</button>
+                        <button class="btn btn-secondary" onclick="botThreadAsk()" title="Ask the LLM a question about this conversation (answer shown to you only)">❓ Ask the LLM</button>
                     </div>
+                    <div id="bot-thread-ask-answer" style="display:none; background:#f9fafb; border:1px solid #e5e7eb; border-left:3px solid #6366f1; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:13px; white-space:pre-wrap;"></div>
                     <h3 style="font-size: 14px; color: #374151;">Calls for this conversation</h3>
                     ${botCallRows(data.calls)}
                     <button class="btn btn-outline" style="margin-top: 12px;" onclick="closeBotThread()">Close</button>`;
@@ -7179,6 +7182,52 @@
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
+        }
+
+        // Open a clean, printable view of the whole conversation.
+        function botThreadPrint() {
+            if (!currentBotThread || !currentBotThreadData) return;
+            const d = currentBotThreadData;
+            const fake = currentBotThread.fakeUser, peer = currentBotThread.peer;
+            const rows = (d.messages || []).map(m => {
+                const mine = m.from_username === fake;
+                const when = new Date(m.created_at).toLocaleString();
+                const body = m.message ? escapeHtml(m.message) : (m.attachment && m.attachment.file_path ? '[photo]' : '[attachment]');
+                return `<div style="margin:8px 0;padding:8px 12px;border-radius:8px;background:${mine ? '#eef2ff' : '#f3f4f6'};">
+                    <div style="font-size:11px;color:#6b7280;">${escapeHtml(m.from_username)} · ${when}</div>
+                    <div>${body}</div></div>`;
+            }).join('');
+            const w = window.open('', '_blank');
+            if (!w) { alert('Please allow pop-ups to print.'); return; }
+            w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Conversation: ${escapeHtml(fake)} ↔ ${escapeHtml(peer)}</title>
+                <style>body{font-family:system-ui,Arial,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#111;}h1{font-size:18px;}</style></head>
+                <body><h1>💬 ${escapeHtml(fake)} ↔ ${escapeHtml(peer)}</h1>${rows || '<p>No messages.</p>'}
+                <script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.close();
+        }
+
+        // Ask the LLM a question ABOUT the conversation (answer shown to admin only).
+        async function botThreadAsk() {
+            if (!currentBotThread) return;
+            const question = prompt('Ask the LLM about this conversation (e.g. "What did the user tell you?"):', '');
+            if (question === null || question.trim() === '') return;
+            const box = document.getElementById('bot-thread-ask-answer');
+            if (box) { box.style.display = 'block'; box.textContent = 'Thinking…'; }
+            try {
+                const res = await fetch('/api/admin/bot-ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ fake_user: currentBotThread.fakeUser, peer: currentBotThread.peer, question })
+                });
+                const data = await res.json();
+                if (box) {
+                    box.textContent = data.success
+                        ? `❓ ${question}\n\n${data.answer}`
+                        : `⚠️ ${data.error || 'No answer'}`;
+                }
+            } catch (e) {
+                if (box) box.textContent = '⚠️ ' + e.message;
+            }
         }
 
         function botCallRows(entries) {
