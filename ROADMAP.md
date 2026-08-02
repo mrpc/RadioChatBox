@@ -423,6 +423,35 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - Record play data automatically
 - Background process or cron job for data collection
 
+### Now-Playing Enhancements: Top Charts + In-Chat Player
+**Priority:** MEDIUM - Radio engagement; builds on Song Tracking & Analytics and the
+existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both are
+**settings-gated** so a station opts in.
+
+- [ ] **Top charts panel** — Top 10 **artists** and Top 10 **tracks** for **day / week / month**
+  - [ ] Admin setting to enable/disable the feature (`charts_enabled`)
+  - [ ] Button next to the current-playing widget on the front end that opens the panel
+  - [ ] Period switcher (day / week / month) inside the panel
+  - [ ] Aggregate from the existing track-play history — by artist and by title — over the period
+  - [ ] Cache the aggregates (Redis) so the button is cheap under load
+- [ ] **In-chat radio player** — embed a live audio player instead of only showing track text
+  - [ ] Admin setting to enable/disable (`player_enabled`) + stream URL / format
+  - [ ] Play/pause + volume, with live now-playing metadata (artist / title / artwork) in the widget
+  - [ ] Respect browser autoplay policy (start muted / require a tap); mobile-friendly
+  - [ ] Falls back to the text-only now-playing when disabled
+
+**Settings:**
+- `charts_enabled`, `charts_default_period`
+- `player_enabled`, `player_stream_url`, `player_stream_format` (mp3/aac), `player_autoplay`
+
+**API Endpoints:**
+- `GET /api/songs/top?type=artists|tracks&period=day|week|month&limit=10` (see also `/api/songs/top` below)
+- Player reuses the existing now-playing feed + the configured stream URL (no new stream endpoint)
+
+**UI Components:**
+- Charts button beside the now-playing widget → charts modal with day/week/month tabs
+- Embedded `<audio>` player in the now-playing area (shows artwork/artist/title)
+
 ### Polls & Voting
 **Priority:** LOW-MEDIUM - Audience engagement
 
@@ -848,4 +877,4 @@ We welcome feature requests and suggestions from the community! Please:
 
 ---
 
-*Last updated: January 1, 2026*
+*Last updated: August 2, 2026*
