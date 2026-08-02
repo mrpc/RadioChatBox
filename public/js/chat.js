@@ -3207,6 +3207,23 @@ class RadioChatBox {
     }
 
     addMessageToUI(messageData, animate = true) {
+        // Guard against rendering a non-message payload as a chat bubble. The
+        // realtime feed multiplexes several event shapes over one channel and the
+        // event name is derived from `type`; anything unrecognised falls back to a
+        // "message". A client running stale JS (or a future/foreign payload) can
+        // therefore hand us an object with no text and no timestamp, which rendered
+        // as an empty bubble showing "Invalid Date" until the next history reload
+        // wiped it. A real message always has a finite timestamp AND some content
+        // (text or an attachment) — reject anything else instead of drawing it.
+        const ts = Number(messageData && messageData.timestamp);
+        const hasContent = !!(messageData
+            && ((typeof messageData.message === 'string' && messageData.message.trim() !== '')
+                || messageData.attachment));
+        if (!Number.isFinite(ts) || ts <= 0 || !hasContent) {
+            console.warn('Ignoring non-message payload on the public feed:', messageData);
+            return;
+        }
+
         // Use either 'id' (from real-time) or 'message_id' (from database/admin API)
         const msgId = messageData.id || messageData.message_id;
 
@@ -4178,9 +4195,27 @@ class RadioChatBox {
         const isFromMe = messageData.from_username === this.username;
         const otherUser = isFromMe ? messageData.to_username : messageData.from_username;
         const otherUserDisplayName = isFromMe ? messageData.to_display_name : messageData.from_display_name;
-        
-        
-        
+
+        // Realtime delivery is at-least-once: a flaky mobile connection that
+        // reconnects — or briefly runs both transports during a WS→SSE fallback —
+        // can deliver the same DM more than once. Without a guard each copy was
+        // rendered, incremented the unread badge and replayed the sound (the bug
+        // where the sender saw their own DM three times). Drop a DM we have already
+        // handled live, keyed by id. Bounded so the set never grows without limit;
+        // history loaded over REST bypasses this path, so re-opening a conversation
+        // still shows everything.
+        const dmId = messageData.id || messageData.message_id || null;
+        if (dmId != null) {
+            if (!this._seenDmIds) { this._seenDmIds = new Set(); }
+            if (this._seenDmIds.has(dmId)) { return; }
+            this._seenDmIds.add(dmId);
+            if (this._seenDmIds.size > 500) {
+                // Drop the oldest ~100 ids (insertion order) to cap memory.
+                const it = this._seenDmIds.values();
+                for (let i = 0; i < 100; i++) { this._seenDmIds.delete(it.next().value); }
+            }
+        }
+
         // Track analytics for received messages
         if (!isFromMe && window.analytics) {
             window.analytics.trackPrivateMessageReceived(messageData.from_username);
@@ -4227,7 +4262,7 @@ class RadioChatBox {
             
             // Mark as read since we're viewing the conversation
             this.markConversationAsRead(otherUser);
-            
+
             // Add to private chat messages and re-render (carry id/reply/reactions
             // so the reply quote and reaction pills render for live messages too).
             this.privateChat.messages.push({
@@ -4248,6 +4283,8 @@ class RadioChatBox {
             // Not in private chat mode - show inline with indicator
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message private-message clickable-private';
+            const inlineId = messageData.id || messageData.message_id || null;
+            if (inlineId != null) messageDiv.dataset.messageId = inlineId;
             messageDiv.title = `Click to open private chat with ${this.escapeHtml(otherUserDisplayName || otherUser)}`;
 
             // Clicking the notification box opens the private conversation with
