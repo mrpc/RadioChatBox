@@ -5508,7 +5508,7 @@
                         <div style="display:flex; justify-content:${mine ? 'flex-end' : 'flex-start'}; margin-bottom:8px;">
                             <div style="max-width:70%; padding:8px 12px; border-radius:10px; background:${mine ? '#eef2ff' : '#f3f4f6'};">
                                 <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}</div>
-                                <div>${m.message ? escapeHtml(m.message) : '<em>[attachment]</em>'}</div>
+                                <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="window.open('${escapeHtml(m.attachment.file_path)}','_blank')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
                             </div>
                         </div>`;
                 }).join('') + `</div>`;
@@ -6608,7 +6608,7 @@
                                 <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">
                                     ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}
                                 </div>
-                                <div>${m.message ? escapeHtml(m.message) : '<em>[attachment]</em>'}</div>
+                                <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="window.open('${escapeHtml(m.attachment.file_path)}','_blank')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
                             </div>
                         </div>`;
                 }).join('');
