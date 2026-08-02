@@ -7,6 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\Http\Csv;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\BotService;
 use RadioChatBox\Services\LlmAccount;
@@ -493,6 +494,48 @@ final class AdminStatsController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * GET /api/admin/songs/export?from=&to= — download the top tracks over a
+     * window as a CSV (rank, track, artist, plays, 👍, 👎, last played). Defaults
+     * to the last 30 days.
+     */
+    #[Route('/api/admin/songs/export', methods: 'GET', name: 'admin.songs.export', middleware: [AdminAuthMiddleware::class])]
+    public function songsExport(): Response
+    {
+        try {
+            $req = Request::getInstance();
+            $from = (string) $req->get('from', (new \DateTimeImmutable('-30 days'))->format('Y-m-d 00:00:00'), 'get');
+            $to   = (string) $req->get('to', (new \DateTimeImmutable('+1 day'))->format('Y-m-d 00:00:00'), 'get');
+
+            $tracks = (new TrackStatsService())->getTopTracks($from, $to, 2000);
+            $votes = (new \RadioChatBox\Services\TrackVoteService())
+                ->totalsByTrackIds(array_column($tracks, 'track_id'));
+
+            $rank = 0;
+            $rows = array_map(static function (array $t) use (&$rank, $votes): array {
+                $rank++;
+                $tv = $votes[(int) ($t['track_id'] ?? 0)] ?? ['up' => 0, 'down' => 0];
+                return [
+                    $rank,
+                    $t['display'] ?? '',
+                    $t['artist'] ?? '',
+                    $t['plays'] ?? 0,
+                    $tv['up'],
+                    $tv['down'],
+                    $t['last_played'] ?? '',
+                ];
+            }, $tracks);
+
+            $csv = Csv::build(['rank', 'track', 'artist', 'plays', 'thumbs_up', 'thumbs_down', 'last_played'], $rows);
+            return Csv::download($csv, 'song-stats.csv');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminStatsController::songsExport failed: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd

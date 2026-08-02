@@ -112,7 +112,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Quick actions from reports (dismiss, warn, timeout, ban) — partial: dismiss/timeout/ban done; no warn (warning system pending)
 - [ ] Bulk report actions
 - [ ] Report history and statistics
-- [ ] Export reports to CSV
+- [x] Export reports to CSV
 - [ ] Email notifications for new reports
 
 **Database Changes:**
@@ -161,7 +161,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 ### Data Export & Backup Tools
 **Priority:** MEDIUM - Important for GDPR compliance and data safety
 
-- [ ] Export statistics to CSV
+- [x] Export statistics to CSV (song stats + reports)
 - [ ] Export statistics to PDF
 - [ ] Export user data (GDPR data download)
 - [ ] Export chat history
@@ -398,7 +398,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Song popularity rankings (most played, most listeners)
 - [ ] Peak listeners during specific songs
 - [ ] Song performance reports — partial: per-track drilldown in admin; no formal report/export
-- [ ] Export song statistics to CSV
+- [x] Export song statistics to CSV
 - [x] Top songs by time period (daily/weekly/monthly)
 - [x] Song genre tracking (optional)
 - [ ] Average listener retention per song

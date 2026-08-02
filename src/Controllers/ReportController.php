@@ -7,6 +7,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\Http\Csv;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\ReportService;
@@ -113,6 +114,44 @@ class ReportController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('ReportController::adminList failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * GET /api/admin/reports/export?status=all — download the reports queue as a
+     * CSV file (all statuses by default, or one when `status` is given).
+     */
+    #[Route('/api/admin/reports/export', methods: 'GET', name: 'admin.reports.export', middleware: [AdminAuthMiddleware::class])]
+    public function export(): Response
+    {
+        try {
+            $status = (string) Request::getInstance()->get('status', 'all', 'get');
+            $reports = (new ReportService())->list($status, 5000, 0);
+
+            $rows = array_map(static fn (array $r): array => [
+                $r['id'] ?? '',
+                $r['created_at'] ?? '',
+                $r['reason'] ?? '',
+                $r['reported_username'] ?? '',
+                $r['reporter_username'] ?? '',
+                $r['message_type'] ?? '',
+                $r['content_snapshot'] ?? '',
+                $r['details'] ?? '',
+                $r['status'] ?? '',
+                $r['resolved_by'] ?? '',
+                $r['resolved_at'] ?? '',
+            ], $reports);
+
+            $csv = Csv::build(
+                ['id', 'created_at', 'reason', 'reported', 'reporter', 'type', 'content', 'details', 'status', 'resolved_by', 'resolved_at'],
+                $rows
+            );
+            return Csv::download($csv, 'reports.csv');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReportController::export failed: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd

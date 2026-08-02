@@ -1484,6 +1484,7 @@
                                 <option value="90">Last 90 days</option>
                                 <option value="365">Last year</option>
                             </select>
+                            <button class="btn btn-outline" onclick="exportSongStats()">⬇️ Export CSV</button>
                         </div>
 
                         <!-- Daily log controls -->
@@ -2206,6 +2207,7 @@
                                 <option value="dismissed">Dismissed</option>
                             </select>
                             <button class="btn btn-outline" onclick="loadReports()">🔄 Refresh</button>
+                            <button class="btn btn-outline" onclick="downloadCsv('/api/admin/reports/export?status=' + (document.getElementById('reports-status-filter')?.value || 'all'), 'reports.csv')">⬇️ Export CSV</button>
                         </div>
                     </div>
                     <div id="reports-table"></div>
@@ -9132,6 +9134,24 @@
             }
         }
 
+        // Download an admin CSV export (fetch with the Bearer token, then save the
+        // blob — a plain link/window.open can't send the Authorization header).
+        async function downloadCsv(url, filename) {
+            try {
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                if (!res.ok) { alert('Export failed (' + res.status + ')'); return; }
+                const blob = await res.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objectUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(objectUrl);
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
         // ---- Abuse reports queue ----
         const REPORT_REASON_LABELS = { spam:'Spam', harassment:'Harassment', inappropriate:'Inappropriate', offensive:'Offensive', impersonation:'Impersonation', other:'Other' };
 
@@ -9480,6 +9500,16 @@
         }
 
         // ---- Chat commands (admin CRUD) ----
+        // Export the song stats for the selected period as CSV.
+        function exportSongStats() {
+            const days = parseInt(document.getElementById('track-period')?.value || '7', 10);
+            const to = new Date();
+            const from = new Date(Date.now() - days * 86400000);
+            const fmt = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+            const url = `/api/admin/songs/export?from=${encodeURIComponent(fmt(from))}&to=${encodeURIComponent(fmt(to))}`;
+            downloadCsv(url, 'song-stats.csv');
+        }
+
         // ---- Live polls (admin) ----
         async function loadCurrentPoll() {
             const box = document.getElementById('poll-current');
