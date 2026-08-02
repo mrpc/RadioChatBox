@@ -191,8 +191,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Message pinning (moderators/admins)
 - [ ] Pinned messages display at top of chat
 - [ ] Pin expiration time
-- [ ] Chat commands system (/help, /rules, /tip, etc.)
-- [ ] Custom command creation in admin panel
+- [x] Chat commands system (/help, /rules, /tip, etc.) — built-in /help + custom
+- [x] Custom command creation in admin panel
 - [x] Slow mode (configurable message delay)
 - [ ] Different rate limits for new vs trusted users
 
