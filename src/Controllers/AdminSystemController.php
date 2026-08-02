@@ -265,13 +265,19 @@ final class AdminSystemController
             $page    = (int) $request->get('page', 1, 'get');
             $limit   = min((int) $request->get('limit', 100, 'get'), 200);
             $offset  = ($page - 1) * $limit;
+            $search  = trim((string) $request->get('search', '', 'get'));
 
-            // Get total count (analytical query with NOT IN subquery — verbatim).
-            $countResult = $db->query("
+            // Optional username filter (ILIKE); kept as a bound param either way.
+            $searchClause = $search !== '' ? " AND u.username ILIKE :search" : '';
+            $searchParams = $search !== '' ? ['search' => '%' . $search . '%'] : [];
+
+            // Get total count (analytical query with NOT IN subquery).
+            $countResult = $db->preparedQuery("
                 SELECT COUNT(DISTINCT u.username)
                 FROM user_activity u
                 WHERE u.username NOT IN (SELECT username FROM presence_sessions)
-            ");
+                {$searchClause}
+            ", $searchParams);
             $total      = (int) ($countResult ? $countResult->fetchColumn() : 0);
             $totalPages = ceil($total / $limit);
 
@@ -290,9 +296,10 @@ final class AdminSystemController
                 FROM user_activity u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username NOT IN (SELECT username FROM presence_sessions)
+                {$searchClause}
                 ORDER BY last_message_at DESC NULLS LAST
                 LIMIT :limit OFFSET :offset
-            ", ['limit' => $limit, 'offset' => $offset]);
+            ", ['limit' => $limit, 'offset' => $offset] + $searchParams);
 
             $inactiveUsers = $result ? $result->fetchAll() : [];
 

@@ -1539,6 +1539,7 @@
                                 <p>Currently online users</p>
                             </div>
                         </div>
+                        <input type="search" id="active-users-search" placeholder="🔍 Search by username…" oninput="activeUsersSearch = this.value; renderActiveUsersTable();" style="width: 100%; max-width: 360px; margin-bottom: 12px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;">
                         <div id="users-table"></div>
                     </div>
                 </div>
@@ -1554,6 +1555,7 @@
                 <div class="section" id="inactive-users-section">
                     <h2>Inactive Users</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Users who have left the chat or disconnected</p>
+                    <input type="search" id="inactive-users-search" placeholder="🔍 Search by username…" oninput="onInactiveUsersSearch(this.value)" style="width: 100%; max-width: 360px; margin-bottom: 12px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;">
                     <div id="inactive-users-table"></div>
                 </div>
                 <div id="inactive-user-details" class="section" style="display: none;">
@@ -1576,9 +1578,10 @@
                             <span>Create New User</span>
                         </button>
                     </div>
+                    <input type="search" id="admin-users-search" placeholder="🔍 Search by username or email…" oninput="adminUsersSearch = this.value; renderAdminUsersTable();" style="width: 100%; max-width: 360px; margin-bottom: 12px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;">
                     <div id="admin-users-table"></div>
                 </div>
-                
+
                 <div id="edit-admin-user-modal" class="section" style="display: none;">
                     <h2>Edit Admin User</h2>
                     <button class="btn" onclick="closeEditAdminUserModal()" style="margin-bottom: 15px;">← Back to Users</button>
@@ -1729,6 +1732,7 @@
                         </label>
                         <input type="file" id="fake-users-import-file" accept="application/json,.json" style="display: none;" onchange="importFakeUsers(this)">
                     </div>
+                    <input type="search" id="fake-users-search" placeholder="🔍 Search by nickname or location…" oninput="fakeUsersSearch = this.value; renderFakeUsersTable();" style="width: 100%; max-width: 360px; margin-bottom: 12px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;">
                     <div id="fake-users-table"></div>
                 </div>
 
@@ -5606,6 +5610,7 @@
         let fakeUsersCache = [];
         // Client-side sort state for the fake users table. dir: 1 asc, -1 desc.
         let fakeUsersSort = { key: 'created_at', dir: -1 };
+        let fakeUsersSearch = '';
         let editingFakeBotId = null;
 
         // Built-in goodbye variants (from the backend), shown as placeholders
@@ -5961,8 +5966,19 @@
                 return;
             }
 
+            // Client-side filter by nickname/location (the admin often looks for one).
+            const q = (fakeUsersSearch || '').trim().toLowerCase();
+            const filtered = q === '' ? fakeUsersCache : fakeUsersCache.filter(u =>
+                (u.nickname || '').toLowerCase().includes(q) ||
+                (u.location || '').toLowerCase().includes(q));
+
+            if (filtered.length === 0) {
+                table.innerHTML = `<p style="color: #6b7280; padding: 20px; text-align: center;">No fake users match “${escapeHtml(fakeUsersSearch)}”.</p>`;
+                return;
+            }
+
             const { key, dir } = fakeUsersSort;
-            const rows = [...fakeUsersCache].sort((a, b) => {
+            const rows = [...filtered].sort((a, b) => {
                 let av = a[key];
                 let bv = b[key];
                 if (key === 'created_at') { av = av ? Date.parse(av) : 0; bv = bv ? Date.parse(bv) : 0; }
@@ -7346,49 +7362,71 @@
             return div.innerHTML;
         }
 
+        let activeUsersCache = [];
+        let activeUsersSearch = '';
+
         async function loadUsers() {
             try {
                 const response = await fetch('/api/active-users');
                 const data = await response.json();
 
                 if (data.success) {
-                    const isRootOrOwner = currentUserRole === 'root' || currentUserRole === 'owner';
-                    
-                    // Filter users based on role
-                    const displayUsers = isRootOrOwner ? data.users : data.users.filter(u => !u.is_fake);
-                    
-                    const table = document.getElementById('users-table');
-                    table.innerHTML = `
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Username</th>
-                                    ${isRootOrOwner ? '<th>Type</th>' : ''}
-                                    <th>Joined At</th>
-                                    <th>Last Heartbeat</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${displayUsers.map(user => `
-                                    <tr>
-                                        <td>${escapeHtml(user.username)}</td>
-                                        ${isRootOrOwner ? `<td>${user.is_fake ? '<span style="color: #f59e0b;">Fake</span>' : '<span style="color: #10b981;">Real</span>'}</td>` : ''}
-                                        <td>${user.joined_at ? new Date(user.joined_at).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
-                                        <td>${user.last_heartbeat ? new Date(user.last_heartbeat).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
-                                        <td>
-                                            <button class="btn" onclick="viewUserDetails(\`${user.username.replace(/`/g, '\\`')}\`)">View Details</button>
-                                            <button class="btn btn-danger" onclick="kickUser(\`${user.username.replace(/`/g, '\\`')}\`)">Kick</button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
+                    activeUsersCache = data.users || [];
+                    renderActiveUsersTable();
                 }
             } catch (error) {
                 console.error('Failed to load users:', error);
             }
+        }
+
+        function renderActiveUsersTable() {
+            const table = document.getElementById('users-table');
+            if (!table) return;
+
+            const isRootOrOwner = currentUserRole === 'root' || currentUserRole === 'owner';
+            // Non-root admins never see fake users in this list.
+            let displayUsers = isRootOrOwner ? activeUsersCache : activeUsersCache.filter(u => !u.is_fake);
+
+            // Client-side filter by username.
+            const q = (activeUsersSearch || '').trim().toLowerCase();
+            if (q !== '') {
+                displayUsers = displayUsers.filter(u => (u.username || '').toLowerCase().includes(q));
+            }
+
+            if (displayUsers.length === 0) {
+                table.innerHTML = q !== ''
+                    ? `<p style="color: #6b7280; padding: 20px; text-align: center;">No users match “${escapeHtml(activeUsersSearch)}”.</p>`
+                    : '<p style="color: #6b7280; padding: 20px; text-align: center;">No active users.</p>';
+                return;
+            }
+
+            table.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            ${isRootOrOwner ? '<th>Type</th>' : ''}
+                            <th>Joined At</th>
+                            <th>Last Heartbeat</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${displayUsers.map(user => `
+                            <tr>
+                                <td>${escapeHtml(user.username)}</td>
+                                ${isRootOrOwner ? `<td>${user.is_fake ? '<span style="color: #f59e0b;">Fake</span>' : '<span style="color: #10b981;">Real</span>'}</td>` : ''}
+                                <td>${user.joined_at ? new Date(user.joined_at).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
+                                <td>${user.last_heartbeat ? new Date(user.last_heartbeat).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
+                                <td>
+                                    <button class="btn" onclick="viewUserDetails(\`${user.username.replace(/`/g, '\\`')}\`)">View Details</button>
+                                    <button class="btn btn-danger" onclick="kickUser(\`${user.username.replace(/`/g, '\\`')}\`)">Kick</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
         async function viewUserDetails(username, page = 1, search = '') {
@@ -8452,9 +8490,19 @@
             }
         }
         
+        let inactiveUsersSearch = '';
+        let inactiveUsersSearchTimer = null;
+        // Server-side search (the list is paginated), debounced so we don't fire a
+        // query per keystroke; always resets to page 1 for the new term.
+        function onInactiveUsersSearch(value) {
+            inactiveUsersSearch = value;
+            clearTimeout(inactiveUsersSearchTimer);
+            inactiveUsersSearchTimer = setTimeout(() => loadInactiveUsers(1), 300);
+        }
+
         async function loadInactiveUsers(page = 1) {
             try {
-                const response = await fetch(`/api/admin/inactive-users?page=${page}&limit=20`, {
+                const response = await fetch(`/api/admin/inactive-users?page=${page}&limit=20&search=${encodeURIComponent(inactiveUsersSearch)}`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await response.json();
@@ -9114,6 +9162,9 @@
             applyBotActivityNavVisibility();
         }
 
+        let adminUsersCache = [];
+        let adminUsersSearch = '';
+
         async function loadAdminUsers() {
             try {
                 const response = await fetch('/api/admin/users?include_inactive=true', {
@@ -9122,13 +9173,31 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    adminUsersCache = data.users || [];
+                    renderAdminUsersTable();
+                }
+            } catch (error) {
+                console.error('Failed to load admin users:', error);
+            }
+        }
+
+        function renderAdminUsersTable() {
                     const table = document.getElementById('admin-users-table');
-                    
-                    if (data.users.length === 0) {
-                        table.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No admin users found</p>';
+                    if (!table) return;
+
+                    // Client-side filter by username or email.
+                    const q = (adminUsersSearch || '').trim().toLowerCase();
+                    const users = q === '' ? adminUsersCache : adminUsersCache.filter(u =>
+                        (u.username || '').toLowerCase().includes(q) ||
+                        (u.email || '').toLowerCase().includes(q));
+
+                    if (users.length === 0) {
+                        table.innerHTML = q !== ''
+                            ? `<p style="color: #6b7280; padding: 20px; text-align: center;">No admin users match “${escapeHtml(adminUsersSearch)}”.</p>`
+                            : '<p style="color: #6b7280; padding: 20px; text-align: center;">No admin users found</p>';
                         return;
                     }
-                    
+
                     const getRoleBadge = (role) => {
                         const badges = {
                             'root': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🔴 ROOT</span>',
@@ -9153,7 +9222,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${data.users.map(user => `
+                                ${users.map(user => `
                                     <tr>
                                         <td><strong>${escapeHtml(user.username)}</strong></td>
                                         <td>${getRoleBadge(user.role)}</td>
@@ -9175,10 +9244,6 @@
                             </tbody>
                         </table>
                     `;
-                }
-            } catch (error) {
-                console.error('Failed to load admin users:', error);
-            }
         }
 
         async function createAdminUser() {

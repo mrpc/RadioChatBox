@@ -121,6 +121,33 @@ class AdminSystemControllerTest extends TestCase
     }
 
     /**
+     * The `search` query param filters inactive users by username (ILIKE): a
+     * seeded, currently-inactive user is found by a substring of its name and a
+     * non-matching term returns it in neither the list nor the total.
+     */
+    public function testInactiveUsersHonoursTheSearchParam(): void
+    {
+        $pdo = TestDatabase::connection();
+        $uname = 'inact_search_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        // user_activity row that is NOT in presence_sessions => "inactive".
+        $pdo->prepare('INSERT INTO user_activity (username, ip_address, last_seen, message_count) VALUES (?, ?, NOW(), 0)')
+            ->execute([$uname, '127.0.0.1']);
+
+        try {
+            $_GET = ['page' => '1', 'limit' => '20', 'search' => substr($uname, 0, 14)];
+            $body = json_decode((new AdminSystemController())->inactiveUsers()->getBody(), true);
+            $names = array_column($body['users'], 'username');
+            $this->assertContains($uname, $names, 'the seeded inactive user matches the search');
+
+            $_GET = ['page' => '1', 'limit' => '20', 'search' => 'zzz_no_such_user_zzz'];
+            $body = json_decode((new AdminSystemController())->inactiveUsers()->getBody(), true);
+            $this->assertSame(0, $body['pagination']['total'], 'a non-matching term finds nobody');
+        } finally {
+            $pdo->prepare('DELETE FROM user_activity WHERE username = ?')->execute([$uname]);
+        }
+    }
+
+    /**
      * GET /api/admin/messages returns success=true, a messages array, the
      * include_private / chat_mode flags and the pagination block. Called
      * unauthenticated-in-process, so include_private must be false.
