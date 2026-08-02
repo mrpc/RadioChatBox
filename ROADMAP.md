@@ -237,12 +237,12 @@ Bot Activity profile shortcuts, DM replies + reactions.
 **Priority:** HIGH - Enhances existing moderation tools
 
 ### Enhanced Moderator Controls
-- [ ] Mute user (temporary silence with duration)
+- [x] Mute user (temporary silence with duration) — same mechanism as timeout
 - [x] Timeout user (temporary mute, custom duration)
-- [ ] Warning system (escalating warnings with auto-timeout after 3 warnings)
+- [x] Warning system (escalating warnings with auto-timeout at a configurable threshold) — `WarningService` + admin UI
 - [x] In-chat moderator action buttons (inline delete + pin for admins)
-- [ ] Moderator activity audit logs
-- [ ] Moderator commands (/mute @user, /timeout @user 1h, /warn @user, /ban @user)
+- [x] Moderator activity audit logs — `ModerationLog` (admin moderation-log panel)
+- [x] Moderator commands (`/mute @user [min]`, `/unmute @user`, `/warn @user [reason]`, `/ban @user [reason]`) — `ModeratorCommandService`, moderator-gated
 - [ ] Moderator performance dashboard
 
 **Database Changes:**

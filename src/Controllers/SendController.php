@@ -45,6 +45,16 @@ final class SendController
                 throw new RuntimeException('Public chat is disabled. Please use private messages.');
             }
 
+            // Moderator slash-commands (/mute /unmute /warn /ban): executed against
+            // the target and NOT posted as a message. Role is checked in the service.
+            if (is_string($message) && \RadioChatBox\Services\ModeratorCommandService::looksLikeCommand($message)) {
+                $reply = (new \RadioChatBox\Services\ModeratorCommandService())
+                    ->handle($username, $sessionId, $message);
+                if ($reply !== null) {
+                    return Response::json(['success' => true, 'command' => true, 'response' => $reply]);
+                }
+            }
+
             // /poll — create a live poll from the chat (permitted roles only). It
             // is NOT posted as a normal message; the poll card is broadcast instead.
             if (is_string($message) && str_starts_with(ltrim($message), '/poll')) {
