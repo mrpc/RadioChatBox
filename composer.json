@@ -8,12 +8,6 @@
             "name": "Yannis - Pastis Glaros"
         }
     ],
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/mrpc/PramnosFramework.git"
-        }
-    ],
     "require": {
         "php": "^8.3",
         "ext-redis": "*",

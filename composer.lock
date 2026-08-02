@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cfd5fd61725cae405f6ed2dcfc6b2319",
+    "content-hash": "299419f4a4e6c4d53e69d0c3225a666c",
     "packages": [
         {
             "name": "brick/math",
@@ -1005,11 +1005,7 @@
                     "database/migrations/"
                 ]
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Pramnos\\Tests\\": "tests/"
-                }
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -1026,8 +1022,8 @@
                 "pramnos"
             ],
             "support": {
-                "source": "https://github.com/mrpc/PramnosFramework/tree/main",
-                "issues": "https://github.com/mrpc/PramnosFramework/issues"
+                "issues": "https://github.com/mrpc/PramnosFramework/issues",
+                "source": "https://github.com/mrpc/PramnosFramework/tree/main"
             },
             "time": "2026-08-01T22:59:57+00:00"
         },
