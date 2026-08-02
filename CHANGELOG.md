@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Message replies + reactions in direct messages** — DMs now get the same
+  reply-quote, reply action and emoji-reaction pills as public chat. DM
+  reactions live in their own `private_message_reactions` table (a schema-builder
+  migration) and broadcast over the private channel; the reply snapshot and
+  reactions are attached to DM history.
+- **No polling anywhere — everything is socket-driven.** The admin's Bot Activity
+  (was 4s), Dashboard (10s), Messages (20s) and Nickname Bans (60s) refreshes are
+  replaced by lightweight signals on the admin channel (`bot_activity`,
+  `photo_uploaded`, `messages_changed`, `moderation_changed`); the photo gallery
+  refreshes live on upload; and the radio **now-playing** is pushed to every
+  client on track change (Scheduler → `chat:updates` `now_playing`) instead of a
+  15s per-client poll. Only connection-health reconnects and the presence
+  heartbeat remain as timers.
+- **Search boxes** on the Fake Users, Active Users, Inactive Users and User
+  Management lists (client-side filter; Inactive Users is server-side/paginated).
+- **Profile shortcuts in the Bot Activity conversation view** — edit a fake
+  user's bot settings/profile and open the peer's user details straight from a
+  thread.
 - **WebSocket realtime transport** for both the chat and the admin panel, with
   automatic **SSE fallback**. Clients ask `/api/realtime-config`; WebSocket is
   advertised only when the admin enabled it, a public host is set and the
@@ -28,6 +46,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native 2FA/passkeys, no forced password reset).
 
 ### Fixed
+- **Bot writing greeklish mid-Greek-chat**: an emoji/number/punctuation-only
+  peer message no longer flips the reply to greeklish (it required "no Greek
+  chars" but not "has latin letters"). Separately, the model's transliterated
+  reply is never fed back as history — the Greek source is stored
+  (`bot_original_message`) and used for context, while the reader still sees the
+  greeklish it was sent.
+- **Dashboard "messages today = 0"**: the stats summary endpoint no longer 500s
+  when snapshot/aggregation priming or a week/month/year rollup fails — those are
+  best-effort now, so the real-time today count always reaches the client.
+- **Admin photo gallery slow (10s+)**: a partial index serves the "newest active
+  first" list and the paginator total is cached, so a large, soft-delete-bloated
+  attachments table no longer stalls the page; legacy NULL `is_deleted` rows are
+  shown/counted (`IS NOT TRUE`).
+- **Take over from Bot Activity** now fills the Impersonate form reliably (was a
+  race between the tab switch's background load and the form fill).
 - **GIF picker never appeared**: the chat fetched the removed `api/settings.php`
   (404); use the clean `/api/settings` route.
 - Sending a message now refreshes the sender's presence, so an active user whose
