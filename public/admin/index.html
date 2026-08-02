@@ -7205,7 +7205,7 @@
             const fake = currentBotThread.fakeUser, peer = currentBotThread.peer;
             let messages = [];
             try {
-                const res = await fetch(`/api/private-message?username=${encodeURIComponent(fake)}&with_user=${encodeURIComponent(peer)}&session_id=admin&admin=true`, {
+                const res = await fetch(`/api/private-message?username=${encodeURIComponent(fake)}&with_user=${encodeURIComponent(peer)}&session_id=admin&admin=true&full=1`, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
                 });
                 const data = await res.json();

@@ -779,6 +779,8 @@ final class MessageActionController
             $sessionId = $request->get('session_id', '', 'get');
             $withUser  = $request->get('with_user', null, 'get');
             $adminMode = $request->get('admin', null, 'get') === 'true';
+            // Admin can request the ENTIRE conversation (no cap) — used by Print.
+            $fullHistory = $request->get('full', null, 'get') === '1';
 
             // Admin mode returns ALL messages between two users, bypassing the
             // session isolation that scopes the normal read — so it must be gated
@@ -801,7 +803,10 @@ final class MessageActionController
             if ($withUser) {
                 // Get conversation with specific user
                 if ($adminMode) {
-                    // Admin mode: Get ALL messages between these two users, ignoring session_id
+                    // Admin mode: Get ALL messages between these two users, ignoring
+                    // session_id. `full=1` drops the cap entirely (Print wants the
+                    // whole conversation); otherwise a 500-row safety cap applies.
+                    $limitClause = $fullHistory ? '' : 'LIMIT 500';
                     $result = $db->preparedQuery("
                         SELECT pm.*,
                                a.attachment_id, a.filename, a.file_path, a.file_size,
@@ -815,7 +820,7 @@ final class MessageActionController
                         WHERE ((pm.from_username = ? AND pm.to_username = ?)
                             OR (pm.from_username = ? AND pm.to_username = ?))
                         ORDER BY pm.created_at DESC
-                        LIMIT 500
+                        {$limitClause}
                     ", [$username, $withUser, $withUser, $username]);
                 } else {
                     // Check if talking to a fake user
