@@ -744,6 +744,31 @@ class ChatServiceTest extends TestCase
     }
 
     /**
+     * refreshPresence upserts: it recreates a missing presence row (so an active
+     * user who was cleaned up shows online again) and does not duplicate on repeat.
+     */
+    public function testRefreshPresenceRecreatesAndDoesNotDuplicate()
+    {
+        $pdo = TestDatabase::connection();
+        $user = 'presence_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sess = 'psess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        try {
+            // No presence row yet — a bare UPDATE would touch nothing.
+            $this->chatService->refreshPresence($user, $sess, '203.0.113.7');
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM presence_sessions WHERE username = ? AND session_id = ?');
+            $stmt->execute([$user, $sess]);
+            $this->assertSame(1, (int) $stmt->fetchColumn(), 'presence row is created');
+
+            // Repeat: still exactly one row (upsert), heartbeat refreshed.
+            $this->chatService->refreshPresence($user, $sess, '203.0.113.7');
+            $stmt->execute([$user, $sess]);
+            $this->assertSame(1, (int) $stmt->fetchColumn(), 'no duplicate on repeat');
+        } finally {
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$user]);
+        }
+    }
+
+    /**
      * A timed-out user is blocked on every send path (communicationBlockReason)
      * until the timeout is lifted — without being disconnected.
      */

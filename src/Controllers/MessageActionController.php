@@ -493,6 +493,11 @@ final class MessageActionController
             // Get IP address for violation tracking
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
+            // Sending a DM is activity: refresh (or recreate) the sender's presence
+            // so an actively-chatting user is not shown offline. Public chat does the
+            // same in ChatService::postMessage; DMs went through here without it.
+            (new ChatService())->refreshPresence($fromUsername, $fromSessionId, $ipAddress);
+
             // A banned (IP/nickname) or kicked user cannot communicate with anyone —
             // enforce it here too, not only on the public chat send path.
             $banReason = (new ChatService())->communicationBlockReason(trim($fromUsername), $ipAddress, $fromSessionId);

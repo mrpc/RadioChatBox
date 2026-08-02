@@ -101,7 +101,7 @@ class ChatService
         // Sending a message IS activity: refresh the sender's presence so a user
         // whose heartbeat lapsed (mobile background, flaky network) does not show
         // as offline while actively chatting.
-        $this->touchPresence($username, $sessionId);
+        $this->touchPresence($username, $sessionId, $ipAddress, isset($userData['user_id']) ? (int) $userData['user_id'] : null);
 
         // Publish to subscribers
         BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL, 'message', $messageData);
@@ -132,16 +132,41 @@ class ChatService
      * last_heartbeat for the sender's session. Any interaction that reaches this
      * keeps the user "online". Best-effort — never fails the surrounding action.
      */
-    private function touchPresence(string $username, string $sessionId): void
+    private function touchPresence(string $username, string $sessionId, string $ipAddress = '', ?int $userId = null): void
+    {
+        $this->refreshPresence($username, $sessionId, $ipAddress, $userId);
+    }
+
+    /**
+     * Mark a user online by refreshing (or recreating) their presence session.
+     * An UPSERT, not a bare UPDATE: if an inactivity cleanup already removed the
+     * row, a plain UPDATE would touch nothing and the user — who is clearly active,
+     * since they just did something — would stay "offline". Called on every message
+     * send (public and DM) so an actively-chatting user always shows online.
+     * Best-effort; never fails the surrounding action.
+     */
+    public function refreshPresence(string $username, string $sessionId, string $ipAddress = '', ?int $userId = null): void
     {
         if ($username === '' || $sessionId === '') {
             return;
         }
+        $ip = $ipAddress !== '' ? $ipAddress : '0.0.0.0'; // ip_address is NOT NULL
         try {
-            $this->db->preparedQuery(
-                'UPDATE presence_sessions SET last_heartbeat = NOW()
-                 WHERE username = :username AND session_id = :session_id',
-                ['username' => $username, 'session_id' => $sessionId]
+            $qb = $this->db->queryBuilder()->from('presence_sessions');
+            // Insert a fresh presence row, or (on the username+session unique
+            // conflict) refresh the heartbeat and ip. user_id is left out of the
+            // conflict-update so an existing row keeps its user link.
+            $qb->upsert(
+                [
+                    'username'       => $username,
+                    'session_id'     => $sessionId,
+                    'ip_address'     => $ip,
+                    'user_id'        => $userId,
+                    'last_heartbeat' => $qb->raw('NOW()'),
+                    'joined_at'      => $qb->raw('NOW()'),
+                ],
+                ['username', 'session_id'],
+                ['last_heartbeat', 'ip_address']
             );
         } catch (\Throwable) {
             // presence is best-effort
