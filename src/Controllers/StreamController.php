@@ -50,9 +50,14 @@ final class StreamController
         // not yet send a token (they keep today's behaviour until the client ships
         // the token); once every client sends one the fallback can be dropped.
         $token       = (string) Request::getInstance()->get('token', '', 'get');
-        $verified    = $token !== '' ? (new RealtimeToken())->usernameFor($token) : null;
+        $claims      = $token !== '' ? (new RealtimeToken())->verify($token) : null;
+        $verified    = $claims['u'] ?? null;
         $rawUsername = (string) Request::getInstance()->get('username', '', 'get');
         $username    = $verified ?? ($rawUsername !== '' ? $rawUsername : null);
+        // The token also carries the session id, so a live connection can drive
+        // presence server-side (in addition to the client's HTTP heartbeat).
+        $sessionId   = $claims['sid'] ?? null;
+        $clientIp    = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
         $chatService = new ChatService();
         $chatMode    = $chatService->getSetting('chat_mode', 'public');
         $prefix      = ConnectionManager::getInstance()->prefix();
@@ -73,8 +78,16 @@ final class StreamController
         $driver = $this->driver
             ?? new RedisDriver(['prefix' => $prefix], static fn () => ConnectionManager::getInstance()->newConnection());
 
-        return StreamedResponse::sse(function (SseWriter $sse) use ($username, $chatService, $chatMode, $publicMode, $driver, $channels) {
+        return StreamedResponse::sse(function (SseWriter $sse) use ($username, $sessionId, $clientIp, $chatService, $chatMode, $publicMode, $driver, $channels) {
             $sse->comment('SSE connection established');
+
+            // The live connection is itself proof of presence: refresh it on connect
+            // (the SSE reconnects roughly every 95s, so this keeps repeating server-
+            // side) so an active user stays online even if their HTTP heartbeat lags.
+            // The client heartbeat remains the safety net; this only adds to it.
+            if ($username !== null && $sessionId !== null && $sessionId !== '') {
+                $chatService->refreshPresence($username, $sessionId, $clientIp);
+            }
 
             // Initial snapshot.
             if ($publicMode) {
