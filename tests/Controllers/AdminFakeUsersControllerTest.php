@@ -96,6 +96,14 @@ class AdminFakeUsersControllerTest extends TestCase
         $_POST = ['id' => $id, 'bot_enabled' => true, 'bot_persona' => 'friendly', 'bot_max_messages' => 4];
         $this->assertSame(200, (new AdminFakeUsersController())->updateBot()->getStatusCode());
 
+        // Regression: bot_allow_explicit must survive the controller whitelist.
+        $_POST = ['id' => $id, 'bot_allow_explicit' => true];
+        $this->assertSame(200, (new AdminFakeUsersController())->updateBot()->getStatusCode());
+        $this->assertTrue((bool) (new FakeUserService())->getFakeUserByNickname($nick)['bot_allow_explicit']);
+        $_POST = ['id' => $id, 'bot_allow_explicit' => false];
+        (new AdminFakeUsersController())->updateBot();
+        $this->assertFalse((bool) (new FakeUserService())->getFakeUserByNickname($nick)['bot_allow_explicit']);
+
         $_POST = ['id' => $id];
         $this->assertSame(200, (new AdminFakeUsersController())->toggle()->getStatusCode());
 

@@ -213,6 +213,7 @@ final class AdminFakeUsersController
 
             $allowed = [
                 'bot_enabled',
+                'bot_allow_explicit',
                 'bot_persona',
                 'bot_custom_prompt',
                 'bot_self_facts',
