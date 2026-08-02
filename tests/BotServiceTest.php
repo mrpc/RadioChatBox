@@ -135,6 +135,21 @@ class BotServiceTest extends TestCase
     }
 
     /**
+     * The brevity rule (short chat replies, not verbose paragraphs) is always
+     * present — including under a custom prompt — since long analytical replies
+     * are a bot tell. It yields to an explicit per-bot instruction.
+     */
+    public function testTheBrevityGuardrailIsAlwaysPresent(): void
+    {
+        $generated = BotService::buildSystemPrompt(['nickname' => 'Maria']);
+        $this->assertStringContainsString('ΜΗΚΟΣ ΑΠΑΝΤΗΣΗΣ', $generated);
+        $this->assertStringContainsString('Γράφε ΣΥΝΤΟΜΑ', $generated);
+
+        $custom = BotService::buildSystemPrompt(['nickname' => 'Maria', 'bot_custom_prompt' => 'δικό μου']);
+        $this->assertStringContainsString('ΜΗΚΟΣ ΑΠΑΝΤΗΣΗΣ', $custom);
+    }
+
+    /**
      * "Are you a bot?" answers must not feel canned: the guardrail no longer
      * hands the model stock phrases to copy, and tells it to vary its wording.
      */

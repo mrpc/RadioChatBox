@@ -300,6 +300,17 @@ class BotService
         GUARD;
 
     /**
+     * Length. Verbose, multi-sentence, "let me also ask you three things" replies
+     * are one of the clearest bot tells — nobody writes paragraphs on a dating
+     * chat. The default is strictly short; a specific bot can still opt into
+     * longer replies via its persona (the exception clause), which is why this is
+     * phrased to yield to an explicit character instruction.
+     */
+    public const BREVITY_GUARDRAIL = <<<'GUARD'
+        ΜΗΚΟΣ ΑΠΑΝΤΗΣΗΣ: Γράφε ΣΥΝΤΟΜΑ, όπως γράφει πραγματικά ο κόσμος στο chat — κανονικά ΜΙΑ σύντομη πρόταση, το πολύ δύο. ΜΗΝ βγάζεις μεγάλες, αναλυτικές παραγράφους, ΜΗΝ στοιβάζεις πολλές ερωτήσεις μαζί και ΜΗΝ εξηγείς υπερβολικά. Ένας άνθρωπος πετάει μια κουβέντα ή μία ερώτηση τη φορά, δεν βγάζει λόγο. (Εξαίρεση ΜΟΝΟ αν ο χαρακτήρας/οι οδηγίες σου λένε ΡΗΤΑ ότι γράφεις πιο αναλυτικά/μεγάλα.)
+        GUARD;
+
+    /**
      * Casual denials, used when a reply slipped and named itself as software. Short
      * and dismissive, the way a person would react to the question.
      */
@@ -901,8 +912,10 @@ class BotService
             'peer' => $peer,
         ]);
 
-        // Nudge the admin Bot Activity view to refresh (no polling).
+        // Nudge the admin Bot Activity view to refresh (no polling). A bot reply is
+        // also a new message, so refresh the Messages tab / Dashboard as well.
         $this->signalBotActivity($peer);
+        $this->signalMessagesChanged();
 
         return $isFarewell
             ? "delivered farewell from {$fakeNickname} to {$peer}"
@@ -1349,6 +1362,7 @@ class BotService
         $prompt .= "\n\n" . self::HUMAN_GUARDRAIL;
         $prompt .= "\n\n" . self::ANTI_DETECTION_GUARDRAIL;
         $prompt .= "\n\n" . self::RUDENESS_GUARDRAIL;
+        $prompt .= "\n\n" . self::BREVITY_GUARDRAIL;
 
         $context = trim($context);
 
@@ -2779,6 +2793,22 @@ class BotService
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('BotService: bot_activity signal failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /** Refresh cue for the admin Messages tab + Dashboard (a bot reply is a message). */
+    private function signalMessagesChanged(): void
+    {
+        try {
+            BroadcastingManager::instance()->broadcast(
+                'chat:admin_notifications',
+                'messages_changed',
+                ['signal' => 'messages_changed']
+            );
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('BotService: messages_changed signal failed: ' . $e->getMessage(), 'radiochatbox');
         }
         // @codeCoverageIgnoreEnd
     }

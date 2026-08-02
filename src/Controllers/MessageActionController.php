@@ -648,6 +648,21 @@ final class MessageActionController
 
             BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', $messageData);
 
+            // Refresh the admin Messages tab + Dashboard live. A private-mode install
+            // has no public messages, so DMs are the only message activity there —
+            // without this the admin Message History never updated in real time.
+            try {
+                BroadcastingManager::instance()->broadcast(
+                    'chat:admin_notifications',
+                    'messages_changed',
+                    ['signal' => 'messages_changed']
+                );
+            // @codeCoverageIgnoreStart
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('messages_changed signal failed: ' . $e->getMessage(), 'radiochatbox');
+            }
+            // @codeCoverageIgnoreEnd
+
             // If message was sent to a fake user, create admin notification —
             // UNLESS an AI bot is going to answer it. A bot handles its own
             // conversations, so alerting the admin about every DM to it is just
