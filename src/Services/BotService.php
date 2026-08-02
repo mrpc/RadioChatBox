@@ -1776,6 +1776,11 @@ class BotService
      * has no Greek characters and passes through unchanged. A peer writing Greek
      * script keeps the reply in Greek.
      *
+     * The trigger requires actual LATIN LETTERS, not merely the absence of Greek:
+     * a single emoji-only, number-only or punctuation-only message (e.g. "🥹")
+     * must not flip an otherwise-Greek conversation to greeklish — that was the
+     * cause of stray transliterated replies mid-Greek-chat.
+     *
      * @param array<string,mixed> $fakeUser
      */
     public static function resolveEnforceLanguage(array $fakeUser, string $peerMessage): string
@@ -1785,6 +1790,7 @@ class BotService
         if ($language === 'auto'
             && $peerMessage !== ''
             && !preg_match('/\p{Greek}/u', $peerMessage)
+            && preg_match('/[a-zA-Z]/', $peerMessage)
         ) {
             return 'greeklish';
         }

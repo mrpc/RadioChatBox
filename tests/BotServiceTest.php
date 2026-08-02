@@ -737,6 +737,14 @@ class BotServiceTest extends TestCase
             // an English reply (no Greek characters), so English is preserved.
             'auto english peer'        => ['auto', 'how are you', 'greeklish'],
             'auto empty peer'          => ['auto', '', 'auto'],
+            // Regression: a peer message with no latin letters must NOT flip an
+            // otherwise-Greek conversation to greeklish. A lone emoji, number or
+            // punctuation lacks Greek chars but is not greeklish either.
+            'auto emoji-only peer'     => ['auto', '🥹', 'auto'],
+            'auto punctuation peer'    => ['auto', '...!!', 'auto'],
+            'auto number-only peer'    => ['auto', '2025', 'auto'],
+            // A latin letter among symbols is genuine greeklish → still flips.
+            'auto latin-among-symbols' => ['auto', 'ok 🙂', 'greeklish'],
             // Explicit settings are honoured as-is.
             'explicit greeklish'       => ['greeklish', 'anything', 'greeklish'],
             'explicit greek'           => ['greek', 'ti kaneis', 'greek'],
