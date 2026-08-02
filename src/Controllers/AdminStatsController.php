@@ -332,12 +332,22 @@ final class AdminStatsController
                 $to   = $req->get('to', (new \DateTimeImmutable('+1 day'))->format('Y-m-d 00:00:00'), 'get');
                 $limitRaw = $req->get('limit', null, 'get');
                 $limit = $limitRaw === null ? 50 : min((int) $limitRaw, 200);
+                $tracks = $service->getTopTracks($from, $to, $limit);
+                // Attach up/down vote totals per track (keyed by catalog track id).
+                $voteTotals = (new \RadioChatBox\Services\TrackVoteService())
+                    ->totalsByTrackIds(array_column($tracks, 'track_id'));
+                foreach ($tracks as &$trk) {
+                    $tv = $voteTotals[(int) ($trk['track_id'] ?? 0)] ?? ['up' => 0, 'down' => 0];
+                    $trk['votes_up'] = $tv['up'];
+                    $trk['votes_down'] = $tv['down'];
+                }
+                unset($trk);
                 return Response::json([
                     'success' => true,
                     'mode'    => 'top',
                     'from'    => $from,
                     'to'      => $to,
-                    'tracks'  => $service->getTopTracks($from, $to, $limit),
+                    'tracks'  => $tracks,
                 ]);
             } elseif ($mode === 'artists') {
                 // Most-played artists over the last N days (default 7).
@@ -445,20 +455,37 @@ final class AdminStatsController
                 if (!$track) {
                     return Response::json(['error' => 'Track not found'], 404);
                 }
+                // Every vote this track ever received (across replays), matched by
+                // both its catalog id and its display.
+                $votes = (new \RadioChatBox\Services\TrackVoteService())
+                    ->totalsForTrack($trackId, (string) ($track['display'] ?? ''));
                 return Response::json([
                     'success' => true,
                     'mode'    => 'track',
                     'track'   => $track,
+                    'votes'   => $votes,
                     'plays'   => $service->getTrackPlays($trackId),
                 ]);
             } else {
                 // Summary over the last N days (default 7).
                 $daysRaw = $req->get('days', null, 'get');
                 $days = $daysRaw === null ? 7 : (int) $daysRaw;
+                $summary = $service->getSummary($days);
+                // Attach vote totals to the "most played" list (keyed by track id).
+                if (!empty($summary['top_tracks']) && is_array($summary['top_tracks'])) {
+                    $voteTotals = (new \RadioChatBox\Services\TrackVoteService())
+                        ->totalsByTrackIds(array_column($summary['top_tracks'], 'track_id'));
+                    foreach ($summary['top_tracks'] as &$trk) {
+                        $tv = $voteTotals[(int) ($trk['track_id'] ?? 0)] ?? ['up' => 0, 'down' => 0];
+                        $trk['votes_up'] = $tv['up'];
+                        $trk['votes_down'] = $tv['down'];
+                    }
+                    unset($trk);
+                }
                 return Response::json([
                     'success' => true,
                     'mode'    => 'summary',
-                    'summary' => $service->getSummary($days),
+                    'summary' => $summary,
                 ]);
             }
         } catch (InvalidArgumentException $e) {

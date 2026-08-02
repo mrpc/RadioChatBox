@@ -111,6 +111,58 @@ class TrackVoteService
         return $id === false || $id === null ? null : (int) $id;
     }
 
+    /**
+     * Up/down totals for a set of catalog track ids, for the admin track list.
+     * Returns [track_id => ['up' => int, 'down' => int]] (only ids with votes).
+     *
+     * @param array<int, int> $trackIds
+     * @return array<int, array{up:int, down:int}>
+     */
+    public function totalsByTrackIds(array $trackIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $trackIds), fn ($i) => $i > 0)));
+        if ($ids === []) {
+            return [];
+        }
+        $place = implode(',', array_fill(0, count($ids), '?'));
+        $rows = $this->db->preparedQuery(
+            "SELECT track_id,
+                    COALESCE(SUM(CASE WHEN vote > 0 THEN 1 ELSE 0 END), 0) AS up,
+                    COALESCE(SUM(CASE WHEN vote < 0 THEN 1 ELSE 0 END), 0) AS down
+             FROM track_votes
+             WHERE track_id IN ($place)
+             GROUP BY track_id",
+            $ids
+        );
+        $out = [];
+        foreach (($rows ? $rows->fetchAll() : []) as $row) {
+            $out[(int) $row['track_id']] = ['up' => (int) $row['up'], 'down' => (int) $row['down']];
+        }
+        return $out;
+    }
+
+    /**
+     * Complete up/down totals for one track, matched by BOTH its catalog id and
+     * its display so every vote it ever received (across replays, or before it
+     * was catalogued) is counted.
+     *
+     * @return array{up:int, down:int}
+     */
+    public function totalsForTrack(int $trackId, string $trackDisplay): array
+    {
+        $trackDisplay = mb_substr(trim($trackDisplay), 0, 500);
+        $row = $this->db->preparedQuery(
+            'SELECT
+                COALESCE(SUM(CASE WHEN vote > 0 THEN 1 ELSE 0 END), 0) AS up,
+                COALESCE(SUM(CASE WHEN vote < 0 THEN 1 ELSE 0 END), 0) AS down
+             FROM track_votes
+             WHERE (:id > 0 AND track_id = :id) OR track_display = :d',
+            ['id' => $trackId, 'd' => $trackDisplay]
+        );
+        $fields = $row ? $row->fetch() : null;
+        return ['up' => (int) ($fields['up'] ?? 0), 'down' => (int) ($fields['down'] ?? 0)];
+    }
+
     /** This session's current vote for a track: 1, -1 or 0. */
     private function currentVote(string $trackDisplay, string $session): int
     {

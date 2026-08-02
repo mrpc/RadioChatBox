@@ -4422,11 +4422,15 @@
                     html += `<h3 style="margin:0 0 10px;">Most played</h3>`;
                     html += `<table style="width:100%; border-collapse:collapse;"><thead><tr>
                         <th style="${TRACK_TH} width:40px;">#</th><th style="${TRACK_TH}">Track</th>
-                        <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
+                        <th style="${TRACK_TH} width:80px;">Plays</th><th style="${TRACK_TH} width:110px;">Votes</th><th style="${TRACK_TH} width:180px;">Last played</th></tr></thead><tbody>`;
                     top.forEach((t, i) => {
+                        const vu = t.votes_up || 0, vd = t.votes_down || 0;
+                        const votesCell = (vu || vd)
+                            ? `<span style="color:#16a34a;">👍 ${vu}</span> <span style="color:#dc2626;">👎 ${vd}</span>`
+                            : '<span style="color:#9ca3af;">—</span>';
                         html += `<tr><td style="${TRACK_TD}">${i + 1}</td>
                             <td style="${TRACK_TD}"><a href="${tsHref('track', parseInt(t.track_id, 10))}" style="color:#667eea; cursor:pointer;">${escapeHtml(t.display)}</a></td>
-                            <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
+                            <td style="${TRACK_TD}"><strong>${t.plays}</strong></td><td style="${TRACK_TD}">${votesCell}</td><td style="${TRACK_TD}">${escapeHtml(formatTrackDateTime(t.last_played))}</td></tr>`;
                     });
                     html += `</tbody></table>`;
                 }
@@ -4829,6 +4833,12 @@
                     <img id="track-detail-cover" alt="" style="display:none; width:72px; height:72px; border-radius:6px; object-fit:cover;">
                     <h3 style="margin:0;">${escapeHtml(t.display || '')}</h3></div>`;
                 html += `<p style="color:#6b7280; margin:0 0 16px;">Total plays: <strong>${t.play_count || plays.length}</strong> · First: ${escapeHtml(formatTrackDateTime(t.first_played_at))} · Last: ${escapeHtml(formatTrackDateTime(t.last_played_at))}</p>`;
+                // Accumulated listener votes for this track (across all its plays).
+                const votes = data.votes || { up: 0, down: 0 };
+                html += `<p style="margin:0 0 16px; font-size:15px;">
+                    <span title="Thumbs up" style="margin-right:14px;">👍 <strong>${votes.up || 0}</strong></span>
+                    <span title="Thumbs down">👎 <strong>${votes.down || 0}</strong></span>
+                </p>`;
 
                 // Artist / album links
                 let linkLine = '';

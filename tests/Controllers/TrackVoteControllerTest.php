@@ -109,6 +109,32 @@ class TrackVoteControllerTest extends TestCase
         $this->assertSame($trackId, (int) $stored->fetchColumn());
     }
 
+    /** Admin aggregation: totals by track id and the complete per-track total. */
+    public function testAdminVoteTotals(): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO tracks (display, play_count) VALUES (?, 1) RETURNING id');
+        $stmt->execute([$this->display]);
+        $trackId = (int) $stmt->fetchColumn();
+
+        $service = new TrackVoteService();
+        $service->vote($this->display, $this->session, $this->user, 'up');
+        $service->vote($this->display, 'other-session-' . $this->session, 'someone', 'down');
+
+        // Batch totals keyed by track id (for the admin list).
+        $byId = $service->totalsByTrackIds([$trackId]);
+        $this->assertSame(1, $byId[$trackId]['up']);
+        $this->assertSame(1, $byId[$trackId]['down']);
+
+        // Complete per-track total (id OR display) for the detail view.
+        $total = $service->totalsForTrack($trackId, $this->display);
+        $this->assertSame(1, $total['up']);
+        $this->assertSame(1, $total['down']);
+
+        // Clean up the extra vote (the display-scoped teardown covers the rest).
+        $this->pdo->prepare('DELETE FROM track_votes WHERE voter_session = ?')
+            ->execute(['other-session-' . $this->session]);
+    }
+
     /** A bad direction is rejected. */
     public function testInvalidDirectionThrows(): void
     {
