@@ -905,33 +905,46 @@ class ChatService
      *
      * OPTIMIZED: Rate-limits user list updates to reduce SSE spam
      */
-    public function updateHeartbeat(string $username, string $sessionId): bool
+    public function updateHeartbeat(string $username, string $sessionId, string $ipAddress = ''): bool
     {
         try {
             // Clean up inactive sessions first (this might change the user list)
             $this->cleanupInactiveSessions();
 
-            $result = $this->db->preparedQuery(
-                'UPDATE presence_sessions
-                 SET last_heartbeat = NOW()
-                 WHERE username = :username AND session_id = :session_id',
-                [
-                    'username' => $username,
-                    'session_id' => $sessionId,
-                ]
-            );
+            // UPSERT, not a bare UPDATE. cleanupInactiveSessions() above may have
+            // just removed this very session (a single missed/late heartbeat), and a
+            // plain UPDATE would then match nothing — so a user whose browser is
+            // still open and beating would stay offline forever, never recreated.
+            // The user is clearly present (they just beat), so (re)create the row.
+            $this->refreshPresence($username, $sessionId, $ipAddress, $this->resolveUserId($username));
 
             // PERFORMANCE OPTIMIZATION: Only publish user updates every 10 seconds
             // Heartbeats happen frequently (every 10-30s per user), no need to spam SSE
             $this->publishUserUpdateThrottled();
 
-            return $result !== false;
+            return true;
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to update heartbeat: " . $e->getMessage(), 'radiochatbox');
             return false;
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /** userid for a registered username (null for a guest), for presence upserts. */
+    private function resolveUserId(string $username): ?int
+    {
+        try {
+            $r = $this->db->queryBuilder()
+                ->from('users')
+                ->select(['userid'])
+                ->where('username', '=', $username)
+                ->first();
+            $uid = ($r && $r->numRows > 0) ? ($r->fields['userid'] ?? null) : null;
+            return $uid !== null ? (int) $uid : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

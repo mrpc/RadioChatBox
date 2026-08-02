@@ -769,6 +769,31 @@ class ChatServiceTest extends TestCase
     }
 
     /**
+     * A heartbeat recreates a session that a prior cleanup removed, instead of the
+     * old UPDATE-only behaviour that left an active user offline forever once their
+     * row was gone.
+     */
+    public function testHeartbeatRecreatesACleanedUpSession()
+    {
+        $pdo = TestDatabase::connection();
+        $user = 'hb_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sess = 'hbsess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $count = $pdo->prepare('SELECT COUNT(*) FROM presence_sessions WHERE username = ? AND session_id = ?');
+        try {
+            // No session at all (as if a cleanup had removed it).
+            $count->execute([$user, $sess]);
+            $this->assertSame(0, (int) $count->fetchColumn());
+
+            $this->chatService->updateHeartbeat($user, $sess, '198.51.100.9');
+
+            $count->execute([$user, $sess]);
+            $this->assertSame(1, (int) $count->fetchColumn(), 'the heartbeat recreated the presence row');
+        } finally {
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$user]);
+        }
+    }
+
+    /**
      * A timed-out user is blocked on every send path (communicationBlockReason)
      * until the timeout is lifted — without being disconnected.
      */

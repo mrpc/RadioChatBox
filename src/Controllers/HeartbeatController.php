@@ -44,13 +44,14 @@ final class HeartbeatController
 
             $username  = (string) $input['username'];
             $sessionId = (string) $input['sessionId'];
+            $ipAddress = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
 
             $chatService = new ChatService();
 
             // Balance fake users first, then update the heartbeat (which publishes
             // the user update carrying the correct count).
             $chatService->balanceFakeUsers();
-            $chatService->updateHeartbeat($username, $sessionId);
+            $chatService->updateHeartbeat($username, $sessionId, $ipAddress);
 
             $sessionInfo = $chatService->getSessionInfo($username, $sessionId);
 
