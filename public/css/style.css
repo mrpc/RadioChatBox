@@ -1243,6 +1243,60 @@ body {
     background: rgba(239, 68, 68, 0.1);
 }
 
+.pin-message-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+.pin-message-btn:hover {
+    background: rgba(102, 126, 234, 0.12);
+}
+
+/* ---- Pinned messages bar (top of the chat) ---- */
+.pinned-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(102, 126, 234, 0.10);
+    border-bottom: 1px solid rgba(102, 126, 234, 0.25);
+    padding: 6px 10px;
+    backdrop-filter: blur(4px);
+}
+.pinned-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 2px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #374151;
+}
+.pinned-item + .pinned-item { border-top: 1px dashed rgba(102, 126, 234, 0.2); }
+.pinned-icon { flex-shrink: 0; }
+.pinned-text { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+.pinned-author { font-weight: 700; color: #4f46e5; }
+.pinned-unpin {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 4px;
+}
+.pinned-unpin:hover { color: #ef4444; }
+@media (prefers-color-scheme: dark) {
+    .pinned-bar { background: rgba(129, 140, 248, 0.14); border-bottom-color: rgba(129, 140, 248, 0.3); }
+    .pinned-item { color: #cbd5e1; }
+    .pinned-author { color: #a5b4fc; }
+}
+
 /* ===================== Emoji reactions ===================== */
 .react-message-btn {
     background: transparent;

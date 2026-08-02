@@ -188,9 +188,9 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] User blocking/ignoring system
 - [ ] Blocked users' messages hidden from view
 - [ ] Prevent private messages from blocked users
-- [ ] Message pinning (moderators/admins)
-- [ ] Pinned messages display at top of chat
-- [ ] Pin expiration time
+- [x] Message pinning (moderators/admins)
+- [x] Pinned messages display at top of chat
+- [x] Pin expiration time (optional auto-unpin)
 - [x] Chat commands system (/help, /rules, /tip, etc.) — built-in /help + custom
 - [x] Custom command creation in admin panel
 - [x] Slow mode (configurable message delay)

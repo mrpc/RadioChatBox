@@ -2341,7 +2341,7 @@ class RadioChatBox {
                 this._dispatchRealtimeEvent(name, data);
             });
             ['message', 'history', 'users', 'config', 'private', 'clear',
-             'message_deleted', 'message_edited', 'reaction', 'now_playing'].forEach(bind);
+             'message_deleted', 'message_edited', 'reaction', 'now_playing', 'pins_changed'].forEach(bind);
 
             this.eventSource.addEventListener('reconnect', () => {
                 console.log('Server requested reconnect');
@@ -2385,6 +2385,8 @@ class RadioChatBox {
                 // now-playing widget here so a client that reconnected after missing
                 // a track-change push shows the current track (still no polling).
                 this.updateNowPlaying();
+                // Same for the pinned bar (a pin/unpin may have happened offline).
+                this.refreshPinnedBar();
                 break;
             case 'private':         this.handlePrivateMessage(data); break;
             case 'clear':           this.handleChatClear(); break;
@@ -2392,6 +2394,97 @@ class RadioChatBox {
             case 'message_edited':  this.handleMessageEdited(data.message_id, data.message, data.edited_at); break;
             case 'reaction':        this.handleReactionUpdate(data); break;
             case 'now_playing':     this.renderNowPlaying(data && data.nowPlaying); break;
+            case 'pins_changed':    this.refreshPinnedBar(); break;
+        }
+    }
+
+    // ---- Pinned messages bar ----------------------------------------
+
+    async refreshPinnedBar() {
+        const bar = document.getElementById('pinned-bar');
+        if (!bar) return;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/pinned-messages`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            this.renderPinnedBar((data && data.pins) || []);
+        } catch (e) {
+            // Non-fatal — leave the bar as-is.
+        }
+    }
+
+    renderPinnedBar(pins) {
+        const bar = document.getElementById('pinned-bar');
+        if (!bar) return;
+        if (!pins.length) {
+            bar.style.display = 'none';
+            bar.innerHTML = '';
+            return;
+        }
+        const isAdmin = localStorage.getItem('isAdmin') === 'true';
+        bar.innerHTML = pins.map((p) => {
+            const who = p.username ? `<span class="pinned-author">${this.escapeHtml(p.username)}:</span> ` : '';
+            const unpin = isAdmin
+                ? `<button class="pinned-unpin" title="Unpin" onclick="window.chatBox.unpinMessage(${parseInt(p.id, 10) || 0})">✕</button>`
+                : '';
+            return `<div class="pinned-item">
+                        <span class="pinned-icon">📌</span>
+                        <div class="pinned-text">${who}${this.escapeHtml(p.content)}</div>
+                        ${unpin}
+                    </div>`;
+        }).join('');
+        bar.style.display = 'block';
+    }
+
+    async pinMessage(messageId) {
+        const adminToken = localStorage.getItem('adminToken');
+        if (!adminToken) { alert('Admin authentication required'); return; }
+        // Snapshot the message text + author from the DOM.
+        let content = '';
+        let username = '';
+        const el = this.messagesContainer
+            ? this.messagesContainer.querySelector(`.message[data-message-id="${(window.CSS && CSS.escape) ? CSS.escape(messageId) : messageId}"]`)
+            : null;
+        if (el) {
+            const textEl = el.querySelector('.message-text');
+            content = textEl ? textEl.textContent.trim() : '';
+            username = el.dataset.username || '';
+        }
+        if (!content) { alert('Could not read the message text to pin.'); return; }
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/admin/pin-message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+                body: JSON.stringify({ message_id: messageId, content, username }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.success) {
+                this.refreshPinnedBar();
+            } else {
+                alert((data && data.error) || 'Failed to pin message');
+            }
+        } catch (e) {
+            alert('Failed to pin message');
+        }
+    }
+
+    async unpinMessage(id) {
+        const adminToken = localStorage.getItem('adminToken');
+        if (!adminToken) { alert('Admin authentication required'); return; }
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/admin/unpin-message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+                body: JSON.stringify({ id }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.success) {
+                this.refreshPinnedBar();
+            } else {
+                alert((data && data.error) || 'Failed to unpin message');
+            }
+        } catch (e) {
+            alert('Failed to unpin message');
         }
     }
 
@@ -3322,14 +3415,20 @@ class RadioChatBox {
                         🗑️
                     </button>
                 ` : '';
-                
+                // Pin button (admin-only): pins the message to the top-of-chat bar.
+                const pinButton = isAdmin && msgId ? `
+                    <button class="pin-message-btn" data-message-id="${msgId}" title="Pin message" onclick="window.chatBox.pinMessage('${String(msgId).replace(/'/g, "\\'")}')">
+                        📌
+                    </button>
+                ` : '';
+
                 // Add reply button for all messages
                 const replyButton = msgId ? `
                     <button class="reply-message-btn" data-message-id="${msgId}" title="Reply to this message">
                         ↩️
                     </button>
                 ` : '';
-                
+
                 // Build reply quote HTML if this is a reply
                 let replyQuoteHTML = '';
                 if (msg.reply_data && msg.reply_data.username) {
@@ -3367,10 +3466,11 @@ class RadioChatBox {
                         <div class="message-actions">
                             ${replyButton}
                             ${deleteButton}
+                            ${pinButton}
                         </div>
                     </div>
                 `;
-                
+
                 // Add event listener for delete button if admin
                 if (isAdmin) {
                     const deleteBtn = messageDiv.querySelector('.delete-message-btn');
@@ -3780,7 +3880,13 @@ class RadioChatBox {
                 🗑️
             </button>
         ` : '';
-        
+        // Pin button (admin-only): pins the message to the top-of-chat bar.
+        const pinButton = isAdmin && msgId ? `
+            <button class="pin-message-btn" data-message-id="${msgId}" title="Pin message" onclick="window.chatBox.pinMessage('${String(msgId).replace(/'/g, "\\'")}')">
+                📌
+            </button>
+        ` : '';
+
         // Add reply button for all messages
         const replyButton = msgId ? `
             <button class="reply-message-btn" data-message-id="${msgId}" title="Reply to this message">
@@ -3850,6 +3956,7 @@ class RadioChatBox {
                     ${reportButton}
                     ${editButton}
                     ${deleteButton}
+                    ${pinButton}
                 </div>
             </div>
         `;

@@ -241,6 +241,8 @@
             </div>
 
             <div id="messages-container">
+                <!-- Moderator-pinned messages (shown when there are active pins) -->
+                <div id="pinned-bar" class="pinned-bar" style="display: none;"></div>
                 <div id="private-chat-header" style="display: none;">
                     <span id="private-chat-with"></span>
                     <button id="gallery-btn" class="btn" style="display: none;">🖼️ Gallery</button>
