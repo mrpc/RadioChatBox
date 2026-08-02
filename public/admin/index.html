@@ -2168,11 +2168,8 @@
                 return out.trim();
             }
 
-            // Auto-refresh kicked users every 60s
-            setInterval(() => {
-                const tab = document.querySelector('.tab-content.active');
-                if (tab && tab.id === 'nickname-bans-tab') loadKickedUsers();
-            }, 60000);
+            // Kicked/banned lists refresh live via the moderation_changed socket
+            // signal (onModerationChangedSignal) — no polling.
             </script>
             </div>
 
@@ -3465,6 +3462,10 @@
             }
             if (notification && notification.signal === 'messages_changed') {
                 onMessagesChangedSignal();
+                return;
+            }
+            if (notification && notification.signal === 'moderation_changed') {
+                onModerationChangedSignal();
                 return;
             }
 
@@ -6730,6 +6731,16 @@
         // screen or in the list — always cheap to just refresh the visible page).
         function onBotActivitySignal(_data) {
             refreshBotActivityLive();
+        }
+
+        // Socket signal: a kick/ban/unban happened. Refresh the Nickname Bans view
+        // (banned list + kicked users) if it is open — no polling.
+        function onModerationChangedSignal() {
+            if (document.hidden) return;
+            const active = document.querySelector('.tab-content.active');
+            if (!active || active.id !== 'nickname-bans-tab') return;
+            if (typeof loadNicknameBans === 'function') loadNicknameBans();
+            if (typeof loadKickedUsers === 'function') loadKickedUsers();
         }
 
         // Socket signal: a public message was posted. Refresh whichever admin view

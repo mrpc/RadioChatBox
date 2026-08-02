@@ -129,6 +129,9 @@ final class AdminModerationController
                 }
 
                 $success = $chatService->banNickname($nickname, $reason, 'admin');
+                if ($success) {
+                    self::signalModerationChanged();
+                }
 
                 return Response::json([
                     'success' => $success,
@@ -145,6 +148,9 @@ final class AdminModerationController
             }
 
             $success = $chatService->unbanNickname($nickname);
+            if ($success) {
+                self::signalModerationChanged();
+            }
 
             return Response::json([
                 'success' => $success,
@@ -215,6 +221,9 @@ final class AdminModerationController
                     'timestamp' => time(),
                 ]);
 
+                // Refresh the admin's kicked/banned list live (no polling).
+                self::signalModerationChanged();
+
                 return Response::json([
                     'success' => true,
                     'message' => 'User kicked successfully and temporarily banned for 1 hour',
@@ -225,6 +234,26 @@ final class AdminModerationController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * Tell the admin UI its kicked/banned lists changed, so the Nickname Bans tab
+     * refreshes live instead of polling every 60s. Rides the admin channel as a
+     * 'notification' payload with a `signal` discriminator. Best-effort.
+     */
+    private static function signalModerationChanged(): void
+    {
+        try {
+            BroadcastingManager::instance()->broadcast(
+                'chat:admin_notifications',
+                'moderation_changed',
+                ['signal' => 'moderation_changed']
+            );
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminModeration: moderation_changed signal failed: ' . $e->getMessage(), 'radiochatbox');
         }
         // @codeCoverageIgnoreEnd
     }
