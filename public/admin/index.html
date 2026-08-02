@@ -6841,6 +6841,8 @@
 
         let currentBotThread = null; // {fakeUser, peer} of the open Bot Activity conversation
         let currentBotThreadData = null; // last fetched {state, messages, calls} for export
+        let botAskAnswerText = '';       // last "Ask the LLM" answer (survives re-renders)
+        let botAskAnswerKey = '';        // "fake|peer" the answer belongs to
 
         async function openBotThread(fakeUser, peer, scroll = false) {
             const box = document.getElementById('bot-activity-thread-detail');
@@ -6940,6 +6942,14 @@
                     <h3 style="font-size: 14px; color: #374151;">Calls for this conversation</h3>
                     ${botCallRows(data.calls)}
                     <button class="btn btn-outline" style="margin-top: 12px;" onclick="closeBotThread()">Close</button>`;
+
+                // A background re-render (bot_activity signal — e.g. the ask's own
+                // logged LLM call) would wipe the answer box; re-inject the last
+                // answer for THIS thread so it stays put.
+                if (botAskAnswerText && botAskAnswerKey === `${fakeUser}|${peer}`) {
+                    const ansBox = document.getElementById('bot-thread-ask-answer');
+                    if (ansBox) { ansBox.style.display = 'block'; ansBox.textContent = botAskAnswerText; }
+                }
 
                 // Stick to the newest only if the reader was already at the bottom;
                 // otherwise restore their position so the background refresh does
@@ -7064,6 +7074,8 @@
         function closeBotThread() {
             currentBotThread = null;
             currentBotThreadData = null;
+            botAskAnswerText = '';
+            botAskAnswerKey = '';
             const box = document.getElementById('bot-activity-thread-detail');
             if (box) { box.style.display = 'none'; delete box.dataset.loaded; }
         }
@@ -7185,12 +7197,24 @@
             URL.revokeObjectURL(url);
         }
 
-        // Open a clean, printable view of the whole conversation.
-        function botThreadPrint() {
-            if (!currentBotThread || !currentBotThreadData) return;
-            const d = currentBotThreadData;
+        // Open a clean, printable view of the WHOLE conversation. Fetches the full
+        // history (admin mode) rather than the capped thread view, so nothing is
+        // missing from the print.
+        async function botThreadPrint() {
+            if (!currentBotThread) return;
             const fake = currentBotThread.fakeUser, peer = currentBotThread.peer;
-            const rows = (d.messages || []).map(m => {
+            let messages = [];
+            try {
+                const res = await fetch(`/api/private-message?username=${encodeURIComponent(fake)}&with_user=${encodeURIComponent(peer)}&session_id=admin&admin=true`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (data.success && Array.isArray(data.messages)) messages = data.messages;
+            } catch (e) {
+                // fall back to whatever the thread view had
+                messages = (currentBotThreadData && currentBotThreadData.messages) || [];
+            }
+            const rows = messages.map(m => {
                 const mine = m.from_username === fake;
                 const when = new Date(m.created_at).toLocaleString();
                 const body = m.message ? escapeHtml(m.message) : (m.attachment && m.attachment.file_path ? '[photo]' : '[attachment]');
@@ -7212,8 +7236,14 @@
             if (!currentBotThread) return;
             const question = prompt('Ask the LLM about this conversation (e.g. "What did the user tell you?"):', '');
             if (question === null || question.trim() === '') return;
-            const box = document.getElementById('bot-thread-ask-answer');
-            if (box) { box.style.display = 'block'; box.textContent = 'Thinking…'; }
+            const key = `${currentBotThread.fakeUser}|${currentBotThread.peer}`;
+            const setAnswer = (text) => {
+                botAskAnswerText = text;
+                botAskAnswerKey = key;
+                const box = document.getElementById('bot-thread-ask-answer');
+                if (box) { box.style.display = 'block'; box.textContent = text; }
+            };
+            setAnswer('Thinking…');
             try {
                 const res = await fetch('/api/admin/bot-ask', {
                     method: 'POST',
@@ -7221,13 +7251,9 @@
                     body: JSON.stringify({ fake_user: currentBotThread.fakeUser, peer: currentBotThread.peer, question })
                 });
                 const data = await res.json();
-                if (box) {
-                    box.textContent = data.success
-                        ? `❓ ${question}\n\n${data.answer}`
-                        : `⚠️ ${data.error || 'No answer'}`;
-                }
+                setAnswer(data.success ? `❓ ${question}\n\n${data.answer}` : `⚠️ ${data.error || 'No answer'}`);
             } catch (e) {
-                if (box) box.textContent = '⚠️ ' + e.message;
+                setAnswer('⚠️ ' + e.message);
             }
         }
 
