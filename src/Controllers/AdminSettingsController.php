@@ -249,6 +249,68 @@ final class AdminSettingsController
     }
 
     /**
+     * GET /api/admin/settings/export — download the admin-editable settings as a
+     * JSON backup. Only whitelisted keys are exported (the same set import
+     * accepts), so a backup round-trips cleanly. 200 {success, exported_at,
+     * settings}.
+     */
+    #[Route('/api/admin/settings/export', methods: 'GET', name: 'admin.settings.export', middleware: [AdminAuthMiddleware::class])]
+    public function exportSettings(): Response
+    {
+        try {
+            $all = (new SettingsService())->getAll();
+            $editable = array_flip(SettingsService::ADMIN_EDITABLE);
+            $out = [];
+            foreach ($all as $key => $value) {
+                if (isset($editable[$key])) {
+                    $out[$key] = $value;
+                }
+            }
+            return Response::json([
+                'success'     => true,
+                'exported_at' => gmdate('c'),
+                'settings'    => $out,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/admin/settings/import — restore settings from a backup produced by
+     * export. Accepts {settings:{..}} (or a bare object) and applies it through the
+     * same whitelist/validation as a normal admin update, so unknown or invalid
+     * keys are ignored/rejected, never blindly written. 200 {success, message,
+     * imported, ignored, rejected}.
+     */
+    #[Route('/api/admin/settings/import', methods: 'POST', name: 'admin.settings.import', middleware: [AdminAuthMiddleware::class])]
+    public function importSettings(): Response
+    {
+        try {
+            $input = $_POST;
+            $settings = isset($input['settings']) && is_array($input['settings']) ? $input['settings'] : $input;
+            if (!is_array($settings) || $settings === []) {
+                return Response::json(['error' => 'No settings to import'], 400);
+            }
+
+            $result = (new SettingsService())->updateFromAdmin($settings);
+            $imported = count($settings) - count($result['ignored'] ?? []) - count($result['rejected'] ?? []);
+
+            return Response::json([
+                'success'  => true,
+                'message'  => "Imported {$imported} setting(s)",
+                'imported' => max(0, $imported),
+                'ignored'  => $result['ignored'] ?? [],
+                'rejected' => $result['rejected'] ?? [],
+            ]);
+        } catch (\Throwable $e) {
+            return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * POST /api/admin/upload-logo — upload a logo or favicon (multipart, field
      * "logo"; "type" is "logo"|"favicon"). Validates mime + 2MB max, stores the
      * file under public/uploads/logos/, saves the URL to the settings table and

@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use RadioChatBox\Controllers\AdminSettingsController;
+use RadioChatBox\Services\SettingsService;
 use Pramnos\Cache\FlatCache;
 use Pramnos\Database\Database;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -333,6 +334,33 @@ class AdminSettingsControllerTest extends TestCase
             $this->assertSame($_POST['page_title'], $settings->get('page_title'));
         } finally {
             $settings->setMultiple(['page_title' => $previous]);
+        }
+    }
+
+    /**
+     * Export returns only whitelisted settings (a known editable key is present,
+     * the password hash never is), and import round-trips a value through the same
+     * whitelist while ignoring unknown keys.
+     */
+    public function testExportThenImportRoundTripsWhitelistedSettings(): void
+    {
+        $settings = new SettingsService();
+        $previous = (string) $settings->get('chat_mode', 'both');
+
+        try {
+            $export = json_decode((new AdminSettingsController())->exportSettings()->getBody(), true);
+            $this->assertTrue($export['success']);
+            $this->assertArrayHasKey('chat_mode', $export['settings']);
+            $this->assertArrayNotHasKey('admin_password_hash', $export['settings']);
+
+            $_POST = ['settings' => ['chat_mode' => 'public', 'totally_unknown_key_xyz' => 'x']];
+            $import = json_decode((new AdminSettingsController())->importSettings()->getBody(), true);
+            $this->assertTrue($import['success']);
+            $this->assertContains('totally_unknown_key_xyz', $import['ignored'], 'unknown key ignored, never written');
+            $this->assertSame('public', $settings->get('chat_mode'), 'whitelisted key applied on import');
+        } finally {
+            $_POST = ['settings' => ['chat_mode' => $previous]];
+            (new AdminSettingsController())->importSettings();
         }
     }
 
