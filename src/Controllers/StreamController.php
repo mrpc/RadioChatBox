@@ -131,6 +131,7 @@ final class StreamController
                                 'now_playing'     => 'now_playing',
                                 'config'          => 'config',
                                 'message_edited'  => 'message_edited',
+                                'pins_changed'    => 'pins_changed',
                                 // Client's 'message' handler branches on this type to
                                 // refresh history; keep delivering it as 'message'.
                                 'refresh_history' => 'message',

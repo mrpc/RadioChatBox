@@ -186,6 +186,7 @@ final class RealtimeServe extends CommandBase
                 'now_playing'     => 'now_playing',
                 'config'          => 'config',
                 'message_edited'  => 'message_edited',
+                'pins_changed'    => 'pins_changed',
                 'refresh_history' => 'message',
                 default           => null,
             };
