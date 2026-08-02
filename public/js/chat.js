@@ -3468,7 +3468,7 @@ class RadioChatBox {
                     <div class="message-photo">
                         <img src="${this.escapeHtml(msg.attachment.file_path)}"
                              alt="Photo"
-                             onclick="window.open('${this.escapeHtml(msg.attachment.file_path)}', '_blank')"
+                             onclick="window.chatBox.openImageLightbox('${this.escapeHtml(msg.attachment.file_path)}')"
                              loading="lazy">
                     </div>
                 `;
@@ -5224,7 +5224,7 @@ class RadioChatBox {
                     <div class="message-photo">
                         <img src="${this.escapeHtml(messageData.attachment.file_path)}"
                              alt="Photo"
-                             onclick="event.stopPropagation(); window.open('${this.escapeHtml(messageData.attachment.file_path)}', '_blank')"
+                             onclick="event.stopPropagation(); window.chatBox.openImageLightbox('${this.escapeHtml(messageData.attachment.file_path)}')"
                              loading="lazy">
                     </div>
                 `;
@@ -6448,6 +6448,13 @@ class RadioChatBox {
             this._galleryOverlay.remove();
             this._galleryOverlay = null;
         }
+    }
+
+    /** Open a single image in the lightbox (used for message photos). */
+    openImageLightbox(url) {
+        if (!url) return;
+        this._galleryPhotos = [{ url: url, from: '' }];
+        this.openLightbox(0);
     }
 
     /** Open the full-size lightbox at a given photo index, with prev/next. */
