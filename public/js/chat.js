@@ -2230,6 +2230,8 @@ class RadioChatBox {
         // Wired here — not in initTypingIndicators — because the input element
         // only exists after the chat view is built (settings load runs earlier).
         this.messageInput.addEventListener('input', () => this.onTypingInput());
+        // Paste an image straight into the chat to attach it.
+        this.messageInput.addEventListener('paste', (e) => this.handlePaste(e));
 
         // Back/forward + manual hash edits: open or close the DM in the URL.
         window.addEventListener('hashchange', () => {
@@ -5296,29 +5298,64 @@ class RadioChatBox {
     
     handlePhotoSelect(event) {
         const file = event.target.files[0];
-        if (!file) return;
-        
-        // Validate file type
+        this.acceptPhotoFile(file);
+        event.target.value = ''; // Reset input
+    }
+
+    /** Whether a photo can be attached right now (same rule as the 📷 button). */
+    photosAllowedNow() {
+        const photosAllowed = !this.settings || this.settings.allow_photo_uploads !== 'false';
+        return photosAllowed && this.privateChat && this.privateChat.active;
+    }
+
+    /**
+     * Validate an image File (type + size) and, if ok, set it as the pending
+     * attachment and show the preview. Shared by the file picker and paste.
+     */
+    acceptPhotoFile(file) {
+        if (!file) return false;
+
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (!allowedTypes.includes(file.type)) {
             alert('Please select a valid image file (JPG, PNG, GIF, or WebP)');
-            event.target.value = '';
-            return;
+            return false;
         }
-        
-        // Get max size from settings (convert MB to bytes)
+
         const maxSizeMB = parseInt(this.settings.max_photo_size_mb || 5);
         const maxSizeBytes = maxSizeMB * 1024 * 1024;
-        
         if (file.size > maxSizeBytes) {
             alert(`Photo is too large. Maximum size is ${maxSizeMB}MB.`);
-            event.target.value = '';
-            return;
+            return false;
         }
-        
+
         this.selectedPhoto = file;
         this.showPhotoPreview(file);
-        event.target.value = ''; // Reset input
+        return true;
+    }
+
+    /**
+     * Paste an image straight into the chat: if the clipboard holds an image,
+     * attach it (same flow as picking a file) instead of pasting binary text.
+     */
+    handlePaste(event) {
+        const items = (event.clipboardData && event.clipboardData.items) || [];
+        for (const item of items) {
+            if (item.type && item.type.indexOf('image/') === 0) {
+                const blob = item.getAsFile();
+                if (!blob) continue;
+                event.preventDefault();
+                if (!this.photosAllowedNow()) {
+                    alert('Photo uploads are only available in private messages.');
+                    return;
+                }
+                // Clipboard images are usually nameless — give it a sane filename.
+                const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                const named = new File([blob], `pasted-${Date.now()}.${ext}`, { type: blob.type });
+                this.acceptPhotoFile(named);
+                return;
+            }
+        }
+        // No image in the clipboard — let the normal text paste happen.
     }
     
     showPhotoPreview(file) {
