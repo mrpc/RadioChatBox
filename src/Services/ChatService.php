@@ -1230,7 +1230,7 @@ class ChatService
             if (!$includePrivate || $type === 'public') {
                 // Only public messages (non-deleted)
                 $sql =
-                    'SELECT message_id, username, message, ip_address, created_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username
+                    'SELECT message_id, username, message, ip_address, created_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username, NULL::varchar as attachment_id
                      FROM chat_messages
                      WHERE is_deleted = FALSE
                      ORDER BY created_at DESC
@@ -1239,16 +1239,17 @@ class ChatService
             } elseif ($type === 'private') {
                 // Only private messages
                 $sql =
-                    'SELECT 
-                        id::text as message_id, 
-                        from_username as username, 
-                        message, 
-                        \'\' as ip_address, 
-                        created_at, 
+                    'SELECT
+                        id::text as message_id,
+                        from_username as username,
+                        message,
+                        \'\' as ip_address,
+                        created_at,
                         FALSE as is_deleted,
                         \'private\' as message_type,
                         from_username,
-                        to_username
+                        to_username,
+                        attachment_id
                      FROM private_messages
                      ORDER BY created_at DESC
                      LIMIT :limit OFFSET :offset';
@@ -1256,29 +1257,31 @@ class ChatService
             } else {
                 // Both public and private messages
                 $sql =
-                    '(SELECT 
-                        message_id, 
-                        username, 
-                        message, 
-                        ip_address, 
-                        created_at, 
-                        is_deleted, 
-                        \'public\' as message_type, 
-                        NULL as from_username, 
-                        NULL as to_username
+                    '(SELECT
+                        message_id,
+                        username,
+                        message,
+                        ip_address,
+                        created_at,
+                        is_deleted,
+                        \'public\' as message_type,
+                        NULL as from_username,
+                        NULL as to_username,
+                        NULL::varchar as attachment_id
                      FROM chat_messages
                      WHERE is_deleted = FALSE)
                     UNION ALL
-                    (SELECT 
-                        id::text as message_id, 
-                        from_username as username, 
-                        message, 
-                        \'\' as ip_address, 
-                        created_at, 
+                    (SELECT
+                        id::text as message_id,
+                        from_username as username,
+                        message,
+                        \'\' as ip_address,
+                        created_at,
                         FALSE as is_deleted,
                         \'private\' as message_type,
                         from_username,
-                        to_username
+                        to_username,
+                        attachment_id
                      FROM private_messages)
                     ORDER BY created_at DESC
                     LIMIT :limit OFFSET :offset';
@@ -1286,14 +1289,71 @@ class ChatService
             }
 
             $result = $this->db->preparedQuery($sql, $params);
+            $messages = $result ? $result->fetchAll() : [];
 
-            return $result ? $result->fetchAll() : [];
+            return $this->attachPhotoData($messages);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log("Failed to get all messages: " . $e->getMessage(), 'radiochatbox');
             return [];
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * Attach photo data to messages that carry an attachment_id, so the admin
+     * message-history view can render DM photos (bug: they were invisible there).
+     * Batches one query for all referenced attachments; each message gets an
+     * `attachment` object (or null) and its `attachment_id` is dropped.
+     *
+     * @param array<int, array<string, mixed>> $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachPhotoData(array $messages): array
+    {
+        $ids = [];
+        foreach ($messages as $m) {
+            $aid = $m['attachment_id'] ?? null;
+            if (is_string($aid) && $aid !== '') {
+                $ids[] = $aid;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+
+        $byId = [];
+        if ($ids !== []) {
+            try {
+                $place = implode(',', array_fill(0, count($ids), '?'));
+                $rows = $this->db->preparedQuery(
+                    "SELECT attachment_id, filename, file_path, file_size, mime_type, width, height
+                     FROM attachments
+                     WHERE attachment_id IN ($place) AND is_deleted = FALSE",
+                    $ids
+                );
+                foreach (($rows ? $rows->fetchAll() : []) as $row) {
+                    $byId[$row['attachment_id']] = [
+                        'attachment_id' => $row['attachment_id'],
+                        'filename'      => $row['filename'],
+                        'file_path'     => $row['file_path'],
+                        'file_size'     => $row['file_size'],
+                        'mime_type'     => $row['mime_type'],
+                        'width'         => $row['width'],
+                        'height'        => $row['height'],
+                    ];
+                }
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('attachPhotoData failed: ' . $e->getMessage(), 'radiochatbox');
+            }
+        }
+
+        foreach ($messages as &$m) {
+            $aid = $m['attachment_id'] ?? null;
+            $m['attachment'] = (is_string($aid) && isset($byId[$aid])) ? $byId[$aid] : null;
+            unset($m['attachment_id']);
+        }
+        unset($m);
+
+        return $messages;
     }
 
     /**

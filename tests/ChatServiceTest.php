@@ -704,6 +704,46 @@ class ChatServiceTest extends TestCase
         $stmt->execute(['username' => $testUsername]);
     }
 
+    /**
+     * getAllMessages attaches photo data to DM rows that carry an attachment, so
+     * the admin message-history view can render the image (previously invisible).
+     */
+    public function testGetAllMessagesAttachesDmPhotoData()
+    {
+        $pdo = TestDatabase::connection();
+        $aid = 'histphoto_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $from = 'ph_from_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $to = 'ph_to_' . substr(bin2hex(random_bytes(3)), 0, 6);
+
+        $pdo->prepare(
+            "INSERT INTO attachments
+                (attachment_id, filename, original_filename, file_path, file_size, mime_type, uploaded_by, ip_address, expires_at, is_deleted)
+             VALUES (?, ?, ?, ?, 10, 'image/jpeg', ?, '127.0.0.1', NOW() + INTERVAL '1 hour', FALSE)"
+        )->execute([$aid, $aid . '.jpg', $aid . '.jpg', '/uploads/photos/' . $aid . '.jpg', $from]);
+        $pdo->prepare(
+            "INSERT INTO private_messages (from_username, to_username, message, attachment_id, created_at)
+             VALUES (?, ?, '', ?, NOW())"
+        )->execute([$from, $to, $aid]);
+
+        try {
+            $messages = $this->chatService->getAllMessages(500, 0, true, 'private');
+            $mine = null;
+            foreach ($messages as $m) {
+                if (($m['from_username'] ?? null) === $from && ($m['to_username'] ?? null) === $to) {
+                    $mine = $m;
+                    break;
+                }
+            }
+            $this->assertNotNull($mine, 'the seeded DM is returned');
+            $this->assertIsArray($mine['attachment'] ?? null, 'the DM carries attachment data');
+            $this->assertSame('/uploads/photos/' . $aid . '.jpg', $mine['attachment']['file_path']);
+            $this->assertArrayNotHasKey('attachment_id', $mine, 'raw attachment_id is dropped from the payload');
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE attachment_id = ?')->execute([$aid]);
+            $pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$aid]);
+        }
+    }
+
     public function testMessagesIncludeDisplayName()
     {
         $pdo = TestDatabase::connection();
