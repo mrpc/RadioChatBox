@@ -603,7 +603,7 @@ class AdminImpersonationControllerTest extends TestCase
     public function testTypingBroadcastsWhenEnabled(): void
     {
         $this->authAsRoot();
-        (new \RadioChatBox\Services\SettingsService())->set('typing_indicators_enabled', 'true');
+        (new \RadioChatBox\Services\SettingsService())->set('dm_typing_indicators_enabled', 'true');
 
         try {
             $_POST = ['impersonate_as' => 'bot', 'to_username' => 'peer', 'is_typing' => 'true'];
@@ -615,7 +615,7 @@ class AdminImpersonationControllerTest extends TestCase
             $this->assertArrayNotHasKey('skipped', $body);
         } finally {
             \Pramnos\Framework\Testing\TestDatabase::connection()
-                ->prepare("DELETE FROM settings WHERE setting = 'typing_indicators_enabled'")->execute();
+                ->prepare("DELETE FROM settings WHERE setting = 'dm_typing_indicators_enabled'")->execute();
             FlatCache::default()->clear();
         }
     }

@@ -2495,16 +2495,23 @@ class RadioChatBox {
     // ---- Typing indicators ------------------------------------------
 
     initTypingIndicators() {
-        // Just record the flag; the input listener is wired in setupEventListeners
-        // (the input element doesn't exist yet when settings first load).
-        this._typingEnabled = this._settingOn(this.settings && this.settings.typing_indicators_enabled);
+        // Public and DM typing are toggled separately. Record both flags; the input
+        // listener is wired in setupEventListeners (the input element doesn't exist
+        // yet when settings first load).
+        const s = this.settings || {};
+        this._typingEnabledPublic = this._settingOn(s.typing_indicators_enabled);
+        this._typingEnabledDm = this._settingOn(s.dm_typing_indicators_enabled);
+        // Kept for callers that just need "is typing wired at all".
+        this._typingEnabled = this._typingEnabledPublic || this._typingEnabledDm;
         this._typingUsers = this._typingUsers || new Map(); // username -> expiry ms
     }
 
     /** Throttled "I'm typing" ping — DM-aware (rides the private channel in a DM). */
     onTypingInput() {
-        if (!this._typingEnabled || !this.username) return;
+        if (!this.username) return;
         const inDm = !!(this.privateChat && this.privateChat.active && this.privateChat.withUser);
+        // Gate on the toggle for THIS context (public vs DM).
+        if (inDm ? !this._typingEnabledDm : !this._typingEnabledPublic) return;
         const to = inDm ? this.privateChat.withUser : null;
         const now = Date.now();
         if (!this._typingLastSent || now - this._typingLastSent > 2000 || this._typingLastTo !== to) {
@@ -2520,7 +2527,9 @@ class RadioChatBox {
     }
 
     async sendTypingState(isTyping, to = null) {
-        if (!this._typingEnabled || !this.username) return;
+        if (!this.username) return;
+        // Respect the per-context toggle.
+        if (to ? !this._typingEnabledDm : !this._typingEnabledPublic) return;
         try {
             const body = { username: this.username, session_id: this.sessionId, is_typing: !!isTyping };
             if (to) body.to = to;

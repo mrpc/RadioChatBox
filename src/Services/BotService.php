@@ -2408,7 +2408,7 @@ class BotService
         if ($from === '' || $peer === '') {
             return;
         }
-        if ($this->settings->get('typing_indicators_enabled', 'false') !== 'true') {
+        if ($this->settings->get('dm_typing_indicators_enabled', 'false') !== 'true') {
             return;
         }
         try {

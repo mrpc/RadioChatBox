@@ -364,8 +364,8 @@ final class AdminImpersonationController
             return Response::json(['error' => 'impersonate_as and to_username are required'], 400);
         }
 
-        // Respect the global toggle so it can't leak when the feature is off.
-        if ((new \RadioChatBox\Services\SettingsService())->get('typing_indicators_enabled', 'false') !== 'true') {
+        // Respect the DM typing toggle so it can't leak when the feature is off.
+        if ((new \RadioChatBox\Services\SettingsService())->get('dm_typing_indicators_enabled', 'false') !== 'true') {
             return Response::json(['success' => true, 'skipped' => 'disabled']);
         }
 

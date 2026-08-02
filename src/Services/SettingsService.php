@@ -57,8 +57,9 @@ class SettingsService
         'chat_commands_enabled',
         // Now-playing thumbs up/down voting
         'track_voting_enabled',
-        // "User is typing…" indicators in public chat
+        // "User is typing…" indicators — public chat and DMs are toggled separately
         'typing_indicators_enabled',
+        'dm_typing_indicators_enabled',
         // In-chat radio player (embedded <audio> above the chat)
         'player_mode',
         'player_allow_override',

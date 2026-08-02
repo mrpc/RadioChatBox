@@ -26,16 +26,18 @@ class TypingController
     public function ping(): Response
     {
         try {
-            if (!$this->isEnabled()) {
-                return Response::json(['success' => false, 'error' => 'Disabled'], 404);
-            }
-
             $input = $_POST;
             $username = trim((string) ($input['username'] ?? ''));
             $sessionId = trim((string) ($input['session_id'] ?? ''));
             $to = trim((string) ($input['to'] ?? ''));
             $isTyping = !array_key_exists('is_typing', $input)
                 || in_array(strtolower((string) $input['is_typing']), ['1', 'true', 'on', 'yes'], true);
+
+            // Public and DM typing are separately toggled.
+            $settingKey = $to !== '' ? 'dm_typing_indicators_enabled' : 'typing_indicators_enabled';
+            if (!$this->settingOn($settingKey)) {
+                return Response::json(['success' => false, 'error' => 'Disabled'], 404);
+            }
 
             if ($username === '' || $sessionId === '') {
                 return Response::json(['error' => 'username and session_id are required'], 400);
@@ -78,9 +80,9 @@ class TypingController
         // @codeCoverageIgnoreEnd
     }
 
-    private function isEnabled(): bool
+    private function settingOn(string $key): bool
     {
-        $value = (new SettingsService())->get('typing_indicators_enabled');
+        $value = (new SettingsService())->get($key);
         return in_array(strtolower(trim((string) $value)), ['1', 'true', 'on', 'yes'], true);
     }
 }

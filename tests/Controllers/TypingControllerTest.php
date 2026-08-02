@@ -36,7 +36,7 @@ class TypingControllerTest extends TestCase
     protected function tearDown(): void
     {
         $this->pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$this->user]);
-        $this->pdo->prepare("DELETE FROM settings WHERE setting = 'typing_indicators_enabled'")->execute();
+        $this->pdo->prepare("DELETE FROM settings WHERE setting IN ('typing_indicators_enabled', 'dm_typing_indicators_enabled')")->execute();
         FlatCache::default()->clear();
         $_POST = [];
     }
@@ -44,6 +44,11 @@ class TypingControllerTest extends TestCase
     private function enable(): void
     {
         (new SettingsService())->set('typing_indicators_enabled', 'true');
+    }
+
+    private function enableDm(): void
+    {
+        (new SettingsService())->set('dm_typing_indicators_enabled', 'true');
     }
 
     /** Off by default -> 404. */
@@ -80,10 +85,10 @@ class TypingControllerTest extends TestCase
         $this->assertTrue(json_decode($response->getBody(), true)['success']);
     }
 
-    /** A DM ping (with `to`) is also accepted for a verified session. */
+    /** A DM ping (with `to`) is accepted when the SEPARATE DM toggle is on. */
     public function testDmPingSucceeds(): void
     {
-        $this->enable();
+        $this->enableDm();
         $_POST = [
             'username'   => $this->user,
             'session_id' => $this->session,

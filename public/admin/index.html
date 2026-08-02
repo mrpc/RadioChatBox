@@ -2407,33 +2407,13 @@
                     </div>
 
                     <div class="settings-group">
-                        <h3>Radio player &amp; charts</h3>
+                        <h3>Top Charts</h3>
                         <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 10px;">
                                 <input type="checkbox" id="setting-charts-enabled" style="width: auto;">
                                 Enable Top Charts panel (📊 button next to now-playing)
                             </label>
                             <small>Shows the top 10 tracks and artists for day/week/month, aggregated from play history.</small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-song-requests-enabled" style="width: auto;">
-                                Enable listener Song Requests (📻 button + admin queue)
-                            </label>
-                            <small>Chat users can request a track with an optional dedication; requests appear in the Song Requests tab.</small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-track-voting-enabled" style="width: auto;">
-                                Enable now-playing voting (👍 / 👎 on the current track)
-                            </label>
-                            <small>Listeners rate what's on air; one vote per person per track.</small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-typing-indicators-enabled" style="width: auto;">
-                                Show "user is typing…" in public chat
-                            </label>
                         </div>
                         <div class="form-group">
                             <label>Charts default period</label>
@@ -2443,8 +2423,12 @@
                                 <option value="month">Month</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>In-chat radio player</h3>
                         <div class="form-group">
-                            <label>In-chat player mode</label>
+                            <label>Player mode</label>
                             <select id="setting-player-mode">
                                 <option value="off">Off (never show)</option>
                                 <option value="on">On (everywhere)</option>
@@ -2452,13 +2436,6 @@
                                 <option value="app_only">Only standalone (not in an iframe)</option>
                             </select>
                             <small>Embeds a live audio player bar above the chat. When shown it replaces the text-only now-playing widget.</small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-player-allow-override" style="width: auto;">
-                                Allow per-embed override via <code>?player=1</code> / <code>?player=0</code>
-                            </label>
-                            <small>When off, the URL parameter is ignored and the mode above always wins.</small>
                         </div>
                         <div class="form-group">
                             <label>Stream URL</label>
@@ -2477,6 +2454,48 @@
                                 <input type="checkbox" id="setting-player-autoplay" style="width: auto;">
                                 Try to autoplay (starts muted — browsers block audible autoplay)
                             </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-player-allow-override" style="width: auto;">
+                                Allow per-embed override via <code>?player=1</code> / <code>?player=0</code>
+                            </label>
+                            <small>When off, the URL parameter is ignored and the mode above always wins.</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Listener engagement</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-song-requests-enabled" style="width: auto;">
+                                Enable listener Song Requests (📻 button + admin queue)
+                            </label>
+                            <small>Chat users can request a track with an optional dedication; requests appear in the Song Requests tab.</small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-track-voting-enabled" style="width: auto;">
+                                Enable now-playing voting (👍 / 👎 on the current track)
+                            </label>
+                            <small>Listeners rate what's on air; one vote per person per track.</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Typing indicators</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-typing-indicators-enabled" style="width: auto;">
+                                Show "user is typing…" in public chat
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-dm-typing-indicators-enabled" style="width: auto;">
+                                Show "user is typing…" in direct messages (DMs)
+                            </label>
+                            <small style="color:#6b7280;">Also drives the bots' and impersonation "typing…" cue in DMs.</small>
                         </div>
                     </div>
 
@@ -8360,6 +8379,7 @@
                     document.getElementById('setting-song-requests-enabled').checked = settings.song_requests_enabled === 'true';
                     document.getElementById('setting-track-voting-enabled').checked = settings.track_voting_enabled === 'true';
                     document.getElementById('setting-typing-indicators-enabled').checked = settings.typing_indicators_enabled === 'true';
+                    document.getElementById('setting-dm-typing-indicators-enabled').checked = settings.dm_typing_indicators_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
                     document.getElementById('setting-player-mode').value = settings.player_mode || 'off';
                     document.getElementById('setting-player-allow-override').checked = settings.player_allow_override !== 'false';
@@ -8819,6 +8839,7 @@
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',
                 track_voting_enabled: document.getElementById('setting-track-voting-enabled').checked ? 'true' : 'false',
                 typing_indicators_enabled: document.getElementById('setting-typing-indicators-enabled').checked ? 'true' : 'false',
+                dm_typing_indicators_enabled: document.getElementById('setting-dm-typing-indicators-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,
                 player_mode: document.getElementById('setting-player-mode').value,
                 player_allow_override: document.getElementById('setting-player-allow-override').checked ? 'true' : 'false',
