@@ -344,6 +344,52 @@ final class AdminImpersonationController
     }
 
     /**
+     * POST /api/admin/impersonate-typing — {impersonate_as, to_username,
+     * is_typing?}. Broadcasts a DM "typing…" cue AS the fake user to the peer,
+     * so the human sees the impersonated user composing (like a real DM).
+     * Root/owner only. 200 {success}; bad input -> 400.
+     */
+    #[Route('/api/admin/impersonate-typing', methods: 'POST', name: 'admin.impersonate.typing', middleware: [AdminAuthMiddleware::class])]
+    public function typing(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        $input = $_POST;
+        $from = trim((string) ($input['impersonate_as'] ?? ''));
+        $to = trim((string) ($input['to_username'] ?? ''));
+        if ($from === '' || $to === '') {
+            return Response::json(['error' => 'impersonate_as and to_username are required'], 400);
+        }
+
+        // Respect the global toggle so it can't leak when the feature is off.
+        if ((new \RadioChatBox\Services\SettingsService())->get('typing_indicators_enabled', 'false') !== 'true') {
+            return Response::json(['success' => true, 'skipped' => 'disabled']);
+        }
+
+        $isTyping = !array_key_exists('is_typing', $input)
+            || in_array(strtolower((string) $input['is_typing']), ['1', 'true', 'on', 'yes'], true);
+
+        try {
+            BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', [
+                'type'          => 'typing',
+                'from_username' => $from,
+                'to_username'   => $to,
+                'is_typing'     => $isTyping,
+                'ttl_ms'        => 6000,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('impersonate typing broadcast failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+
+        return Response::json(['success' => true]);
+    }
+
+    /**
      * List every active fake user's inbound private conversations
      * (replaces public/api/admin/impersonate-conversations.php).
      *

@@ -897,6 +897,13 @@ class BotService
 
         BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', $messageData);
 
+        // Re-arm the "typing…" cue for the next bubble (if any), so a multi-part
+        // reply keeps showing the bot composing between bubbles.
+        $nextTypingMs = (int) ($payload['next_typing_ms'] ?? 0);
+        if ($nextTypingMs > 0) {
+            $this->broadcastDmTyping($fakeNickname, $peer, true, $nextTypingMs);
+        }
+
         $this->db->preparedQuery('
             UPDATE bot_threads
             SET messages_sent = messages_sent + CASE WHEN :final THEN 1 ELSE 0 END,
@@ -2251,6 +2258,35 @@ class BotService
     }
 
     /**
+     * Broadcast a DM "typing…" cue AS the fake user to its peer, so a bot shows
+     * the same indicator a real user does while it composes. Carries ttl_ms (the
+     * upcoming typing delay) so the indicator lasts the whole compose. Gated by
+     * typing_indicators_enabled and best-effort.
+     */
+    private function broadcastDmTyping(string $from, string $peer, bool $isTyping, int $ttlMs = 0): void
+    {
+        if ($from === '' || $peer === '') {
+            return;
+        }
+        if ($this->settings->get('typing_indicators_enabled', 'false') !== 'true') {
+            return;
+        }
+        try {
+            BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', [
+                'type'          => 'typing',
+                'from_username' => $from,
+                'to_username'   => $peer,
+                'is_typing'     => $isTyping,
+                'ttl_ms'        => max(0, $ttlMs),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('bot typing broadcast failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * Queue the delivery job and return the delay used.
      *
      * @param array<string,mixed> $replyPayload The originating reply job payload
@@ -2291,9 +2327,24 @@ class BotService
         }
         $lastIndex = count($parts) - 1;
 
+        // Per-part typing delays (each bubble arrives after its own delay).
+        $partDelays = [];
+        foreach ($parts as $part) {
+            $partDelays[] = self::calculateTypingDelay($part['message'], $secondsPerWord, $min, $max);
+        }
+
+        // Show "typing…" to the peer for the first bubble straight away, so the bot
+        // appears to compose during the delay (matching real users).
+        $this->broadcastDmTyping(
+            (string) ($replyPayload['fake_nickname'] ?? ''),
+            (string) $replyPayload['peer_username'],
+            true,
+            ($partDelays[0] ?? 0) * 1000
+        );
+
         $cumulative = 0;
         foreach ($parts as $i => $part) {
-            $cumulative += self::calculateTypingDelay($part['message'], $secondsPerWord, $min, $max);
+            $cumulative += $partDelays[$i];
 
             $this->queue->push(self::JOB_DELIVER, [
                 'fake_user_id' => (int) $replyPayload['fake_user_id'],
@@ -2308,6 +2359,9 @@ class BotService
                 // a reply split into several bubbles is still one message spent.
                 'is_farewell' => $isFarewell && $i === $lastIndex,
                 'is_final' => $i === $lastIndex,
+                // How long the NEXT bubble will "type" (0 on the last), so the
+                // deliver handler can re-arm the typing cue between bubbles.
+                'next_typing_ms' => isset($partDelays[$i + 1]) ? $partDelays[$i + 1] * 1000 : 0,
             ], $cumulative);
         }
 

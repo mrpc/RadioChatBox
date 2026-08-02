@@ -526,4 +526,43 @@ class AdminImpersonationControllerTest extends TestCase
             $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$fake]);
         }
     }
+
+    /** The impersonate typing cue refuses non-root callers with 403. */
+    public function testTypingForbiddenWithoutRootRole(): void
+    {
+        $this->unauthenticate();
+        $_POST = ['impersonate_as' => 'bot', 'to_username' => 'peer'];
+
+        $this->assertSame(403, (new AdminImpersonationController())->typing()->getStatusCode());
+    }
+
+    /** Missing recipient -> 400 (after the root check passes). */
+    public function testTypingValidatesInput(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['impersonate_as' => 'bot']; // no to_username
+
+        $this->assertSame(400, (new AdminImpersonationController())->typing()->getStatusCode());
+    }
+
+    /** When typing indicators are on, a valid root request broadcasts (200, no skip). */
+    public function testTypingBroadcastsWhenEnabled(): void
+    {
+        $this->authAsRoot();
+        (new \RadioChatBox\Services\SettingsService())->set('typing_indicators_enabled', 'true');
+
+        try {
+            $_POST = ['impersonate_as' => 'bot', 'to_username' => 'peer', 'is_typing' => 'true'];
+            $response = (new AdminImpersonationController())->typing();
+
+            $this->assertSame(200, $response->getStatusCode());
+            $body = $this->json($response);
+            $this->assertTrue($body['success']);
+            $this->assertArrayNotHasKey('skipped', $body);
+        } finally {
+            \Pramnos\Framework\Testing\TestDatabase::connection()
+                ->prepare("DELETE FROM settings WHERE setting = 'typing_indicators_enabled'")->execute();
+            FlatCache::default()->clear();
+        }
+    }
 }

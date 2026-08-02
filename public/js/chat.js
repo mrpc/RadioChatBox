@@ -2532,18 +2532,23 @@ class RadioChatBox {
         this._typingRenderTimer = setTimeout(() => this.renderTypingIndicator(), 4100);
     }
 
-    /** DM typing cue (private channel): only the peer I'm currently viewing. */
+    /**
+     * DM typing cue (private channel): only the peer I'm currently viewing. A cue
+     * may carry ttl_ms (bots/impersonation announce how long they'll "type") so
+     * the indicator lasts the whole compose; real users omit it (default 4s).
+     */
     handleDmTyping(data) {
         if (!data || data.from_username === this.username) return;
         // Only track the peer of the conversation I have open.
         if (!(this.privateChat && this.privateChat.active) || data.from_username !== this.privateChat.withUser) {
             return;
         }
-        this._dmPeerTypingUntil = data.is_typing ? Date.now() + 4000 : 0;
+        const ttl = data.is_typing ? Math.min(parseInt(data.ttl_ms, 10) || 4000, 30000) : 0;
+        this._dmPeerTypingUntil = ttl ? Date.now() + ttl : 0;
         this._dmPeerTypingWho = data.from_username;
         this.renderTypingIndicator();
         clearTimeout(this._typingRenderTimer);
-        this._typingRenderTimer = setTimeout(() => this.renderTypingIndicator(), 4100);
+        this._typingRenderTimer = setTimeout(() => this.renderTypingIndicator(), (ttl || 100) + 100);
     }
 
     renderTypingIndicator() {
@@ -5026,6 +5031,13 @@ class RadioChatBox {
         const isFromMe = messageData.from_username === this.username;
         const otherUser = isFromMe ? messageData.to_username : messageData.from_username;
         const otherUserDisplayName = isFromMe ? messageData.to_display_name : messageData.from_display_name;
+
+        // The peer's message just landed → they're no longer "typing".
+        if (!isFromMe && this.privateChat && this.privateChat.active
+            && otherUser === this.privateChat.withUser && this._dmPeerTypingUntil) {
+            this._dmPeerTypingUntil = 0;
+            this.renderTypingIndicator();
+        }
 
         // Realtime delivery is at-least-once: a flaky mobile connection that
         // reconnects — or briefly runs both transports during a WS→SSE fallback —

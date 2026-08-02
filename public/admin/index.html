@@ -11351,6 +11351,15 @@
                 return;
             }
 
+            // We're sending now — stop the "typing…" cue to the peer.
+            clearTimeout(_impersonateTypingStop);
+            _impersonateTypingLast = 0;
+            fetch('/api/admin/impersonate-typing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                body: JSON.stringify({ impersonate_as: currentImpersonateAs, to_username: currentSender, is_typing: false })
+            }).catch(() => {});
+
             // Convert emoticons to emojis
             message = convertEmoticonsToEmojis(message);
 
@@ -11502,8 +11511,28 @@
                         sendImpersonateMessage();
                     }
                 });
+                // Throttled "typing…" ping to the peer, AS the impersonated user.
+                impersonateInput.addEventListener('input', onImpersonateTyping);
             }
         });
+
+        let _impersonateTypingLast = 0;
+        let _impersonateTypingStop = null;
+        function onImpersonateTyping() {
+            if (!currentImpersonateAs || !currentSender) return;
+            const now = Date.now();
+            const ping = (isTyping) => fetch('/api/admin/impersonate-typing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                body: JSON.stringify({ impersonate_as: currentImpersonateAs, to_username: currentSender, is_typing: isTyping })
+            }).catch(() => {});
+            if (now - _impersonateTypingLast > 2000) {
+                _impersonateTypingLast = now;
+                ping(true);
+            }
+            clearTimeout(_impersonateTypingStop);
+            _impersonateTypingStop = setTimeout(() => { _impersonateTypingLast = 0; ping(false); }, 3000);
+        }
         
         // =========================================
         // STATISTICS FUNCTIONS
