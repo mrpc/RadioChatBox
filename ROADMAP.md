@@ -103,13 +103,13 @@ Bot Activity profile shortcuts, DM replies + reactions.
 **Priority:** CRITICAL - Most important missing feature
 
 - [x] Report user/message functionality (message reports MVP)
-- [ ] Report submission form with reason selection
+- [x] Report submission form with reason selection
 - [x] Report categories (spam, harassment, inappropriate, offensive, impersonation, other)
 - [ ] Reporter anonymity option
 - [x] Dedicated admin reports panel
 - [x] Pending reports queue with filtering (status filter)
-- [ ] Report details view (reporter, reported user, content, history)
-- [ ] Quick actions from reports (dismiss, warn, timeout, ban)
+- [ ] Report details view (reporter, reported user, content, history) — partial: fields shown in the queue; no dedicated detail view
+- [ ] Quick actions from reports (dismiss, warn, timeout, ban) — partial: dismiss/timeout/ban done; no warn (warning system pending)
 - [ ] Bulk report actions
 - [ ] Report history and statistics
 - [ ] Export reports to CSV
@@ -324,12 +324,12 @@ Bot Activity profile shortcuts, DM replies + reactions.
 ### Message Reactions
 **Priority:** HIGH - Highly requested feature
 
-- [ ] React to messages with emojis
-- [ ] Multiple reactions per message
-- [ ] Emoji picker UI for reactions
+- [x] React to messages with emojis
+- [x] Multiple reactions per message
+- [x] Emoji picker UI for reactions
 - [ ] View who reacted (reaction details)
-- [ ] Remove own reactions
-- [ ] Reaction notifications
+- [x] Remove own reactions
+- [ ] Reaction notifications — partial: broadcast to the live feed; no author-directed notification
 - [ ] Most popular reactions tracking
 
 **Database Changes:**
@@ -337,14 +337,14 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - Add `reaction_count` to `messages` table (cached count)
 
 ### Advanced Messaging Features
-- [ ] Message editing (within 5-minute window)
+- [x] Message editing (within 5-minute window) — implemented (10-min window)
 - [ ] Edit history tracking
-- [ ] @mentions with autocomplete
-- [ ] Mention notifications
+- [x] @mentions with autocomplete
+- [x] Mention notifications (in-page title cue; no server persistence)
 - [x] Typing indicators ("User is typing...")
 - [ ] Message read receipts (for private messages)
-- [ ] Link previews (title, description, thumbnail)
-- [ ] Message search functionality
+- [x] Link previews (title, description, thumbnail)
+- [ ] Message search functionality — partial: admin per-user search only; no user-facing chat search
 
 **Database Changes:**
 - New `message_edits` table (id, message_id, old_content, new_content, edited_at)
@@ -390,17 +390,17 @@ Bot Activity profile shortcuts, DM replies + reactions.
 ### Song Tracking & Analytics
 **Priority:** MEDIUM - Radio station analytics
 
-- [ ] Automatic song play tracking from Shoutcast/Icecast
-- [ ] Record song title, artist, album, duration
+- [x] Automatic song play tracking from Shoutcast/Icecast
+- [x] Record song title, artist, album, duration
 - [ ] Track listener count per song
-- [ ] Timestamp when song started/ended
-- [ ] Song play history
-- [ ] Song popularity rankings (most played, most listeners)
+- [ ] Timestamp when song started/ended — partial: start only (played_at); no end timestamp
+- [x] Song play history
+- [x] Song popularity rankings (most played, most listeners)
 - [ ] Peak listeners during specific songs
-- [ ] Song performance reports
+- [ ] Song performance reports — partial: per-track drilldown in admin; no formal report/export
 - [ ] Export song statistics to CSV
-- [ ] Top songs by time period (daily/weekly/monthly)
-- [ ] Song genre tracking (optional)
+- [x] Top songs by time period (daily/weekly/monthly)
+- [x] Song genre tracking (optional)
 - [ ] Average listener retention per song
 
 **Database Changes:**
@@ -806,7 +806,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ## Additional Enhancements (Ongoing)
 
 ### Performance Optimizations
-- [ ] WebSocket support (upgrade from SSE for bidirectional real-time communication)
+- [x] WebSocket support (upgrade from SSE for bidirectional real-time communication)
 - [ ] Redis clustering for high availability
 - [ ] PostgreSQL read replicas
 - [ ] CDN integration for static assets
