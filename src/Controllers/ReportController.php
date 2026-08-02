@@ -120,6 +120,27 @@ class ReportController
     }
 
     /**
+     * GET /api/admin/reports/stats?days=30 — aggregate report statistics (totals
+     * by status/reason and the most-reported users) over a rolling window.
+     */
+    #[Route('/api/admin/reports/stats', methods: 'GET', name: 'admin.reports.stats', middleware: [AdminAuthMiddleware::class])]
+    public function stats(): Response
+    {
+        try {
+            $days = (int) Request::getInstance()->get('days', 30, 'get');
+            return Response::json([
+                'success' => true,
+                'stats'   => (new ReportService())->stats($days),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReportController::stats failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/reports/export?status=all — download the reports queue as a
      * CSV file (all statuses by default, or one when `status` is given).
      */

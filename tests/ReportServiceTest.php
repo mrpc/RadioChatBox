@@ -120,4 +120,35 @@ class ReportServiceTest extends TestCase
             $this->assertSame($victim, $r['reported_username']);
         }
     }
+
+    /** stats() aggregates by status, by reason, and ranks the most-reported users. */
+    public function testStatsAggregatesByStatusReasonAndTopUsers(): void
+    {
+        $heavy = 'heavy_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $light = 'light_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        // Three reports against $heavy (2 spam, 1 harassment), one against $light.
+        $this->ids[] = $this->svc()->create('a', null, null, 'public', $heavy, 'spam');
+        $this->ids[] = $this->svc()->create('b', null, null, 'public', $heavy, 'spam');
+        $this->ids[] = $this->svc()->create('c', null, null, 'private', $heavy, 'harassment');
+        $lightId = $this->svc()->create('d', null, null, 'public', $light, 'offensive');
+        $this->ids[] = $lightId;
+        // Resolve one so by_status has a non-pending entry.
+        $this->svc()->setStatus($lightId, 'resolved', 'mod');
+
+        $stats = $this->svc()->stats(30);
+
+        $this->assertGreaterThanOrEqual(4, $stats['total']);
+        $this->assertGreaterThanOrEqual(3, $stats['by_status']['pending']);
+        $this->assertGreaterThanOrEqual(1, $stats['by_status']['resolved']);
+        $this->assertGreaterThanOrEqual(2, $stats['by_reason']['spam']);
+        $this->assertGreaterThanOrEqual(1, $stats['by_reason']['harassment']);
+
+        // $heavy should appear in the top-reported list with a count of 3.
+        $heavyRow = null;
+        foreach ($stats['top_reported'] as $row) {
+            if ($row['username'] === $heavy) { $heavyRow = $row; break; }
+        }
+        $this->assertNotNull($heavyRow, 'the most-reported user is ranked');
+        $this->assertSame(3, $heavyRow['count']);
+    }
 }

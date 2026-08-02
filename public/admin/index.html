@@ -2214,6 +2214,7 @@
                             <button class="btn btn-outline" onclick="downloadCsv('/api/admin/reports/export?status=' + (document.getElementById('reports-status-filter')?.value || 'all'), 'reports.csv')">⬇️ Export CSV</button>
                         </div>
                     </div>
+                    <div id="reports-stats" style="margin-bottom:16px;"></div>
                     <div id="reports-table"></div>
                 </div>
                 <div class="section">
@@ -9168,7 +9169,42 @@
         // ---- Abuse reports queue ----
         const REPORT_REASON_LABELS = { spam:'Spam', harassment:'Harassment', inappropriate:'Inappropriate', offensive:'Offensive', impersonation:'Impersonation', other:'Other' };
 
+        async function loadReportStats() {
+            const box = document.getElementById('reports-stats');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/admin/reports/stats?days=30', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = ''; return; }
+                const s = data.stats;
+                const kpi = (label, value, color) =>
+                    `<div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; min-width:110px;">
+                        <div style="font-size:22px; font-weight:700; color:${color || '#111827'};">${value}</div>
+                        <div style="font-size:12px; color:#6b7280;">${label}</div>
+                    </div>`;
+                const st = s.by_status || {};
+                const reasonChips = Object.entries(s.by_reason || {})
+                    .filter(([, c]) => c > 0)
+                    .map(([r, c]) => `<span style="background:#eef2ff; color:#3730a3; border-radius:12px; font-size:12px; padding:2px 10px;">${escapeHtml(r)} · ${c}</span>`)
+                    .join(' ') || '<span style="color:#6b7280; font-size:13px;">none</span>';
+                const topRows = (s.top_reported || []).slice(0, 5).map(u =>
+                    `<a href="#" onclick="switchTab('users'); setTimeout(()=>viewUserDetails('${escapeHtml(u.username).replace(/'/g, "\\'")}'),0); return false;"
+                        style="background:#fef2f2; color:#991b1b; border-radius:12px; font-size:12px; padding:2px 10px; text-decoration:none;">${escapeHtml(u.username)} · ${u.count}</a>`
+                ).join(' ') || '<span style="color:#6b7280; font-size:13px;">none</span>';
+                box.innerHTML = `
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                        ${kpi('Total (30d)', s.total || 0)}
+                        ${kpi('Pending', st.pending || 0, '#d97706')}
+                        ${kpi('Resolved', st.resolved || 0, '#059669')}
+                        ${kpi('Dismissed', st.dismissed || 0, '#6b7280')}
+                    </div>
+                    <div style="margin-bottom:8px;"><strong style="font-size:13px; color:#374151;">By reason:</strong> ${reasonChips}</div>
+                    <div><strong style="font-size:13px; color:#374151;">Most reported:</strong> ${topRows}</div>`;
+            } catch (e) { box.innerHTML = ''; }
+        }
+
         async function loadReports() {
+            loadReportStats();
             const table = document.getElementById('reports-table');
             if (!table) return;
             const status = document.getElementById('reports-status-filter')?.value || 'pending';

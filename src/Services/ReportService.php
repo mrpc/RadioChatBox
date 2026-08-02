@@ -121,6 +121,73 @@ class ReportService
     }
 
     /**
+     * Aggregate report statistics over the last $days: totals by status, by
+     * reason, and the most-reported users. Used by the admin reports dashboard.
+     *
+     * @return array{
+     *   window_days:int, total:int,
+     *   by_status:array<string,int>, by_reason:array<string,int>,
+     *   top_reported:array<int, array{username:string, count:int}>
+     * }
+     */
+    public function stats(int $days = 30): array
+    {
+        $days = max(1, min($days, 365));
+        $since = date('Y-m-d H:i:s', time() - $days * 86400);
+
+        $byStatus = array_fill_keys(self::STATUSES, 0);
+        foreach ($this->groupCount('status', $since) as $row) {
+            $key = (string) $row['k'];
+            $byStatus[$key] = (int) $row['c'];
+        }
+
+        $byReason = array_fill_keys(self::ALLOWED_REASONS, 0);
+        foreach ($this->groupCount('reason', $since) as $row) {
+            $key = (string) $row['k'];
+            if (array_key_exists($key, $byReason)) {
+                $byReason[$key] = (int) $row['c'];
+            }
+        }
+
+        $topReported = [];
+        $rows = $this->db->queryBuilder()
+            ->from('message_reports')
+            ->select(['reported_username AS k', 'COUNT(*) AS c'])
+            ->whereRaw('reported_username IS NOT NULL')
+            ->whereRaw('created_at >= %s', [$since])
+            ->groupBy(['reported_username'])
+            ->orderBy('c', 'desc')
+            ->limit(10)
+            ->getAll();
+        foreach ($rows as $row) {
+            $topReported[] = ['username' => (string) $row['k'], 'count' => (int) $row['c']];
+        }
+
+        return [
+            'window_days'  => $days,
+            'total'        => array_sum($byStatus),
+            'by_status'    => $byStatus,
+            'by_reason'    => $byReason,
+            'top_reported' => $topReported,
+        ];
+    }
+
+    /**
+     * COUNT(*) grouped by one column since a cutoff.
+     *
+     * @return array<int, array{k:mixed, c:mixed}>
+     */
+    private function groupCount(string $column, string $since): array
+    {
+        return $this->db->queryBuilder()
+            ->from('message_reports')
+            ->select([$column . ' AS k', 'COUNT(*) AS c'])
+            ->whereRaw('created_at >= %s', [$since])
+            ->groupBy([$column])
+            ->getAll();
+    }
+
+    /**
      * All reports filed AGAINST a user (newest first), for the admin user-details
      * dossier. Capped.
      *

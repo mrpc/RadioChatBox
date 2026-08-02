@@ -111,7 +111,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Report details view (reporter, reported user, content, history) — partial: fields shown in the queue; no dedicated detail view
 - [ ] Quick actions from reports (dismiss, warn, timeout, ban) — partial: dismiss/timeout/ban done; no warn (warning system pending)
 - [ ] Bulk report actions
-- [ ] Report history and statistics
+- [x] Report history and statistics — admin reports dashboard (totals by status/reason, most-reported users) via `/api/admin/reports/stats`
 - [x] Export reports to CSV
 - [ ] Email notifications for new reports
 
@@ -253,7 +253,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 
 ### Auto-Moderation System
 - [ ] Configurable auto-ban thresholds
-- [ ] Track reports per user
+- [x] Track reports per user — `ReportService::forReportedUser` (user dossier) + most-reported ranking in the reports dashboard
 - [ ] Automatic escalation rules (e.g., 5 reports = auto-ban)
 - [ ] Reputation score system
 - [ ] Trust levels based on user behavior
