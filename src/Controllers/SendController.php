@@ -45,6 +45,15 @@ final class SendController
                 throw new RuntimeException('Public chat is disabled. Please use private messages.');
             }
 
+            // /poll — create a live poll from the chat (permitted roles only). It
+            // is NOT posted as a normal message; the poll card is broadcast instead.
+            if (is_string($message) && str_starts_with(ltrim($message), '/poll')) {
+                $pollResponse = $this->tryHandlePoll($username, $message, $sessionId, $chatService);
+                if ($pollResponse !== null) {
+                    return $pollResponse;
+                }
+            }
+
             // Slash-commands (when enabled): if the message is a recognised
             // command, answer the sender directly and DON'T post/broadcast it as a
             // chat message. An unrecognised /foo falls through as a normal message.
@@ -73,6 +82,52 @@ final class SendController
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * Handle a /poll command: "/poll Question | Option 1 | Option 2 [| …]".
+     * Returns a Response (success or a system error shown to the sender) when the
+     * message was a poll command, or null to let it fall through as normal text.
+     * Gated by polls_enabled and the poll_min_usertype role.
+     */
+    private function tryHandlePoll(string $username, string $message, string $sessionId, ChatService $chatService): ?Response
+    {
+        if ($chatService->getSetting('polls_enabled') !== 'true') {
+            return null; // feature off → treat as a normal message
+        }
+
+        // Only a permitted role may create polls.
+        $session = $chatService->getSessionInfo($username, $sessionId);
+        $role = (string) ($session['user_role'] ?? '');
+        $minLabel = (string) ($chatService->getSetting('poll_min_usertype') ?: 'moderator');
+        if (\RadioChatBox\Services\Authz::usertypeForLabel($role) < \RadioChatBox\Services\Authz::usertypeForLabel($minLabel)) {
+            return Response::json(['success' => true, 'command' => true, 'response' => 'You are not allowed to create polls.']);
+        }
+
+        // Parse "/poll question | opt | opt".
+        $body = trim((string) preg_replace('/^\/poll\b/i', '', ltrim($message)));
+        $bits = array_map('trim', explode('|', $body));
+        $bits = array_values(array_filter($bits, static fn (string $b): bool => $b !== ''));
+        if (count($bits) < 3) {
+            return Response::json(['success' => true, 'command' => true,
+                'response' => 'Usage: /poll Question | Option 1 | Option 2 [| Option 3 …]']);
+        }
+        $question = array_shift($bits);
+
+        try {
+            $service = new \RadioChatBox\Services\PollService();
+            $id = $service->create($question, $bits, $username);
+            $results = $service->results($id);
+            try {
+                \Pramnos\Broadcasting\BroadcastingManager::instance()
+                    ->broadcast('chat:updates', 'poll', ['type' => 'poll', 'poll' => $results]);
+            } catch (\Throwable $e) {
+                // best-effort
+            }
+            return Response::json(['success' => true, 'command' => true, 'response' => '📊 Poll created.']);
+        } catch (InvalidArgumentException $e) {
+            return Response::json(['success' => true, 'command' => true, 'response' => $e->getMessage()]);
+        }
     }
 
     /** Whether admin-defined slash-commands are switched on. */

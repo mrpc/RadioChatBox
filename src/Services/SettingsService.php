@@ -59,6 +59,7 @@ class SettingsService
         'track_voting_enabled',
         // Live chat polls
         'polls_enabled',
+        'poll_min_usertype',
         // "User is typing…" indicators — public chat and DMs are toggled separately
         'typing_indicators_enabled',
         'dm_typing_indicators_enabled',
@@ -192,6 +193,8 @@ class SettingsService
         'player_mode'           => ['off', 'on', 'iframe_only', 'app_only'],
         'player_stream_format'  => ['mp3', 'aac'],
         'charts_default_period' => ['day', 'week', 'month'],
+        // Minimum role allowed to create a poll with /poll on the front end.
+        'poll_min_usertype'     => ['moderator', 'administrator', 'root'],
     ];
 
     public function __construct()

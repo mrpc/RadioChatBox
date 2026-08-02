@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Cache\FlatCache;
 use Pramnos\Framework\Testing\TestDatabase;
 use RadioChatBox\Controllers\PollController;
+use RadioChatBox\Controllers\SendController;
 use RadioChatBox\Services\PollService;
 use RadioChatBox\Services\SettingsService;
 
@@ -43,8 +44,11 @@ class PollControllerTest extends TestCase
             $this->pdo->prepare('DELETE FROM poll_votes WHERE poll_id = ?')->execute([$id]);
             $this->pdo->prepare('DELETE FROM polls WHERE id = ?')->execute([$id]);
         }
+        // Command tests may create a poll we don't hold the id for — clean by question.
+        $this->pdo->prepare("DELETE FROM polls WHERE created_by = ? OR question IN ('Rock or metal?')")->execute([$this->user]);
         $this->pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$this->user]);
-        $this->pdo->prepare("DELETE FROM settings WHERE setting = 'polls_enabled'")->execute();
+        $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->user]);
+        $this->pdo->prepare("DELETE FROM settings WHERE setting IN ('polls_enabled', 'poll_min_usertype')")->execute();
         FlatCache::default()->clear();
         $_POST = [];
         $_GET = [];
@@ -53,6 +57,22 @@ class PollControllerTest extends TestCase
     private function enable(): void
     {
         (new SettingsService())->set('polls_enabled', 'true');
+    }
+
+    /**
+     * Give this test's user a role and link the presence session to it, so
+     * ChatService::getSessionInfo (which joins presence_sessions.user_id ->
+     * users.userid) reports the role the /poll gate checks.
+     */
+    private function promoteUser(int $usertype): void
+    {
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, ?)')
+            ->execute([$this->user, 'x', $usertype]);
+        $userId = (int) $this->pdo->query(
+            'SELECT userid FROM users WHERE username = ' . $this->pdo->quote($this->user)
+        )->fetchColumn();
+        $this->pdo->prepare('UPDATE presence_sessions SET user_id = ? WHERE session_id = ?')
+            ->execute([$userId, $this->session]);
     }
 
     private function makePoll(string $q = 'Best genre?', array $opts = ['Rock', 'Metal', 'Jazz']): int
@@ -167,6 +187,52 @@ class PollControllerTest extends TestCase
         $_POST = ['poll_id' => $id, 'option_index' => 0, 'username' => $this->user, 'session_id' => $this->session];
 
         $this->assertSame(409, (new PollController())->vote()->getStatusCode());
+    }
+
+    /** /poll from a non-privileged user is refused (as a private system reply). */
+    public function testPollCommandRejectsUnprivilegedUser(): void
+    {
+        $this->enable();
+        (new SettingsService())->set('poll_min_usertype', 'moderator');
+        // $this->user is a guest (no users row) → no role.
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/poll A | B | C'];
+
+        $response = (new SendController())->store();
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['command'] ?? false);
+        $this->assertStringContainsStringIgnoringCase('not allowed', $body['response']);
+        $this->assertNull((new PollService())->activeResults(), 'no poll was created');
+    }
+
+    /** /poll from a permitted (moderator+) user creates the poll. */
+    public function testPollCommandCreatesForStaff(): void
+    {
+        $this->enable();
+        (new SettingsService())->set('poll_min_usertype', 'moderator');
+        $this->promoteUser(50); // moderator — and link the session to the user
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/poll Rock or metal? | Rock | Metal'];
+        $response = (new SendController())->store();
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['command'] ?? false);
+
+        $active = (new PollService())->activeResults();
+        $this->assertNotNull($active);
+        $this->assertSame('Rock or metal?', $active['question']);
+        $this->pollIds[] = $active['id'];
+    }
+
+    /** /poll with too few options returns a usage hint (permitted user). */
+    public function testPollCommandBadSyntaxShowsUsage(): void
+    {
+        $this->enable();
+        (new SettingsService())->set('poll_min_usertype', 'moderator');
+        $this->promoteUser(90); // administrator
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/poll only a question'];
+        $response = (new SendController())->store();
+        $body = json_decode($response->getBody(), true);
+        $this->assertStringContainsStringIgnoringCase('usage', $body['response']);
     }
 
     /** Admin create validates and returns the new poll. */
