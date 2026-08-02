@@ -133,6 +133,25 @@ final class MediaController
         }
         // @codeCoverageIgnoreEnd
 
+        // YouTube serves a cookie-consent wall to the bot fetch (especially youtu.be
+        // short links), so Open Graph scraping returns no title and the preview
+        // silently fails. Use YouTube's oEmbed API (title + author + thumbnail, no
+        // consent wall) to build the same card shape instead.
+        if ($this->isYouTubeHost($host)) {
+            $yt = $this->youTubeOEmbed($url);
+            if ($yt !== null) {
+                try {
+                    FlatCache::default()->set($cacheKey, $yt, 3600);
+                // @codeCoverageIgnoreStart
+                } catch (\Exception $e) {
+                    // Cache backend unavailable — return uncached
+                }
+                // @codeCoverageIgnoreEnd
+                return Response::json($yt);
+            }
+            // oEmbed failed (private/removed video etc.) — fall through to the scrape.
+        }
+
         // Fetch the page content through the framework HTTP client (curl
         // underneath, TLS verification on, redirects followed). As with the former
         // stream context's ignore_errors, a non-2xx still yields its body; only a
@@ -267,6 +286,58 @@ final class MediaController
             FILTER_VALIDATE_IP,
             FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
         ) === false;
+    }
+
+    /**
+     * Whether a host is a YouTube property whose links should preview via oEmbed.
+     */
+    private function isYouTubeHost(string $host): bool
+    {
+        $host = strtolower(ltrim($host));
+        return in_array($host, [
+            'youtu.be',
+            'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com',
+            'youtube-nocookie.com', 'www.youtube-nocookie.com',
+        ], true);
+    }
+
+    /**
+     * Build a preview card for a YouTube URL from the public oEmbed endpoint (which,
+     * unlike the watch page, is not gated behind the consent wall). Returns the same
+     * {title, description, image, domain, url} shape the scraper produces, or null
+     * when the video is private/removed or oEmbed is unreachable.
+     *
+     * @return array{title:string, description:string, image:string, domain:string, url:string}|null
+     */
+    private function youTubeOEmbed(string $url): ?array
+    {
+        $endpoint = 'https://www.youtube.com/oembed?format=json&url=' . rawurlencode($url);
+        try {
+            $response = Client::get($endpoint)
+                ->timeout(5)
+                ->userAgent('RadioChatBox Link Preview Bot/1.0')
+                ->header('Accept', 'application/json')
+                ->send();
+        } catch (ClientException $e) {
+            return null;
+        }
+
+        $body = $response->body();
+        if ($body === '') {
+            return null;
+        }
+        $data = json_decode($body, true);
+        if (!is_array($data) || empty($data['title'])) {
+            return null;
+        }
+
+        return [
+            'title'       => (string) $data['title'],
+            'description' => (string) ($data['author_name'] ?? ''),
+            'image'       => (string) ($data['thumbnail_url'] ?? ''),
+            'domain'      => 'youtube.com',
+            'url'         => $url,
+        ];
     }
 
     /**

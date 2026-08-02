@@ -53,6 +53,32 @@ class MediaControllerTest extends TestCase
     }
 
     /**
+     * A YouTube link previews via the oEmbed API (not HTML scraping, which YouTube
+     * blocks behind a consent wall): a youtu.be URL returns a card built from the
+     * oEmbed title/author/thumbnail, mapped to the standard preview shape.
+     */
+    public function testLinkPreviewUsesYouTubeOEmbed(): void
+    {
+        $oembed = json_encode([
+            'title'         => 'Some Song - Official Video',
+            'author_name'   => 'The Band',
+            'thumbnail_url' => 'https://i.ytimg.com/vi/Nt6lpvnGt4A/hqdefault.jpg',
+            'provider_name' => 'YouTube',
+        ]);
+        Client::fake(['*youtube.com/oembed*' => ClientResponse::make($oembed, 200, ['content-type' => 'application/json'])]);
+
+        $_GET = ['url' => 'https://youtu.be/Nt6lpvnGt4A?probe=' . uniqid()];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertSame('Some Song - Official Video', $body['title']);
+        $this->assertSame('The Band', $body['description']);
+        $this->assertSame('https://i.ytimg.com/vi/Nt6lpvnGt4A/hqdefault.jpg', $body['image']);
+        $this->assertSame('youtube.com', $body['domain']);
+    }
+
+    /**
      * link-preview rejects a declared non-HTML Content-Type with 422
      * {error:'URL is not an HTML page'}.
      */
