@@ -6613,6 +6613,15 @@
                         </div>`;
                 }).join('');
 
+                // Preserve the reader's scroll position across the 4s background
+                // re-render: only stick to the bottom if they were already there,
+                // otherwise keep where they were (was hijacking reading every poll).
+                const prevMsgs = document.getElementById('bot-thread-messages');
+                const prevScrollTop = prevMsgs ? prevMsgs.scrollTop : 0;
+                const wasAtBottom = prevMsgs
+                    ? (prevMsgs.scrollHeight - prevMsgs.scrollTop - prevMsgs.clientHeight) < 60
+                    : true;
+
                 box.innerHTML = `
                     <h2>${escapeHtml(fakeUser)} ↔ ${escapeHtml(peer)}</h2>
                     <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4b5563; margin-bottom: 12px;">
@@ -6644,9 +6653,13 @@
                     ${botCallRows(data.calls)}
                     <button class="btn btn-outline" style="margin-top: 12px;" onclick="closeBotThread()">Close</button>`;
 
-                // Keep the newest messages in view as the conversation updates.
+                // Stick to the newest only if the reader was already at the bottom;
+                // otherwise restore their position so the background refresh does
+                // not yank them away from history.
                 const msgs = document.getElementById('bot-thread-messages');
-                if (msgs) msgs.scrollTop = msgs.scrollHeight;
+                if (msgs) {
+                    msgs.scrollTop = wasAtBottom ? msgs.scrollHeight : prevScrollTop;
+                }
 
                 // On an explicit "View" (not the background refresh), bring the
                 // conversation panel into view.
