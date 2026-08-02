@@ -53,12 +53,24 @@ final class AdminStatsController
 
             // Force record a snapshot when viewing summary (ensures real-time data
             // exists), especially on first load or when cron isn't running.
+            //
+            // These two are best-effort priming steps, NOT the response: getSummary
+            // already carries a real-time message/user count. A failure here (a
+            // broken aggregation function, a snapshot insert error) must never blank
+            // the dashboard — otherwise "messages today" reads 0 while the chat is
+            // busy. Swallow and log so the real data below still renders.
             if ($granularity === 'summary') {
-                $statsService->recordSnapshot(true); // Ignore rate limit for admin dashboard
+                try {
+                    $statsService->recordSnapshot(true); // Ignore rate limit for admin dashboard
+                    $statsService->triggerAggregationIfNeeded();
+                } catch (\Throwable $e) {
+                    \Pramnos\Logs\Logger::log(
+                        'AdminStats: snapshot/aggregation priming failed (serving real-time summary anyway): '
+                            . $e->getMessage(),
+                        'radiochatbox'
+                    );
+                }
             }
-
-            // If cron isn't running, trigger aggregation on-demand.
-            $statsService->triggerAggregationIfNeeded();
 
             $startDate = $req->get('start_date', null, 'get');
             $endDate   = $req->get('end_date', null, 'get');

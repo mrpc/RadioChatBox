@@ -575,17 +575,33 @@ class StatsService
             ];
         }
 
+        // The week/month/year rollups are secondary to the dashboard's headline
+        // "today" number. If one of them throws (a broken aggregate function, a
+        // schema mismatch after a migration), it must not blank the whole summary
+        // and drag "messages today" to 0 — degrade that section to null instead so
+        // the real-time today override below still runs.
+        $safe = function (callable $fn) {
+            try {
+                return $fn();
+            // @codeCoverageIgnoreStart
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('StatsService::getSummary partial failure: ' . $e->getMessage(), 'radiochatbox');
+                return null;
+            }
+            // @codeCoverageIgnoreEnd
+        };
+
         // This week's stats - compute from daily data including today
-        $weekStats = $this->computeCurrentWeekStats();
+        $weekStats = $safe(fn () => $this->computeCurrentWeekStats());
 
         // This month's stats - compute from daily data including today
-        $monthStats = $this->computeCurrentMonthStats();
+        $monthStats = $safe(fn () => $this->computeCurrentMonthStats());
 
         // This year's stats - compute from daily data including today
-        $yearStats = $this->computeCurrentYearStats();
+        $yearStats = $safe(fn () => $this->computeCurrentYearStats());
 
         // Latest snapshot
-        $latestSnapshot = $this->getLatestSnapshot();
+        $latestSnapshot = $safe(fn () => $this->getLatestSnapshot());
 
         // If users just arrived and haven't been aggregated to hourly stats yet,
         // use real-time concurrent users from latest snapshot if higher
