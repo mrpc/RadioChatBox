@@ -8,7 +8,9 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
+    min-height: 100dvh;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1945,6 +1947,7 @@ img.emoji {
         flex-direction: column;
         width: 100vw;
         height: 100vh;
+        height: 100dvh; /* fit the VISIBLE viewport on mobile (excludes browser chrome) */
         max-width: 100%;
         border-radius: 0;
         margin: 0;
@@ -1989,6 +1992,7 @@ img.emoji {
         left: 0;
         width: 280px;
         height: 100vh;
+        height: 100dvh;
         z-index: 200;
         background: white;
         box-shadow: 2px 0 12px rgba(0,0,0,0.3);
@@ -2013,6 +2017,7 @@ img.emoji {
     #chat-container {
         width: 100%;
         height: 100vh;
+        height: 100dvh;
     }
 
     #chat-header {
@@ -2047,6 +2052,7 @@ img.emoji {
     #messages-container {
         padding: 10px;
         height: calc(100vh - 100px - 70px); /* viewport - header - input */
+        height: calc(100dvh - 100px - 70px); /* dvh so the input isn't clipped behind mobile chrome */
     }
 
     .message {

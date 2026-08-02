@@ -207,19 +207,64 @@ class RadioChatBox {
         
         // Listen for page visibility changes to detect when returning from admin panel
         document.addEventListener('visibilitychange', () => this.handleVisibilityChange());
+
+        // Network came back (mobile flaps in/out of coverage): re-establish the
+        // realtime transport and catch up on anything missed while offline.
+        window.addEventListener('online', () => {
+            if (this.username) {
+                this.ensureRealtimeFresh(9000); // treat as a real suspend → force reconnect
+            }
+        });
     }
     
     handleVisibilityChange() {
-        // When page becomes visible, check if we've been logged out from admin
-        if (!document.hidden && this.username) {
-            // Check if adminToken was cleared (user logged out from admin)
-            const adminToken = localStorage.getItem('adminToken');
-            const wasLoggedInAsAdmin = this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole);
-            
-            if (wasLoggedInAsAdmin && !adminToken) {
-                // Admin token was cleared, logout from chat too
-                this.logoutUser();
-            }
+        // Remember when we were backgrounded so we can tell a quick tab-switch
+        // from a long suspend (mobile freezes the socket while in the background).
+        if (document.hidden) {
+            this._hiddenSince = Date.now();
+            return;
+        }
+        if (!this.username) {
+            return;
+        }
+
+        // Check if adminToken was cleared (user logged out from admin)
+        const adminToken = localStorage.getItem('adminToken');
+        const wasLoggedInAsAdmin = this.userRole && ['root', 'administrator', 'moderator'].includes(this.userRole);
+        if (wasLoggedInAsAdmin && !adminToken) {
+            this.logoutUser();
+            return;
+        }
+
+        const hiddenMs = this._hiddenSince ? (Date.now() - this._hiddenSince) : 0;
+        this._hiddenSince = null;
+        this.ensureRealtimeFresh(hiddenMs);
+    }
+
+    /**
+     * Make sure the realtime transport is live and no messages were missed while
+     * the tab was hidden. Mobile browsers suspend the socket in the background and
+     * it often comes back a zombie that still reports OPEN, so after a longer
+     * suspend we force a fresh connection; a brief tab-switch just catches up over
+     * HTTP. Either way fetchMissedMessages() fills any gap.
+     */
+    ensureRealtimeFresh(hiddenMs = 0) {
+        if (!this.username) {
+            return;
+        }
+        const wsOpen = this._ws && this._ws.readyState === 1;
+        const sseOpen = this.eventSource && this.eventSource.readyState === 1;
+        const staleAfterSuspend = hiddenMs > 8000;
+
+        if ((!wsOpen && !sseOpen) || staleAfterSuspend) {
+            this.disconnect();
+            this.reconnectAttempts = 0; // returning to foreground → reconnect now, no backoff
+            this.connect();
+            // Give the fresh connection a moment, then reconcile against the server.
+            setTimeout(() => this.fetchMissedMessages(), 800);
+        } else {
+            // Socket looks healthy; still reconcile in case a beat was missed.
+            this.fetchMissedMessages();
         }
     }
     
