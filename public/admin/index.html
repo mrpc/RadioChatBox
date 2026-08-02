@@ -10068,6 +10068,17 @@
                 const data = await resp.json();
                 if (data.success) {
                     renderImpersonateBotStatus(data.state);
+                    // Pin the impersonation context to THIS conversation so a
+                    // subsequent message is sent from the right fake user to the
+                    // right peer. Previously the send used whatever the form last
+                    // held (often stale/unset until a manual refresh), so the reply
+                    // could go out as the wrong user.
+                    currentImpersonateAs = fakeUser;
+                    currentSender = senderUsername;
+                    const select = document.getElementById('impersonate-select');
+                    if (select && [...select.options].some(o => o.value === fakeUser)) {
+                        select.value = fakeUser;
+                    }
                 }
             } catch (e) {
                 // Non-fatal: the server-side takeover also happens on send.
