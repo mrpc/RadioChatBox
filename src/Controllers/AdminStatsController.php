@@ -542,6 +542,27 @@ final class AdminStatsController
     }
 
     /**
+     * GET /api/admin/reactions/popular?days=30 — most-used reaction emojis across
+     * public messages in the window, ranked by count.
+     */
+    #[Route('/api/admin/reactions/popular', methods: 'GET', name: 'admin.reactions.popular', middleware: [AdminAuthMiddleware::class])]
+    public function popularReactions(): Response
+    {
+        try {
+            $days = (int) Request::getInstance()->get('days', 30, 'get');
+            return Response::json([
+                'success'   => true,
+                'reactions' => (new \RadioChatBox\Services\ReactionService())->popularEmojis($days),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminStatsController::popularReactions failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/bot-activity — bot conversations, LLM call log and usage.
      *
      * Migrated from public/api/admin/bot-activity.php. Because the log holds full

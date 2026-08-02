@@ -277,6 +277,45 @@ class ReactionService
     }
 
     /**
+     * Most-used reaction emojis across public messages in the last $days, ordered
+     * by count (descending). Every allowed emoji is present (0 when unused).
+     *
+     * @return array<int, array{emoji:string, count:int}>
+     */
+    public function popularEmojis(int $days = 30): array
+    {
+        $days = max(1, min($days, 365));
+        $since = date('Y-m-d H:i:s', time() - $days * 86400);
+
+        $counts = array_fill_keys(self::ALLOWED_EMOJIS, 0);
+        try {
+            $rows = $this->db->queryBuilder()
+                ->from('message_reactions')
+                ->select(['emoji', 'COUNT(*) AS c'])
+                ->whereRaw('created_at >= %s', [$since])
+                ->groupBy(['emoji'])
+                ->getAll();
+            foreach ($rows as $row) {
+                $emoji = (string) $row['emoji'];
+                if (array_key_exists($emoji, $counts)) {
+                    $counts[$emoji] = (int) $row['c'];
+                }
+            }
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReactionService::popularEmojis failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+
+        $out = [];
+        foreach ($counts as $emoji => $c) {
+            $out[] = ['emoji' => $emoji, 'count' => $c];
+        }
+        usort($out, static fn ($a, $b): int => $b['count'] <=> $a['count']);
+        return $out;
+    }
+
+    /**
      * Who reacted to a message, grouped by emoji (ordered like the reaction list).
      * Usernames within each emoji are ordered oldest-first.
      *

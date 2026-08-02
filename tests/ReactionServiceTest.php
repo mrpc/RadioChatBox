@@ -113,6 +113,28 @@ class ReactionServiceTest extends TestCase
         $this->assertSame([], $this->service->whoReacted($this->messageId));
     }
 
+    /** popularEmojis ranks emojis by use and includes every allowed emoji. */
+    public function testPopularEmojisRanksByUsage(): void
+    {
+        // 🔥 twice, 👍 once on this message.
+        $this->service->toggleReaction($this->messageId, $this->userA, 'sess', '🔥');
+        $this->service->toggleReaction($this->messageId, $this->userB, 'sess', '🔥');
+        $this->service->toggleReaction($this->messageId, '__reactor_c__', 'sess', '👍');
+
+        $popular = $this->service->popularEmojis(30);
+        // Every allowed emoji is represented.
+        $this->assertCount(count(ReactionService::getAllowedEmojis()), $popular);
+        // Ranked descending — the top entry has the highest count.
+        $byEmoji = [];
+        foreach ($popular as $row) { $byEmoji[$row['emoji']] = $row['count']; }
+        $this->assertGreaterThanOrEqual(2, $byEmoji['🔥']);
+        $this->assertGreaterThanOrEqual(1, $byEmoji['👍']);
+        $this->assertGreaterThanOrEqual($popular[1]['count'], $popular[0]['count']);
+
+        $this->pdo->prepare("DELETE FROM message_reactions WHERE username = '__reactor_c__' AND message_id = ?")
+            ->execute([$this->messageId]);
+    }
+
     public function testRejectsDisallowedEmoji(): void
     {
         $this->expectException(\InvalidArgumentException::class);

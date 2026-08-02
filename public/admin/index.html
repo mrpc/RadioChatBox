@@ -1440,7 +1440,9 @@
                         <p style="color: #6b7280; margin-bottom: 20px;">
                             View real-time statistics and analytics for your chat activity.
                         </p>
-                        
+
+                        <div id="popular-reactions" style="margin-bottom: 20px;"></div>
+
                         <!-- Statistics Sub-tabs -->
                         <div style="display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb;">
                             <button class="btn" onclick="loadStatsTab('summary')" id="stats-tab-summary" style="background: #667eea; color: white; margin-bottom: -2px; border-bottom: 3px solid #667eea;">Summary</button>
@@ -5167,6 +5169,7 @@
                 if (tabName === 'reports') { loadReports(); loadModerationLog(); }
                 if (tabName === 'song-requests') loadSongRequests();
                 if (tabName === 'polls') loadPollsHistory();
+                if (tabName === 'statistics') loadPopularReactions();
             };
         })();
         
@@ -9171,6 +9174,25 @@
 
         // ---- Abuse reports queue ----
         const REPORT_REASON_LABELS = { spam:'Spam', harassment:'Harassment', inappropriate:'Inappropriate', offensive:'Offensive', impersonation:'Impersonation', other:'Other' };
+
+        async function loadPopularReactions() {
+            const box = document.getElementById('popular-reactions');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/admin/reactions/popular?days=30', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = ''; return; }
+                const list = (data.reactions || []).filter(r => r.count > 0);
+                if (!list.length) { box.innerHTML = ''; return; }
+                const chips = list.map(r =>
+                    `<span style="background:#fff; border:1px solid #e5e7eb; border-radius:20px; padding:4px 12px; font-size:15px;">${r.emoji} <strong>${r.count}</strong></span>`
+                ).join(' ');
+                box.innerHTML = `<div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
+                        <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Most popular reactions (last 30 days)</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">${chips}</div>
+                    </div>`;
+            } catch (e) { box.innerHTML = ''; }
+        }
 
         async function loadReportStats() {
             const box = document.getElementById('reports-stats');
