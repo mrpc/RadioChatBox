@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **WebSocket realtime transport** for both the chat and the admin panel, with
+  automatic **SSE fallback**. Clients ask `/api/realtime-config`; WebSocket is
+  advertised only when the admin enabled it, a public host is set and the
+  `realtime:serve` worker is healthy — otherwise, or on any WS failure, they use
+  SSE unchanged. Fed from the same Redis pub/sub backplane as SSE. Configurable
+  entirely from **admin → Settings → Realtime** (public scheme/host/port, worker
+  bind host/port, app key; public address auto-fills from the current domain).
+  The worker is a per-feature daemon the orchestrator spawns when enabled.
+- **Signed per-username realtime token** (`RealtimeToken`): issued on each
+  heartbeat, verified by the SSE stream (`?token=`) and the WS channel-auth
+  endpoint. DMs ride **per-user private channels** — the auth endpoint signs only
+  the caller's own `private-pm-<name>` (or any channel for an admin, for
+  impersonation), so a DM never reaches a non-participant.
+- **Brute-force login lockout** on both chat and admin login via the framework's
+  native `Loginlockout` (progressive 3→60s … 10→1h), fail-open.
+- **RcbAuthDriver** — framework Auth seam that verifies RCB's plain bcrypt, so
+  the framework Auth/LoginFlow can authenticate RCB accounts (foundation for
+  native 2FA/passkeys, no forced password reset).
+
+### Fixed
+- **GIF picker never appeared**: the chat fetched the removed `api/settings.php`
+  (404); use the clean `/api/settings` route.
+- Sending a message now refreshes the sender's presence, so an active user whose
+  heartbeat lapsed (mobile background / flaky network) no longer shows offline.
+- All-messages live refresh keeps the current page instead of jumping to page 1.
+- Impersonation view auto-scrolls only when already at the bottom (no history
+  hijack), pins the taken-over conversation so replies go from the right fake
+  user, and renders DM photos in the bot-thread / read-only conversation views.
+- Admin "Background worker" widget reflects the whole supervisor + every daemon
+  (not just the bot) with per-daemon detail on click.
+- Admin PUT/DELETE endpoints read the JSON body from the framework Request store
+  (not `$_POST`) — "mark all as read" no longer 400s.
+
 ### Changed
+- **Schema convergence squashed** into the single `create_schema` baseline: a
+  fresh install now needs only one app migration (plus the framework set). The
+  former five convergence migrations and `PF_SCHEMA_CONVERGENCE.md` are removed;
+  verified byte-for-byte identical to the staged build.
+- Framework: `DaemonOrchestrator` re-execs itself on a git redeploy, so a
+  `git pull` reloads new workers without a manual `systemctl restart`;
+  `Loginlockout` timestamps use local tz (were UTC), fixing lockout on non-UTC
+  servers; `RealtimeConfig` advertises an SSE fallback; `LocalBroadcastServer`
+  gains an ingest-router hook.
+- Notification RBAC gates and other role checks moved onto the `Authz` usertype
+  facade.
 - Bot prompts now start with a conversation-context block: the chat's setting
   plus a glossary of the openers that were being read literally (notably that
   "είσαι ελεύθερη;" asks about relationship status, not about having time to

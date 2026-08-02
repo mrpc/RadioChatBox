@@ -4,6 +4,41 @@ This document outlines the planned features and enhancements for RadioChatBox.
 
 ---
 
+## Recently completed (Aug 2026)
+
+- **Pramnos Framework integration** + full DB/schema convergence, squashed into a
+  single `create_schema` baseline (fresh install = one app migration).
+- **WebSocket realtime transport** (chat + admin) with automatic SSE fallback,
+  token-secured per-user DM channels, settings-driven config, Apache reverse-proxy.
+- **Realtime token** securing both transports (closed the SSE `?username=` spoof).
+- **Brute-force login lockout** (framework `Loginlockout`) on chat + admin login.
+- **RcbAuthDriver** — framework Auth seam (foundation for native 2FA/passkeys).
+- Framework fixes upstreamed: orchestrator self-re-exec on redeploy, Loginlockout
+  non-UTC timezone bug, RealtimeConfig SSE fallback, ingest-router hook.
+- Numerous admin/chat UX fixes (worker widget, presence-on-send, pagination,
+  impersonation context + photos, PUT/DELETE body reading, GIF picker URL).
+
+## Known gaps / discovered (open)
+
+- **Native auth completion**: usertokens-backed API sessions, TOTP **2FA** and
+  WebAuthn **passkeys** + login step-up (route the live login through `LoginFlow`).
+  Needs UX validation — deferred from the autonomous batch.
+- **Admin UX rewrite** to a modern SPA (proposed: **Svelte + DaisyUI**) — see
+  `docs/ADMIN_REWRITE_PLAN.md`. Current admin has anchorless nav (no open-in-new-tab),
+  incomplete user-history view, no easy take-over from history, etc.
+- **Mobile front-end**: messages clipped, frequent disconnects / missed messages
+  (needs a mobile-first pass on the chat SPA + WS/SSE reconnect robustness).
+- **Bot greeklish leak**: `BotService::buildHistory()` feeds the LLM its own
+  *transliterated* (greeklish) replies, so models mimic greeklish despite the
+  "write Greek" instruction. Fix = keep the original Greek for history (extra
+  column or Redis) and transliterate only at delivery. (Needs LLM testing.)
+- **All-messages photos** (bug 7): the `/api/admin/messages` endpoint does not
+  return attachment data, so private-message photos are not shown there.
+- Minor: "Restart realtime worker" affordance for bind-port/app-key changes;
+  push live `chat_mode` over WS; baseline seed of lazily-created settings (gif_*).
+
+---
+
 ## Phase 1: User Management & Reporting (v1.1.0)
 
 **Target:** Q1 2026
@@ -23,15 +58,17 @@ This document outlines the planned features and enhancements for RadioChatBox.
   - Alternative: Use fetch() with ReadableStream for SSE instead of EventSource
   - Add token refresh mechanism
   - Implement token revocation on logout
-- [ ] Integrate Pramnos Framework (https://github.com/mrpc/PramnosFramework)
-- [ ] Refactor existing code to use Pramnos structure
-- [ ] Implement automated database migration system
-- [ ] Migration version tracking
-- [ ] Automatic migration execution on deployment
+- [x] Integrate Pramnos Framework (https://github.com/mrpc/PramnosFramework)
+- [x] Refactor existing code to use Pramnos structure (Services + attribute-routed API + SPA)
+- [x] Implement automated database migration system (framework MigrationRunner)
+- [x] Migration version tracking (`schemaversion`)
+- [x] Automatic migration execution on deployment (auto-migrate on request/console)
 - [ ] Rollback capability for failed migrations
 - [ ] Migration status dashboard in admin panel
-- [ ] Database schema versioning
+- [x] Database schema versioning
 - [ ] Migration testing in staging environment
+- [x] **Schema converged onto the framework schema** (users/usertype/RBAC, settings,
+      messaging) and **squashed into one baseline** — a fresh install needs one app migration
 
 **Technical Requirements:**
 - Pramnos Framework integration
