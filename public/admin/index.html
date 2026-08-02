@@ -3463,6 +3463,10 @@
                 onBotActivitySignal(notification);
                 return;
             }
+            if (notification && notification.signal === 'messages_changed') {
+                onMessagesChangedSignal();
+                return;
+            }
 
             // Update badge and re-render notifications
             updateNotificationBadge(notification.unread_count);
@@ -4846,23 +4850,15 @@
             } else if (tabName === 'users') {
                 loadUsers();
             } else if (tabName === 'dashboard') {
+                // Live updates arrive over the socket (messages_changed / bot_activity
+                // / admin notifications) — no polling. Just load once on entry.
+                clearInterval(window.dashboardRefreshInterval);
                 loadDashboardKPIs();
-                // Start live refresh for dashboard (every 10 seconds)
-                clearInterval(window.dashboardRefreshInterval); // Clear any existing interval
-                window.dashboardRefreshInterval = setInterval(() => {
-                    loadDashboardKPIs();
-                }, 10000);
             } else if (tabName === 'messages') {
+                // Refreshed live by the messages_changed socket signal (page 1 only);
+                // no 20s poll. Load once on entry.
+                clearInterval(window.messagesRefreshInterval);
                 loadMessages(1);
-                // Start live refresh for messages (every 20 seconds), but ONLY while
-                // viewing page 1 — otherwise browsing older pages would keep getting
-                // yanked back to page 1.
-                clearInterval(window.messagesRefreshInterval); // Clear any existing interval
-                window.messagesRefreshInterval = setInterval(() => {
-                    if ((window.currentMessagesPage || 1) === 1) {
-                        loadMessages(1);
-                    }
-                }, 20000);
             } else if (tabName === 'statistics') {
                 loadStatsTab('summary');
             } else if (tabName === 'url-whitelist') {
@@ -6734,6 +6730,22 @@
         // screen or in the list — always cheap to just refresh the visible page).
         function onBotActivitySignal(_data) {
             refreshBotActivityLive();
+        }
+
+        // Socket signal: a public message was posted. Refresh whichever admin view
+        // shows messages — the Messages tab (page 1 only, so older pages aren't
+        // yanked) and the Dashboard (KPIs + recent messages) — no polling.
+        function onMessagesChangedSignal() {
+            if (document.hidden) return;
+            const active = document.querySelector('.tab-content.active');
+            if (!active) return;
+            if (active.id === 'messages-tab') {
+                if ((window.currentMessagesPage || 1) === 1 && typeof loadMessages === 'function') {
+                    loadMessages(1);
+                }
+            } else if (active.id === 'dashboard-tab') {
+                if (typeof loadDashboardKPIs === 'function') loadDashboardKPIs();
+            }
         }
 
         // Socket signal: a photo was uploaded. Refresh the gallery if it is open —

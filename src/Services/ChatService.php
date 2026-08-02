@@ -103,6 +103,21 @@ class ChatService
         // Publish to subscribers
         BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL, 'message', $messageData);
 
+        // Live-refresh cue for the admin (messages tab + dashboard) so it never
+        // polls for new public messages. Rides the admin channel as a signal, not
+        // a user-facing notification. Best-effort.
+        try {
+            BroadcastingManager::instance()->broadcast(
+                'chat:admin_notifications',
+                'messages_changed',
+                ['signal' => 'messages_changed']
+            );
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ChatService: messages_changed signal failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+
         // Store in PostgreSQL (for persistence) - user data already fetched
         $this->storeMessageInDB($messageData);
 
