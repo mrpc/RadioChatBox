@@ -489,12 +489,12 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### Polls & Voting
 **Priority:** LOW-MEDIUM - Audience engagement
 
-- [ ] Create quick polls in chat
-- [ ] Multiple choice questions
-- [ ] Live results display
-- [ ] Poll expiration time
+- [x] Create quick polls in chat (admin)
+- [x] Multiple choice questions (2–6 options)
+- [x] Live results display (real-time bars)
+- [x] Poll expiration time (optional auto-close)
 - [ ] Anonymous vs named voting
-- [ ] Poll history and archives
+- [ ] Poll history and archives — partial: admin list of recent polls
 - [ ] Export poll results
 
 **Database Changes:**

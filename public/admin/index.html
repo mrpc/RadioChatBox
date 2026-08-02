@@ -2488,6 +2488,32 @@
                             </label>
                             <small>Listeners rate what's on air; one vote per person per track.</small>
                         </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-polls-enabled" style="width: auto;">
+                                Enable live chat Polls (📊 poll card in the chat)
+                            </label>
+                            <small>Post a multiple-choice question; users vote once and see live results.</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group" id="polls-admin-group">
+                        <h3>Live poll</h3>
+                        <div id="poll-current" style="margin-bottom:12px;"></div>
+                        <div class="form-group">
+                            <label>Question</label>
+                            <input type="text" id="new-poll-question" maxlength="500" placeholder="e.g. What should we play next?">
+                        </div>
+                        <div class="form-group">
+                            <label>Options (one per line, 2–6)</label>
+                            <textarea id="new-poll-options" rows="4" placeholder="Rock&#10;Metal&#10;Jazz" style="width:100%;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Auto-close after (minutes, optional)</label>
+                            <input type="number" id="new-poll-expires" min="1" max="1440" placeholder="never">
+                        </div>
+                        <button type="button" class="btn" onclick="createPoll()">📊 Start poll</button>
+                        <div id="poll-error" style="color:#ef4444; font-size:13px; margin-top:6px; display:none;"></div>
                     </div>
 
                     <div class="settings-group">
@@ -8434,6 +8460,8 @@
                     document.getElementById('setting-charts-enabled').checked = settings.charts_enabled === 'true';
                     document.getElementById('setting-song-requests-enabled').checked = settings.song_requests_enabled === 'true';
                     document.getElementById('setting-track-voting-enabled').checked = settings.track_voting_enabled === 'true';
+                    document.getElementById('setting-polls-enabled').checked = settings.polls_enabled === 'true';
+                    loadCurrentPoll();
                     document.getElementById('setting-typing-indicators-enabled').checked = settings.typing_indicators_enabled === 'true';
                     document.getElementById('setting-dm-typing-indicators-enabled').checked = settings.dm_typing_indicators_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
@@ -8894,6 +8922,7 @@
                 charts_enabled: document.getElementById('setting-charts-enabled').checked ? 'true' : 'false',
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',
                 track_voting_enabled: document.getElementById('setting-track-voting-enabled').checked ? 'true' : 'false',
+                polls_enabled: document.getElementById('setting-polls-enabled').checked ? 'true' : 'false',
                 typing_indicators_enabled: document.getElementById('setting-typing-indicators-enabled').checked ? 'true' : 'false',
                 dm_typing_indicators_enabled: document.getElementById('setting-dm-typing-indicators-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,
@@ -9451,6 +9480,70 @@
         }
 
         // ---- Chat commands (admin CRUD) ----
+        // ---- Live polls (admin) ----
+        async function loadCurrentPoll() {
+            const box = document.getElementById('poll-current');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/admin/polls', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                const polls = (data && data.polls) || [];
+                const active = polls.find(p => p.is_active);
+                if (!active) { box.innerHTML = '<p style="color:#6b7280; font-size:13px;">No active poll.</p>'; return; }
+                const total = active.total || 0;
+                const rows = (active.options || []).map((o, i) => {
+                    const c = (active.counts && active.counts[i]) || 0;
+                    const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+                    return `<div style="font-size:13px; margin:2px 0;">${escapeHtml(o)} — <strong>${pct}%</strong> (${c})</div>`;
+                }).join('');
+                box.innerHTML = `<div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <strong>📊 ${escapeHtml(active.question)}</strong>
+                            <button class="btn btn-danger" onclick="closePoll(${active.id})">Close poll</button>
+                        </div>
+                        <div style="margin-top:8px;">${rows}</div>
+                        <div style="color:#6b7280; font-size:12px; margin-top:6px;">${total} vote(s)</div>
+                    </div>`;
+            } catch (e) { box.innerHTML = ''; }
+        }
+
+        async function createPoll() {
+            const err = document.getElementById('poll-error');
+            const question = document.getElementById('new-poll-question').value.trim();
+            const options = document.getElementById('new-poll-options').value.split('\n').map(s => s.trim()).filter(Boolean);
+            const expires = document.getElementById('new-poll-expires').value.trim();
+            const showErr = (m) => { if (err) { err.textContent = m; err.style.display = 'block'; } };
+            if (err) err.style.display = 'none';
+            if (!question) { showErr('Enter a question.'); return; }
+            if (options.length < 2) { showErr('Enter at least 2 options (one per line).'); return; }
+            try {
+                const res = await fetch('/api/admin/polls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ question, options, expires_minutes: expires || '' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('new-poll-question').value = '';
+                    document.getElementById('new-poll-options').value = '';
+                    document.getElementById('new-poll-expires').value = '';
+                    loadCurrentPoll();
+                } else { showErr(data.error || 'Failed to start poll.'); }
+            } catch (e) { showErr('Error: ' + e.message); }
+        }
+
+        async function closePoll(id) {
+            if (!confirm('Close this poll?')) return;
+            try {
+                await fetch('/api/admin/polls/close', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ id })
+                });
+                loadCurrentPoll();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
         async function loadChatCommands() {
             const list = document.getElementById('chat-commands-list');
             if (!list) return;

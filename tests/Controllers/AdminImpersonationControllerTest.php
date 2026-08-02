@@ -196,7 +196,7 @@ class AdminImpersonationControllerTest extends TestCase
 
         $this->assertSame(400, $response->getStatusCode());
         $this->assertSame(
-            'Unknown action (expected take, release, reset, force, stop or block)',
+            'Unknown action (expected take, release, reset, force, stop, block or unblock)',
             json_decode($response->getBody(), true)['error']
         );
     }
