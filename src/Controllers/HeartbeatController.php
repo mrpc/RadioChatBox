@@ -9,6 +9,7 @@ use RadioChatBox\Services\ChatService;
 use RadioChatBox\Http\Validate;
 use RadioChatBox\Services\StatsService;
 use RadioChatBox\Services\RealtimeToken;
+use RadioChatBox\Services\RadioStatusService;
 
 /**
  * POST /api/heartbeat — keep a session alive and return the live user count.
@@ -75,6 +76,13 @@ final class HeartbeatController
                 // delivery — the SSE stream (?token=) and the WS channel-auth both
                 // verify it. Refreshed on every heartbeat so it never goes stale.
                 'realtime_token' => (new RealtimeToken())->issue($username, $sessionId),
+                // Redundancy for the now-playing widget: the track is normally pushed
+                // over the socket, but a lost push (a brief disconnect while the track
+                // changed) left the widget stuck on the old song. Piggyback the cached
+                // current track here — the heartbeat runs every 60s on both transports —
+                // so the client re-syncs within a minute without any extra request.
+                // Cache-only read: never blocks the heartbeat on the radio's endpoint.
+                'now_playing' => (new RadioStatusService())->getCachedNowPlaying(),
             ]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);

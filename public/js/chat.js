@@ -2265,6 +2265,15 @@ class RadioChatBox {
                 // A WS private subscription that was waiting for the token can proceed.
                 if (this._wsAwaitingToken) this._subscribePrivateChannel();
             }
+            // Redundancy for the now-playing widget: normally the track arrives over
+            // the socket, but a lost 'now_playing' push (a brief disconnect during a
+            // track change) left the widget stuck on the old song. The heartbeat
+            // carries the current cached track every 60s on both transports — re-sync
+            // from it so a missed push self-corrects within a minute. Only apply a real
+            // track: a null (cold cache) must NOT wipe a widget the socket set fine.
+            if (data && data.now_playing) {
+                this.renderNowPlaying(data.now_playing);
+            }
             return data;
         } catch (error) {
             console.error('Heartbeat failed:', error);

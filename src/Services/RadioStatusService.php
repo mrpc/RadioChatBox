@@ -47,6 +47,21 @@ class RadioStatusService
     }
 
     /**
+     * Return the currently-cached now-playing WITHOUT fetching the remote status
+     * on a miss. For callers on a hot path (e.g. the heartbeat) that want to
+     * piggyback the current track cheaply as redundancy against a lost socket push,
+     * but must never block on the radio's HTTP endpoint. Null when nothing is cached
+     * yet (the tracker daemon keeps the cache warm).
+     *
+     * @return array{active:bool, display:string|null, artist:string|null, title:string|null, listeners:int|null}|null
+     */
+    public function getCachedNowPlaying(): ?array
+    {
+        $cached = FlatCache::default()->get(self::CACHE_KEY);
+        return is_array($cached) ? $cached : null;
+    }
+
+    /**
      * Fetch remote JSON and try to parse common Icecast/Shoutcast fields.
      */
     private function fetchAndParse(string $url): array

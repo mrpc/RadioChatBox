@@ -60,6 +60,22 @@ class RadioStatusServiceTest extends TestCase
     }
 
     /**
+     * getCachedNowPlaying() returns the cached track when warm and null when cold,
+     * WITHOUT hitting the radio endpoint — the heartbeat piggybacks it as redundancy
+     * against a lost now-playing socket push and must never block on HTTP. (No HTTP
+     * fake is registered here; a cold-cache null proves no fetch happened.)
+     */
+    public function testGetCachedNowPlayingReadsCacheOnly(): void
+    {
+        FlatCache::default()->delete('radio:now_playing');
+        $this->assertNull((new RadioStatusService())->getCachedNowPlaying(), 'cold cache → null, no fetch');
+
+        $track = ['active' => true, 'display' => 'A - B', 'artist' => 'A', 'title' => 'B', 'listeners' => 3];
+        FlatCache::default()->set('radio:now_playing', $track, 60);
+        $this->assertSame($track, (new RadioStatusService())->getCachedNowPlaying(), 'warm cache → verbatim');
+    }
+
+    /**
      * Icecast with multiple sources prefers a /live source that has listeners.
      */
     public function testIcecastPrefersLiveSourceWithListeners(): void
