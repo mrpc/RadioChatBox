@@ -459,6 +459,11 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
     `player_enabled` is off, the bar is gone and the bottom now-playing returns.
   - Styling follows the active theme; the accent (play button, slider, Live dot) uses
     the app's red accent as in the mockup.
+  - [ ] **Per-embed override via iframe/URL param** — the chat is embedded on station
+    sites, so a query param overrides the global `player_enabled` **for that embed
+    only** (e.g. `?player=1` forces it on, `?player=0` forces it off; absent → use the
+    admin setting). Precedence: **URL param > admin setting**. Lets one site show the
+    player and another hide it without changing the global setting.
 
 **Settings:**
 - `charts_enabled`, `charts_default_period`
