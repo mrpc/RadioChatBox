@@ -246,6 +246,43 @@ class AdminUsersControllerTest extends TestCase
     }
 
     /**
+     * private_conversations lists EVERY conversation partner with its true message
+     * count, computed independently of the message page — so a user's older
+     * conversations are not hidden when they fall past the paginated window.
+     */
+    public function testDetailsReturnsFullConversationList(): void
+    {
+        $this->authAsRoot();
+        $pdo = TestDatabase::connection();
+        $user = 'convuser_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $ins = $pdo->prepare(
+            "INSERT INTO private_messages (from_username, to_username, message, created_at) VALUES (?, ?, ?, NOW())"
+        );
+        // 3 with partnerA, 1 with partnerB (as recipient).
+        foreach (['a1', 'a2', 'a3'] as $m) {
+            $ins->execute([$user, 'partnerA', $m]);
+        }
+        $ins->execute(['partnerB', $user, 'b1']);
+
+        try {
+            $_GET = ['username' => $user, 'limit' => '2']; // tiny page — must not hide partners
+            $body = json_decode((new AdminUsersController())->details()->getBody(), true);
+
+            $convs = $body['user']['private_conversations'] ?? null;
+            $this->assertIsArray($convs);
+            $byPartner = [];
+            foreach ($convs as $c) {
+                $byPartner[$c['partner']] = $c['message_count'];
+            }
+            $this->assertSame(3, $byPartner['partnerA'] ?? null, 'true count, not just what fit the page');
+            $this->assertSame(1, $byPartner['partnerB'] ?? null, 'partner past the page is still listed');
+        } finally {
+            $pdo->prepare('DELETE FROM private_messages WHERE from_username = ? OR to_username = ?')
+                ->execute([$user, $user]);
+        }
+    }
+
+    /**
      * current() resolves the caller's session via AdminAuth::getCurrentUser();
      * with no authenticated session that is null, so the action returns 401
      * "Unauthorized" exactly as the legacy endpoint did.

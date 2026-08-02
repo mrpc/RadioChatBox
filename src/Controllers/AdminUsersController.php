@@ -386,6 +386,7 @@ final class AdminUsersController
 
             // Get private messages count and paginated results (only for root and administrator).
             $privateMessages = [];
+            $privateConversations = [];
             $totalPrivateMessages = 0;
             $privateMessagesPages = 0;
             if (AdminAuth::hasPermission('view_private_messages')) {
@@ -397,6 +398,28 @@ final class AdminUsersController
                 ", ['username' => $username]);
                 $totalPrivateMessages = (int) ($result ? $result->fetchColumn() : 0);
                 $privateMessagesPages = ceil($totalPrivateMessages / $limit);
+
+                // The FULL conversation list (every partner with its true message
+                // count), computed independently of message pagination — otherwise
+                // the UI, which grouped only the first page of messages, hid
+                // conversations whose latest message fell past the page.
+                $result = $db->preparedQuery("
+                    SELECT
+                        CASE WHEN from_username = :username THEN to_username ELSE from_username END AS partner,
+                        COUNT(*) AS message_count,
+                        MAX(created_at) AS last_message_at
+                    FROM private_messages
+                    WHERE from_username = :username OR to_username = :username
+                    GROUP BY partner
+                    ORDER BY last_message_at DESC
+                ", ['username' => $username]);
+                $privateConversations = array_map(static function (array $row): array {
+                    return [
+                        'partner'         => $row['partner'],
+                        'message_count'   => (int) $row['message_count'],
+                        'last_message_at' => $row['last_message_at'],
+                    ];
+                }, $result ? $result->fetchAll() : []);
 
                 // Get paginated private messages.
                 $result = $db->preparedQuery("
@@ -417,6 +440,7 @@ final class AdminUsersController
                     'ip_addresses' => $ipAddresses,
                     'active_session' => $activeSession ?: null,
                     'private_messages' => $privateMessages,
+                    'private_conversations' => $privateConversations,
                     'total_messages' => $totalMessages,
                     'total_private_messages' => $totalPrivateMessages
                 ],

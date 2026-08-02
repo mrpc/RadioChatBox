@@ -151,6 +151,34 @@ class StatsServiceRealTimeTest extends TestCase
     }
 
     /**
+     * On a private-mode install the day's activity is DMs, so getSummary must
+     * count private_messages in real time too (not wait for the hourly cron) —
+     * otherwise the dashboard's "messages today" reads 0 while the chat is busy.
+     */
+    public function testPrivateMessageCountUsesRealTimeData()
+    {
+        $ids = [];
+        for ($i = 0; $i < 3; $i++) {
+            $stmt = self::$pdo->prepare(
+                "INSERT INTO private_messages (from_username, to_username, message, created_at)
+                 VALUES (?, ?, ?, NOW()) RETURNING id"
+            );
+            $stmt->execute(['rt_from_' . $i, 'rt_to_' . $i, "DM $i"]);
+            $ids[] = $stmt->fetchColumn();
+        }
+
+        try {
+            FlatCache::default()->delete('stats:summary');
+            $summary = self::$service->getSummary();
+            $this->assertGreaterThanOrEqual(3, $summary['today']['private_messages'],
+                'private_messages today must include real-time DMs');
+        } finally {
+            $stmt = self::$pdo->prepare("DELETE FROM private_messages WHERE id = ANY(?)");
+            $stmt->execute(['{' . implode(',', $ids) . '}']);
+        }
+    }
+
+    /**
      * Test that cache works on second call
      */
     public function testCacheWorksOnSecondCall()

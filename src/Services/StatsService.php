@@ -635,6 +635,22 @@ class StatsService
                     (int)($realTimeMessages['count'] ?? 0)
                 );
             }
+
+            // Same real-time treatment for DMs: on a private-mode install these ARE
+            // the day's activity, so the dashboard must not wait for the hourly cron
+            // (it showed a stale/0 count while the chat was busy).
+            $realTimePrivate = $this->db->queryBuilder()
+                ->from('private_messages')
+                ->select(['COUNT(*) AS count'])
+                ->where('created_at', '>=', $todayStart)
+                ->where('created_at', '<=', $todayEnd)
+                ->first()->fields;
+            if ($realTimePrivate && isset($realTimePrivate['count'])) {
+                $todayStats['private_messages'] = max(
+                    $todayStats['private_messages'] ?? 0,
+                    (int)($realTimePrivate['count'] ?? 0)
+                );
+            }
         // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("StatsService: Error querying real-time messages: " . $e->getMessage(), 'radiochatbox');

@@ -5055,8 +5055,18 @@
                     if (statsResponse.ok) {
                         const statsData = await statsResponse.json();
                         if (statsData.data && statsData.data.today && kpiMessagesTodayEl) {
-                            // Use aggregated today's messages from stats
-                            kpiMessagesTodayEl.textContent = statsData.data.today.total_messages || 0;
+                            // "Messages today" must reflect the install's chat mode:
+                            // a private-only site has 0 public messages but many DMs,
+                            // so counting only total_messages showed 0 while the chat
+                            // was busy. private -> DMs, public -> public, both -> sum.
+                            const t = statsData.data.today;
+                            const mode = statsData.chat_mode || 'both';
+                            const pub = t.total_messages || 0;
+                            const priv = t.private_messages || 0;
+                            const count = mode === 'private' ? priv
+                                        : mode === 'public' ? pub
+                                        : pub + priv;
+                            kpiMessagesTodayEl.textContent = count;
                         }
                     } else {
                         console.warn('Stats response not ok:', statsResponse.status);
@@ -7062,7 +7072,12 @@
             document.getElementById('fake-edit-sex').value = user.sex || '';
             locationSelect.value = user.location || '';
 
-            document.getElementById('fake-edit-modal-overlay').style.display = 'flex';
+            const editOverlay = document.getElementById('fake-edit-modal-overlay');
+            // The overlay lives inside #fake-users-tab; when opened from another tab
+            // (e.g. Bot Activity) that parent is display:none, so hoist it to <body>
+            // so the modal actually shows. Idempotent once moved.
+            if (editOverlay.parentElement !== document.body) document.body.appendChild(editOverlay);
+            editOverlay.style.display = 'flex';
         }
 
         function closeFakeEditModal() {
@@ -7171,7 +7186,11 @@
             document.getElementById('fake-bot-ignore-chance').value = user.bot_ignore_chance ?? '';
             document.getElementById('fake-bot-farewell').value = user.bot_farewell_messages || '';
 
-            document.getElementById('fake-bot-modal-overlay').style.display = 'flex';
+            const botOverlay = document.getElementById('fake-bot-modal-overlay');
+            // Hoist to <body> so it shows even when opened from Bot Activity (its
+            // #fake-users-tab parent is display:none there). Idempotent once moved.
+            if (botOverlay.parentElement !== document.body) document.body.appendChild(botOverlay);
+            botOverlay.style.display = 'flex';
 
             // Warn when the feature is off globally - a per-bot toggle alone
             // would silently do nothing - and show the inherited goodbye list
@@ -7581,23 +7600,24 @@
                     let privateMessagesHtml = '';
                     if (currentUserRole !== 'moderator') {
                         privateMessagesHtml = '<h3>Private Conversations</h3>';
-                        if (user.private_messages && user.private_messages.length > 0) {
-                            // Group by conversation partner
-                            const conversations = {};
+                        // Prefer the server's full conversation list (every partner
+                        // + true count, independent of message pagination); fall back
+                        // to grouping the message page for older API responses.
+                        let convList = Array.isArray(user.private_conversations) ? user.private_conversations : null;
+                        if (!convList && user.private_messages && user.private_messages.length > 0) {
+                            const grouped = {};
                             user.private_messages.forEach(msg => {
                                 const partner = msg.from_username === username ? msg.to_username : msg.from_username;
-                                if (!conversations[partner]) {
-                                    conversations[partner] = [];
-                                }
-                                conversations[partner].push(msg);
+                                (grouped[partner] = grouped[partner] || []).push(msg);
                             });
-                            
+                            convList = Object.keys(grouped).map(p => ({ partner: p, message_count: grouped[p].length }));
+                        }
+                        if (convList && convList.length > 0) {
                             privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                            Object.keys(conversations).forEach(partner => {
-                                const count = conversations[partner].length;
+                            convList.forEach(c => {
                                 privateMessagesHtml += `
-                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(partner)}')">
-                                        💬 ${escapeHtml(partner)} (${count})
+                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(c.partner)}')">
+                                        💬 ${escapeHtml(c.partner)} (${c.message_count})
                                     </button>
                                 `;
                             });
@@ -7747,23 +7767,24 @@
                     let privateMessagesHtml = '';
                     if (currentUserRole !== 'moderator') {
                         privateMessagesHtml = '<h3>Private Conversations</h3>';
-                        if (user.private_messages && user.private_messages.length > 0) {
-                            // Group by conversation partner
-                            const conversations = {};
+                        // Prefer the server's full conversation list (every partner
+                        // + true count, independent of message pagination); fall back
+                        // to grouping the message page for older API responses.
+                        let convList = Array.isArray(user.private_conversations) ? user.private_conversations : null;
+                        if (!convList && user.private_messages && user.private_messages.length > 0) {
+                            const grouped = {};
                             user.private_messages.forEach(msg => {
                                 const partner = msg.from_username === username ? msg.to_username : msg.from_username;
-                                if (!conversations[partner]) {
-                                    conversations[partner] = [];
-                                }
-                                conversations[partner].push(msg);
+                                (grouped[partner] = grouped[partner] || []).push(msg);
                             });
-                            
+                            convList = Object.keys(grouped).map(p => ({ partner: p, message_count: grouped[p].length }));
+                        }
+                        if (convList && convList.length > 0) {
                             privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                            Object.keys(conversations).forEach(partner => {
-                                const count = conversations[partner].length;
+                            convList.forEach(c => {
                                 privateMessagesHtml += `
-                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(partner)}')">
-                                        💬 ${escapeHtml(partner)} (${count})
+                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(c.partner)}')">
+                                        💬 ${escapeHtml(c.partner)} (${c.message_count})
                                     </button>
                                 `;
                             });
@@ -7816,51 +7837,66 @@
             }
         }
         
-        function viewConversation(user1, user2) {
+        async function viewConversation(user1, user2) {
             // Find the conversation thread in the currently visible section
             let thread = null;
             const activeDetails = document.getElementById('user-details');
             const inactiveDetails = document.getElementById('inactive-user-details');
-            
+
             if (activeDetails && activeDetails.style.display !== 'none') {
                 thread = activeDetails.querySelector('#conversation-thread');
             } else if (inactiveDetails && inactiveDetails.style.display !== 'none') {
                 thread = inactiveDetails.querySelector('#conversation-thread');
             }
-            
-            if (!thread || !window.currentUserPrivateMessages) return;
-            
-            // Filter messages for this conversation
-            const conversationMessages = window.currentUserPrivateMessages.filter(msg => 
-                (msg.from_username === user1 && msg.to_username === user2) ||
-                (msg.from_username === user2 && msg.to_username === user1)
-            ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-            
-            let html = `
+            if (!thread) return;
+
+            const headerHtml = `
                 <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 10px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h4 style="margin: 0;">💬 Conversation: ${escapeHtml(user1)} ↔ ${escapeHtml(user2)}</h4>
                         <button class="btn" onclick="closeConversation()">✕ Close</button>
                     </div>
-                    <div style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 6px;">
-            `;
-            
-            conversationMessages.forEach(msg => {
+                    <div style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 6px;">`;
+
+            thread.innerHTML = headerHtml + '<p style="color:#6b7280;">Loading…</p></div></div>';
+            thread.style.display = 'block';
+
+            // Fetch the FULL conversation from the server (admin mode), not the
+            // paginated message page — otherwise older conversations render empty.
+            let messages = [];
+            try {
+                const res = await fetch(`/api/private-message?username=${encodeURIComponent(user1)}&with_user=${encodeURIComponent(user2)}&session_id=admin&admin=true`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (data.success && Array.isArray(data.messages)) {
+                    messages = data.messages; // already chronological (oldest first)
+                }
+            } catch (e) {
+                console.error('Failed to load conversation:', e);
+            }
+
+            let body = '';
+            messages.forEach(msg => {
                 const isSentByUser1 = msg.from_username === user1;
-                html += `
+                const photo = (msg.attachment && msg.attachment.file_path)
+                    ? `<img src="${escapeHtml(msg.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-top:6px;" onclick="window.open('${escapeHtml(msg.attachment.file_path)}','_blank')" onerror="this.style.display='none'">`
+                    : '';
+                const text = msg.message ? escapeHtml(msg.message) : (photo ? '' : '<em>[attachment]</em>');
+                body += `
                     <div style="margin-bottom: 15px; padding: 10px; background: ${isSentByUser1 ? '#eff6ff' : '#f3f4f6'}; border-radius: 6px; border-left: 3px solid ${isSentByUser1 ? '#667eea' : '#9ca3af'};">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                             <strong style="color: ${isSentByUser1 ? '#667eea' : '#1f2937'};">${escapeHtml(msg.from_username)}</strong>
-                            <small style="color: #6b7280;">${new Date(msg.created_at).toLocaleString()}</small>
+                            <small style="color: #6b7280;">${new Date(msg.created_at || (msg.timestamp ? msg.timestamp * 1000 : Date.now())).toLocaleString()}</small>
                         </div>
-                        <div style="color: #374151;">${escapeHtml(msg.message)}</div>
-                    </div>
-                `;
+                        <div style="color: #374151;">${text}${photo}</div>
+                    </div>`;
             });
-            
-            html += '</div></div>';
-            thread.innerHTML = html;
-            thread.style.display = 'block';
+            if (messages.length === 0) {
+                body = '<p style="color:#9ca3af;">No messages in this conversation.</p>';
+            }
+
+            thread.innerHTML = headerHtml + body + '</div></div>';
         }
         
         function closeConversation() {
@@ -11731,6 +11767,13 @@
                     updateNotificationBadge(data.unread_count);
                 } else if (event.type === 'notification') {
                     const data = JSON.parse(event.data);
+
+                    // Live-refresh cues (bot_activity / messages_changed /
+                    // photo_uploaded / moderation_changed) ride this same channel but
+                    // are NOT user-facing notifications: never sound/badge for them
+                    // (they're handled by handleAdminNotificationEvent). This stopped
+                    // the notification beep firing on every message to a bot.
+                    if (data && data.signal) return;
 
                     // Check if admin is currently viewing this conversation in impersonate tab
                     const impersonateTab = document.getElementById('impersonate-tab');
