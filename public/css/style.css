@@ -932,6 +932,21 @@ body {
     background: rgba(239, 68, 68, 0.1);
 }
 
+.report-message-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.report-message-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
 /* ===================== Emoji reactions ===================== */
 .react-message-btn {
     background: transparent;
@@ -2124,10 +2139,11 @@ img.emoji {
         opacity: 0.7; /* Always visible on mobile */
     }
     
-    .reply-message-btn {
+    .reply-message-btn,
+    .report-message-btn {
         opacity: 0.7; /* Always visible on mobile */
     }
-    
+
     .reply-quote {
         padding: 6px 0 6px 8px;
     }
