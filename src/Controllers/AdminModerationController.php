@@ -239,6 +239,48 @@ final class AdminModerationController
     }
 
     /**
+     * POST /api/admin/timeout-user — temporarily mute a user without disconnecting
+     * them. Body: {username, duration_seconds}. A duration of 0 lifts the timeout
+     * early. Unlike a kick, the user stays connected but every send path is blocked
+     * until it expires. 200 {success, message, remaining}; missing username -> 400.
+     */
+    #[Route('/api/admin/timeout-user', methods: 'POST', name: 'admin.timeout-user', middleware: [AdminAuthMiddleware::class])]
+    public function timeoutUser(): Response
+    {
+        try {
+            $data = $_POST;
+            $username = trim((string) ($data['username'] ?? ''));
+            if ($username === '') {
+                return Response::json(['error' => 'Username required'], 400);
+            }
+
+            $duration = (int) ($data['duration_seconds'] ?? 0);
+            $chatService = new ChatService();
+
+            if ($duration <= 0) {
+                $chatService->clearUserTimeout($username);
+                return Response::json([
+                    'success'   => true,
+                    'message'   => "Timeout lifted for {$username}",
+                    'remaining' => 0,
+                ]);
+            }
+
+            $chatService->timeoutUser($username, $duration);
+            $remaining = $chatService->getTimeoutRemaining($username);
+            return Response::json([
+                'success'   => true,
+                'message'   => "{$username} is muted for {$remaining}s",
+                'remaining' => $remaining,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            return Response::json(['error' => 'Server error: ' . $e->getMessage()], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * Tell the admin UI its kicked/banned lists changed, so the Nickname Bans tab
      * refreshes live instead of polling every 60s. Rides the admin channel as a
      * 'notification' payload with a `signal` discriminator. Best-effort.

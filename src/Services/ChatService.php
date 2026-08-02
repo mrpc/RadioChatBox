@@ -1218,7 +1218,54 @@ class ChatService
         if ($this->isNicknameBanned($username)) {
             return 'This nickname is not allowed.';
         }
+        // Timeout (temporary mute): the user stays connected but cannot post.
+        $timeout = $this->getTimeoutRemaining($username);
+        if ($timeout > 0) {
+            return "You are timed out — wait {$timeout}s before sending messages.";
+        }
         return null;
+    }
+
+    /** Redis key for a user's timeout (temporary mute), keyed by lowercased name. */
+    private function timeoutKey(string $username): string
+    {
+        return 'timeout:' . mb_strtolower(trim($username));
+    }
+
+    /**
+     * Temporarily mute a user for $seconds: they stay connected but every send
+     * path is blocked (via communicationBlockReason) until it expires. Unlike a
+     * kick, no disconnect. Capped at 24h.
+     */
+    public function timeoutUser(string $username, int $seconds): void
+    {
+        if (trim($username) === '') {
+            return;
+        }
+        $seconds = max(1, min($seconds, 86400));
+        FlatCache::default()->set($this->timeoutKey($username), time() + $seconds, $seconds);
+    }
+
+    /** Lift a user's timeout early. */
+    public function clearUserTimeout(string $username): void
+    {
+        if (trim($username) === '') {
+            return;
+        }
+        FlatCache::default()->delete($this->timeoutKey($username));
+    }
+
+    /** Seconds remaining on a user's timeout, or 0 when they are not timed out. */
+    public function getTimeoutRemaining(string $username): int
+    {
+        if (trim($username) === '') {
+            return 0;
+        }
+        $until = FlatCache::default()->get($this->timeoutKey($username));
+        if ($until === null || $until === false) {
+            return 0;
+        }
+        return max(0, (int) $until - time());
     }
 
     /**

@@ -744,6 +744,32 @@ class ChatServiceTest extends TestCase
     }
 
     /**
+     * A timed-out user is blocked on every send path (communicationBlockReason)
+     * until the timeout is lifted — without being disconnected.
+     */
+    public function testTimeoutBlocksSendingThenLifts()
+    {
+        $user = 'timeout_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        try {
+            $this->assertNull($this->chatService->communicationBlockReason($user, '10.0.0.1', ''),
+                'not timed out initially');
+
+            $this->chatService->timeoutUser($user, 60);
+            $this->assertGreaterThan(0, $this->chatService->getTimeoutRemaining($user));
+            $reason = $this->chatService->communicationBlockReason($user, '10.0.0.1', '');
+            $this->assertNotNull($reason);
+            $this->assertStringContainsString('timed out', $reason);
+
+            $this->chatService->clearUserTimeout($user);
+            $this->assertSame(0, $this->chatService->getTimeoutRemaining($user));
+            $this->assertNull($this->chatService->communicationBlockReason($user, '10.0.0.1', ''),
+                'timeout lifted, sending allowed again');
+        } finally {
+            $this->chatService->clearUserTimeout($user);
+        }
+    }
+
+    /**
      * getAllMessages attaches photo data to DM rows that carry an attachment, so
      * the admin message-history view can render the image (previously invisible).
      */

@@ -7496,6 +7496,7 @@
                                 <td>${user.last_heartbeat ? new Date(user.last_heartbeat).toLocaleString() : '<em style="color: #9ca3af;">N/A</em>'}</td>
                                 <td>
                                     <button class="btn" onclick="viewUserDetails(\`${user.username.replace(/`/g, '\\`')}\`)">View Details</button>
+                                    <button class="btn btn-secondary" onclick="timeoutUser(\`${user.username.replace(/`/g, '\\`')}\`)" title="Temporarily mute (stays connected)">⏱️ Timeout</button>
                                     <button class="btn btn-danger" onclick="kickUser(\`${user.username.replace(/`/g, '\\`')}\`)">Kick</button>
                                 </td>
                             </tr>
@@ -8584,7 +8585,31 @@
                 alert('Error: ' + error.message);
             }
         }
-        
+
+        // Temporarily mute a user (they stay connected but can't post). Prompts for
+        // minutes; 0 lifts an existing timeout.
+        async function timeoutUser(username) {
+            const input = prompt(`Timeout "${username}" for how many minutes? (0 to lift)`, '5');
+            if (input === null) return;
+            const minutes = parseInt(input, 10);
+            if (isNaN(minutes) || minutes < 0) { alert('Enter a non-negative number of minutes.'); return; }
+            try {
+                const response = await fetch('/api/admin/timeout-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ username: username, duration_seconds: minutes * 60 })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message || 'Done');
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
         let inactiveUsersSearch = '';
         let inactiveUsersSearchTimer = null;
         // Server-side search (the list is paginated), debounced so we don't fire a
