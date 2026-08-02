@@ -129,8 +129,9 @@ class PhotoService
             'ip_address'        => $ipAddress,
         ]);
 
-        // Invalidate user cache
+        // Invalidate user cache + the paginator total (a new photo changes it).
         FlatCache::default()->delete("user_attachments:{$username}");
+        $this->invalidateCountCache();
 
         return [
             'attachment_id' => $attachmentId,
@@ -207,7 +208,10 @@ class PhotoService
     {
         $qb = $this->db->queryBuilder()->from('attachments');
         if (!$includeDeleted) {
-            $qb->whereRaw('is_deleted = FALSE');
+            // IS NOT TRUE (not "= FALSE") so legacy rows with a NULL is_deleted are
+            // still listed; it also matches the partial index predicate that serves
+            // this exact "newest active first" read.
+            $qb->whereRaw('is_deleted IS NOT TRUE');
         }
         return $qb->orderBy('uploaded_at', 'desc')
             ->limit($limit)
@@ -215,16 +219,39 @@ class PhotoService
             ->getAll();
     }
 
+    /** Cache key for the paginator's total, per include-deleted variant. */
+    private const CACHE_TTL_COUNT = 60; // 1 minute — the gallery total may lag briefly
+
     /**
-     * Get total count of attachments (for admin pagination)
+     * Get total count of attachments (for admin pagination).
+     *
+     * COUNT(*) is a full scan on a large, soft-delete-bloated table (10s+ in the
+     * wild), so the total is cached for a minute and invalidated whenever a photo
+     * is added or removed — the list query itself is index-served and stays fast.
      */
     public function getTotalAttachmentsCount(bool $includeDeleted = false): int
     {
+        $cacheKey = 'attachments:count:' . ($includeDeleted ? 'all' : 'active');
+        $cached = FlatCache::default()->get($cacheKey);
+        if ($cached !== null && $cached !== false) {
+            return (int) $cached;
+        }
+
         $qb = $this->db->queryBuilder()->from('attachments');
         if (!$includeDeleted) {
-            $qb->whereRaw('is_deleted = FALSE');
+            $qb->whereRaw('is_deleted IS NOT TRUE');
         }
-        return $qb->count();
+        $count = $qb->count();
+
+        FlatCache::default()->set($cacheKey, $count, self::CACHE_TTL_COUNT);
+        return $count;
+    }
+
+    /** Drop the cached paginator totals (both variants). */
+    private function invalidateCountCache(): void
+    {
+        FlatCache::default()->delete('attachments:count:active');
+        FlatCache::default()->delete('attachments:count:all');
     }
 
     /**
@@ -248,6 +275,7 @@ class PhotoService
 
         $count = count($ids);
         if ($count > 0) {
+            $this->invalidateCountCache();
             \Pramnos\Logs\Logger::log("Cleanup: soft-deleted {$count} expired photos (files kept until the trash is emptied)", 'radiochatbox');
         }
 
@@ -281,6 +309,7 @@ class PhotoService
         }
 
         if ($count > 0) {
+            $this->invalidateCountCache();
             \Pramnos\Logs\Logger::log("Emptied photo trash: permanently removed {$count} photos", 'radiochatbox');
         }
 

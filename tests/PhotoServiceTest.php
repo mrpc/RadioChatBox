@@ -146,6 +146,28 @@ class PhotoServiceTest extends TestCase
         $this->assertGreaterThanOrEqual($live, $withDeleted, 'including deleted never counts fewer');
     }
 
+    /**
+     * A legacy row with a NULL is_deleted must still be listed and counted: the
+     * read uses "is_deleted IS NOT TRUE", not "= FALSE" (which drops NULLs).
+     */
+    public function testNullIsDeletedRowsAreTreatedAsLive(): void
+    {
+        $service = new PhotoService();
+        $nid = 'phototest_null_' . substr(bin2hex(random_bytes(4)), 0, 6);
+        $this->pdo->prepare(
+            "INSERT INTO attachments
+                (attachment_id, filename, original_filename, file_path, file_size, mime_type, uploaded_by, ip_address, expires_at, is_deleted)
+             VALUES (?, ?, ?, '/uploads/photos/x.jpg', 1, 'image/jpeg', 'phototester', '127.0.0.1', NOW() + INTERVAL '1 hour', NULL)"
+        )->execute([$nid, $nid . '.jpg', $nid . '.jpg']);
+
+        try {
+            $ids = array_column($service->getAllAttachments(500, 0, false), 'attachment_id');
+            $this->assertContains($nid, $ids, 'a NULL-is_deleted row is listed as live');
+        } finally {
+            $this->pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$nid]);
+        }
+    }
+
     /** A PhotoService that accepts a CLI temp file as an upload. */
     private function acceptingService(): PhotoService
     {
