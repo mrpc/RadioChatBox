@@ -8,6 +8,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
+use RadioChatBox\Http\Csv;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\PollService;
@@ -158,6 +159,38 @@ class PollController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('PollController::list failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * GET /api/admin/polls/export?id= — download one poll's results as CSV
+     * (question, option, votes, percent). Admin-only.
+     */
+    #[Route('/api/admin/polls/export', methods: 'GET', name: 'admin.polls.export', middleware: [AdminAuthMiddleware::class])]
+    public function export(): Response
+    {
+        try {
+            $id = (int) Request::getInstance()->get('id', 0, 'get');
+            $results = (new PollService())->results($id);
+            if (($results['id'] ?? 0) === 0) {
+                return Response::json(['error' => 'Poll not found'], 404);
+            }
+
+            $total = (int) ($results['total'] ?? 0);
+            $rows = [];
+            foreach (($results['options'] ?? []) as $i => $option) {
+                $count = (int) ($results['counts'][$i] ?? 0);
+                $pct = $total > 0 ? round($count / $total * 100, 1) : 0;
+                $rows[] = [$results['question'], $option, $count, $pct . '%'];
+            }
+
+            $csv = Csv::build(['question', 'option', 'votes', 'percent'], $rows);
+            return Csv::download($csv, 'poll-' . $id . '-results.csv');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('PollController::export failed: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd

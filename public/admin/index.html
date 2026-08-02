@@ -9757,11 +9757,12 @@
                 : '<span style="background:#f3f4f6; color:#6b7280; border-radius:10px; font-size:11px; padding:2px 8px;">Closed</span>';
             const closeBtn = p.is_active
                 ? `<button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="closePoll(${p.id})">Close poll</button>` : '';
+            const exportBtn = `<button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="downloadCsv('/api/admin/polls/export?id=${p.id}', 'poll-${p.id}-results.csv')">⬇️ CSV</button>`;
             const by = p.created_by ? ` · by ${escapeHtml(p.created_by)}` : '';
             return `<div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; margin-bottom:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                         <strong style="font-size:15px;">📊 ${escapeHtml(p.question)}</strong>
-                        <div style="display:flex; gap:8px; align-items:center;">${badge}${closeBtn}</div>
+                        <div style="display:flex; gap:8px; align-items:center;">${badge}${exportBtn}${closeBtn}</div>
                     </div>
                     <div style="margin-top:10px;">${rows}</div>
                     <div style="color:#6b7280; font-size:12px; margin-top:8px;">${total} vote(s)${by}${when ? ' · ' + when : ''}</div>

@@ -494,8 +494,8 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [x] Live results display (real-time bars)
 - [x] Poll expiration time (optional auto-close)
 - [ ] Anonymous vs named voting
-- [ ] Poll history and archives — partial: admin list of recent polls
-- [ ] Export poll results
+- [x] Poll history and archives — read-only admin Polls page with results + CSV export
+- [x] Export poll results — admin CSV per poll (`/api/admin/polls/export`)
 
 **Database Changes:**
 - New `polls` table (id, creator_id, question, options, expires_at, is_active, created_at)

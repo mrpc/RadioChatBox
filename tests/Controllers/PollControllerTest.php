@@ -251,6 +251,30 @@ class PollControllerTest extends TestCase
         $this->assertSame(400, (new PollController())->create()->getStatusCode());
     }
 
+    /** The admin export returns a CSV of the poll's per-option results. */
+    public function testAdminExportReturnsCsv(): void
+    {
+        $id = (new PollService())->create('Coffee?', ['Yes', 'No'], 'dj');
+        $this->pollIds[] = $id;
+        (new PollService())->vote($id, $this->session, $this->user, 0);
+
+        $_GET = ['id' => (string) $id];
+        $response = (new PollController())->export();
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('text/csv', (string) $response->getHeaderLine('Content-Type'));
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('question,option,votes,percent', $body);
+        $this->assertStringContainsString('Coffee?', $body);
+        $this->assertStringContainsString('Yes', $body);
+    }
+
+    /** Exporting a missing poll is a 404. */
+    public function testAdminExportMissingPoll404(): void
+    {
+        $_GET = ['id' => '99999999'];
+        $this->assertSame(404, (new PollController())->export()->getStatusCode());
+    }
+
     /** The admin history list includes counts plus the creator/created_at the UI shows. */
     public function testAdminListIncludesCreatorAndCounts(): void
     {
