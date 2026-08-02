@@ -132,6 +132,15 @@ class TrackStatsServiceTest extends TestCase
             static fn($r) => (string) $r['track_id'],
             $log
         ));
+
+        // The listener aggregates (avg/peak) are computed from the recorded plays.
+        $mine = null;
+        foreach ($top as $row) {
+            if ($row['display'] === $display) { $mine = $row; break; }
+        }
+        $this->assertNotNull($mine);
+        $this->assertSame(42, (int) $mine['peak_listeners'], 'peak listeners from the recorded play');
+        $this->assertSame(42, (int) $mine['avg_listeners']);
     }
 
     /**

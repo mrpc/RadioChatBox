@@ -391,7 +391,9 @@ class TrackStatsService
                         t.title,
                         COUNT(*)          AS plays,
                         MAX(tp.played_at) AS last_played,
-                        MIN(tp.played_at) AS first_played
+                        MIN(tp.played_at) AS first_played,
+                        COALESCE(ROUND(AVG(NULLIF(tp.listeners, 0))), 0)::INT AS avg_listeners,
+                        COALESCE(MAX(tp.listeners), 0)::INT                   AS peak_listeners
                  FROM track_plays tp
                  JOIN tracks t ON tp.track_id = t.id
                  LEFT JOIN artists ar ON t.artist_id = ar.id

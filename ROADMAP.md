@@ -396,8 +396,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Record play start time (played_at) — exact start/end not tracked (polling every few seconds)
 - [x] Song play history
 - [x] Song popularity rankings (most played, most listeners)
-- [ ] Peak listeners during specific songs
-- [ ] Song performance reports — partial: per-track drilldown in admin; no formal report/export
+- [x] Peak listeners during specific songs — avg/peak listeners per track in Top Tracks + CSV export
+- [x] Song performance reports — Top Tracks table + CSV export (plays, avg/peak listeners, votes, first/last played)
 - [x] Export song statistics to CSV
 - [x] Top songs by time period (daily/weekly/monthly)
 - [x] Song genre tracking (optional)

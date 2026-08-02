@@ -525,13 +525,19 @@ final class AdminStatsController
                     $t['display'] ?? '',
                     $t['artist'] ?? '',
                     $t['plays'] ?? 0,
+                    $t['avg_listeners'] ?? 0,
+                    $t['peak_listeners'] ?? 0,
                     $tv['up'],
                     $tv['down'],
+                    $t['first_played'] ?? '',
                     $t['last_played'] ?? '',
                 ];
             }, $tracks);
 
-            $csv = Csv::build(['rank', 'track', 'artist', 'plays', 'thumbs_up', 'thumbs_down', 'last_played'], $rows);
+            $csv = Csv::build(
+                ['rank', 'track', 'artist', 'plays', 'avg_listeners', 'peak_listeners', 'thumbs_up', 'thumbs_down', 'first_played', 'last_played'],
+                $rows
+            );
             return Csv::download($csv, 'song-stats.csv');
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
