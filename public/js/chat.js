@@ -3288,11 +3288,18 @@ class RadioChatBox {
             </button>
         ` : '';
 
+        // Report button: flag someone else's message for the moderators.
+        const reportButton = (msgId && !isOwnMsg) ? `
+            <button class="report-message-btn" data-message-id="${msgId}" title="Report this message">
+                🚩
+            </button>
+        ` : '';
+
         // Edited badge
         const editedBadge = messageData.edited_at
             ? `<span class="edited-badge" title="Edited">(edited)</span>`
             : '';
-        
+
         // Build reply quote HTML if this is a reply
         let replyQuoteHTML = '';
         if (messageData.reply_data && messageData.reply_data.username) {
@@ -3330,11 +3337,21 @@ class RadioChatBox {
                 <div class="message-text">${this.formatMessageText(messageData.message)}</div>
                 <div class="message-actions">
                     ${replyButton}
+                    ${reportButton}
                     ${editButton}
                     ${deleteButton}
                 </div>
             </div>
         `;
+
+        // Report button → reason menu.
+        const reportBtn = messageDiv.querySelector('.report-message-btn');
+        if (reportBtn) {
+            reportBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.openReportMenu(reportBtn, msgId, 'public', messageData.username, messageData.message);
+            });
+        }
 
         // Add event listener for delete button if admin
         if (isAdmin) {
@@ -3580,6 +3597,82 @@ class RadioChatBox {
         if (this._reactionPickerOutside) {
             document.removeEventListener('click', this._reactionPickerOutside);
             this._reactionPickerOutside = null;
+        }
+    }
+
+    /** Small popup to pick a report reason, anchored to the flag button. */
+    openReportMenu(anchorBtn, msgId, messageType, reportedUsername, contentSnapshot) {
+        this.closeReportMenu();
+        const reasons = [
+            ['spam', 'Spam'],
+            ['harassment', 'Harassment'],
+            ['inappropriate', 'Inappropriate'],
+            ['offensive', 'Offensive language'],
+            ['impersonation', 'Impersonation'],
+            ['other', 'Other'],
+        ];
+        const menu = document.createElement('div');
+        menu.className = 'report-menu';
+        menu.innerHTML = '<div class="report-menu-title">Report message</div>'
+            + reasons.map(([v, l]) => `<button class="report-option" data-reason="${v}">${this.escapeHtml(l)}</button>`).join('');
+        document.body.appendChild(menu);
+
+        const rect = anchorBtn.getBoundingClientRect();
+        const width = menu.offsetWidth || 180;
+        let left = window.scrollX + rect.left;
+        const maxLeft = window.scrollX + document.documentElement.clientWidth - width - 8;
+        if (left > maxLeft) left = maxLeft;
+        menu.style.top = `${window.scrollY + rect.bottom + 4}px`;
+        menu.style.left = `${Math.max(8, left)}px`;
+
+        menu.querySelectorAll('.report-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.submitReport(msgId, messageType, reportedUsername, opt.getAttribute('data-reason'), contentSnapshot);
+                this.closeReportMenu();
+            });
+        });
+
+        this._reportMenu = menu;
+        setTimeout(() => {
+            this._reportMenuOutside = (ev) => {
+                if (this._reportMenu && !this._reportMenu.contains(ev.target)) this.closeReportMenu();
+            };
+            document.addEventListener('click', this._reportMenuOutside);
+        }, 0);
+    }
+
+    closeReportMenu() {
+        if (this._reportMenu) { this._reportMenu.remove(); this._reportMenu = null; }
+        if (this._reportMenuOutside) {
+            document.removeEventListener('click', this._reportMenuOutside);
+            this._reportMenuOutside = null;
+        }
+    }
+
+    async submitReport(msgId, messageType, reportedUsername, reason, contentSnapshot) {
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.username,
+                    session_id: this.sessionId,
+                    message_id: msgId,
+                    message_type: messageType || 'public',
+                    reported_username: reportedUsername || '',
+                    reason: reason,
+                    content_snapshot: (contentSnapshot || '').substring(0, 2000),
+                }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert('Report sent. Thank you — the moderators will review it.');
+            } else {
+                alert('Could not send report: ' + (data.error || 'error'));
+            }
+        } catch (e) {
+            alert('Could not send report.');
         }
     }
 

@@ -1240,6 +1240,11 @@
                         <span class="icon">🔇</span>
                         <span>Nickname Bans</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('reports')" data-tab="reports">
+                        <span class="icon">🚩</span>
+                        <span>Reports</span>
+                        <span id="reports-badge" style="display:none; margin-left:auto; background:#ef4444; color:#fff; border-radius:10px; font-size:11px; padding:1px 7px;">0</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('url-whitelist')" data-tab="url-whitelist">
                         <span class="icon">✅</span>
                         <span>URL Whitelist</span>
@@ -2173,6 +2178,27 @@
             </script>
             </div>
 
+            <!-- Reports Tab -->
+            <div id="reports-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2>Abuse Reports</h2>
+                            <p style="color:#6b7280;">User-submitted reports. Resolve or dismiss each one.</p>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <select id="reports-status-filter" onchange="loadReports()" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                                <option value="pending">Pending</option>
+                                <option value="resolved">Resolved</option>
+                                <option value="dismissed">Dismissed</option>
+                            </select>
+                            <button class="btn btn-outline" onclick="loadReports()">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div id="reports-table"></div>
+                </div>
+            </div>
+
             <!-- URL Whitelist Tab -->
             <div id="url-whitelist-tab" class="tab-content">
                 <div class="section">
@@ -3057,6 +3083,8 @@
                 }
             } catch (e) { /* no-op */ }
             await loadAllData();
+            // Surface any pending abuse reports in the sidebar badge on load.
+            refreshReportsBadge();
             // Connect to SSE stream for real-time notifications (only for root/administrator)
             const storedRole = localStorage.getItem('userRole');
             if (storedRole === 'root' || storedRole === 'administrator' || storedRole === 'owner') {
@@ -3471,6 +3499,12 @@
             }
             if (notification && notification.signal === 'moderation_changed') {
                 onModerationChangedSignal();
+                return;
+            }
+            if (notification && notification.signal === 'reports_changed') {
+                refreshReportsBadge();
+                const active = document.querySelector('.tab-content.active');
+                if (active && active.id === 'reports-tab') loadReports();
                 return;
             }
 
@@ -4820,6 +4854,7 @@
                 'bot-activity': {title: 'Bot Activity', subtitle: 'Conversations, LLM calls and token usage'},
                 'ip-bans': {title: 'IP Bans', subtitle: 'Blocked IP addresses'},
                 'nickname-bans': {title: 'Nickname Bans', subtitle: 'Blocked usernames'},
+                'reports': {title: 'Abuse Reports', subtitle: 'User-submitted reports queue'},
                 'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
@@ -4890,6 +4925,7 @@
             switchTab = function(tabName, updateHistory = true) {
                 origSwitchTab(tabName, updateHistory);
                 if (tabName === 'nickname-bans') loadKickedUsers();
+                if (tabName === 'reports') loadReports();
             };
         })();
         
@@ -8608,6 +8644,82 @@
             } catch (error) {
                 alert('Error: ' + error.message);
             }
+        }
+
+        // ---- Abuse reports queue ----
+        const REPORT_REASON_LABELS = { spam:'Spam', harassment:'Harassment', inappropriate:'Inappropriate', offensive:'Offensive', impersonation:'Impersonation', other:'Other' };
+
+        async function loadReports() {
+            const table = document.getElementById('reports-table');
+            if (!table) return;
+            const status = document.getElementById('reports-status-filter')?.value || 'pending';
+            table.innerHTML = '<div style="color:#6b7280;padding:20px;">Loading…</div>';
+            try {
+                const res = await fetch(`/api/admin/reports?status=${encodeURIComponent(status)}&limit=100`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (!data.success) { table.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load reports.</p>'; return; }
+                updateReportsBadge(data.pending_count || 0);
+                if (!data.reports.length) {
+                    table.innerHTML = `<p style="color:#6b7280;padding:20px;text-align:center;">No ${escapeHtml(status)} reports.</p>`;
+                    return;
+                }
+                table.innerHTML = `
+                    <table>
+                        <thead><tr><th>When</th><th>Reason</th><th>Reported</th><th>By</th><th>Content</th><th>Type</th><th>${status === 'pending' ? 'Actions' : 'Status'}</th></tr></thead>
+                        <tbody>
+                            ${data.reports.map(r => {
+                                const reportedLink = r.reported_username
+                                    ? `<a href="#" onclick="switchTab('users'); setTimeout(()=>viewUserDetails('${escapeHtml(r.reported_username).replace(/'/g, "\\'")}'),0); return false;">${escapeHtml(r.reported_username)}</a>`
+                                    : '-';
+                                const content = r.content_snapshot ? escapeHtml(r.content_snapshot) : '<em style="color:#9ca3af;">n/a</em>';
+                                const details = r.details ? `<div style="color:#6b7280;font-size:12px;margin-top:4px;">“${escapeHtml(r.details)}”</div>` : '';
+                                const actions = status === 'pending'
+                                    ? `<td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="resolveReport(${r.id}, 'resolve')">✓ Resolve</button><button class="btn btn-outline" onclick="resolveReport(${r.id}, 'dismiss')" style="margin-left:6px;">Dismiss</button></td>`
+                                    : `<td><span style="font-size:12px;color:#6b7280;">${escapeHtml(r.status)}${r.resolved_by ? ' by ' + escapeHtml(r.resolved_by) : ''}</span></td>`;
+                                return `<tr>
+                                    <td>${new Date(r.created_at).toLocaleString()}</td>
+                                    <td><span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:12px;">${escapeHtml(REPORT_REASON_LABELS[r.reason] || r.reason)}</span></td>
+                                    <td>${reportedLink}</td>
+                                    <td>${escapeHtml(r.reporter_username || '-')}</td>
+                                    <td style="max-width:280px;">${content}${details}</td>
+                                    <td><span style="font-size:11px;color:#6b7280;">${escapeHtml(r.message_type)}</span></td>
+                                    ${actions}
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) {
+                table.innerHTML = '<p style="color:#ef4444;padding:20px;">Error loading reports.</p>';
+            }
+        }
+
+        async function resolveReport(id, action) {
+            try {
+                const res = await fetch('/api/admin/reports/resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ id, action })
+                });
+                const data = await res.json();
+                if (data.success) { loadReports(); } else { alert('Failed: ' + (data.error || 'error')); }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        function updateReportsBadge(count) {
+            const b = document.getElementById('reports-badge');
+            if (!b) return;
+            if (count > 0) { b.textContent = count; b.style.display = 'inline-block'; }
+            else { b.style.display = 'none'; }
+        }
+
+        async function refreshReportsBadge() {
+            try {
+                const res = await fetch('/api/admin/reports?status=pending&limit=1', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (data.success) updateReportsBadge(data.pending_count || 0);
+            } catch (e) {}
         }
 
         let inactiveUsersSearch = '';

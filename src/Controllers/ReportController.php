@@ -56,6 +56,19 @@ class ReportController
                 isset($input['content_snapshot']) ? (string) $input['content_snapshot'] : null
             );
 
+            // Live cue for the admin Reports badge/queue (no polling).
+            try {
+                \Pramnos\Broadcasting\BroadcastingManager::instance()->broadcast(
+                    'chat:admin_notifications',
+                    'reports_changed',
+                    ['signal' => 'reports_changed']
+                );
+            // @codeCoverageIgnoreStart
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('reports_changed signal failed: ' . $e->getMessage(), 'radiochatbox');
+            }
+            // @codeCoverageIgnoreEnd
+
             return Response::json(['success' => true, 'report_id' => $reportId]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);

@@ -1015,6 +1015,57 @@ body {
     background: #f1f3f5;
 }
 
+/* Report reason menu (flag button on a message) */
+.report-menu {
+    position: absolute;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    min-width: 170px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.report-menu-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    padding: 4px 8px 6px;
+}
+
+.report-option {
+    background: transparent;
+    border: none;
+    text-align: left;
+    font-size: 14px;
+    color: #1f2937;
+    cursor: pointer;
+    padding: 8px 10px;
+    border-radius: 6px;
+}
+
+.report-option:hover {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+    .report-menu {
+        background: #1f2937;
+        border-color: #374151;
+    }
+    .report-option {
+        color: #e5e7eb;
+    }
+    .report-option:hover {
+        background: #7f1d1d;
+        color: #fff;
+    }
+}
+
 @media (prefers-color-scheme: dark) {
     .reaction-pill {
         background: #2a2a2a;
