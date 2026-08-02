@@ -672,11 +672,14 @@ body {
 
 .charts-body {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* minmax(0,1fr) (not 1fr) so a long track title can't force the column wider
+       than its half — the name truncates instead of breaking the layout. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 18px;
     padding: 16px 18px 20px;
     overflow-y: auto;
 }
+.charts-col { min-width: 0; }
 .charts-col h4 {
     margin: 0 0 8px;
     font-size: 13px;
@@ -728,7 +731,7 @@ body {
 .charts-empty { color: #9ca3af; font-size: 13px; padding: 8px 0; }
 
 @media (max-width: 560px) {
-    .charts-body { grid-template-columns: 1fr; }
+    .charts-body { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-color-scheme: dark) {
