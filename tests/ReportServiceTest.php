@@ -91,4 +91,33 @@ class ReportServiceTest extends TestCase
         $this->assertFalse($this->svc()->setStatus(0, 'resolved', 'a'));
         $this->assertFalse($this->svc()->setStatus(5, 'pending', 'a'), 'cannot set back to pending');
     }
+
+    public function testSetStatusStoresAModeratorNote(): void
+    {
+        $id = $this->svc()->create('rep3', null, null, 'public', 'target3', 'offensive');
+        $this->ids[] = $id;
+        $this->svc()->setStatus($id, 'resolved', 'modx', 'warned the user');
+
+        $rows = $this->svc()->list('resolved', 200, 0);
+        $mine = null;
+        foreach ($rows as $r) {
+            if ((int) $r['id'] === $id) { $mine = $r; break; }
+        }
+        $this->assertNotNull($mine);
+        $this->assertSame('warned the user', $mine['resolution_note']);
+    }
+
+    public function testForReportedUserReturnsReportsAgainstThem(): void
+    {
+        $victim = 'victim_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->ids[] = $this->svc()->create('r1', null, null, 'public', $victim, 'spam');
+        $this->ids[] = $this->svc()->create('r2', null, null, 'private', $victim, 'harassment');
+        $this->ids[] = $this->svc()->create('r3', null, null, 'public', 'someone_else', 'spam');
+
+        $reports = $this->svc()->forReportedUser($victim);
+        $this->assertCount(2, $reports, 'only reports against this user');
+        foreach ($reports as $r) {
+            $this->assertSame($victim, $r['reported_username']);
+        }
+    }
 }

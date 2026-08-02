@@ -431,6 +431,9 @@ final class AdminUsersController
                 $privateMessages = $result ? $result->fetchAll() : [];
             }
 
+            // Abuse reports filed AGAINST this user (moderation dossier).
+            $reportsReceived = (new \RadioChatBox\Services\ReportService())->forReportedUser((string) $username);
+
             return Response::json([
                 'success' => true,
                 'user' => [
@@ -441,6 +444,7 @@ final class AdminUsersController
                     'active_session' => $activeSession ?: null,
                     'private_messages' => $privateMessages,
                     'private_conversations' => $privateConversations,
+                    'reports_received' => $reportsReceived,
                     'total_messages' => $totalMessages,
                     'total_private_messages' => $totalPrivateMessages
                 ],

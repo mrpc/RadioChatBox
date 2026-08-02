@@ -137,8 +137,9 @@ class ReportController
 
             $admin = AdminAuth::getCurrentUser();
             $adminName = (string) ($admin['username'] ?? 'admin');
+            $note = isset($input['note']) ? (string) $input['note'] : null;
 
-            (new ReportService())->setStatus($id, $status, $adminName);
+            (new ReportService())->setStatus($id, $status, $adminName, $note);
             (new \RadioChatBox\Services\ModerationLog())->record(
                 $adminName,
                 $status === 'dismissed' ? 'report_dismiss' : 'report_resolve',

@@ -102,19 +102,40 @@ class ReportService
     }
 
     /**
-     * Resolve or dismiss a report. Returns whether a pending row was updated.
+     * Resolve or dismiss a report, optionally with a moderator note. Returns
+     * whether the input was valid (a row was targeted).
      */
-    public function setStatus(int $id, string $status, string $adminUsername): bool
+    public function setStatus(int $id, string $status, string $adminUsername, ?string $note = null): bool
     {
         if ($id <= 0 || !in_array($status, ['resolved', 'dismissed'], true)) {
             return false;
         }
         $qb = $this->db->queryBuilder()->from('message_reports');
         $qb->where('id', '=', $id)->update([
-            'status'      => $status,
-            'resolved_by' => $adminUsername !== '' ? $adminUsername : null,
-            'resolved_at' => $qb->raw('NOW()'),
+            'status'          => $status,
+            'resolved_by'     => $adminUsername !== '' ? $adminUsername : null,
+            'resolved_at'     => $qb->raw('NOW()'),
+            'resolution_note' => ($note !== null && trim($note) !== '') ? mb_substr(trim($note), 0, 1000) : null,
         ]);
         return true;
+    }
+
+    /**
+     * All reports filed AGAINST a user (newest first), for the admin user-details
+     * dossier. Capped.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function forReportedUser(string $username, int $limit = 100): array
+    {
+        if (trim($username) === '') {
+            return [];
+        }
+        return $this->db->queryBuilder()
+            ->from('message_reports')
+            ->where('reported_username', '=', $username)
+            ->orderBy('created_at', 'desc')
+            ->limit(max(1, min($limit, 200)))
+            ->getAll();
     }
 }

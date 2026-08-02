@@ -7690,8 +7690,8 @@
                         }
                     }
 
-                    document.getElementById('user-details-content').innerHTML = 
-                        profileHtml + ipHtml + messagesHtml + privateMessagesHtml;
+                    document.getElementById('user-details-content').innerHTML =
+                        profileHtml + ipHtml + buildReportsReceivedHtml(user.reports_received) + messagesHtml + privateMessagesHtml;
                     
                     // Store private messages data for conversation viewing
                     window.currentUserPrivateMessages = user.private_messages || [];
@@ -7857,8 +7857,8 @@
                         }
                     }
 
-                    document.getElementById('inactive-user-details-content').innerHTML = 
-                        profileHtml + ipHtml + messagesHtml + privateMessagesHtml;
+                    document.getElementById('inactive-user-details-content').innerHTML =
+                        profileHtml + ipHtml + buildReportsReceivedHtml(user.reports_received) + messagesHtml + privateMessagesHtml;
                     
                     // Store private messages data for conversation viewing
                     window.currentUserPrivateMessages = user.private_messages || [];
@@ -8732,9 +8732,20 @@
                                     : '-';
                                 const content = r.content_snapshot ? escapeHtml(r.content_snapshot) : '<em style="color:#9ca3af;">n/a</em>';
                                 const details = r.details ? `<div style="color:#6b7280;font-size:12px;margin-top:4px;">“${escapeHtml(r.details)}”</div>` : '';
+                                const reportedArg = r.reported_username ? escapeHtml(r.reported_username).replace(/'/g, "\\'") : '';
+                                const modButtons = r.reported_username ? `
+                                    <button class="btn btn-secondary" onclick="reportAction(${r.id}, 'timeout', '${reportedArg}')" title="Timeout the reported user">⏱️ Timeout</button>
+                                    <button class="btn btn-danger" onclick="reportAction(${r.id}, 'ban', '${reportedArg}')" title="Ban the reported nickname">🚫 Ban</button>` : '';
                                 const actions = status === 'pending'
-                                    ? `<td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="resolveReport(${r.id}, 'resolve')">✓ Resolve</button><button class="btn btn-outline" onclick="resolveReport(${r.id}, 'dismiss')" style="margin-left:6px;">Dismiss</button></td>`
-                                    : `<td><span style="font-size:12px;color:#6b7280;">${escapeHtml(r.status)}${r.resolved_by ? ' by ' + escapeHtml(r.resolved_by) : ''}</span></td>`;
+                                    ? `<td style="min-width:240px;">
+                                        <input type="text" id="report-note-${r.id}" placeholder="note (optional)" style="width:100%;margin-bottom:6px;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+                                        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                                            <button class="btn btn-secondary" onclick="resolveReport(${r.id}, 'resolve')">✓ Resolve</button>
+                                            <button class="btn btn-outline" onclick="resolveReport(${r.id}, 'dismiss')">Dismiss</button>
+                                            ${modButtons}
+                                        </div>
+                                      </td>`
+                                    : `<td><span style="font-size:12px;color:#6b7280;">${escapeHtml(r.status)}${r.resolved_by ? ' by ' + escapeHtml(r.resolved_by) : ''}</span>${r.resolution_note ? `<div style="font-size:12px;color:#374151;margin-top:4px;">📝 ${escapeHtml(r.resolution_note)}</div>` : ''}</td>`;
                                 return `<tr>
                                     <td>${new Date(r.created_at).toLocaleString()}</td>
                                     <td><span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:12px;">${escapeHtml(REPORT_REASON_LABELS[r.reason] || r.reason)}</span></td>
@@ -8753,15 +8764,77 @@
         }
 
         async function resolveReport(id, action) {
+            const noteEl = document.getElementById('report-note-' + id);
+            const note = noteEl ? noteEl.value : '';
             try {
                 const res = await fetch('/api/admin/reports/resolve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                    body: JSON.stringify({ id, action })
+                    body: JSON.stringify({ id, action, note })
                 });
                 const data = await res.json();
                 if (data.success) { loadReports(); } else { alert('Failed: ' + (data.error || 'error')); }
             } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // Act on the reported user straight from a report (timeout or nickname ban),
+        // then offer to resolve the report (carrying the note field along).
+        async function reportAction(id, action, reportedUser) {
+            try {
+                if (action === 'timeout') {
+                    const input = prompt(`Timeout "${reportedUser}" for how many minutes?`, '10');
+                    if (input === null) return;
+                    const minutes = parseInt(input, 10);
+                    if (isNaN(minutes) || minutes < 0) { alert('Enter a non-negative number of minutes.'); return; }
+                    const res = await fetch('/api/admin/timeout-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                        body: JSON.stringify({ username: reportedUser, duration_seconds: minutes * 60 })
+                    });
+                    const d = await res.json();
+                    if (!d.success) { alert('Timeout failed: ' + (d.error || 'error')); return; }
+                } else if (action === 'ban') {
+                    if (!confirm(`Ban the nickname "${reportedUser}"?`)) return;
+                    const res = await fetch('/api/admin/ban-nickname', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                        body: JSON.stringify({ nickname: reportedUser, reason: 'From abuse report #' + id })
+                    });
+                    const d = await res.json();
+                    if (!d.success) { alert('Ban failed: ' + (d.error || 'error')); return; }
+                }
+                if (confirm('Action taken. Mark this report resolved?')) {
+                    resolveReport(id, 'resolve');
+                } else {
+                    loadReports();
+                }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // "Reports received" section for the user-details dossier (bug: an admin
+        // needs to see a user's abuse-report history on their profile).
+        function buildReportsReceivedHtml(reports) {
+            if (!Array.isArray(reports) || reports.length === 0) {
+                return '<h3>Reports Received</h3><p style="color:#6b7280;">No reports against this user.</p>';
+            }
+            const pending = reports.filter(r => r.status === 'pending').length;
+            const rows = reports.map(r => {
+                const label = (typeof REPORT_REASON_LABELS !== 'undefined' && REPORT_REASON_LABELS[r.reason]) || r.reason;
+                const statusColor = r.status === 'pending' ? '#b45309' : (r.status === 'resolved' ? '#059669' : '#6b7280');
+                const note = r.resolution_note ? `<div style="font-size:12px;color:#374151;">📝 ${escapeHtml(r.resolution_note)}</div>` : '';
+                return `<tr>
+                    <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleString()}</td>
+                    <td><span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:12px;">${escapeHtml(label)}</span></td>
+                    <td>${escapeHtml(r.reporter_username || '-')}</td>
+                    <td style="max-width:240px;">${r.content_snapshot ? escapeHtml(r.content_snapshot) : '<em style="color:#9ca3af;">n/a</em>'}${r.details ? `<div style="color:#6b7280;font-size:12px;">“${escapeHtml(r.details)}”</div>` : ''}</td>
+                    <td><span style="color:${statusColor};font-size:12px;">${escapeHtml(r.status)}</span>${note}</td>
+                </tr>`;
+            }).join('');
+            return `<h3>Reports Received (${reports.length}${pending ? `, ${pending} pending` : ''})</h3>
+                <table style="margin-bottom:20px;">
+                    <thead><tr><th>When</th><th>Reason</th><th>By</th><th>Content</th><th>Status</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
         }
 
         const MOD_ACTION_LABELS = { kick:'Kick', ban_nickname:'Ban nickname', unban_nickname:'Unban nickname', timeout:'Timeout', untimeout:'Lift timeout', report_resolve:'Resolved report', report_dismiss:'Dismissed report' };
