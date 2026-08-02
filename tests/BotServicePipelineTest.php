@@ -804,6 +804,49 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * A greeklish peer gets a transliterated reply, but the model's Greek source
+     * is preserved (original_message on the delivery job, bot_original_message on
+     * the row) and fed back as history — the LLM must never see its own greeklish,
+     * or it starts writing greeklish itself.
+     */
+    public function testGreeklishReplyKeepsTheGreekSourceOutOfTheReadersViewButInHistory(): void
+    {
+        $this->settings->values['bot_emoji_chance'] = '0';
+        $this->incoming('ti kaneis re');   // peer writes greeklish (latin) → greeklish reply
+        $this->llm->reply = 'καλά, εσύ;';   // the model answers in Greek script
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $deliver = array_values(array_filter(
+            $this->claimAll(),
+            fn ($j) => $j['type'] === BotService::JOB_DELIVER
+        ))[0];
+
+        // Reader sees greeklish; the job carries the untouched Greek source.
+        $this->assertSame('kala, esy;', $deliver['payload']['message']);
+        $this->assertSame('καλά, εσύ;', $deliver['payload']['original_message']);
+
+        $this->bot->processDeliverJob($deliver['payload']);
+
+        $stmt = $this->pdo->prepare(
+            'SELECT message, bot_original_message FROM private_messages
+             WHERE from_username = ? ORDER BY id DESC LIMIT 1'
+        );
+        $stmt->execute([$this->nick]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('kala, esy;', $row['message']);
+        $this->assertSame('καλά, εσύ;', $row['bot_original_message']);
+
+        // The next reply's history carries the Greek, never the greeklish.
+        $this->incoming('ωραία');
+        $this->llm->calls = [];
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $flat = json_encode(end($this->llm->calls)['messages'], JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('καλά, εσύ;', $flat);
+        $this->assertStringNotContainsString('kala, esy;', $flat);
+    }
+
+    /**
      * With the emoji chance at zero, every emoji is stripped from the delivered
      * message — a bot that sprinkles emoji on each reply is a giveaway.
      */

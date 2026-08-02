@@ -548,12 +548,9 @@ class BotService
                     'peer_session_id' => $fromSessionId,
                     'epoch' => $epoch,
                 ], self::sanitizeReply(
-                    self::enforceLanguage(
-                        $this->pickBrushOff(),
-                        self::resolveEnforceLanguage($fakeUser, (string) $message)
-                    ),
+                    $this->pickBrushOff(),
                     (int) envvar('CHAT_MAX_MESSAGE_LENGTH', 500)
-                ), true);
+                ), true, self::resolveEnforceLanguage($fakeUser, (string) $message));
 
                 return false;
             }
@@ -690,10 +687,10 @@ class BotService
 
             try {
                 $result = $llm->chat($systemPrompt, $history);
-                $reply = self::enforceLanguage(
-                    self::sanitizeReply($result['text'], $maxLength),
-                    $enforceLanguage
-                );
+                // Kept in Greek here; the greeklish transliteration (if any) is
+                // applied per-bubble at delivery time so the Greek original can be
+                // stored for history (never feed transliterated text to the LLM).
+                $reply = self::sanitizeReply($result['text'], $maxLength);
             } catch (\Throwable $e) {
                 $this->recordThreadError($fakeUserId, $peer, $e->getMessage());
 
@@ -710,10 +707,7 @@ class BotService
                 return 'skipped: empty reply after sanitising';
             }
 
-            $reply = self::enforceLanguage(
-                self::sanitizeReply($this->pickFarewellFor($fakeUser), $maxLength),
-                $enforceLanguage
-            );
+            $reply = self::sanitizeReply($this->pickFarewellFor($fakeUser), $maxLength);
         }
 
         // Last line of defence on the one rule that must not break: a reply that
@@ -733,10 +727,7 @@ class BotService
                 'A reply revealed the bot identity and was replaced with a deflection: ' . $reply
             );
 
-            $reply = self::enforceLanguage(
-                self::sanitizeReply($this->pickDeflection(), $maxLength),
-                $enforceLanguage
-            );
+            $reply = self::sanitizeReply($this->pickDeflection(), $maxLength);
         }
 
         // Same content rules as a human message (dangerous content, blacklisted URLs).
@@ -746,7 +737,7 @@ class BotService
             return 'skipped: reply removed by the message filter';
         }
 
-        $delay = $this->queueDelivery($payload, $reply, $isFarewell);
+        $delay = $this->queueDelivery($payload, $reply, $isFarewell, $enforceLanguage);
 
         return $isFarewell
             ? sprintf(
@@ -868,12 +859,17 @@ class BotService
         $toDisplayName = $result ? $result->fetchColumn() : false;
         $toDisplayName = $toDisplayName === false ? null : $toDisplayName;
 
+        // The Greek source of a transliterated (greeklish) reply, kept out of the
+        // reader's view but used as LLM history so the model never sees greeklish.
+        $originalMessage = $payload['original_message'] ?? null;
+        $originalMessage = ($originalMessage === '' ? null : $originalMessage);
+
         $result = $this->db->preparedQuery('
             INSERT INTO private_messages
-                (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, created_at)
-            VALUES (?, ?, NULL, ?, ?, ?, ?, NOW())
+                (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, bot_original_message, created_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, ?, NOW())
             RETURNING id, created_at
-        ', [$fakeNickname, $fromSessionId, $peer, $toSessionId, $toDisplayName, $text]);
+        ', [$fakeNickname, $fromSessionId, $peer, $toSessionId, $toDisplayName, $text, $originalMessage]);
         $row = ($result && $result->numRows > 0) ? $result->fields : null;
 
         $messageData = [
@@ -2199,7 +2195,7 @@ class BotService
      *
      * @param array<string,mixed> $replyPayload The originating reply job payload
      */
-    private function queueDelivery(array $replyPayload, string $text, bool $isFarewell): int
+    private function queueDelivery(array $replyPayload, string $text, bool $isFarewell, string $enforceLanguage = 'auto'): int
     {
         $fakeUser = $this->getBotUserById((int) $replyPayload['fake_user_id'], requireActive: false);
 
@@ -2216,23 +2212,28 @@ class BotService
         // they arrive one after another like a person sending them in a row.
         // Emoji are rare: most bubbles are stripped of them entirely, and only
         // an occasional one keeps a single emoji — constant emojis are a tell.
+        //
+        // The bubble is split/emoji-filtered in Greek, then transliterated to the
+        // peer-facing script (greeklish when the peer wrote latin). Both are kept:
+        // `message` is what the reader sees, `original` is the Greek fed to the
+        // LLM as history — the transliterated text must never become context.
         $parts = [];
         foreach (self::splitIntoMessages($text) as $part) {
             $keepEmoji = $emojiChance > 0 && random_int(1, 100) <= $emojiChance;
             $part = self::filterEmojis($part, $keepEmoji);
             if ($part !== '') {
-                $parts[] = $part;
+                $parts[] = $this->bubblePair($part, $enforceLanguage);
             }
         }
         // Never lose the whole reply if capping emptied every bubble.
         if ($parts === []) {
-            $parts = [trim($text)];
+            $parts = [$this->bubblePair(trim($text), $enforceLanguage)];
         }
         $lastIndex = count($parts) - 1;
 
         $cumulative = 0;
         foreach ($parts as $i => $part) {
-            $cumulative += self::calculateTypingDelay($part, $secondsPerWord, $min, $max);
+            $cumulative += self::calculateTypingDelay($part['message'], $secondsPerWord, $min, $max);
 
             $this->queue->push(self::JOB_DELIVER, [
                 'fake_user_id' => (int) $replyPayload['fake_user_id'],
@@ -2240,7 +2241,9 @@ class BotService
                 'peer_username' => $replyPayload['peer_username'],
                 'peer_session_id' => $replyPayload['peer_session_id'] ?? '',
                 'epoch' => (int) ($replyPayload['epoch'] ?? 0),
-                'message' => $part,
+                'message' => $part['message'],
+                // The Greek source, only when it differs (i.e. was transliterated).
+                'original_message' => $part['original'],
                 // Only the last bubble ends the conversation and counts the turn:
                 // a reply split into several bubbles is still one message spent.
                 'is_farewell' => $isFarewell && $i === $lastIndex,
@@ -2249,6 +2252,23 @@ class BotService
         }
 
         return $cumulative;
+    }
+
+    /**
+     * A delivery bubble: the peer-facing text (transliterated to greeklish when
+     * the enforce language calls for it) plus the Greek `original` kept for
+     * history — null when no transliteration happened (message is already Greek).
+     *
+     * @return array{message:string,original:?string}
+     */
+    private function bubblePair(string $greek, string $enforceLanguage): array
+    {
+        $peerFacing = self::enforceLanguage($greek, $enforceLanguage);
+
+        return [
+            'message' => $peerFacing,
+            'original' => $peerFacing !== $greek ? $greek : null,
+        ];
     }
 
     /**
@@ -2278,8 +2298,12 @@ class BotService
     {
         $limit = max(2, min(100, $limit));
 
+        // Prefer the bot's Greek source over its peer-facing (possibly greeklish)
+        // message: feeding transliterated text back as history teaches the model to
+        // write greeklish. bot_original_message is NULL for peer turns and for
+        // never-transliterated replies, so COALESCE keeps their text as-is.
         $result = $this->db->preparedQuery('
-            SELECT from_username, message, attachment_id
+            SELECT from_username, COALESCE(bot_original_message, message) AS message, attachment_id
             FROM private_messages
             WHERE (from_username = :fake AND to_username = :peer)
                OR (from_username = :peer2 AND to_username = :fake2)
