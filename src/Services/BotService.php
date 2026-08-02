@@ -903,10 +903,12 @@ class BotService
         $fakeUser = $this->getBotUserById($fakeUserId, requireActive: false);
         $fakeNickname = (string) $fakeUser['nickname'];
 
-        $toSessionId = $this->resolvePeerSessionId($peer, (string) ($payload['peer_session_id'] ?? ''));
-        if ($toSessionId === null) {
-            return 'skipped: recipient has no known session';
-        }
+        // The recipient's live session is only used to tag the stored row. If it
+        // can't be resolved (their heartbeat lapsed during the typing delay, or the
+        // peer has no chat presence), DON'T drop the reply: the DM is persisted and
+        // the realtime fan-out routes by to_username, not session id — so the reader
+        // still gets it live and in history. Fall back to an empty tag.
+        $toSessionId = $this->resolvePeerSessionId($peer, (string) ($payload['peer_session_id'] ?? '')) ?? '';
 
         $fromSessionId = 'fake_' . md5($fakeNickname);
 
@@ -2515,7 +2517,12 @@ class BotService
             return 'skipped: fake user inactive or bot disabled';
         }
 
-        if ($epoch > 0 && $epoch !== $this->currentEpoch($fakeUserId, $peer)) {
+        // Supersession: a newer inbound message bumped the epoch, so this queued job
+        // is stale. Guard on currentEpoch > 0 — a value of 0 means the Redis epoch
+        // key is simply missing (evicted / cache flushed), NOT that a newer message
+        // exists; treating that as "superseded" silently dropped in-flight replies.
+        $current = $this->currentEpoch($fakeUserId, $peer);
+        if ($epoch > 0 && $current > 0 && $epoch !== $current) {
             return 'skipped: superseded by a newer message';
         }
 

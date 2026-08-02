@@ -3159,10 +3159,13 @@ class RadioChatBox {
             return;
         }
 
-        // Reset any DM typing cue carried over from a previous conversation.
+        // Reset any DM typing cue carried over from a previous conversation. The
+        // shared #typing-indicator is re-rendered below (after withUser is set) so a
+        // leftover "<previous peer> is typing…" — e.g. a bot that was composing in the
+        // DM we just left — doesn't stay frozen on screen in the newly-opened DM.
         this._dmPeerTypingUntil = 0;
         this._dmPeerTypingWho = null;
-        
+
         // Track analytics event
         if (window.analytics) {
             window.analytics.trackPrivateChatOpen(username);
@@ -3175,6 +3178,11 @@ class RadioChatBox {
         this.privateChat.active = true;
         this.privateChat.withUser = username;
         this.privateChat.messages = [];
+
+        // Now that the peer is set (and the carried-over cue cleared above), refresh
+        // the typing indicator so any stale "<other> is typing…" from the previous
+        // conversation is cleared immediately instead of lingering until the next event.
+        this.renderTypingIndicator();
 
         // Keep the open conversation in the URL so a refresh restores it.
         this._setDmHash(username);

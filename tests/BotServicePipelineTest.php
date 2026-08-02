@@ -743,12 +743,45 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame($newSession, $stmt->fetchColumn());
     }
 
-    public function testDeliveryIsSkippedWithoutAnyKnownSession(): void
+    /**
+     * A reply must NOT be dropped just because the recipient's live session can't
+     * be resolved (their heartbeat lapsed during the typing delay). The DM is still
+     * stored — with an empty session tag — so it appears in history and the
+     * to_username-based realtime fan-out still reaches them.
+     */
+    public function testDeliveryStillStoresWhenNoSessionKnown(): void
     {
         $payload = $this->deliverPayload();
         $payload['peer_session_id'] = '';
 
-        $this->assertStringContainsString('no known session', $this->bot->processDeliverJob($payload));
+        $result = $this->bot->processDeliverJob($payload);
+        $this->assertStringContainsString('delivered reply', $result);
+
+        $stmt = $this->pdo->prepare(
+            'SELECT to_username, to_session_id FROM private_messages WHERE from_username = ? ORDER BY id DESC LIMIT 1'
+        );
+        $stmt->execute([$this->nick]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame($this->peer, $row['to_username']);
+        $this->assertSame('', $row['to_session_id']);
+    }
+
+    /**
+     * The epoch guard must treat a MISSING epoch key (Redis eviction / cache flush,
+     * currentEpoch == 0) as "not superseded" — otherwise an in-flight reply queued
+     * under a positive epoch is silently dropped when the key disappears.
+     */
+    public function testDeliveryIsNotSupersededWhenEpochKeyMissing(): void
+    {
+        $payload = $this->deliverPayload();
+        $payload['epoch'] = 7; // queued under epoch 7
+        // Simulate the epoch key having been evicted/flushed: currentEpoch() -> 0.
+        $key = \Pramnos\Redis\ConnectionManager::getInstance()->prefix()
+            . 'bot:epoch:' . $this->fakeUserId . ':' . md5($this->peer);
+        \Pramnos\Cache\FlatCache::default()->delete($key);
+
+        $result = $this->bot->processDeliverJob($payload);
+        $this->assertStringContainsString('delivered reply', $result);
     }
 
     public function testDeliveryWithAMalformedPayloadIsSkipped(): void
