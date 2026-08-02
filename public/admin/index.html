@@ -1250,6 +1250,10 @@
                         <span>Song Requests</span>
                         <span id="song-requests-badge" style="display:none; margin-left:auto; background:#ef4444; color:#fff; border-radius:10px; font-size:11px; padding:1px 7px;">0</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('polls')" data-tab="polls">
+                        <span class="icon">📊</span>
+                        <span>Polls</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('url-whitelist')" data-tab="url-whitelist">
                         <span class="icon">✅</span>
                         <span>URL Whitelist</span>
@@ -2243,6 +2247,22 @@
                 </div>
             </div>
 
+            <!-- Polls Tab (read-only history + results) -->
+            <div id="polls-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2>Polls</h2>
+                            <p style="color:#6b7280;">Polls created from the chat with <code>/poll</code>, and their live results. Read-only — you can close a running poll.</p>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button class="btn btn-outline" onclick="loadPollsHistory()">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div id="polls-history"></div>
+                </div>
+            </div>
+
             <!-- URL Whitelist Tab -->
             <div id="url-whitelist-tab" class="tab-content">
                 <div class="section">
@@ -2495,27 +2515,17 @@
                                 <input type="checkbox" id="setting-polls-enabled" style="width: auto;">
                                 Enable live chat Polls (📊 poll card in the chat)
                             </label>
-                            <small>Post a multiple-choice question; users vote once and see live results.</small>
-                        </div>
-                    </div>
-
-                    <div class="settings-group" id="polls-admin-group">
-                        <h3>Live poll</h3>
-                        <div id="poll-current" style="margin-bottom:12px;"></div>
-                        <div class="form-group">
-                            <label>Question</label>
-                            <input type="text" id="new-poll-question" maxlength="500" placeholder="e.g. What should we play next?">
+                            <small>Users create polls from the chat with <code>/poll Question | Option 1 | Option 2</code>; others vote once and see live results.</small>
                         </div>
                         <div class="form-group">
-                            <label>Options (one per line, 2–6)</label>
-                            <textarea id="new-poll-options" rows="4" placeholder="Rock&#10;Metal&#10;Jazz" style="width:100%;"></textarea>
+                            <label>Who can create polls</label>
+                            <select id="setting-poll-min-usertype">
+                                <option value="moderator">Moderators and above</option>
+                                <option value="administrator">Administrators and above</option>
+                                <option value="root">Root only</option>
+                            </select>
+                            <small>Minimum role allowed to run the <code>/poll</code> command.</small>
                         </div>
-                        <div class="form-group">
-                            <label>Auto-close after (minutes, optional)</label>
-                            <input type="number" id="new-poll-expires" min="1" max="1440" placeholder="never">
-                        </div>
-                        <button type="button" class="btn" onclick="createPoll()">📊 Start poll</button>
-                        <div id="poll-error" style="color:#ef4444; font-size:13px; margin-top:6px; display:none;"></div>
                     </div>
 
                     <div class="settings-group">
@@ -5079,6 +5089,7 @@
                 'nickname-bans': {title: 'Nickname Bans', subtitle: 'Blocked usernames'},
                 'reports': {title: 'Abuse Reports', subtitle: 'User-submitted reports queue'},
                 'song-requests': {title: 'Song Requests', subtitle: 'Listener requests and dedications'},
+                'polls': {title: 'Polls', subtitle: 'Chat polls and their results'},
                 'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
@@ -5151,6 +5162,7 @@
                 if (tabName === 'nickname-bans') loadKickedUsers();
                 if (tabName === 'reports') { loadReports(); loadModerationLog(); }
                 if (tabName === 'song-requests') loadSongRequests();
+                if (tabName === 'polls') loadPollsHistory();
             };
         })();
         
@@ -8463,7 +8475,7 @@
                     document.getElementById('setting-song-requests-enabled').checked = settings.song_requests_enabled === 'true';
                     document.getElementById('setting-track-voting-enabled').checked = settings.track_voting_enabled === 'true';
                     document.getElementById('setting-polls-enabled').checked = settings.polls_enabled === 'true';
-                    loadCurrentPoll();
+                    document.getElementById('setting-poll-min-usertype').value = settings.poll_min_usertype || 'moderator';
                     document.getElementById('setting-typing-indicators-enabled').checked = settings.typing_indicators_enabled === 'true';
                     document.getElementById('setting-dm-typing-indicators-enabled').checked = settings.dm_typing_indicators_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
@@ -8925,6 +8937,7 @@
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',
                 track_voting_enabled: document.getElementById('setting-track-voting-enabled').checked ? 'true' : 'false',
                 polls_enabled: document.getElementById('setting-polls-enabled').checked ? 'true' : 'false',
+                poll_min_usertype: document.getElementById('setting-poll-min-usertype').value,
                 typing_indicators_enabled: document.getElementById('setting-typing-indicators-enabled').checked ? 'true' : 'false',
                 dm_typing_indicators_enabled: document.getElementById('setting-dm-typing-indicators-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,
@@ -9510,56 +9523,52 @@
             downloadCsv(url, 'song-stats.csv');
         }
 
-        // ---- Live polls (admin) ----
-        async function loadCurrentPoll() {
-            const box = document.getElementById('poll-current');
+        // ---- Polls history (admin, read-only) ----
+        function renderPollCard(p) {
+            const total = p.total || 0;
+            const rows = (p.options || []).map((o, i) => {
+                const c = (p.counts && p.counts[i]) || 0;
+                const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+                return `<div style="margin:6px 0;">
+                        <div style="display:flex; justify-content:space-between; font-size:13px;">
+                            <span>${escapeHtml(o)}</span><span style="color:#6b7280;">${pct}% (${c})</span>
+                        </div>
+                        <div style="background:#e5e7eb; border-radius:4px; height:8px; margin-top:2px;">
+                            <div style="background:#6366f1; height:8px; border-radius:4px; width:${pct}%;"></div>
+                        </div>
+                    </div>`;
+            }).join('');
+            const when = p.created_at ? new Date(p.created_at.replace(' ', 'T')).toLocaleString() : '';
+            const badge = p.is_active
+                ? '<span style="background:#dcfce7; color:#166534; border-radius:10px; font-size:11px; padding:2px 8px;">Active</span>'
+                : '<span style="background:#f3f4f6; color:#6b7280; border-radius:10px; font-size:11px; padding:2px 8px;">Closed</span>';
+            const closeBtn = p.is_active
+                ? `<button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="closePoll(${p.id})">Close poll</button>` : '';
+            const by = p.created_by ? ` · by ${escapeHtml(p.created_by)}` : '';
+            return `<div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                        <strong style="font-size:15px;">📊 ${escapeHtml(p.question)}</strong>
+                        <div style="display:flex; gap:8px; align-items:center;">${badge}${closeBtn}</div>
+                    </div>
+                    <div style="margin-top:10px;">${rows}</div>
+                    <div style="color:#6b7280; font-size:12px; margin-top:8px;">${total} vote(s)${by}${when ? ' · ' + when : ''}</div>
+                </div>`;
+        }
+
+        async function loadPollsHistory() {
+            const box = document.getElementById('polls-history');
             if (!box) return;
+            box.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
             try {
                 const res = await fetch('/api/admin/polls', { headers: { 'Authorization': `Bearer ${authToken}` } });
                 const data = await res.json();
                 const polls = (data && data.polls) || [];
-                const active = polls.find(p => p.is_active);
-                if (!active) { box.innerHTML = '<p style="color:#6b7280; font-size:13px;">No active poll.</p>'; return; }
-                const total = active.total || 0;
-                const rows = (active.options || []).map((o, i) => {
-                    const c = (active.counts && active.counts[i]) || 0;
-                    const pct = total > 0 ? Math.round((c / total) * 100) : 0;
-                    return `<div style="font-size:13px; margin:2px 0;">${escapeHtml(o)} — <strong>${pct}%</strong> (${c})</div>`;
-                }).join('');
-                box.innerHTML = `<div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                            <strong>📊 ${escapeHtml(active.question)}</strong>
-                            <button class="btn btn-danger" onclick="closePoll(${active.id})">Close poll</button>
-                        </div>
-                        <div style="margin-top:8px;">${rows}</div>
-                        <div style="color:#6b7280; font-size:12px; margin-top:6px;">${total} vote(s)</div>
-                    </div>`;
-            } catch (e) { box.innerHTML = ''; }
-        }
-
-        async function createPoll() {
-            const err = document.getElementById('poll-error');
-            const question = document.getElementById('new-poll-question').value.trim();
-            const options = document.getElementById('new-poll-options').value.split('\n').map(s => s.trim()).filter(Boolean);
-            const expires = document.getElementById('new-poll-expires').value.trim();
-            const showErr = (m) => { if (err) { err.textContent = m; err.style.display = 'block'; } };
-            if (err) err.style.display = 'none';
-            if (!question) { showErr('Enter a question.'); return; }
-            if (options.length < 2) { showErr('Enter at least 2 options (one per line).'); return; }
-            try {
-                const res = await fetch('/api/admin/polls', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                    body: JSON.stringify({ question, options, expires_minutes: expires || '' })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    document.getElementById('new-poll-question').value = '';
-                    document.getElementById('new-poll-options').value = '';
-                    document.getElementById('new-poll-expires').value = '';
-                    loadCurrentPoll();
-                } else { showErr(data.error || 'Failed to start poll.'); }
-            } catch (e) { showErr('Error: ' + e.message); }
+                if (!polls.length) {
+                    box.innerHTML = '<p style="color:#6b7280;">No polls yet. Users create them from the chat with <code>/poll Question | Option 1 | Option 2</code>.</p>';
+                    return;
+                }
+                box.innerHTML = polls.map(renderPollCard).join('');
+            } catch (e) { box.innerHTML = '<p style="color:#ef4444;">Failed to load polls.</p>'; }
         }
 
         async function closePoll(id) {
@@ -9570,7 +9579,7 @@
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                     body: JSON.stringify({ id })
                 });
-                loadCurrentPoll();
+                loadPollsHistory();
             } catch (e) { alert('Error: ' + e.message); }
         }
 

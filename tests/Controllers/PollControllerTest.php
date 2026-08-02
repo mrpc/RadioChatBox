@@ -250,4 +250,25 @@ class PollControllerTest extends TestCase
         $_POST = ['question' => 'x', 'options' => ['one']];
         $this->assertSame(400, (new PollController())->create()->getStatusCode());
     }
+
+    /** The admin history list includes counts plus the creator/created_at the UI shows. */
+    public function testAdminListIncludesCreatorAndCounts(): void
+    {
+        $id = (new PollService())->create('Who?', ['A', 'B'], 'dj_mike');
+        $this->pollIds[] = $id;
+        (new PollService())->vote($id, $this->session, $this->user, 0);
+
+        $response = (new PollController())->list();
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $mine = null;
+        foreach ($body['polls'] as $p) {
+            if ($p['id'] === $id) { $mine = $p; break; }
+        }
+        $this->assertNotNull($mine, 'the poll appears in the history');
+        $this->assertSame('dj_mike', $mine['created_by']);
+        $this->assertArrayHasKey('created_at', $mine);
+        $this->assertSame(1, $mine['counts'][0]);
+        $this->assertSame(1, $mine['total']);
+    }
 }

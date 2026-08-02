@@ -148,7 +148,10 @@ class PollController
         try {
             $service = new PollService();
             $polls = array_map(
-                fn (array $p): array => $service->results((int) $p['id']),
+                fn (array $p): array => $service->results((int) $p['id']) + [
+                    'created_at' => $p['created_at'] ?? null,
+                    'created_by' => $p['created_by'] ?? null,
+                ],
                 $service->list(50, 0)
             );
             return Response::json(['success' => true, 'polls' => $polls]);
