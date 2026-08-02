@@ -63,10 +63,13 @@ This document outlines the planned features and enhancements for RadioChatBox.
 - [x] Implement automated database migration system (framework MigrationRunner)
 - [x] Migration version tracking (`schemaversion`)
 - [x] Automatic migration execution on deployment (auto-migrate on request/console)
-- [ ] Rollback capability for failed migrations
-- [ ] Migration status dashboard in admin panel
+- [x] Rollback capability for failed migrations — **native**: `migrate:rollback`,
+      `migrate:reset`, `migrate:refresh`, `migrate:logs`, `Migration::down()`
+- [ ] Migration status dashboard in admin panel — CLI `migrate:status` exists;
+      admin-panel dashboard not yet
 - [x] Database schema versioning
-- [ ] Migration testing in staging environment
+- [ ] Migration testing in staging environment — covered in CI by the isolated
+      test DB (two-phase build in `tests/bootstrap.php`); no separate staging step
 - [x] **Schema converged onto the framework schema** (users/usertype/RBAC, settings,
       messaging) and **squashed into one baseline** — a fresh install needs one app migration
 
