@@ -366,13 +366,48 @@ final class MediaController
     }
 
     /**
+     * Make HTML safe for DOMDocument::loadHTML() regardless of its charset: detect
+     * the declared encoding (meta charset / http-equiv, default UTF-8), convert to
+     * UTF-8, then encode every non-ASCII byte as a numeric HTML entity so libxml —
+     * which otherwise assumes ISO-8859-1 — reconstructs the correct characters. This
+     * is what stops UTF-8 Greek (and any non-Latin text) turning into mojibake.
+     */
+    private function htmlToUtf8Entities(string $html): string
+    {
+        if ($html === '' || !function_exists('mb_encode_numericentity')) {
+            return $html;
+        }
+
+        // Declared charset, if any: <meta charset="…"> or http-equiv content-type.
+        $charset = '';
+        if (preg_match('/<meta[^>]+charset=["\']?\s*([a-z0-9][a-z0-9\-]*)/i', $html, $m)) {
+            $charset = strtoupper($m[1]);
+        }
+
+        if ($charset !== '' && $charset !== 'UTF-8' && $charset !== 'UTF8') {
+            $converted = @mb_convert_encoding($html, 'UTF-8', $charset);
+            if (is_string($converted) && $converted !== '') {
+                $html = $converted;
+            }
+        } elseif (!mb_check_encoding($html, 'UTF-8')) {
+            // Declared/assumed UTF-8 but with invalid byte sequences — clean them.
+            $html = mb_convert_encoding($html, 'UTF-8', 'UTF-8');
+        }
+
+        return mb_encode_numericentity($html, [0x80, 0x10FFFF, 0, 0x1FFFFF], 'UTF-8');
+    }
+
+    /**
      * Parse Open Graph / Twitter Card / standard meta tags from HTML.
      * Ported verbatim from public/api/link-preview.php.
      */
     private function parseOpenGraph(string $html, string $originalUrl): array
     {
         $doc = new DOMDocument();
-        @$doc->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING);
+        // DOMDocument::loadHTML() assumes ISO-8859-1 when the document has no charset
+        // it recognises early, which mangles UTF-8 text (Greek, etc.) into mojibake
+        // like "Îœ..." for "Μ...". Normalise the bytes to charset-safe entities first.
+        @$doc->loadHTML($this->htmlToUtf8Entities($html), LIBXML_NOERROR | LIBXML_NOWARNING);
         $xpath = new DOMXPath($doc);
 
         $og = [];

@@ -122,6 +122,30 @@ class MediaControllerTest extends TestCase
     }
 
     /**
+     * UTF-8 titles (Greek etc.) survive the scrape: DOMDocument would otherwise
+     * assume ISO-8859-1 and mangle them into mojibake ("Îœ…"). The preview must
+     * carry the original characters.
+     */
+    public function testLinkPreviewDecodesUtf8Titles(): void
+    {
+        $title = 'Metallica: Νέα ελληνική διάκριση στον παγκόσμιο διαγωνισμό';
+        $desc  = 'Μια περήφανη στιγμή για την ελληνική σκηνή';
+        $html  = '<html><head><meta charset="utf-8">'
+            . '<meta property="og:title" content="' . $title . '">'
+            . '<meta property="og:description" content="' . $desc . '">'
+            . '</head><body>x</body></html>';
+        Client::fake(['*example.com*' => ClientResponse::make($html, 200, ['content-type' => 'text/html; charset=utf-8'])]);
+
+        $_GET = ['url' => 'https://example.com/gr?probe=' . uniqid()];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertSame($title, $body['title'], 'Greek title must not be mojibake');
+        $this->assertSame($desc, $body['description']);
+    }
+
+    /**
      * link-preview rejects a declared non-HTML Content-Type with 422
      * {error:'URL is not an HTML page'}.
      */
