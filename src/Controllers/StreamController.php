@@ -112,16 +112,29 @@ final class StreamController
                 function (string $channel, string $event, array $payload, SseWriter $writer) use ($username): void {
                     switch ($channel) {
                         case 'chat:updates':
+                            // Map the payload's discriminator to the SSE event name.
+                            // A real chat message carries NO 'type'; every control
+                            // event tags itself. Crucially, an UNKNOWN type must NOT
+                            // fall through to 'message' — otherwise a future/foreign
+                            // payload (no text, no timestamp) is drawn as an empty
+                            // "Invalid Date" bubble on the client. Drop it instead.
                             $type = $payload['type'] ?? null;
                             $name = match ($type) {
+                                null, ''          => 'message',   // an actual chat message
                                 'clear'           => 'clear',
                                 'message_deleted' => 'message_deleted',
                                 'reaction'        => 'reaction',
                                 'now_playing'     => 'now_playing',
                                 'config'          => 'config',
-                                default           => 'message',
+                                'message_edited'  => 'message_edited',
+                                // Client's 'message' handler branches on this type to
+                                // refresh history; keep delivering it as 'message'.
+                                'refresh_history' => 'message',
+                                default           => null,        // unknown → do not render
                             };
-                            $writer->event($name, $payload);
+                            if ($name !== null) {
+                                $writer->event($name, $payload);
+                            }
                             break;
 
                         case 'chat:user_updates':

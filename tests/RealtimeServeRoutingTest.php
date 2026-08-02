@@ -35,6 +35,31 @@ class RealtimeServeRoutingTest extends TestCase
         }
     }
 
+    /**
+     * message_edited rides its own event (so the client updates in place), and
+     * refresh_history keeps riding 'message' (the client's message handler branches
+     * on the type to reload history).
+     */
+    public function testEditAndRefreshHistoryKeepTheirEvents(): void
+    {
+        $edit = RealtimeServe::routeMessage(self::PREFIX, self::PREFIX . 'chat:updates', 'x', ['type' => 'message_edited']);
+        $this->assertSame([['chat:updates', 'message_edited', ['type' => 'message_edited']]], $edit);
+
+        $refresh = RealtimeServe::routeMessage(self::PREFIX, self::PREFIX . 'chat:updates', 'x', ['type' => 'refresh_history']);
+        $this->assertSame('message', $refresh[0][1], 'refresh_history is delivered as a message the client branches on');
+    }
+
+    /**
+     * An unrecognised discriminator is DROPPED, never collapsed to 'message' — a
+     * foreign/future payload (no text, no timestamp) must not reach a client as a
+     * bubble it renders as "Invalid Date".
+     */
+    public function testUnknownTypeIsDroppedNotRenderedAsMessage(): void
+    {
+        $routes = RealtimeServe::routeMessage(self::PREFIX, self::PREFIX . 'chat:updates', 'x', ['type' => 'something_new']);
+        $this->assertSame([], $routes, 'unknown type goes nowhere');
+    }
+
     public function testAdminNotificationsRouteToAdminOnlyChannel(): void
     {
         $routes = RealtimeServe::routeMessage(

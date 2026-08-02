@@ -174,15 +174,24 @@ final class RealtimeServe extends CommandBase
         }
 
         if ($logical === 'chat:updates') {
+            // Mirror StreamController: a real chat message has no 'type', control
+            // events tag themselves, and an UNKNOWN type must NOT become 'message'
+            // (a foreign/future payload would render as an empty bubble). Drop it.
             $type = is_array($payload) ? ($payload['type'] ?? null) : null;
             $name = match ($type) {
+                null, ''          => 'message',
                 'clear'           => 'clear',
                 'message_deleted' => 'message_deleted',
                 'reaction'        => 'reaction',
                 'now_playing'     => 'now_playing',
                 'config'          => 'config',
-                default           => 'message',
+                'message_edited'  => 'message_edited',
+                'refresh_history' => 'message',
+                default           => null,
             };
+            if ($name === null) {
+                return [];
+            }
             return [['chat:updates', $name, $payload]];
         }
 
