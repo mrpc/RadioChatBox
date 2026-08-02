@@ -256,16 +256,46 @@ class RadioChatBox {
         const sseOpen = this.eventSource && this.eventSource.readyState === 1;
         const staleAfterSuspend = hiddenMs > 8000;
 
-        if ((!wsOpen && !sseOpen) || staleAfterSuspend) {
+        const forceReconnect = () => {
             this.disconnect();
             this.reconnectAttempts = 0; // returning to foreground → reconnect now, no backoff
             this.connect();
             // Give the fresh connection a moment, then reconcile against the server.
             setTimeout(() => this.fetchMissedMessages(), 800);
-        } else {
-            // Socket looks healthy; still reconcile in case a beat was missed.
-            this.fetchMissedMessages();
+        };
+
+        // Nothing live at all → reconnect immediately.
+        if (!wsOpen && !sseOpen) {
+            forceReconnect();
+            return;
         }
+
+        // A WebSocket that survived a background suspend often reports OPEN while
+        // being a zombie. Rather than tear down a possibly-healthy socket on every
+        // return-to-foreground (needless churn, and how sockets used to pile up),
+        // probe it: send a ping and reconnect ONLY if no pong comes back shortly.
+        if (wsOpen && staleAfterSuspend) {
+            const probeAt = Date.now();
+            this._wsSend('pusher:ping', {});
+            setTimeout(() => {
+                if ((this._lastPongAt || 0) >= probeAt) {
+                    this.fetchMissedMessages(); // alive — just reconcile
+                } else {
+                    forceReconnect(); // no pong → genuinely dead
+                }
+            }, 3000);
+            return;
+        }
+
+        // SSE after a long suspend: it has no app-level pong to probe, and an SSE
+        // reconnect is cheap, so refresh it.
+        if (sseOpen && staleAfterSuspend) {
+            forceReconnect();
+            return;
+        }
+
+        // Healthy and only briefly hidden — just reconcile in case a beat was missed.
+        this.fetchMissedMessages();
     }
     
     setupStorageListener() {
@@ -1847,6 +1877,36 @@ class RadioChatBox {
     async connect() {
         this.updateStatus('connecting', 'Connecting...');
 
+        // Keep the presence heartbeat running across every (re)connect. It is
+        // independent of the realtime transport, but disconnect() stops it (so a
+        // real logout does) — and reconnect paths call disconnect() then connect().
+        // Without restarting it here, the first background-suspend/network-flap
+        // reconnect killed the heartbeat for good and the user silently dropped
+        // offline after the 5-minute presence cleanup while their socket stayed
+        // open. startHeartbeat() is idempotent, so this never stacks timers.
+        if (this.username) {
+            this.startHeartbeat();
+        }
+
+        // Tear down any existing realtime socket before opening a new one, so no
+        // caller (reconnect, ensureRealtimeFresh, the online/visibility handlers)
+        // can ever stack a second live connection. Detach handlers first so closing
+        // the old socket does not re-enter reconnect(). Heartbeat is left alone.
+        if (this._ws) {
+            try { this._ws.onclose = null; this._ws.onmessage = null; this._ws.onerror = null; this._ws.close(); } catch (_) {}
+            this._ws = null;
+        }
+        if (this.eventSource) {
+            try { this.eventSource.close(); } catch (_) {}
+            this.eventSource = null;
+        }
+
+        // connect() awaits (token + config) before it actually opens a socket. If a
+        // second connect() starts during that window, both would open one. Stamp a
+        // generation: a socket whose generation is no longer current aborts itself
+        // on open, so only the newest connect() survives.
+        const myGen = this._connGen = (this._connGen || 0) + 1;
+
         // Hold a fresh realtime token (proves our username to both transports)
         // before connecting; the beat also refreshes presence immediately.
         if (!this.realtimeToken && this.username) {
@@ -1859,8 +1919,13 @@ class RadioChatBox {
             if (res.ok) cfg = await res.json();
         } catch (_) { /* fall through to SSE */ }
 
+        // A newer connect() superseded this one while we awaited — stand down.
+        if (myGen !== this._connGen) {
+            return;
+        }
+
         if (cfg && cfg.transport === 'websocket' && typeof WebSocket !== 'undefined') {
-            this.connectWebSocket(cfg);
+            this.connectWebSocket(cfg, myGen);
         } else {
             this.connectSSE();
         }
@@ -1967,7 +2032,7 @@ class RadioChatBox {
     }
 
     // --- WebSocket transport (Pusher wire protocol v7) with SSE fallback ------
-    connectWebSocket(cfg) {
+    connectWebSocket(cfg, gen = null) {
         let established = false;
         this._wsFellBack = false;
 
@@ -1995,6 +2060,13 @@ class RadioChatBox {
             const event = frame.event;
 
             if (event === 'pusher:connection_established') {
+                // A newer connect() superseded this socket while it was opening —
+                // close it so we never end up with two live connections.
+                if (gen !== null && gen !== this._connGen) {
+                    try { ws.onclose = null; ws.onmessage = null; ws.close(); } catch (_) {}
+                    if (this._ws === ws) { this._ws = null; }
+                    return;
+                }
                 established = true;
                 clearTimeout(openTimer);
                 this.updateStatus('connected', 'Connected');
@@ -2010,6 +2082,10 @@ class RadioChatBox {
                 return;
             }
             if (event === 'pusher:ping') { this._wsSend('pusher:pong', {}); return; }
+            // The server's reply to a ping WE sent — used to verify the socket is
+            // actually alive after a background suspend (see ensureRealtimeFresh)
+            // instead of blindly reconnecting a healthy connection.
+            if (event === 'pusher:pong') { this._lastPongAt = Date.now(); return; }
             if (!event || event.indexOf('pusher') === 0) return; // ignore pusher:* / pusher_internal:*
 
             let data = null;
@@ -2163,6 +2239,12 @@ class RadioChatBox {
     }
 
     startHeartbeat() {
+        // Idempotent: clear any existing interval first so repeated calls (every
+        // (re)connect calls this) never stack two beating timers.
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
         // Beat immediately (refresh presence + obtain the first realtime token so
         // the very first connection can present it), then every 60 seconds.
         this.sendHeartbeat();
@@ -4105,6 +4187,16 @@ class RadioChatBox {
         if (this.eventSource) {
             this.eventSource.close();
             this.eventSource = null;
+        }
+        // Close the WebSocket too — this was previously omitted, so on the WS
+        // transport every reconnect/visibility/online cycle opened a fresh socket
+        // and left the old one OPEN. They accumulated (a tab open for hours reached
+        // half a dozen live sockets), each delivering every message — which also
+        // duplicated DMs and now-playing pushes. Detach onclose first so tearing it
+        // down here does not itself trigger reconnect().
+        if (this._ws) {
+            try { this._ws.onclose = null; this._ws.onmessage = null; this._ws.onerror = null; this._ws.close(); } catch (_) {}
+            this._ws = null;
         }
         if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
