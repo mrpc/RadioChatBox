@@ -2231,6 +2231,17 @@ class RadioChatBox {
         // only exists after the chat view is built (settings load runs earlier).
         this.messageInput.addEventListener('input', () => this.onTypingInput());
 
+        // Back/forward + manual hash edits: open or close the DM in the URL.
+        window.addEventListener('hashchange', () => {
+            if (this._suppressHashChange) return;
+            const isDm = (location.hash || '').indexOf('#dm/') === 0;
+            if (isDm) {
+                this.restoreConversationFromHash();
+            } else if (this.privateChat && this.privateChat.active) {
+                this.exitPrivateChat();
+            }
+        });
+
         // Click a username inside the conversation (sender name or @mention) to
         // open a small popover offering to start a private chat with them.
         if (this.messagesContainer) {
@@ -2466,6 +2477,9 @@ class RadioChatBox {
                 this.updateNowPlaying();
                 // Same for the pinned bar (a pin/unpin may have happened offline).
                 this.refreshPinnedBar();
+                // Now that chatMode is known, restore a DM named in the URL (#dm/…)
+                // so a refresh keeps the open conversation. Guarded against re-opening.
+                this.restoreConversationFromHash();
                 break;
             case 'private':         this.handlePrivateMessage(data); break;
             case 'clear':           this.handleChatClear(); break;
@@ -3015,6 +3029,34 @@ class RadioChatBox {
         }).join('');
     }
     
+    /**
+     * Reflect the open DM in the URL hash (#dm/<peer>) so a refresh restores it.
+     * Passing null clears it. Guarded so our own change doesn't re-trigger the
+     * hashchange handler.
+     */
+    _setDmHash(username) {
+        this._suppressHashChange = true;
+        try {
+            if (username) {
+                location.hash = 'dm/' + encodeURIComponent(username);
+            } else if ((location.hash || '').indexOf('#dm/') === 0) {
+                history.replaceState(null, '', location.pathname + location.search);
+            }
+        } catch (_) { /* ignore */ }
+        setTimeout(() => { this._suppressHashChange = false; }, 0);
+    }
+
+    /** On load / hashchange, open the DM named in #dm/<peer> (if any). */
+    restoreConversationFromHash() {
+        const m = (location.hash || '').match(/^#dm\/(.+)$/);
+        if (!m) return;
+        let peer = '';
+        try { peer = decodeURIComponent(m[1]); } catch (_) { peer = m[1]; }
+        if (!peer || !this.username || this.chatMode === 'public') return;
+        if (this.privateChat && this.privateChat.active && this.privateChat.withUser === peer) return;
+        this.startPrivateChat(peer);
+    }
+
     async startPrivateChat(username) {
         // Check if private chat is allowed
         if (this.chatMode === 'public') {
@@ -3038,7 +3080,10 @@ class RadioChatBox {
         this.privateChat.active = true;
         this.privateChat.withUser = username;
         this.privateChat.messages = [];
-        
+
+        // Keep the open conversation in the URL so a refresh restores it.
+        this._setDmHash(username);
+
         // Mark conversation as read
         this.markConversationAsRead(username);
         
@@ -3163,6 +3208,9 @@ class RadioChatBox {
         this.privateChat.withUser = null;
         this.privateChat.messages = [];
         this.privateChat.startTime = null;
+
+        // Drop the DM from the URL.
+        this._setDmHash(null);
 
         // Drop any stale DM typing cue and refresh the indicator for public view.
         this._dmPeerTypingUntil = 0;
