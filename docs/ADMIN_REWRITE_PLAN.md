@@ -7,16 +7,21 @@
 This plan serves a double purpose:
 
 1. **RadioChatBox now** — replace the monolithic `public/admin/index.html` with a
-   modern, routed, componentised admin SPA.
+   modern, routed, componentised SPA.
 2. **PramnosFramework scaffolding feature** — generalise the outcome so the
-   framework can *generate* an admin SPA for **any** Pramnos app, with a chosen UX
-   toolkit, the same way `pramnos make:app` / the scaffolding already creates apps
-   and wires realtime (`pramnos-realtime.js`). RCB becomes the first consumer and
-   the reference implementation.
+   framework can *generate* a **Svelte + DaisyUI** SPA for **any** Pramnos app —
+   an **admin** surface *or* a **front-end** app — the same way `pramnos make:app`
+   already scaffolds apps and wires realtime (`pramnos-realtime.js`). RCB's admin
+   is the first consumer and the reference implementation; the same generator can
+   later produce RCB's public chat front-end.
 
-See **[Framework feature: scaffolded admin SPA](#framework-feature-scaffolded-admin-spa)**
-at the end for the framework angle; the body below is the concrete RCB rewrite it
-is generalised from.
+The toolkit is fixed: **Svelte + DaisyUI only** (no multi-toolkit matrix — one
+well-supported stack keeps the building blocks, docs and upgrade path sharp). What
+varies is the **kind** of SPA (admin vs front-end), not the framework.
+
+See **[Framework feature: scaffolded SPA](#framework-feature-scaffolded-spa)**
+at the end for the framework angle; the body below is the concrete RCB admin
+rewrite it is generalised from.
 
 ## Why
 
@@ -137,74 +142,80 @@ This keeps every step shippable and reversible.
 
 ---
 
-## Framework feature: scaffolded admin SPA
+## Framework feature: scaffolded SPA
 
 The framework already scaffolds apps and lets a project opt into pieces (realtime
-transport, `pramnos-realtime.js`, auth). An **admin SPA generator** is the natural
-next scaffolding capability: most Pramnos apps need an admin surface, and every one
-currently hand-rolls it. RCB is the pilot; the reusable parts get promoted upstream.
+transport, `pramnos-realtime.js`, auth). A **Svelte + DaisyUI SPA generator** is the
+natural next scaffolding capability: most Pramnos apps need at least one SPA surface
+— an **admin** back-office and/or a **front-end** app — and every one currently
+hand-rolls it. RCB's admin is the pilot; the reusable parts get promoted upstream,
+and the same generator can later emit RCB's public chat front-end.
+
+**One toolkit, on purpose: Svelte + DaisyUI.** There is no toolkit matrix — a
+single, well-supported stack keeps the building blocks, generated client, docs and
+upgrade path sharp. The generator's axis of choice is the **kind** of SPA, not the
+UI framework.
 
 ### What the framework provides
 
-- **A generator command** — e.g. `pramnos make:admin` (or a flag on `make:app`):
+- **A generator command** — e.g. `pramnos make:spa` (or a flag on `make:app`):
   ```
-  pramnos make:admin --toolkit=svelte-daisyui
-  pramnos make:admin --toolkit=react-shadcn
+  pramnos make:spa --kind=admin      # back-office surface, mounted at /admin
+  pramnos make:spa --kind=frontend   # public app, mounted at / (or a chosen base)
   ```
-  Scaffolds an `admin-ui/` project wired to the app's API, auth and realtime, with
-  a build step that emits static assets under the app's `public/admin/`.
-
-- **A UX-toolkit choice** (like choosing a DB/cache driver): the generator picks a
-  **template preset** but the generated code is plain app code the project owns.
-  Candidate presets:
-  - `svelte-daisyui` (recommended default — small, fast, great DX)
-  - `react-shadcn`
-  - `vue-daisyui`
-  Each preset supplies the same **contract** (below) with toolkit-specific
-  components, so the app-level route/store code is largely toolkit-agnostic.
+  Scaffolds a `ui/<name>/` Svelte + DaisyUI project wired to the app's API, auth and
+  realtime, with a build step that emits static assets under the app's `public/`
+  (e.g. `public/admin/` for an admin, `public/app/` or the web root for a front-end).
+  The two kinds differ only in defaults (mount path, whether an auth guard wraps the
+  whole app, which nav scaffold ships) — the stack and building blocks are identical.
 
 - **A generated, typed API client + auth + realtime wrapper** derived from the
   framework's own conventions:
   - **API**: the framework already ships attribute routing + (optionally) OpenAPI;
     the generator reads the route/OpenAPI metadata to emit a **typed client** — so
-    admin UIs stay in sync with the backend automatically.
-  - **Auth**: a ready `AdminSession` module speaking the framework's Bearer /
-    lockout / (future) LoginFlow — the same auth every scaffolded app has.
+    the UI stays in sync with the backend automatically.
+  - **Auth**: a ready `Session` module speaking the framework's Bearer / lockout /
+    (future) LoginFlow. An admin SPA guards every route with it; a front-end SPA
+    uses it only where a login is required (the same module, different placement).
   - **Realtime**: a thin client over `RealtimeConfig::forClient()` (WS + SSE
     fallback) — reusing exactly what this repo just built.
 
-- **Framework-provided admin building blocks** as a small, toolkit-neutral core
-  the presets skin: `DataTable` (server pagination that lives in the URL),
-  `ResourceForm`, `Modal`, `Pager`, `Toast`, `AuthGuard`, `RealtimeList`. These
-  encode the fixes-by-construction (URL-as-state, one message/attachment renderer,
-  pin-to-bottom scroll) so every app inherits them.
+- **Framework-provided Svelte building blocks** as a small, reusable core:
+  `DataTable` (server pagination that lives in the URL), `ResourceForm`, `Modal`,
+  `Pager`, `Toast`, `AuthGuard`, `RealtimeList`. These encode the
+  fixes-by-construction (URL-as-state, one message/attachment renderer,
+  pin-to-bottom scroll) so every app — admin or front-end — inherits them.
 
-### The contract (toolkit-agnostic)
+### The contract (SPA-kind-agnostic)
 
-A preset is "valid" if it implements: routing with real URLs, a typed API client
-factory, an auth guard + session store, a realtime subscription hook, and the
-building-block components above. App code (routes, resource definitions) is written
-once against the contract; swapping the toolkit swaps the preset, not the app.
+The generated scaffold always provides the same pieces: routing with real URLs, a
+typed API client factory, an auth session store (+ a route guard the admin kind
+turns on globally), a realtime subscription hook, and the building-block components
+above. App code (routes, resource/page definitions) is written once against this
+contract; choosing `--kind=admin` vs `--kind=frontend` changes the defaults and
+scaffolded pages, **not** the contract or the toolkit.
 
 ### Why this shape
 
-- **DRY across apps** — the admin surface, auth wiring and realtime client are the
-  same problem in every Pramnos app; solve once.
+- **DRY across apps and surfaces** — admin and front-end are the same wiring problem
+  (routing, auth, typed API, realtime) in every Pramnos app; solve once, in one
+  stack.
 - **Owned, not locked** — generated code lives in the app repo (like the current
   scaffolding output), so projects can diverge; the framework ships templates +
   the shared building-block package, not a runtime black box.
-- **Upgrade path** — a `pramnos admin:upgrade` can regen the shared blocks while
+- **Upgrade path** — a `pramnos spa:upgrade` can regen the shared blocks while
   leaving app routes untouched.
 
 ### Phasing (framework)
 
 1. Build the RCB admin SPA (body of this doc) directly, but factor the reusable
-   parts (API client generator, auth/realtime wrappers, building blocks) behind
-   clean seams.
-2. Extract those into a framework package + the `svelte-daisyui` preset; make RCB
-   consume the package (dogfood).
-3. Add a second preset (`react-shadcn`) to prove the contract is toolkit-agnostic.
-4. Wire the `make:admin` generator + docs.
+   parts (API client generator, auth/realtime wrappers, Svelte building blocks)
+   behind clean seams.
+2. Extract those into a framework package + the Svelte + DaisyUI templates; make RCB
+   consume the package (dogfood) for its admin.
+3. Add the `--kind=frontend` scaffold and prove the same blocks build a public app
+   (RCB's chat front-end is the candidate).
+4. Wire the `make:spa` generator + docs.
 
-RCB gets its modern admin either way; the framework gets a reusable generator as a
-by-product of doing RCB's rewrite behind the right abstractions.
+RCB gets its modern admin either way; the framework gets a reusable SPA generator as
+a by-product of doing RCB's rewrite behind the right abstractions.
