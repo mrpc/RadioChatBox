@@ -41,6 +41,7 @@ class TrackVoteControllerTest extends TestCase
     protected function tearDown(): void
     {
         $this->pdo->prepare('DELETE FROM track_votes WHERE track_display = ?')->execute([$this->display]);
+        $this->pdo->prepare('DELETE FROM tracks WHERE display = ?')->execute([$this->display]);
         $this->pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$this->user]);
         $this->pdo->prepare("DELETE FROM settings WHERE setting IN ('track_voting_enabled', 'radio_status_url')")->execute();
         FlatCache::default()->clear();
@@ -89,6 +90,23 @@ class TrackVoteControllerTest extends TestCase
         $this->assertSame(0, $t['up']);
         $this->assertSame(1, $t['down']);
         $this->assertSame(-1, $t['my_vote']);
+    }
+
+    /** A vote links to the catalog track id when the display is catalogued. */
+    public function testVoteLinksToCatalogTrackId(): void
+    {
+        // The tracker upserts tracks by unique display; simulate that row.
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO tracks (display, play_count) VALUES (?, 1) RETURNING id'
+        );
+        $stmt->execute([$this->display]);
+        $trackId = (int) $stmt->fetchColumn();
+
+        (new TrackVoteService())->vote($this->display, $this->session, $this->user, 'up');
+
+        $stored = $this->pdo->prepare('SELECT track_id FROM track_votes WHERE track_display = ? AND voter_session = ?');
+        $stored->execute([$this->display, $this->session]);
+        $this->assertSame($trackId, (int) $stored->fetchColumn());
     }
 
     /** A bad direction is rejected. */

@@ -53,6 +53,7 @@ class TrackVoteService
             $qb->upsert(
                 [
                     'track_display'  => $trackDisplay,
+                    'track_id'       => $this->resolveTrackId($trackDisplay),
                     'voter_session'  => $session,
                     'voter_username' => ($username !== null && $username !== '') ? mb_substr($username, 0, 50) : null,
                     'vote'           => $value,
@@ -60,7 +61,7 @@ class TrackVoteService
                     'updated_at'     => $qb->raw('NOW()'),
                 ],
                 ['track_display', 'voter_session'],
-                ['vote', 'voter_username', 'updated_at']
+                ['vote', 'voter_username', 'updated_at', 'track_id']
             );
         }
 
@@ -93,6 +94,21 @@ class TrackVoteService
             'down'    => (int) ($fields['down'] ?? 0),
             'my_vote' => $session !== null ? $this->currentVote($trackDisplay, $session) : 0,
         ];
+    }
+
+    /**
+     * Resolve the catalog track id for a display string (the tracker upserts
+     * tracks by unique display), or null if it isn't catalogued yet. Links a vote
+     * to the tracked play history so votes can join the track stats.
+     */
+    private function resolveTrackId(string $trackDisplay): ?int
+    {
+        $row = $this->db->preparedQuery(
+            'SELECT id FROM tracks WHERE display = :d LIMIT 1',
+            ['d' => $trackDisplay]
+        );
+        $id = $row ? $row->fetchColumn() : false;
+        return $id === false || $id === null ? null : (int) $id;
     }
 
     /** This session's current vote for a track: 1, -1 or 0. */
