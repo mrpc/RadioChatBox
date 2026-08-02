@@ -344,7 +344,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Typing indicators ("User is typing...")
 - [ ] Message read receipts (for private messages)
 - [x] Link previews (title, description, thumbnail)
-- [ ] Message search functionality — partial: admin per-user search only; no user-facing chat search
+- [x] Message search functionality — user-facing public chat search (🔍 overlay + `/api/search`) and admin per-user search
 
 **Database Changes:**
 - New `message_edits` table (id, message_id, old_content, new_content, edited_at)

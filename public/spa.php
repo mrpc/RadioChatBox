@@ -204,6 +204,7 @@
                         💬
                         <span id="unread-badge" class="badge" style="display: none;">0</span>
                     </button>
+                    <button id="search-toggle" class="icon-button" title="Search messages">🔍</button>
                     <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
                     <button id="change-nickname" class="icon-button" title="Profile & Settings">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -245,6 +246,14 @@
             </div>
 
             <div id="messages-container">
+                <!-- Message search overlay (toggled from the header 🔍) -->
+                <div id="search-panel" style="display: none;">
+                    <div class="search-bar">
+                        <input type="text" id="search-input" placeholder="Search public messages…" autocomplete="off">
+                        <button id="search-close" class="icon-button" title="Close search">✕</button>
+                    </div>
+                    <div id="search-results"></div>
+                </div>
                 <!-- Moderator-pinned messages (shown when there are active pins) -->
                 <div id="pinned-bar" class="pinned-bar" style="display: none;"></div>
                 <!-- Live poll (shown when there is an active poll and polls are on) -->

@@ -4007,3 +4007,57 @@ body.metal-theme .active-user.current-user {
 }
 
 
+
+/* ---- Message search overlay ---- */
+#search-panel {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 10px 12px;
+    max-height: 55%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#search-panel .search-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+#search-panel #search-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+}
+#search-results {
+    overflow-y: auto;
+}
+#search-results .search-result {
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+#search-results .search-result:hover {
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+}
+#search-results .search-result .sr-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 2px;
+}
+#search-results .search-result .sr-user { font-weight: 600; color: #374151; }
+#search-results .search-result mark { background: #fef08a; padding: 0 1px; }
+#search-results .search-empty { color: #6b7280; font-size: 13px; padding: 10px; text-align: center; }
+
+/* Flash a message when jumped-to from search */
+@keyframes rcbMessageFlash {
+    0% { background: #fef08a; }
+    100% { background: transparent; }
+}
+.message-flash { animation: rcbMessageFlash 1.5s ease-out; }

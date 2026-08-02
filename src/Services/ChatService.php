@@ -250,6 +250,40 @@ class ChatService
     }
 
     /**
+     * Search the public chat history for a text fragment (case-insensitive),
+     * newest first. Deleted messages are excluded. Used by the user-facing chat
+     * search. Returns [{message_id, username, display_name, message, created_at}].
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function searchMessages(string $query, int $limit = 50): array
+    {
+        $query = trim($query);
+        if (mb_strlen($query) < 2) {
+            return [];
+        }
+        $limit = max(1, min($limit, 100));
+
+        try {
+            $result = $this->db->preparedQuery(
+                'SELECT m.message_id, m.username, m.message, m.created_at, u.display_name
+                 FROM chat_messages m
+                 LEFT JOIN users u ON m.user_id = u.userid
+                 WHERE m.is_deleted = FALSE AND m.message ILIKE :q
+                 ORDER BY m.created_at DESC
+                 LIMIT :limit',
+                ['q' => '%' . $query . '%', 'limit' => $limit]
+            );
+            return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ChatService::searchMessages failed: ' . $e->getMessage(), 'radiochatbox');
+            return [];
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * Load message history from PostgreSQL (fallback when Redis is empty)
      */
     private function loadHistoryFromDB(int $limit = 50): array

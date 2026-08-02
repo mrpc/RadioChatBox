@@ -2324,6 +2324,20 @@ class RadioChatBox {
             soundBtn.addEventListener('click', () => this.toggleSound());
             this.updateSoundButton();
         }
+
+        // Message search
+        const searchBtn = document.getElementById('search-toggle');
+        if (searchBtn) searchBtn.addEventListener('click', () => this.toggleSearch());
+        const searchClose = document.getElementById('search-close');
+        if (searchClose) searchClose.addEventListener('click', () => this.toggleSearch(false));
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                clearTimeout(this._searchDebounce);
+                this._searchDebounce = setTimeout(() => this.runSearch(searchInput.value), 250);
+            });
+            searchInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.toggleSearch(false); });
+        }
         
         // Photo upload button
         if (this.photoButton) {
@@ -2696,6 +2710,70 @@ class RadioChatBox {
         else text = `${names.length} people are typing…`;
         el.textContent = text;
         el.style.display = 'block';
+    }
+
+    // ---- Message search ---------------------------------------------
+
+    /** Show/hide the search overlay. Pass a boolean to force a state. */
+    toggleSearch(force) {
+        const panel = document.getElementById('search-panel');
+        if (!panel) return;
+        const show = force === undefined ? panel.style.display === 'none' : force;
+        panel.style.display = show ? 'flex' : 'none';
+        if (show) {
+            const input = document.getElementById('search-input');
+            if (input) { input.focus(); input.select(); }
+        } else {
+            const results = document.getElementById('search-results');
+            if (results) results.innerHTML = '';
+            const input = document.getElementById('search-input');
+            if (input) input.value = '';
+        }
+    }
+
+    async runSearch(query) {
+        const box = document.getElementById('search-results');
+        if (!box) return;
+        const q = (query || '').trim();
+        if (q.length < 2) { box.innerHTML = ''; return; }
+        box.innerHTML = '<div class="search-empty">Searching…</div>';
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/search?q=${encodeURIComponent(q)}`);
+            if (!resp.ok) { box.innerHTML = '<div class="search-empty">Search failed.</div>'; return; }
+            const data = await resp.json();
+            const results = (data && data.results) || [];
+            if (!results.length) { box.innerHTML = '<div class="search-empty">No matches.</div>'; return; }
+            box.innerHTML = results.map(r => {
+                const name = this.escapeHtml(r.display_name || r.username || '');
+                const when = r.created_at ? new Date((r.created_at + '').replace(' ', 'T')).toLocaleString() : '';
+                const text = this.highlightSearch(r.message || '', q);
+                return `<div class="search-result" onclick="window.chatBox.jumpToMessage('${this.escapeHtml(String(r.message_id || ''))}')">
+                        <div class="sr-head"><span class="sr-user">${name}</span><span>${when}</span></div>
+                        <div class="sr-body">${text}</div>
+                    </div>`;
+            }).join('');
+        } catch (e) { box.innerHTML = '<div class="search-empty">Search error.</div>'; }
+    }
+
+    /** Escape a message and wrap case-insensitive matches of `q` in <mark>. */
+    highlightSearch(message, q) {
+        const escaped = this.escapeHtml(message);
+        try {
+            const rx = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+            return escaped.replace(rx, '<mark>$1</mark>');
+        } catch (e) { return escaped; }
+    }
+
+    /** Scroll to a message already in the DOM (if present) and flash it. */
+    jumpToMessage(messageId) {
+        if (!messageId) return;
+        this.toggleSearch(false);
+        const el = this.messagesContainer && this.messagesContainer.querySelector(`[data-message-id="${messageId}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('message-flash');
+            setTimeout(() => el.classList.remove('message-flash'), 1500);
+        }
     }
 
     // ---- Pinned messages bar ----------------------------------------
