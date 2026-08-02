@@ -29,15 +29,16 @@ This document outlines the planned features and enhancements for RadioChatBox.
   that motivated it are now fixed in the current admin.)
 - **Mobile front-end**: messages clipped, frequent disconnects / missed messages
   (needs a mobile-first pass on the chat SPA + WS/SSE reconnect robustness).
-- **All-messages photos** (bug 7): the `/api/admin/messages` endpoint does not
-  return attachment data, so private-message photos are not shown in that view.
-- Minor: push live `chat_mode` over WS; baseline seed of lazily-created settings
-  (gif_*); a mobile-first PWA pass.
+- Minor (deferred, low value): baseline seed of the lazily-created gif_* settings
+  — they fall back to defaults today, and seeding them touches the byte-verified
+  golden create_schema baseline, so it is not worth the risk yet.
 
 ### Recently closed (this batch)
-Greeklish leak (both the emoji-flip and the transliterated-history feedback),
-take-over from Bot Activity, full user private-conversation history, admin
-photo-gallery perf + live refresh, no-polling migration (admin + now-playing),
+Greeklish leak (emoji-flip, transliterated-history feedback, and the
+never-write-greeklish directive with a concrete example), promo-link sharing,
+take-over from Bot Activity, full user private-conversation history, DM photos in
+the all-messages view (bug 7), admin photo-gallery perf + live refresh,
+no-polling migration (admin + now-playing), live chat_mode push over WS,
 private-mode "messages today" KPI, bot reply brevity, admin list search,
 Bot Activity profile shortcuts, DM replies + reactions.
 
