@@ -79,6 +79,30 @@ class MediaControllerTest extends TestCase
     }
 
     /**
+     * The oEmbed path is not YouTube-specific — a different registered provider
+     * (Vimeo, via its own endpoint) previews the same way, proving the registry
+     * generalises across whitelisted providers.
+     */
+    public function testLinkPreviewUsesOEmbedForOtherProviders(): void
+    {
+        $oembed = json_encode([
+            'title'         => 'A Short Film',
+            'author_name'   => 'Director',
+            'thumbnail_url' => 'https://i.vimeocdn.com/video/123_640.jpg',
+        ]);
+        Client::fake(['*vimeo.com/api/oembed*' => ClientResponse::make($oembed, 200, ['content-type' => 'application/json'])]);
+
+        $_GET = ['url' => 'https://vimeo.com/76979871?probe=' . uniqid()];
+        $response = (new MediaController())->linkPreview();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertSame('A Short Film', $body['title']);
+        $this->assertSame('Director', $body['description']);
+        $this->assertSame('vimeo.com', $body['domain']);
+    }
+
+    /**
      * link-preview rejects a declared non-HTML Content-Type with 422
      * {error:'URL is not an HTML page'}.
      */

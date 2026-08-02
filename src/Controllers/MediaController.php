@@ -133,23 +133,25 @@ final class MediaController
         }
         // @codeCoverageIgnoreEnd
 
-        // YouTube serves a cookie-consent wall to the bot fetch (especially youtu.be
-        // short links), so Open Graph scraping returns no title and the preview
-        // silently fails. Use YouTube's oEmbed API (title + author + thumbnail, no
-        // consent wall) to build the same card shape instead.
-        if ($this->isYouTubeHost($host)) {
-            $yt = $this->youTubeOEmbed($url);
-            if ($yt !== null) {
+        // Several providers (YouTube, Vimeo, SoundCloud, Spotify, TikTok…) serve a
+        // consent/login wall or JS-only page to the bot fetch, so Open Graph scraping
+        // returns no title and the preview silently fails. For any host with a known
+        // oEmbed endpoint, use oEmbed (title + author + thumbnail, no wall) to build
+        // the same card shape. Non-oEmbed hosts fall through to the generic scrape.
+        $provider = $this->oEmbedProviderFor($host);
+        if ($provider !== null) {
+            $embed = $this->fetchOEmbed($provider['endpoint'], $url, $provider['domain']);
+            if ($embed !== null) {
                 try {
-                    FlatCache::default()->set($cacheKey, $yt, 3600);
+                    FlatCache::default()->set($cacheKey, $embed, 3600);
                 // @codeCoverageIgnoreStart
                 } catch (\Exception $e) {
                     // Cache backend unavailable — return uncached
                 }
                 // @codeCoverageIgnoreEnd
-                return Response::json($yt);
+                return Response::json($embed);
             }
-            // oEmbed failed (private/removed video etc.) — fall through to the scrape.
+            // oEmbed failed (private/removed item etc.) — fall through to the scrape.
         }
 
         // Fetch the page content through the framework HTTP client (curl
@@ -289,31 +291,51 @@ final class MediaController
     }
 
     /**
-     * Whether a host is a YouTube property whose links should preview via oEmbed.
+     * Known oEmbed providers: [host suffix, oEmbed endpoint, display domain]. A host
+     * matches when it equals the suffix or is a subdomain of it (so www./m./music./
+     * player./open./on. variants are covered). These providers block or JS-gate plain
+     * scraping, so their oEmbed API is the reliable source. Add a row to extend.
      */
-    private function isYouTubeHost(string $host): bool
+    private const OEMBED_PROVIDERS = [
+        ['youtu.be',             'https://www.youtube.com/oembed',   'youtube.com'],
+        ['youtube.com',          'https://www.youtube.com/oembed',   'youtube.com'],
+        ['youtube-nocookie.com', 'https://www.youtube.com/oembed',   'youtube.com'],
+        ['vimeo.com',            'https://vimeo.com/api/oembed.json', 'vimeo.com'],
+        ['soundcloud.com',       'https://soundcloud.com/oembed',    'soundcloud.com'],
+        ['spotify.com',          'https://open.spotify.com/oembed',  'spotify.com'],
+        ['tiktok.com',           'https://www.tiktok.com/oembed',    'tiktok.com'],
+    ];
+
+    /**
+     * The oEmbed endpoint + display domain for a host, or null when the host has no
+     * registered provider (the caller then falls back to Open Graph scraping).
+     *
+     * @return array{endpoint:string, domain:string}|null
+     */
+    private function oEmbedProviderFor(string $host): ?array
     {
         $host = strtolower(ltrim($host));
-        return in_array($host, [
-            'youtu.be',
-            'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com',
-            'youtube-nocookie.com', 'www.youtube-nocookie.com',
-        ], true);
+        foreach (self::OEMBED_PROVIDERS as [$suffix, $endpoint, $domain]) {
+            if ($host === $suffix || str_ends_with($host, '.' . $suffix)) {
+                return ['endpoint' => $endpoint, 'domain' => $domain];
+            }
+        }
+        return null;
     }
 
     /**
-     * Build a preview card for a YouTube URL from the public oEmbed endpoint (which,
-     * unlike the watch page, is not gated behind the consent wall). Returns the same
-     * {title, description, image, domain, url} shape the scraper produces, or null
-     * when the video is private/removed or oEmbed is unreachable.
+     * Fetch an oEmbed document and map it to the standard preview card shape
+     * ({title, description, image, domain, url}), or null when the item is
+     * private/removed or oEmbed is unreachable. author_name → description and
+     * thumbnail_url → image (both optional in the oEmbed spec).
      *
      * @return array{title:string, description:string, image:string, domain:string, url:string}|null
      */
-    private function youTubeOEmbed(string $url): ?array
+    private function fetchOEmbed(string $endpoint, string $url, string $domain): ?array
     {
-        $endpoint = 'https://www.youtube.com/oembed?format=json&url=' . rawurlencode($url);
+        $full = $endpoint . '?format=json&url=' . rawurlencode($url);
         try {
-            $response = Client::get($endpoint)
+            $response = Client::get($full)
                 ->timeout(5)
                 ->userAgent('RadioChatBox Link Preview Bot/1.0')
                 ->header('Accept', 'application/json')
@@ -335,7 +357,7 @@ final class MediaController
             'title'       => (string) $data['title'],
             'description' => (string) ($data['author_name'] ?? ''),
             'image'       => (string) ($data['thumbnail_url'] ?? ''),
-            'domain'      => 'youtube.com',
+            'domain'      => $domain,
             'url'         => $url,
         ];
     }
