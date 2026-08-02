@@ -384,6 +384,15 @@ final class AdminUsersController
             );
             $activeSession = $result ? $result->fetch() : false;
 
+            // Last-seen: the persistent activity timestamp (survives session cleanup),
+            // so the dossier shows when an OFFLINE user was last active. user_activity
+            // is maintained per message send; take the most recent across all their IPs.
+            $result   = $db->preparedQuery(
+                "SELECT MAX(last_seen) FROM user_activity WHERE username = :username",
+                ['username' => $username]
+            );
+            $lastSeen = $result ? $result->fetchColumn() : null;
+
             // Get private messages count and paginated results (only for root and administrator).
             $privateMessages = [];
             $privateConversations = [];
@@ -442,6 +451,7 @@ final class AdminUsersController
                     'messages' => $messages,
                     'ip_addresses' => $ipAddresses,
                     'active_session' => $activeSession ?: null,
+                    'last_seen' => $lastSeen ?: null,
                     'private_messages' => $privateMessages,
                     'private_conversations' => $privateConversations,
                     'reports_received' => $reportsReceived,

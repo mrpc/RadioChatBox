@@ -145,7 +145,7 @@ class ChatService
      * send (public and DM) so an actively-chatting user always shows online.
      * Best-effort; never fails the surrounding action.
      */
-    public function refreshPresence(string $username, string $sessionId, string $ipAddress = '', ?int $userId = null): void
+    public function refreshPresence(string $username, string $sessionId, string $ipAddress = '', ?int $userId = null, string $userAgent = ''): void
     {
         if ($username === '' || $sessionId === '') {
             return;
@@ -153,21 +153,27 @@ class ChatService
         $ip = $ipAddress !== '' ? $ipAddress : '0.0.0.0'; // ip_address is NOT NULL
         try {
             $qb = $this->db->queryBuilder()->from('presence_sessions');
-            // Insert a fresh presence row, or (on the username+session unique
-            // conflict) refresh the heartbeat and ip. user_id is left out of the
-            // conflict-update so an existing row keeps its user link.
-            $qb->upsert(
-                [
-                    'username'       => $username,
-                    'session_id'     => $sessionId,
-                    'ip_address'     => $ip,
-                    'user_id'        => $userId,
-                    'last_heartbeat' => $qb->raw('NOW()'),
-                    'joined_at'      => $qb->raw('NOW()'),
-                ],
-                ['username', 'session_id'],
-                ['last_heartbeat', 'ip_address']
-            );
+            $values = [
+                'username'       => $username,
+                'session_id'     => $sessionId,
+                'ip_address'     => $ip,
+                'user_id'        => $userId,
+                'last_heartbeat' => $qb->raw('NOW()'),
+                'joined_at'      => $qb->raw('NOW()'),
+            ];
+            // On the username+session unique conflict, refresh heartbeat and ip.
+            // user_id is left out of the conflict-update so an existing row keeps
+            // its user link.
+            $updateOnConflict = ['last_heartbeat', 'ip_address'];
+            // Only record the user agent when we actually have one (the heartbeat
+            // path). Other callers (SSE connect, message send) pass '' — don't let
+            // them overwrite a good UA with an empty string.
+            if ($userAgent !== '') {
+                $values['user_agent'] = $userAgent;
+                $updateOnConflict[] = 'user_agent';
+            }
+            // Insert a fresh presence row, or refresh the existing one.
+            $qb->upsert($values, ['username', 'session_id'], $updateOnConflict);
         } catch (\Throwable) {
             // presence is best-effort
         }
@@ -930,7 +936,7 @@ class ChatService
      *
      * OPTIMIZED: Rate-limits user list updates to reduce SSE spam
      */
-    public function updateHeartbeat(string $username, string $sessionId, string $ipAddress = ''): bool
+    public function updateHeartbeat(string $username, string $sessionId, string $ipAddress = '', string $userAgent = ''): bool
     {
         try {
             // Clean up inactive sessions first (this might change the user list)
@@ -941,7 +947,8 @@ class ChatService
             // plain UPDATE would then match nothing — so a user whose browser is
             // still open and beating would stay offline forever, never recreated.
             // The user is clearly present (they just beat), so (re)create the row.
-            $this->refreshPresence($username, $sessionId, $ipAddress, $this->resolveUserId($username));
+            // The heartbeat carries the browser UA — the one path that records it.
+            $this->refreshPresence($username, $sessionId, $ipAddress, $this->resolveUserId($username), $userAgent);
 
             // PERFORMANCE OPTIMIZATION: Only publish user updates every 10 seconds
             // Heartbeats happen frequently (every 10-30s per user), no need to spam SSE

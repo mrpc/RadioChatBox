@@ -7585,18 +7585,8 @@
 
                     let ipHtml = '<h3>IP Addresses & Sessions</h3>';
                     
-                    // Show active session if available
-                    if (user.active_session) {
-                        ipHtml += `
-                            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
-                                <p style="margin: 0 0 8px 0;"><strong style="color: #3b82f6;">🟢 Active Session</strong></p>
-                                <p style="margin: 4px 0;"><strong>IP Address:</strong> ${escapeHtml(user.active_session.ip_address)}</p>
-                                <p style="margin: 4px 0;"><strong>Session ID:</strong> ${escapeHtml(user.active_session.session_id)}</p>
-                                <p style="margin: 4px 0;"><strong>Joined:</strong> ${new Date(user.active_session.joined_at).toLocaleString()}</p>
-                                <p style="margin: 4px 0;"><strong>Last Activity:</strong> ${new Date(user.active_session.last_heartbeat).toLocaleString()}</p>
-                            </div>
-                        `;
-                    }
+                    // Show live session (with device) when online, else last-seen.
+                    ipHtml += buildPresenceHtml(user);
                     
                     // Show historical IP addresses
                     if (user.ip_addresses.length > 0) {
@@ -7751,18 +7741,8 @@
 
                     let ipHtml = '<h3>IP Addresses & Sessions</h3>';
                     
-                    // Show active session if available
-                    if (user.active_session) {
-                        ipHtml += `
-                            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
-                                <p style="margin: 0 0 8px 0;"><strong style="color: #3b82f6;">🟢 Active Session</strong></p>
-                                <p style="margin: 4px 0;"><strong>IP Address:</strong> ${escapeHtml(user.active_session.ip_address)}</p>
-                                <p style="margin: 4px 0;"><strong>Session ID:</strong> ${escapeHtml(user.active_session.session_id)}</p>
-                                <p style="margin: 4px 0;"><strong>Joined:</strong> ${new Date(user.active_session.joined_at).toLocaleString()}</p>
-                                <p style="margin: 4px 0;"><strong>Last Activity:</strong> ${new Date(user.active_session.last_heartbeat).toLocaleString()}</p>
-                            </div>
-                        `;
-                    }
+                    // Show live session (with device) when online, else last-seen.
+                    ipHtml += buildPresenceHtml(user);
                     
                     // Show historical IP addresses
                     if (user.ip_addresses.length > 0) {
@@ -8813,6 +8793,70 @@
 
         // "Reports received" section for the user-details dossier (bug: an admin
         // needs to see a user's abuse-report history on their profile).
+        // Lightweight user-agent parser: enough to tell the moderator the browser,
+        // OS and whether it's a phone/tablet/desktop, without a heavy dependency.
+        function formatUserAgent(ua) {
+            if (!ua || typeof ua !== 'string') return null;
+            const s = ua;
+            let browser = 'Unknown browser';
+            if (/Edg\//.test(s)) browser = 'Edge';
+            else if (/OPR\/|Opera/.test(s)) browser = 'Opera';
+            else if (/SamsungBrowser/.test(s)) browser = 'Samsung Internet';
+            else if (/Firefox\/|FxiOS/.test(s)) browser = 'Firefox';
+            else if (/CriOS/.test(s)) browser = 'Chrome';
+            else if (/Chrome\//.test(s)) browser = 'Chrome';
+            else if (/Version\/.*Safari/.test(s) || /Safari\//.test(s)) browser = 'Safari';
+
+            let os = 'Unknown OS';
+            if (/Windows NT 10/.test(s)) os = 'Windows';
+            else if (/Windows/.test(s)) os = 'Windows';
+            else if (/Android/.test(s)) { const m = s.match(/Android [\d.]+/); os = m ? m[0] : 'Android'; }
+            else if (/iPhone|iPad|iPod/.test(s)) { const m = s.match(/OS (\d+[_\d]*)/); os = 'iOS' + (m ? ' ' + m[1].replace(/_/g, '.') : ''); }
+            else if (/Mac OS X/.test(s)) os = 'macOS';
+            else if (/CrOS/.test(s)) os = 'ChromeOS';
+            else if (/Linux/.test(s)) os = 'Linux';
+
+            let device = 'Desktop';
+            if (/iPad|Tablet/.test(s)) device = 'Tablet';
+            else if (/Mobile|iPhone|Android.*Mobile|iPod/.test(s)) device = 'Mobile';
+
+            return { browser, os, device, raw: s };
+        }
+
+        function buildDeviceLine(ua) {
+            const d = formatUserAgent(ua);
+            if (!d) return '';
+            const icon = d.device === 'Mobile' ? '📱' : (d.device === 'Tablet' ? '📲' : '💻');
+            return `<p style="margin: 4px 0;"><strong>Device:</strong> ${icon} ${escapeHtml(d.browser)} on ${escapeHtml(d.os)} (${escapeHtml(d.device)})<span style="display:block;color:#9ca3af;font-size:11px;word-break:break-all;">${escapeHtml(d.raw)}</span></p>`;
+        }
+
+        // Presence block for the user dossier: the live session (with device) when
+        // online, otherwise the persistent last-seen so an offline user still shows
+        // when they were last active.
+        function buildPresenceHtml(user) {
+            if (user.active_session) {
+                return `
+                    <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                        <p style="margin: 0 0 8px 0;"><strong style="color: #3b82f6;">🟢 Active Session</strong></p>
+                        <p style="margin: 4px 0;"><strong>IP Address:</strong> ${escapeHtml(user.active_session.ip_address)}</p>
+                        <p style="margin: 4px 0;"><strong>Session ID:</strong> ${escapeHtml(user.active_session.session_id)}</p>
+                        <p style="margin: 4px 0;"><strong>Joined:</strong> ${new Date(user.active_session.joined_at).toLocaleString()}</p>
+                        <p style="margin: 4px 0;"><strong>Last Activity:</strong> ${new Date(user.active_session.last_heartbeat).toLocaleString()}</p>
+                        ${buildDeviceLine(user.active_session.user_agent)}
+                    </div>
+                `;
+            }
+            if (user.last_seen) {
+                return `
+                    <div style="background: #f9fafb; border-left: 4px solid #9ca3af; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                        <p style="margin: 0 0 8px 0;"><strong style="color: #6b7280;">⚪ Offline</strong></p>
+                        <p style="margin: 4px 0;"><strong>Last seen:</strong> ${new Date(user.last_seen).toLocaleString()}</p>
+                    </div>
+                `;
+            }
+            return '';
+        }
+
         function buildReportsReceivedHtml(reports) {
             if (!Array.isArray(reports) || reports.length === 0) {
                 return '<h3>Reports Received</h3><p style="color:#6b7280;">No reports against this user.</p>';

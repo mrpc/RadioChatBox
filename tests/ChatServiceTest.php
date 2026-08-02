@@ -810,6 +810,32 @@ class ChatServiceTest extends TestCase
     }
 
     /**
+     * The heartbeat records the browser user agent on the presence row (so the
+     * admin dossier can show the device), and a later refresh that carries no UA
+     * (SSE connect / message send) must NOT wipe the stored one.
+     */
+    public function testHeartbeatStoresUserAgentAndEmptyDoesNotClobber()
+    {
+        $pdo  = TestDatabase::connection();
+        $user = 'ua_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $sess = 'uasess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $ua   = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1';
+        try {
+            $this->chatService->updateHeartbeat($user, $sess, '198.51.100.5', $ua);
+            $read = $pdo->prepare('SELECT user_agent FROM presence_sessions WHERE username = ? AND session_id = ?');
+            $read->execute([$user, $sess]);
+            $this->assertSame($ua, $read->fetchColumn(), 'the heartbeat stores the UA');
+
+            // A UA-less refresh (e.g. an SSE onTick) keeps the recorded UA.
+            $this->chatService->refreshPresence($user, $sess, '198.51.100.5', null, '');
+            $read->execute([$user, $sess]);
+            $this->assertSame($ua, $read->fetchColumn(), 'an empty UA does not overwrite the stored one');
+        } finally {
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$user]);
+        }
+    }
+
+    /**
      * A heartbeat recreates a session that a prior cleanup removed, instead of the
      * old UPDATE-only behaviour that left an active user offline forever once their
      * row was gone.

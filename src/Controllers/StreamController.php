@@ -58,6 +58,7 @@ final class StreamController
         // presence server-side (in addition to the client's HTTP heartbeat).
         $sessionId   = $claims['sid'] ?? null;
         $clientIp    = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
+        $userAgent   = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
         $chatService = new ChatService();
         $chatMode    = $chatService->getSetting('chat_mode', 'public');
         $prefix      = ConnectionManager::getInstance()->prefix();
@@ -78,7 +79,7 @@ final class StreamController
         $driver = $this->driver
             ?? new RedisDriver(['prefix' => $prefix], static fn () => ConnectionManager::getInstance()->newConnection());
 
-        return StreamedResponse::sse(function (SseWriter $sse) use ($username, $sessionId, $clientIp, $chatService, $chatMode, $publicMode, $driver, $channels) {
+        return StreamedResponse::sse(function (SseWriter $sse) use ($username, $sessionId, $clientIp, $userAgent, $chatService, $chatMode, $publicMode, $driver, $channels) {
             $sse->comment('SSE connection established');
 
             // The live connection is itself proof of presence. A connected client can
@@ -86,14 +87,15 @@ final class StreamController
             // stays as the safety net). We refresh on connect and then on every idle
             // tick (~pingInterval, below) via onTick — so an active viewer stays
             // online within ~20s even if their HTTP heartbeat lags or stalls, instead
-            // of only refreshing on the ~95s reconnect.
+            // of only refreshing on the ~95s reconnect. The connect also records the
+            // device UA so it shows immediately, not only after the first heartbeat.
             $canTrackPresence = $username !== null && $sessionId !== null && $sessionId !== '';
-            $refreshPresence  = function () use ($canTrackPresence, $chatService, $username, $sessionId, $clientIp): void {
+            $refreshPresence  = function (string $ua = '') use ($canTrackPresence, $chatService, $username, $sessionId, $clientIp): void {
                 if ($canTrackPresence) {
-                    $chatService->refreshPresence($username, $sessionId, $clientIp);
+                    $chatService->refreshPresence($username, $sessionId, $clientIp, null, $ua);
                 }
             };
-            $refreshPresence();
+            $refreshPresence($userAgent);
 
             // Initial snapshot.
             if ($publicMode) {
