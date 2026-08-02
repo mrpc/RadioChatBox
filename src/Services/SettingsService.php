@@ -52,6 +52,8 @@ class SettingsService
         'song_requests_enabled',
         // Chat slash-commands (/help, /rules, …)
         'chat_commands_enabled',
+        // Now-playing thumbs up/down voting
+        'track_voting_enabled',
         // In-chat radio player (embedded <audio> above the chat)
         'player_mode',
         'player_allow_override',
