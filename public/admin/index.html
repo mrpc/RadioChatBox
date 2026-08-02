@@ -3521,6 +3521,10 @@
                 if (active && active.id === 'reports-tab') loadReports();
                 return;
             }
+            if (notification && notification.signal === 'users_changed') {
+                onUsersChangedSignal();
+                return;
+            }
 
             // Update badge and re-render notifications
             updateNotificationBadge(notification.unread_count);
@@ -6828,6 +6832,27 @@
             } else if (active.id === 'dashboard-tab') {
                 if (typeof loadDashboardKPIs === 'function') loadDashboardKPIs();
             }
+        }
+
+        // Socket signal: the active-user list changed (join/leave/heartbeat/kick).
+        // Refresh whichever live view is open — the Active Users tab or the dashboard
+        // KPI — debounced so a burst of join/leave signals collapses into one refresh.
+        // (The server already throttles user updates to ~10s, but a kick/ban can emit
+        // one directly, hence the client-side debounce.)
+        let _usersChangedTimer = null;
+        function onUsersChangedSignal() {
+            if (document.hidden) return;
+            if (_usersChangedTimer) return; // a refresh is already scheduled
+            _usersChangedTimer = setTimeout(() => {
+                _usersChangedTimer = null;
+                const active = document.querySelector('.tab-content.active');
+                if (!active) return;
+                if (active.id === 'users-tab') {
+                    if (typeof loadUsers === 'function') loadUsers();
+                } else if (active.id === 'dashboard-tab') {
+                    if (typeof loadDashboardKPIs === 'function') loadDashboardKPIs();
+                }
+            }, 1200);
         }
 
         // Socket signal: a photo was uploaded. Refresh the gallery if it is open —

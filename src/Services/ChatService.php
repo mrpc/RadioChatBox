@@ -1740,6 +1740,22 @@ class ChatService
                 'count' => $count,
                 'users' => $users,
             ]);
+
+            // Also nudge the admin (dashboard KPI + Active Users tab) so its live
+            // user list refreshes instead of going stale — the admin subscribes only
+            // to its own channel, not chat:user_updates. Same no-polling signal
+            // pattern as messages_changed/reports_changed. Best-effort.
+            try {
+                BroadcastingManager::instance()->broadcast(
+                    'chat:admin_notifications',
+                    'users_changed',
+                    ['signal' => 'users_changed']
+                );
+            // @codeCoverageIgnoreStart
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('ChatService: users_changed signal failed: ' . $e->getMessage(), 'radiochatbox');
+            }
+            // @codeCoverageIgnoreEnd
         // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("Failed to publish user update: " . $e->getMessage(), 'radiochatbox');
