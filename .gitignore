@@ -49,3 +49,4 @@ coverage/
 
 # Local production DB dumps used for offline convergence (never commit — huge + data)
 /migrate/
+docker-compose.override.yml

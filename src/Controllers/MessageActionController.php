@@ -105,6 +105,62 @@ final class MessageActionController
     }
 
     /**
+     * POST /api/private/react — toggle a reaction on a DIRECT message. Same shape
+     * as /api/react but the message_id is the numeric private_messages id; the
+     * update is broadcast to both participants' private feed.
+     */
+    #[Route('/api/private/react', methods: 'POST', name: 'message-action.private.react')]
+    public function reactPrivate(): Response
+    {
+        try {
+            $input = $_POST;
+            if (empty($input)) {
+                throw new InvalidArgumentException('Invalid JSON');
+            }
+            $data = [
+                'message_id' => trim((string) ($input['message_id'] ?? '')),
+                'username'   => trim((string) ($input['username'] ?? '')),
+                'session_id' => trim((string) ($input['session_id'] ?? '')),
+            ];
+            $error = Validate::check($data, [
+                'message_id' => 'required',
+                'username'   => 'required',
+                'session_id' => 'required',
+            ], [
+                'message_id.required' => 'message_id, username and session_id are required',
+                'username.required'   => 'message_id, username and session_id are required',
+                'session_id.required' => 'message_id, username and session_id are required',
+            ]);
+            if ($error) {
+                return $error;
+            }
+
+            // Verify the caller owns this session (prevents reacting as others).
+            if ((new ChatService())->getSessionInfo($data['username'], $data['session_id']) === null) {
+                return Response::json(['error' => 'Invalid session'], 403);
+            }
+
+            $result = (new ReactionService())->toggleDmReaction(
+                (int) $data['message_id'],
+                $data['username'],
+                $data['session_id'],
+                (string) ($input['emoji'] ?? '')
+            );
+
+            return Response::json(['success' => true] + $result);
+        } catch (InvalidArgumentException $e) {
+            return Response::json(['error' => $e->getMessage()], 400);
+        } catch (RuntimeException $e) {
+            return Response::json(['error' => $e->getMessage()], 404);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/react — the allowed emoji set for the reaction picker.
      *
      * Migrated from public/api/react.php (GET branch). Success:

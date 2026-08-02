@@ -61,50 +61,7 @@ class ReactionService
             throw new \RuntimeException('Message not found');
         }
 
-        // A user has at most one reaction per message. Look up their current one.
-        $lookup = $this->db->queryBuilder()
-            ->from('message_reactions')
-            ->select(['id', 'emoji'])
-            ->where('message_id', '=', $messageId)
-            ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
-            ->first();
-        $existing = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
-
-        if ($existing !== false && $existing['emoji'] === $emoji) {
-            // Same emoji again → remove (toggle off).
-            $this->db->queryBuilder()
-                ->from('message_reactions')
-                ->where('id', '=', $existing['id'])
-                ->delete();
-            $action = 'removed';
-        } elseif ($existing !== false) {
-            // Different emoji → replace the existing reaction.
-            $qb = $this->db->queryBuilder()->from('message_reactions');
-            $qb->where('id', '=', $existing['id'])->update([
-                'emoji'      => $emoji,
-                'session_id' => $sessionId,
-                'created_at' => $qb->raw('NOW()'),
-            ]);
-            $action = 'changed';
-        } else {
-            // No reaction yet → add one. The ON CONFLICT branch is a race safety
-            // net; created_at is written on both insert and conflict-update so
-            // EXCLUDED.created_at carries NOW() forward (session_id is not).
-            $qb = $this->db->queryBuilder()->from('message_reactions');
-            $qb->upsert(
-                [
-                    'message_id' => $messageId,
-                    'username'   => $username,
-                    'session_id' => $sessionId,
-                    'emoji'      => $emoji,
-                    'created_at' => $qb->raw('NOW()'),
-                ],
-                ['message_id', 'username'],
-                ['emoji', 'created_at']
-            );
-            $action = 'added';
-        }
-
+        $action    = $this->applyToggle('message_reactions', $messageId, $username, $sessionId, $emoji);
         $reactions = $this->getReactionsForMessage($messageId, $username);
         $this->publishUpdate($messageId, $reactions);
 
@@ -116,14 +73,126 @@ class ReactionService
     }
 
     /**
+     * Toggle a reaction on a DIRECT message. Reactions reuse the message_reactions
+     * table with a `pm_<id>` key (distinct from public message ids). The update is
+     * broadcast on chat:private_messages carrying both participants, so each side
+     * (and an impersonating admin) receives it; the client tells it apart from a
+     * message by `type === 'reaction'`.
+     */
+    public function toggleDmReaction(int $dmId, string $username, ?string $sessionId, string $emoji): array
+    {
+        $username = trim($username);
+        if ($dmId <= 0 || $username === '') {
+            throw new \InvalidArgumentException('dm id and username are required');
+        }
+        if (!$this->isAllowed($emoji)) {
+            throw new \InvalidArgumentException('Emoji not allowed');
+        }
+        $dm = $this->dmMessageRow($dmId);
+        if ($dm === null) {
+            throw new \RuntimeException('Message not found');
+        }
+
+        $action    = $this->applyToggle('private_message_reactions', (string) $dmId, $username, $sessionId, $emoji);
+        $reactions = $this->getReactionsForMessage((string) $dmId, $username, 'private_message_reactions');
+        $this->publishDmUpdate($dmId, $reactions, (string) $dm['from_username'], (string) $dm['to_username']);
+
+        return [
+            'message_id' => $dmId,
+            'reactions'  => $reactions,
+            'action'     => $action,
+        ];
+    }
+
+    /**
+     * The shared insert / replace / delete toggle core (a user has at most one
+     * reaction per message). Returns the action taken: added|changed|removed.
+     */
+    private function applyToggle(string $table, string $messageId, string $username, ?string $sessionId, string $emoji): string
+    {
+        $lookup = $this->db->queryBuilder()
+            ->from($table)
+            ->select(['id', 'emoji'])
+            ->where('message_id', '=', $messageId)
+            ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
+            ->first();
+        $existing = ($lookup && $lookup->numRows > 0) ? $lookup->fields : false;
+
+        if ($existing !== false && $existing['emoji'] === $emoji) {
+            $this->db->queryBuilder()
+                ->from($table)
+                ->where('id', '=', $existing['id'])
+                ->delete();
+            return 'removed';
+        }
+        if ($existing !== false) {
+            $qb = $this->db->queryBuilder()->from($table);
+            $qb->where('id', '=', $existing['id'])->update([
+                'emoji'      => $emoji,
+                'session_id' => $sessionId,
+                'created_at' => $qb->raw('NOW()'),
+            ]);
+            return 'changed';
+        }
+        // The ON CONFLICT branch is a race safety net; created_at is written on
+        // both insert and conflict-update so EXCLUDED.created_at carries NOW().
+        $qb = $this->db->queryBuilder()->from($table);
+        $qb->upsert(
+            [
+                'message_id' => $messageId,
+                'username'   => $username,
+                'session_id' => $sessionId,
+                'emoji'      => $emoji,
+                'created_at' => $qb->raw('NOW()'),
+            ],
+            ['message_id', 'username'],
+            ['emoji', 'created_at']
+        );
+        return 'added';
+    }
+
+    /** The from/to row for a DM id, or null when it does not exist. */
+    private function dmMessageRow(int $dmId): ?array
+    {
+        $r = $this->db->queryBuilder()
+            ->from('private_messages')
+            ->select(['id', 'from_username', 'to_username'])
+            ->where('id', '=', $dmId)
+            ->first();
+        return ($r && $r->numRows > 0) ? $r->fields : null;
+    }
+
+    /** Broadcast a DM reaction update to both participants' private feed. */
+    private function publishDmUpdate(int $dmId, array $reactions, string $from, string $to): void
+    {
+        try {
+            $counts = [];
+            foreach ($reactions as $rx) {
+                $counts[$rx['emoji']] = $rx['count'];
+            }
+            BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', [
+                'type'          => 'reaction',
+                'message_id'    => $dmId,
+                'counts'        => $counts,
+                'from_username' => $from,
+                'to_username'   => $to,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReactionService::publishDmUpdate failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * Reaction aggregate for a single message, in allowed-emoji order.
      * Only emojis with at least one reaction are returned.
      *
      * @return array<int, array{emoji:string,count:int,mine:bool}>
      */
-    public function getReactionsForMessage(string $messageId, ?string $username = null): array
+    public function getReactionsForMessage(string $messageId, ?string $username = null, string $table = 'message_reactions'): array
     {
-        $attached = $this->attachToMessages([['id' => $messageId]], $username);
+        $attached = $this->attachToMessages([['id' => $messageId]], $username, $table);
         return $attached[0]['reactions'] ?? [];
     }
 
@@ -135,7 +204,7 @@ class ReactionService
      * @param array<int, array<string, mixed>> $messages
      * @return array<int, array<string, mixed>>
      */
-    public function attachToMessages(array $messages, ?string $username = null): array
+    public function attachToMessages(array $messages, ?string $username = null, string $table = 'message_reactions'): array
     {
         // Collect message ids.
         $ids = [];
@@ -158,7 +227,7 @@ class ReactionService
         $counts = [];
         try {
             $rows = $this->db->queryBuilder()
-                ->from('message_reactions')
+                ->from($table)
                 ->select(['message_id', 'emoji', 'COUNT(*) AS cnt'])
                 ->whereIn('message_id', $ids)
                 ->groupBy(['message_id', 'emoji'])
@@ -177,7 +246,7 @@ class ReactionService
         if ($username !== null && $username !== '') {
             try {
                 $rows = $this->db->queryBuilder()
-                    ->from('message_reactions')
+                    ->from($table)
                     ->select(['message_id', 'emoji'])
                     ->whereIn('message_id', $ids)
                     ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
