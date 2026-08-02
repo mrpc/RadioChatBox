@@ -426,6 +426,8 @@ final class MessageActionController
             $toUsername    = $input['to_username'];
             $message       = $input['message'] ?? '';
             $attachmentId  = $input['attachment_id'] ?? null;
+            $replyToId     = (isset($input['reply_to_id']) && $input['reply_to_id'] !== '')
+                ? (int) $input['reply_to_id'] : null;
 
             // Message is optional if there's an attachment (cross-field rule).
             if (empty($message) && empty($attachmentId)) {
@@ -535,12 +537,35 @@ final class MessageActionController
                 }
             }
 
+            // Resolve the replied-to message (snapshot for display). A bad/foreign
+            // reference is dropped rather than failing the send.
+            $replyData = null;
+            if ($replyToId !== null) {
+                $r  = $db->preparedQuery(
+                    "SELECT id, from_username, from_display_name, message, attachment_id
+                     FROM private_messages WHERE id = ?",
+                    [$replyToId]
+                );
+                $rd = ($r && $r->numRows > 0) ? $r->fields : null;
+                if ($rd !== null) {
+                    $replyData = [
+                        'id'                => (int) $rd['id'],
+                        'from_username'     => $rd['from_username'],
+                        'from_display_name' => $rd['from_display_name'],
+                        'message'           => $rd['message'],
+                        'has_attachment'    => !empty($rd['attachment_id']),
+                    ];
+                } else {
+                    $replyToId = null;
+                }
+            }
+
             // Store message with session IDs and display_name snapshots
             $insert = $db->preparedQuery("
-                INSERT INTO private_messages (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, attachment_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO private_messages (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, attachment_id, reply_to_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 RETURNING id, created_at
-            ", [$fromUsername, $fromSessionId, $fromDisplayName, $toUsername, $toSessionId, $toDisplayName, $message, $attachmentId]);
+            ", [$fromUsername, $fromSessionId, $fromDisplayName, $toUsername, $toSessionId, $toDisplayName, $message, $attachmentId, $replyToId]);
             $result = ($insert && $insert->numRows > 0) ? $insert->fields : null;
 
             // Get attachment info if present
@@ -559,6 +584,8 @@ final class MessageActionController
                 'to_display_name' => $toDisplayName,
                 'message' => $message,
                 'attachment' => $attachmentData,
+                'reply_to_id' => $replyToId,
+                'reply_data' => $replyData,
                 'timestamp' => strtotime($result['created_at']),
                 'type' => 'private'
             ];
@@ -771,8 +798,36 @@ final class MessageActionController
                 $messages = array_reverse($messages);
             }
 
+            // Batch-load reply snapshots for any reply_to_id on this page (one query),
+            // so replied-to messages render without a query per row.
+            $replyMap = [];
+            $replyIds = array_values(array_unique(array_filter(array_map(
+                static fn ($m) => isset($m['reply_to_id']) ? (int) $m['reply_to_id'] : 0,
+                $messages
+            ))));
+            if ($replyIds !== []) {
+                $place = implode(',', array_fill(0, count($replyIds), '?'));
+                $rr = $db->preparedQuery(
+                    "SELECT id, from_username, from_display_name, message, attachment_id
+                     FROM private_messages WHERE id IN ($place)",
+                    $replyIds
+                );
+                foreach (($rr ? $rr->fetchAll() : []) as $rrow) {
+                    $replyMap[(int) $rrow['id']] = [
+                        'id'                => (int) $rrow['id'],
+                        'from_username'     => $rrow['from_username'],
+                        'from_display_name' => $rrow['from_display_name'],
+                        'message'           => $rrow['message'],
+                        'has_attachment'    => !empty($rrow['attachment_id']),
+                    ];
+                }
+            }
+
             // Format attachment data for each message
             foreach ($messages as &$message) {
+                $message['reply_data'] = (!empty($message['reply_to_id']))
+                    ? ($replyMap[(int) $message['reply_to_id']] ?? null)
+                    : null;
                 if ($message['attachment_id']) {
                     $message['attachment'] = [
                         'attachment_id' => $message['attachment_id'],
