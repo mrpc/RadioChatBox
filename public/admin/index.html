@@ -8289,9 +8289,13 @@
                     document.getElementById('setting-realtime-ws-public-scheme').value = settings.realtime_ws_public_scheme || (isHttps ? 'wss' : 'ws');
                     document.getElementById('setting-realtime-ws-public-host').value = settings.realtime_ws_public_host || window.location.hostname;
                     document.getElementById('setting-realtime-ws-public-port').value = settings.realtime_ws_public_port || (isHttps ? '443' : (window.location.port || '80'));
-                    document.getElementById('setting-realtime-ws-bind-host').value = settings.realtime_ws_bind_host || '';
-                    document.getElementById('setting-realtime-ws-bind-port').value = settings.realtime_ws_bind_port || '';
-                    document.getElementById('setting-realtime-app-key').value = settings.realtime_app_key || '';
+                    // Pre-fill the remaining WS fields with the SAME defaults the
+                    // backend (RealtimeSettings::resolve) uses, so the section is
+                    // complete and consistent — an empty app key silently forces
+                    // SSE, which looked like a bug when the field was just blank.
+                    document.getElementById('setting-realtime-ws-bind-host').value = settings.realtime_ws_bind_host || '127.0.0.1';
+                    document.getElementById('setting-realtime-ws-bind-port').value = settings.realtime_ws_bind_port || '6001';
+                    document.getElementById('setting-realtime-app-key').value = settings.realtime_app_key || 'radiochatbox';
                     document.getElementById('setting-klipy-api-key').value = settings.klipy_api_key || '';
                     
                     // Update fake user form requirements based on require_profile
