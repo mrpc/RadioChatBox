@@ -183,6 +183,38 @@ final class MessageActionController
     }
 
     /**
+     * GET /api/react/who — who reacted to a message, grouped by emoji.
+     * Params: message_id (required), dm=1 for a direct message. Success:
+     * {success:true, reactions:[{emoji, count, users:[...]}]}; missing id -> 400.
+     */
+    #[Route('/api/react/who', methods: 'GET', name: 'message-action.react.who')]
+    public function reactWho(): Response
+    {
+        try {
+            $messageId = (string) (Request::getInstance()->get('message_id', '', 'get') ?? '');
+            if (trim($messageId) === '') {
+                return Response::json(['error' => 'message_id is required'], 400);
+            }
+            $isDm = in_array(
+                strtolower((string) (Request::getInstance()->get('dm', '', 'get') ?? '')),
+                ['1', 'true', 'yes'],
+                true
+            );
+            $table = $isDm ? 'private_message_reactions' : 'message_reactions';
+
+            return Response::json([
+                'success'   => true,
+                'reactions' => (new ReactionService())->whoReacted($messageId, $table),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log($e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * POST /api/edit-message — edit your own public message within 10 minutes.
      *
      * Migrated from public/api/edit-message.php. Requires

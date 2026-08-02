@@ -4469,6 +4469,34 @@ class RadioChatBox {
                 });
             });
         }
+
+        // Lazily reveal who reacted as a native tooltip on first hover.
+        container.querySelectorAll('.reaction-pill').forEach(pill => {
+            pill.addEventListener('mouseenter', () => this.loadReactionWho(msgId, container), { once: true });
+        });
+    }
+
+    /**
+     * Fetch the who-reacted roster for a message (once) and set each pill's
+     * `title` to its list of usernames — a lightweight hover tooltip.
+     */
+    async loadReactionWho(msgId, container) {
+        try {
+            const isPrivate = !!(this.privateChat && this.privateChat.active);
+            const q = `message_id=${encodeURIComponent(msgId)}${isPrivate ? '&dm=1' : ''}`;
+            const resp = await fetch(`${this.apiUrl}/api/react/who?${q}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const byEmoji = {};
+            (data.reactions || []).forEach(r => { byEmoji[r.emoji] = r.users || []; });
+            container.querySelectorAll('.reaction-pill').forEach(pill => {
+                const users = byEmoji[pill.getAttribute('data-emoji')];
+                if (users && users.length) {
+                    const shown = users.slice(0, 20).join(', ');
+                    pill.title = users.length > 20 ? `${shown} +${users.length - 20} more` : shown;
+                }
+            });
+        } catch (e) { /* tooltip is best-effort */ }
     }
 
     /** Real-time reaction update (SSE): counts only, preserve our mine-set. */

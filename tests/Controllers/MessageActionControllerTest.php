@@ -97,6 +97,39 @@ class MessageActionControllerTest extends TestCase
         $this->assertSame(ReactionService::getAllowedEmojis(), $body['allowed']);
     }
 
+    /** react/who without a message_id is a 400. */
+    public function testReactWhoMissingIdReturns400(): void
+    {
+        $_GET = [];
+        $response = (new MessageActionController())->reactWho();
+        $this->assertSame(400, $response->getStatusCode());
+    }
+
+    /** react/who returns the grouped-by-emoji reaction roster for a message. */
+    public function testReactWhoReturnsRoster(): void
+    {
+        $pdo = TestDatabase::connection();
+        $messageId = 'msg_who_' . bin2hex(random_bytes(6));
+        $pdo->prepare(
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
+             VALUES (?, ?, ?, ?, NOW())'
+        )->execute([$messageId, '__who_author__', 'hi', '127.0.0.1']);
+        (new ReactionService())->toggleReaction($messageId, '__who_a__', 'sess', '👍');
+
+        try {
+            $_GET = ['message_id' => $messageId];
+            $response = (new MessageActionController())->reactWho();
+            $this->assertSame(200, $response->getStatusCode());
+            $body = json_decode($response->getBody(), true);
+            $this->assertTrue($body['success']);
+            $this->assertSame('👍', $body['reactions'][0]['emoji']);
+            $this->assertContains('__who_a__', $body['reactions'][0]['users']);
+        } finally {
+            $pdo->prepare('DELETE FROM message_reactions WHERE message_id = ?')->execute([$messageId]);
+            $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$messageId]);
+        }
+    }
+
     /**
      * edit-message POST missing required fields returns the legacy 400 message
      * (no InvalidArgumentException — a direct validation return).

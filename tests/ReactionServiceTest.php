@@ -94,6 +94,25 @@ class ReactionServiceTest extends TestCase
         $this->assertTrue($reactions[0]['mine']); // from userA's perspective
     }
 
+    /** whoReacted lists the usernames behind each emoji, in emoji order. */
+    public function testWhoReactedGroupsUsersByEmoji(): void
+    {
+        $this->service->toggleReaction($this->messageId, $this->userA, 'sess', '👍');
+        $this->service->toggleReaction($this->messageId, $this->userB, 'sess', '👍');
+
+        $who = $this->service->whoReacted($this->messageId);
+        $this->assertCount(1, $who);
+        $this->assertSame('👍', $who[0]['emoji']);
+        $this->assertSame(2, $who[0]['count']);
+        $this->assertEqualsCanonicalizing([$this->userA, $this->userB], $who[0]['users']);
+    }
+
+    /** A message with no reactions returns an empty who-reacted list. */
+    public function testWhoReactedEmptyWhenNoReactions(): void
+    {
+        $this->assertSame([], $this->service->whoReacted($this->messageId));
+    }
+
     public function testRejectsDisallowedEmoji(): void
     {
         $this->expectException(\InvalidArgumentException::class);

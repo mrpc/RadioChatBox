@@ -277,6 +277,49 @@ class ReactionService
     }
 
     /**
+     * Who reacted to a message, grouped by emoji (ordered like the reaction list).
+     * Usernames within each emoji are ordered oldest-first.
+     *
+     * @return array<int, array{emoji:string, count:int, users:list<string>}>
+     */
+    public function whoReacted(string $messageId, string $table = 'message_reactions'): array
+    {
+        if (!in_array($table, ['message_reactions', 'private_message_reactions'], true)) {
+            $table = 'message_reactions';
+        }
+        if (trim($messageId) === '') {
+            return [];
+        }
+
+        $byEmoji = [];
+        try {
+            $rows = $this->db->queryBuilder()
+                ->from($table)
+                ->select(['emoji', 'username'])
+                ->where('message_id', '=', $messageId)
+                ->orderBy('created_at', 'asc')
+                ->getAll();
+            foreach ($rows as $row) {
+                $byEmoji[(string) $row['emoji']][] = (string) $row['username'];
+            }
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReactionService::whoReacted failed: ' . $e->getMessage(), 'radiochatbox');
+            return [];
+        }
+        // @codeCoverageIgnoreEnd
+
+        // Emit in the canonical emoji order so it matches the reaction pills.
+        $out = [];
+        foreach (self::ALLOWED_EMOJIS as $emoji) {
+            if (!empty($byEmoji[$emoji])) {
+                $out[] = ['emoji' => $emoji, 'count' => count($byEmoji[$emoji]), 'users' => $byEmoji[$emoji]];
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Build the ordered reaction list for one message from raw count/mine maps.
      *
      * @param array<string,int>  $countMap emoji => count
