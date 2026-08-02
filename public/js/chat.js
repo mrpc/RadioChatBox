@@ -927,6 +927,25 @@ class RadioChatBox {
         }
         const form = document.getElementById('song-request-form');
         if (form) form.addEventListener('submit', (e) => { e.preventDefault(); this.submitSongRequest(); });
+
+        // Populate the artist autocomplete from the known artist list (once).
+        this.loadArtistSuggestions();
+    }
+
+    async loadArtistSuggestions() {
+        const dl = document.getElementById('sr-artist-list');
+        if (!dl || this._artistSuggestionsLoaded) return;
+        this._artistSuggestionsLoaded = true;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/songs/artists`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const names = (data && data.artists) || [];
+            dl.innerHTML = names.map((n) => `<option value="${this.escapeHtml(n)}"></option>`).join('');
+        } catch (e) {
+            // Autocomplete is a nicety — a failure just means a plain text field.
+            this._artistSuggestionsLoaded = false;
+        }
     }
 
     openSongRequest() {
@@ -4391,7 +4410,17 @@ class RadioChatBox {
                 if (!response.ok) {
                     throw new Error(data.error || 'Failed to send message');
                 }
-                
+
+                // A slash-command: the server answered US directly (nothing was
+                // posted). Show the reply as a local system message and stop.
+                if (data.command) {
+                    this.messageInput.value = '';
+                    this.clearReplyState();
+                    this.setPinTrack(false);
+                    this.showSystemMessage(data.response || '');
+                    return;
+                }
+
                 // Clear reply state after sending
                 this.clearReplyState();
 
@@ -4417,6 +4446,19 @@ class RadioChatBox {
                 this.messageInput.focus();
             }, 500);
         }
+    }
+
+    /**
+     * Append a local, ephemeral system message to the public chat (only this
+     * client sees it) — used for slash-command replies. Newlines are preserved.
+     */
+    showSystemMessage(text) {
+        if (!this.messagesContainer || !text) return;
+        const el = document.createElement('div');
+        el.className = 'system-message';
+        el.innerHTML = this.escapeHtml(String(text)).replace(/\n/g, '<br>');
+        this.messagesContainer.appendChild(el);
+        this.scrollToBottom();
     }
 
     updateStatus(status, text) {

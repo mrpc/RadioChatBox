@@ -343,7 +343,8 @@
                 </div>
                 <div class="sr-field">
                     <label for="sr-artist">Artist</label>
-                    <input type="text" id="sr-artist" maxlength="300" placeholder="Artist (optional)" autocomplete="off">
+                    <input type="text" id="sr-artist" maxlength="300" placeholder="Artist (optional)" autocomplete="off" list="sr-artist-list">
+                    <datalist id="sr-artist-list"></datalist>
                 </div>
                 <div class="sr-field">
                     <label for="sr-dedication">Dedication / shout-out</label>

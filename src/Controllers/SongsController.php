@@ -77,6 +77,48 @@ final class SongsController
     }
 
     /**
+     * GET /api/songs/artists — the list of known artist names, for the song-
+     * request form's autocomplete. Gated by song_requests_enabled (its only
+     * consumer) and cached in Redis. 200 {success, artists:[name,…]}; feature
+     * off -> 404.
+     */
+    #[Route('/api/songs/artists', methods: 'GET', name: 'songs.artists')]
+    public function artists(): Response
+    {
+        if (!$this->isEnabled((new SettingsService())->get('song_requests_enabled'))) {
+            return Response::json(['success' => false, 'error' => 'Not available'], 404);
+        }
+
+        $names = [];
+        try {
+            $cached = FlatCache::default()->get('songs:artist_names');
+            if (is_array($cached)) {
+                $names = $cached;
+            }
+        } catch (\Throwable $e) {
+            // fall through to compute
+        }
+
+        if ($names === []) {
+            foreach ((new TrackStatsService())->getAllArtists() as $row) {
+                $name = trim((string) ($row['name'] ?? ''));
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+            $names = array_slice($names, 0, 1000);
+            try {
+                FlatCache::default()->set('songs:artist_names', $names, 300);
+            } catch (\Throwable $e) {
+                // non-fatal
+            }
+        }
+
+        return Response::json(['success' => true, 'artists' => $names])
+            ->withHeader('Cache-Control', 'public, max-age=300');
+    }
+
+    /**
      * The top artists/tracks for a period, served from Redis when warm.
      *
      * @return array<int, array<string, mixed>>

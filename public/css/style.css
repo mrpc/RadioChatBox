@@ -1905,6 +1905,25 @@ body {
     .song-request-btn:hover { background: #2a2a2a; }
 }
 
+/* Local system message (slash-command replies) — centred, muted, non-bubble */
+.system-message {
+    align-self: center;
+    max-width: 90%;
+    margin: 8px auto;
+    padding: 8px 14px;
+    background: rgba(102, 126, 234, 0.10);
+    color: #4b5563;
+    border: 1px solid rgba(102, 126, 234, 0.25);
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+    white-space: normal;
+}
+@media (prefers-color-scheme: dark) {
+    .system-message { background: rgba(129, 140, 248, 0.14); color: #cbd5e1; border-color: rgba(129, 140, 248, 0.3); }
+}
+
 /* Chip above the input showing the track that will be pinned */
 .pin-track-chip {
     display: flex;

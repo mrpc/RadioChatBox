@@ -39,7 +39,7 @@ class SongsControllerTest extends TestCase
         }
         $this->trackIds = [];
 
-        $this->pdo->prepare("DELETE FROM settings WHERE setting IN ('charts_enabled', 'charts_default_period')")
+        $this->pdo->prepare("DELETE FROM settings WHERE setting IN ('charts_enabled', 'charts_default_period', 'song_requests_enabled')")
             ->execute();
 
         // The settings and chart aggregates are cached in Redis; drop them so the
@@ -139,6 +139,27 @@ class SongsControllerTest extends TestCase
         $this->assertSame('artists', $body['type']);
         $names = array_column($body['items'], 'artist');
         $this->assertContains($artist, $names);
+    }
+
+    /**
+     * The artist-names endpoint is gated by song_requests_enabled (its consumer):
+     * off -> 404, on -> the known artist names for the autocomplete.
+     */
+    public function testArtistNamesEndpointIsGatedAndListsArtists(): void
+    {
+        // Off by default -> 404.
+        $this->setSetting('song_requests_enabled', 'false');
+        $this->assertSame(404, (new SongsController())->artists()->getStatusCode());
+
+        // On + a recorded play surfaces the artist name.
+        $this->setSetting('song_requests_enabled', 'true');
+        $this->recordPlay('Autocomplete Artist ' . $this->tag, 'Some Song');
+
+        $response = (new SongsController())->artists();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertContains('Autocomplete Artist ' . $this->tag, $body['artists']);
     }
 
     /**

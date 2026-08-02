@@ -2468,6 +2468,28 @@
                     </div>
 
                     <div class="settings-group">
+                        <h3>Chat commands</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-chat-commands-enabled" style="width: auto;">
+                                Enable slash-commands (/help and the custom commands below)
+                            </label>
+                            <small>When a user types a matching command, they get the reply privately — it is not posted to the chat.</small>
+                        </div>
+                        <div id="chat-commands-list" style="margin: 8px 0;"></div>
+                        <div class="form-group" style="border-top:1px solid #e5e7eb; padding-top:12px;">
+                            <label>Add a command</label>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start;">
+                                <input type="text" id="new-command-name" placeholder="name (e.g. rules)" maxlength="50" style="flex:0 0 140px;">
+                                <input type="text" id="new-command-desc" placeholder="short description (for /help)" maxlength="255" style="flex:1 1 200px;">
+                            </div>
+                            <textarea id="new-command-response" placeholder="Reply text sent to the user" rows="2" maxlength="2000" style="width:100%; margin-top:8px;"></textarea>
+                            <button type="button" class="btn" onclick="addChatCommand()" style="margin-top:8px;">➕ Add command</button>
+                            <div id="chat-command-error" style="color:#ef4444; font-size:13px; margin-top:6px; display:none;"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
                         <h3>Registration</h3>
                         <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 10px;">
@@ -8215,6 +8237,8 @@
                     document.getElementById('setting-player-stream-url').value = settings.player_stream_url || '';
                     document.getElementById('setting-player-stream-format').value = settings.player_stream_format || 'mp3';
                     document.getElementById('setting-player-autoplay').checked = settings.player_autoplay === 'true';
+                    document.getElementById('setting-chat-commands-enabled').checked = settings.chat_commands_enabled === 'true';
+                    loadChatCommands();
                     document.getElementById('setting-color-scheme').value = settings.color_scheme || 'dark';
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
@@ -8664,6 +8688,7 @@
                 player_stream_url: document.getElementById('setting-player-stream-url').value,
                 player_stream_format: document.getElementById('setting-player-stream-format').value,
                 player_autoplay: document.getElementById('setting-player-autoplay').checked ? 'true' : 'false',
+                chat_commands_enabled: document.getElementById('setting-chat-commands-enabled').checked ? 'true' : 'false',
                 color_scheme: document.getElementById('setting-color-scheme').value,
                 chat_mode: document.getElementById('setting-chat-mode').value,
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
@@ -9186,6 +9211,83 @@
                 const data = await res.json();
                 if (data.success) updateSongRequestsBadge(data.pending_count || 0);
             } catch (e) {}
+        }
+
+        // ---- Chat commands (admin CRUD) ----
+        async function loadChatCommands() {
+            const list = document.getElementById('chat-commands-list');
+            if (!list) return;
+            try {
+                const res = await fetch('/api/admin/commands', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { list.innerHTML = ''; return; }
+                if (!data.commands.length) {
+                    list.innerHTML = '<p style="color:#6b7280; font-size:13px;">No custom commands yet. /help is always available.</p>';
+                    return;
+                }
+                list.innerHTML = `
+                    <table style="width:100%; font-size:13px;">
+                        <thead><tr><th style="text-align:left;">Command</th><th style="text-align:left;">Reply</th><th>Active</th><th></th></tr></thead>
+                        <tbody>
+                            ${data.commands.map(c => `
+                                <tr>
+                                    <td style="white-space:nowrap;"><code>/${escapeHtml(c.command)}</code>${c.description ? `<div style="color:#6b7280;">${escapeHtml(c.description)}</div>` : ''}</td>
+                                    <td style="color:#374151;">${escapeHtml((c.response || '').substring(0, 120))}${(c.response || '').length > 120 ? '…' : ''}</td>
+                                    <td style="text-align:center;">
+                                        <input type="checkbox" ${(c.is_active === true || c.is_active === 't' || c.is_active === 'true') ? 'checked' : ''} onchange="toggleChatCommand(${c.id}, this.checked, ${JSON.stringify(c.response || '').replace(/"/g, '&quot;')}, ${JSON.stringify(c.description || '').replace(/"/g, '&quot;')})">
+                                    </td>
+                                    <td><button class="btn btn-outline" onclick="deleteChatCommand(${c.id})" title="Delete">🗑️</button></td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) { list.innerHTML = ''; }
+        }
+
+        async function addChatCommand() {
+            const err = document.getElementById('chat-command-error');
+            const name = document.getElementById('new-command-name').value.trim();
+            const desc = document.getElementById('new-command-desc').value.trim();
+            const response = document.getElementById('new-command-response').value.trim();
+            const showErr = (m) => { if (err) { err.textContent = m; err.style.display = 'block'; } };
+            if (err) err.style.display = 'none';
+            if (!name || !response) { showErr('Command name and reply are required.'); return; }
+            try {
+                const res = await fetch('/api/admin/commands', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ command: name, response, description: desc, is_active: true })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('new-command-name').value = '';
+                    document.getElementById('new-command-desc').value = '';
+                    document.getElementById('new-command-response').value = '';
+                    loadChatCommands();
+                } else { showErr(data.error || 'Failed to add command.'); }
+            } catch (e) { showErr('Error: ' + e.message); }
+        }
+
+        async function toggleChatCommand(id, isActive, response, description) {
+            try {
+                await fetch('/api/admin/commands', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ id, response, description, is_active: isActive })
+                });
+                loadChatCommands();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function deleteChatCommand(id) {
+            if (!confirm('Delete this command?')) return;
+            try {
+                await fetch('/api/admin/commands', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ id })
+                });
+                loadChatCommands();
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
         let inactiveUsersSearch = '';
