@@ -179,6 +179,81 @@ class ReportController
     }
 
     /**
+     * GET /api/admin/reports/details?id= — one report plus context: every other
+     * report filed against the same user and how many are still pending. Backs the
+     * admin report-details modal. 200 {success, report, against_user, pending_against}.
+     */
+    #[Route('/api/admin/reports/details', methods: 'GET', name: 'admin.reports.details', middleware: [AdminAuthMiddleware::class])]
+    public function adminDetails(): Response
+    {
+        try {
+            $id = (int) Request::getInstance()->get('id', 0, 'get');
+            $service = new ReportService();
+            $report = $service->find($id);
+            if ($report === null) {
+                return Response::json(['error' => 'Report not found'], 404);
+            }
+
+            $reported = (string) ($report['reported_username'] ?? '');
+            $against = $reported !== '' ? $service->forReportedUser($reported, 50) : [];
+            $pending = 0;
+            foreach ($against as $r) {
+                if (($r['status'] ?? '') === 'pending') {
+                    $pending++;
+                }
+            }
+
+            return Response::json([
+                'success'         => true,
+                'report'          => $report,
+                'against_user'    => $against,
+                'pending_against' => $pending,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReportController::adminDetails failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/admin/reports/bulk-resolve — {ids:[], action:'resolve'|'dismiss'}.
+     * Marks several reports handled at once. 200 {success, updated}; bad input -> 400.
+     */
+    #[Route('/api/admin/reports/bulk-resolve', methods: 'POST', name: 'admin.reports.bulk-resolve', middleware: [AdminAuthMiddleware::class])]
+    public function adminBulkResolve(): Response
+    {
+        try {
+            $input = $_POST;
+            $ids = $input['ids'] ?? [];
+            $action = (string) ($input['action'] ?? '');
+            $status = $action === 'dismiss' ? 'dismissed' : ($action === 'resolve' ? 'resolved' : '');
+
+            if (!is_array($ids) || $ids === [] || $status === '') {
+                return Response::json(['error' => 'ids[] and a valid action (resolve|dismiss) are required'], 400);
+            }
+
+            $admin = AdminAuth::getCurrentUser();
+            $adminName = (string) ($admin['username'] ?? 'admin');
+
+            $updated = (new ReportService())->setStatusBulk($ids, $status, $adminName);
+            (new \RadioChatBox\Services\ModerationLog())->record(
+                $adminName,
+                $status === 'dismissed' ? 'report_dismiss' : 'report_resolve',
+                null,
+                sprintf('bulk %s of %d report(s)', $status, $updated)
+            );
+            return Response::json(['success' => true, 'updated' => $updated]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ReportController::adminBulkResolve failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * POST /api/admin/reports/resolve — {id, action:'resolve'|'dismiss'}. Marks a
      * report handled. 200 {success}; bad input -> 400.
      */

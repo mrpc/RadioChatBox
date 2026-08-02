@@ -108,9 +108,9 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Reporter anonymity option
 - [x] Dedicated admin reports panel
 - [x] Pending reports queue with filtering (status filter)
-- [ ] Report details view (reporter, reported user, content, history) — partial: fields shown in the queue; no dedicated detail view
-- [ ] Quick actions from reports (dismiss, warn, timeout, ban) — partial: dismiss/timeout/ban done; no warn (warning system pending)
-- [ ] Bulk report actions
+- [x] Report details view (reporter, reported user, content, history) — admin modal via `/api/admin/reports/details` (report + reported-user history)
+- [x] Quick actions from reports (dismiss, warn, timeout, ban) — all four wired in the reports queue
+- [x] Bulk report actions — select rows + bulk resolve/dismiss (`/api/admin/reports/bulk-resolve`)
 - [x] Report history and statistics — admin reports dashboard (totals by status/reason, most-reported users) via `/api/admin/reports/stats`
 - [x] Export reports to CSV
 - [ ] Email notifications for new reports

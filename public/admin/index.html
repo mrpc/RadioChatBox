@@ -2220,6 +2220,12 @@
                         </div>
                     </div>
                     <div id="reports-stats" style="margin-bottom:16px;"></div>
+                    <div id="reports-bulk-bar" style="display:none; align-items:center; gap:10px; margin-bottom:10px; padding:8px 12px; background:#eef2ff; border:1px solid #c7d2fe; border-radius:8px;">
+                        <span id="reports-bulk-count" style="font-size:13px; color:#3730a3; font-weight:600;">0 selected</span>
+                        <button class="btn btn-secondary" onclick="bulkResolveReports('resolve')">✓ Resolve selected</button>
+                        <button class="btn btn-outline" onclick="bulkResolveReports('dismiss')">Dismiss selected</button>
+                        <button class="btn btn-outline" onclick="clearReportSelection()">Clear</button>
+                    </div>
                     <div id="reports-table"></div>
                 </div>
                 <div class="section">
@@ -2228,6 +2234,17 @@
                         <button class="btn btn-outline" onclick="loadModerationLog()">🔄 Refresh</button>
                     </div>
                     <div id="moderation-log-table"></div>
+                </div>
+            </div>
+
+            <!-- Report details modal -->
+            <div id="report-details-modal" class="modal-overlay" style="display:none;" onclick="closeReportDetails()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;">
+                    <div class="modal-header">
+                        <h2>Report details</h2>
+                        <button class="modal-close" onclick="closeReportDetails()">✕</button>
+                    </div>
+                    <div class="modal-body" id="report-details-body"></div>
                 </div>
             </div>
 
@@ -9245,9 +9262,10 @@
                     table.innerHTML = `<p style="color:#6b7280;padding:20px;text-align:center;">No ${escapeHtml(status)} reports.</p>`;
                     return;
                 }
+                const selectable = status === 'pending';
                 table.innerHTML = `
                     <table>
-                        <thead><tr><th>When</th><th>Reason</th><th>Reported</th><th>By</th><th>Content</th><th>Type</th><th>${status === 'pending' ? 'Actions' : 'Status'}</th></tr></thead>
+                        <thead><tr>${selectable ? '<th style="width:28px;"><input type="checkbox" onclick="toggleAllReports(this.checked)" title="Select all"></th>' : ''}<th>When</th><th>Reason</th><th>Reported</th><th>By</th><th>Content</th><th>Type</th><th>${selectable ? 'Actions' : 'Status'}</th></tr></thead>
                         <tbody>
                             ${data.reports.map(r => {
                                 const reportedLink = r.reported_username
@@ -9270,12 +9288,16 @@
                                         </div>
                                       </td>`
                                     : `<td><span style="font-size:12px;color:#6b7280;">${escapeHtml(r.status)}${r.resolved_by ? ' by ' + escapeHtml(r.resolved_by) : ''}</span>${r.resolution_note ? `<div style="font-size:12px;color:#374151;margin-top:4px;">📝 ${escapeHtml(r.resolution_note)}</div>` : ''}</td>`;
+                                const checkbox = selectable
+                                    ? `<td><input type="checkbox" class="report-select" value="${r.id}" onchange="updateReportSelection()"></td>`
+                                    : '';
                                 return `<tr>
+                                    ${checkbox}
                                     <td>${new Date(r.created_at).toLocaleString()}</td>
                                     <td><span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:12px;">${escapeHtml(REPORT_REASON_LABELS[r.reason] || r.reason)}</span></td>
                                     <td>${reportedLink}</td>
                                     <td>${escapeHtml(r.reporter_username || '-')}</td>
-                                    <td style="max-width:280px;">${content}${details}</td>
+                                    <td style="max-width:280px;">${content}${details}<div style="margin-top:6px;"><a href="#" onclick="openReportDetails(${r.id}); return false;" style="font-size:12px;">🔍 Details</a></div></td>
                                     <td><span style="font-size:11px;color:#6b7280;">${escapeHtml(r.message_type)}</span></td>
                                     ${actions}
                                 </tr>`;
@@ -9299,6 +9321,78 @@
                 const data = await res.json();
                 if (data.success) { loadReports(); } else { alert('Failed: ' + (data.error || 'error')); }
             } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // ---- Report selection + bulk actions ----
+        function selectedReportIds() {
+            return Array.from(document.querySelectorAll('.report-select:checked')).map(c => parseInt(c.value, 10));
+        }
+        function updateReportSelection() {
+            const ids = selectedReportIds();
+            const bar = document.getElementById('reports-bulk-bar');
+            const count = document.getElementById('reports-bulk-count');
+            if (bar) bar.style.display = ids.length ? 'flex' : 'none';
+            if (count) count.textContent = `${ids.length} selected`;
+        }
+        function toggleAllReports(checked) {
+            document.querySelectorAll('.report-select').forEach(c => { c.checked = checked; });
+            updateReportSelection();
+        }
+        function clearReportSelection() { toggleAllReports(false); }
+        async function bulkResolveReports(action) {
+            const ids = selectedReportIds();
+            if (!ids.length) return;
+            if (!confirm(`${action === 'dismiss' ? 'Dismiss' : 'Resolve'} ${ids.length} report(s)?`)) return;
+            try {
+                const res = await fetch('/api/admin/reports/bulk-resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ ids, action })
+                });
+                const data = await res.json();
+                if (data.success) { loadReports(); } else { alert('Failed: ' + (data.error || 'error')); }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // ---- Report details modal ----
+        async function openReportDetails(id) {
+            const modal = document.getElementById('report-details-modal');
+            const body = document.getElementById('report-details-body');
+            if (!modal || !body) return;
+            body.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
+            modal.style.display = 'flex';
+            try {
+                const res = await fetch(`/api/admin/reports/details?id=${id}`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { body.innerHTML = '<p style="color:#ef4444;">Failed to load report.</p>'; return; }
+                const r = data.report;
+                const reasonLabel = REPORT_REASON_LABELS[r.reason] || r.reason;
+                const row = (k, v) => `<div style="display:flex; gap:8px; margin:4px 0;"><span style="min-width:120px; color:#6b7280; font-size:13px;">${k}</span><span style="font-size:13px;">${v}</span></div>`;
+                const history = (data.against_user || []).map(x =>
+                    `<li style="margin:3px 0; font-size:12px; color:#374151;">${new Date(x.created_at).toLocaleString()} — <strong>${escapeHtml(REPORT_REASON_LABELS[x.reason] || x.reason)}</strong> <span style="color:#6b7280;">(${escapeHtml(x.status)})</span></li>`
+                ).join('') || '<li style="color:#6b7280; font-size:12px;">none</li>';
+                body.innerHTML = `
+                    ${row('Report #', escapeHtml(String(r.id)))}
+                    ${row('When', new Date(r.created_at).toLocaleString())}
+                    ${row('Reason', `<span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;">${escapeHtml(reasonLabel)}</span>`)}
+                    ${row('Reported user', escapeHtml(r.reported_username || '-'))}
+                    ${row('Reporter', escapeHtml(r.reporter_username || '-'))}
+                    ${row('Type', escapeHtml(r.message_type || '-'))}
+                    ${row('Status', escapeHtml(r.status || '-') + (r.resolved_by ? ' by ' + escapeHtml(r.resolved_by) : ''))}
+                    ${r.details ? row('Note from reporter', '“' + escapeHtml(r.details) + '”') : ''}
+                    ${r.resolution_note ? row('Resolution note', '📝 ' + escapeHtml(r.resolution_note)) : ''}
+                    <div style="margin-top:10px;"><strong style="font-size:13px;">Reported content</strong>
+                        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:8px; margin-top:4px; font-size:13px; white-space:pre-wrap;">${r.content_snapshot ? escapeHtml(r.content_snapshot) : '<em style="color:#9ca3af;">n/a</em>'}</div>
+                    </div>
+                    <div style="margin-top:12px;"><strong style="font-size:13px;">This user's report history</strong>
+                        <span style="color:#991b1b; font-size:12px;">(${data.pending_against} pending)</span>
+                        <ul style="margin:6px 0 0 18px; padding:0;">${history}</ul>
+                    </div>`;
+            } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading report.</p>'; }
+        }
+        function closeReportDetails() {
+            const modal = document.getElementById('report-details-modal');
+            if (modal) modal.style.display = 'none';
         }
 
         // Act on the reported user straight from a report (timeout or nickname ban),

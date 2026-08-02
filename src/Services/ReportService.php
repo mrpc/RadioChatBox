@@ -187,6 +187,33 @@ class ReportService
             ->getAll();
     }
 
+    /** A single report by id, or null. */
+    public function find(int $id): ?array
+    {
+        if ($id <= 0) {
+            return null;
+        }
+        $rows = $this->db->queryBuilder()->from('message_reports')->where('id', '=', $id)->limit(1)->getAll();
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Mark several reports handled in one call. Invalid ids/statuses are ignored.
+     * Returns the number of reports updated.
+     *
+     * @param array<int, int|string> $ids
+     */
+    public function setStatusBulk(array $ids, string $status, string $adminUsername, ?string $note = null): int
+    {
+        $updated = 0;
+        foreach ($ids as $id) {
+            if ($this->setStatus((int) $id, $status, $adminUsername, $note)) {
+                $updated++;
+            }
+        }
+        return $updated;
+    }
+
     /**
      * All reports filed AGAINST a user (newest first), for the admin user-details
      * dossier. Capped.
