@@ -375,6 +375,47 @@ final class AdminSystemController
     }
 
     /**
+     * GET /api/admin/message-edits?message_id= — the edit history of a public
+     * message (previous versions, newest first) plus its current text. Admin-only.
+     * 200 {success, current, edits}; missing id -> 400.
+     */
+    #[Route('/api/admin/message-edits', methods: 'GET', name: 'admin.system.message-edits', middleware: [AdminAuthMiddleware::class])]
+    public function messageEdits(): Response
+    {
+        try {
+            $messageId = (string) Request::getInstance()->get('message_id', '', 'get');
+            if (trim($messageId) === '') {
+                return Response::json(['error' => 'message_id is required'], 400);
+            }
+            $db = Database::getInstance();
+
+            $current = $db->queryBuilder()
+                ->from('chat_messages')
+                ->select(['message', 'username', 'edited_at'])
+                ->where('message_id', '=', $messageId)
+                ->first();
+
+            $edits = $db->queryBuilder()
+                ->from('message_edits')
+                ->select(['old_message', 'edited_by', 'created_at'])
+                ->where('message_id', '=', $messageId)
+                ->orderBy('created_at', 'desc')
+                ->getAll();
+
+            return Response::json([
+                'success' => true,
+                'current' => ($current && $current->numRows > 0) ? $current->fields : null,
+                'edits'   => $edits,
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminSystemController::messageEdits failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/messages/export?type=public — download the chat history as a
      * CSV file. Private messages are only included for root admins (same rule as
      * the listing). `type` is all|public|private; capped at 10k rows.

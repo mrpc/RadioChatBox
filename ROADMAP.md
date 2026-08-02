@@ -338,7 +338,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 
 ### Advanced Messaging Features
 - [x] Message editing (within 5-minute window) — implemented (10-min window)
-- [ ] Edit history tracking
+- [x] Edit history tracking — pre-edit snapshots in `message_edits` + admin edit-history viewer (`/api/admin/message-edits`)
 - [x] @mentions with autocomplete
 - [x] Mention notifications (in-page title cue; no server persistence)
 - [x] Typing indicators ("User is typing...")

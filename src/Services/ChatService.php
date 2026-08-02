@@ -1438,7 +1438,7 @@ class ChatService
             if (!$includePrivate || $type === 'public') {
                 // Only public messages (non-deleted)
                 $sql =
-                    'SELECT message_id, username, message, ip_address, created_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username, NULL::varchar as attachment_id
+                    'SELECT message_id, username, message, ip_address, created_at, edited_at, is_deleted, \'public\' as message_type, NULL as from_username, NULL as to_username, NULL::varchar as attachment_id
                      FROM chat_messages
                      WHERE is_deleted = FALSE
                      ORDER BY created_at DESC
@@ -1453,6 +1453,7 @@ class ChatService
                         message,
                         \'\' as ip_address,
                         created_at,
+                        NULL::timestamptz as edited_at,
                         FALSE as is_deleted,
                         \'private\' as message_type,
                         from_username,
@@ -1471,6 +1472,7 @@ class ChatService
                         message,
                         ip_address,
                         created_at,
+                        edited_at,
                         is_deleted,
                         \'public\' as message_type,
                         NULL as from_username,
@@ -1485,6 +1487,7 @@ class ChatService
                         message,
                         \'\' as ip_address,
                         created_at,
+                        NULL::timestamptz as edited_at,
                         FALSE as is_deleted,
                         \'private\' as message_type,
                         from_username,

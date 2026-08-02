@@ -266,7 +266,7 @@ final class MessageActionController
             // Fetch the original message and verify ownership + timing in one query
             // (timezone math + dollar-quoted literals — kept verbatim).
             $result = $db->preparedQuery(
-                'SELECT m.message_id, m.username, m.created_at, m.is_deleted, s.user_id,
+                'SELECT m.message_id, m.username, m.message, m.created_at, m.is_deleted, s.user_id,
                         EXTRACT(EPOCH FROM (
                             NOW() - ((m.created_at AT TIME ZONE current_setting($$TIMEZONE$$)) AT TIME ZONE $$UTC$$)
                         )) AS age_seconds
@@ -297,6 +297,24 @@ final class MessageActionController
             // Filter the new text (same pipeline as public messages)
             $filterResult = MessageFilter::filterPublicMessage($newText);
             $filtered = $filterResult['filtered'];
+
+            // Snapshot the previous text for the edit history BEFORE overwriting it.
+            // Best-effort — a history-write failure must not block the edit itself.
+            try {
+                $db->preparedQuery(
+                    'INSERT INTO message_edits (message_id, old_message, edited_by, created_at)
+                     VALUES (:message_id, :old_message, :edited_by, NOW())',
+                    [
+                        'message_id'  => $messageId,
+                        'old_message' => (string) ($row['message'] ?? ''),
+                        'edited_by'   => $username,
+                    ]
+                );
+            // @codeCoverageIgnoreStart
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('message edit-history write failed: ' . $e->getMessage(), 'radiochatbox');
+            }
+            // @codeCoverageIgnoreEnd
 
             // Persist to PostgreSQL (edited_at = NOW() — kept verbatim).
             $db->preparedQuery(

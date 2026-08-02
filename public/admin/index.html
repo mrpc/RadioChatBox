@@ -5842,6 +5842,9 @@
                                         ? `<img src="${escapeHtml(msg.attachment.file_path)}" style="max-width:120px;max-height:90px;border-radius:4px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); window.open('${escapeHtml(msg.attachment.file_path)}','_blank')" onerror="this.style.display='none'">`
                                         : '';
                                     const msgText = msg.message ? escapeHtml(msg.message) : (photoHtml ? '' : '<em style="color:#9ca3af;">[attachment]</em>');
+                                    const editedHtml = (!isPrivate && msg.edited_at)
+                                        ? ` <a href="#" onclick="event.stopPropagation(); showMessageEdits('${escapeHtml(String(msg.message_id)).replace(/'/g, "\\'")}'); return false;" style="font-size:11px; color:#6b7280;" title="View edit history">✎ edited</a>`
+                                        : '';
                                     return `
                                     <tr style="${rowStyle}${clickStyle}" ${rowClick}>
                                         ${includePrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
@@ -5850,7 +5853,7 @@
                                             ? `<td>${fromLink}</td><td>${toLink}</td>`
                                             : `<td>${fromLink}</td>`
                                         }
-                                        <td>${photoHtml}${msgText}</td>
+                                        <td>${photoHtml}${msgText}${editedHtml}</td>
                                         ${!includePrivate ? `<td>${msg.ip_address}</td>` : ''}
                                     </tr>
                                 `;
@@ -5863,6 +5866,36 @@
             } catch (error) {
                 console.error('Failed to load messages:', error);
             }
+        }
+
+        // Show the edit history of a public message in the report-details modal.
+        async function showMessageEdits(messageId) {
+            const modal = document.getElementById('report-details-modal');
+            const body = document.getElementById('report-details-body');
+            if (!modal || !body) return;
+            body.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
+            modal.querySelector('h2').textContent = 'Message edit history';
+            modal.style.display = 'flex';
+            try {
+                const res = await fetch(`/api/admin/message-edits?message_id=${encodeURIComponent(messageId)}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (!data.success) { body.innerHTML = '<p style="color:#ef4444;">Failed to load.</p>'; return; }
+                const cur = data.current || {};
+                const versions = [
+                    `<div style="border-left:3px solid #10b981; padding:6px 10px; margin:6px 0; background:#f0fdf4;">
+                        <div style="font-size:11px; color:#059669; font-weight:600;">CURRENT${cur.edited_at ? ' · edited ' + new Date((cur.edited_at+'').replace(' ','T')).toLocaleString() : ''}</div>
+                        <div style="white-space:pre-wrap; font-size:13px;">${escapeHtml(cur.message || '')}</div>
+                    </div>`
+                ].concat((data.edits || []).map(e =>
+                    `<div style="border-left:3px solid #d1d5db; padding:6px 10px; margin:6px 0; background:#f9fafb;">
+                        <div style="font-size:11px; color:#6b7280;">before ${new Date((e.created_at+'').replace(' ','T')).toLocaleString()}${e.edited_by ? ' · by ' + escapeHtml(e.edited_by) : ''}</div>
+                        <div style="white-space:pre-wrap; font-size:13px;">${escapeHtml(e.old_message || '')}</div>
+                    </div>`
+                ));
+                body.innerHTML = versions.join('') || '<p style="color:#6b7280;">No edits recorded.</p>';
+            } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading edit history.</p>'; }
         }
 
         // Message history → the full conversation between two users. If either is a
@@ -9419,6 +9452,8 @@
             const modal = document.getElementById('report-details-modal');
             const body = document.getElementById('report-details-body');
             if (!modal || !body) return;
+            const heading = modal.querySelector('h2');
+            if (heading) heading.textContent = 'Report details';
             body.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
             modal.style.display = 'flex';
             try {
