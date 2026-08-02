@@ -75,12 +75,28 @@ if (!function_exists('radiochatbox_boot_pramnos')) {
         // sessions/caches on purpose (per-process ownership uses Installation::id()).
         // Independent of mbstring/Settings.
         if (class_exists(\Pramnos\Redis\ConnectionManager::class)) {
-            $database = (string) envvar('DB_NAME', 'radiochatbox');
-            $instance = preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
+            // The Redis key prefix is the ONLY thing that isolates two installs that
+            // share a Redis server — and it must isolate pub/sub, not just keys:
+            // Redis pub/sub channels are GLOBAL across databases (SELECT db does not
+            // scope them), so pointing two installs at different REDIS_DATABASE values
+            // is NOT enough — their 'chat:updates' broadcasts would still collide and
+            // one install's realtime feed would leak into the other's clients.
+            // Default the prefix off DB_NAME (distinct databases → distinct prefixes),
+            // but let REDIS_PREFIX override it so operators can force a namespace even
+            // when DB_NAME happens to match. Two processes of the SAME install must
+            // share the prefix (that is how the web app and the realtime worker meet).
+            $explicit = (string) envvar('REDIS_PREFIX', '');
+            if ($explicit !== '') {
+                $prefix = rtrim($explicit, ':') . ':';
+            } else {
+                $database = (string) envvar('DB_NAME', 'radiochatbox');
+                $instance = preg_replace('/[^A-Za-z0-9_.-]/', '_', $database) ?: 'radiochatbox';
+                $prefix   = 'radiochatbox:' . $instance . ':';
+            }
             \Pramnos\Redis\ConnectionManager::setInstance(new \Pramnos\Redis\ConnectionManager([
                 'host'         => (string) envvar('REDIS_HOST', 'redis'),
                 'port'         => (int) envvar('REDIS_PORT', 6379),
-                'prefix'       => 'radiochatbox:' . $instance . ':',
+                'prefix'       => $prefix,
                 'timeout'      => 0.5,
                 'read_timeout' => 1,
             ]));
