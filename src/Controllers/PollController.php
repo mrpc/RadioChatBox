@@ -196,6 +196,28 @@ class PollController
         // @codeCoverageIgnoreEnd
     }
 
+    /**
+     * GET /api/admin/polls/voters?id= — who voted for what (named voting, admin
+     * view). 200 {success, question, options, voters}; missing poll -> 404.
+     */
+    #[Route('/api/admin/polls/voters', methods: 'GET', name: 'admin.polls.voters', middleware: [AdminAuthMiddleware::class])]
+    public function voters(): Response
+    {
+        try {
+            $id = (int) Request::getInstance()->get('id', 0, 'get');
+            $data = (new PollService())->voters($id);
+            if ($data['options'] === []) {
+                return Response::json(['error' => 'Poll not found'], 404);
+            }
+            return Response::json(['success' => true] + $data);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('PollController::voters failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
     private function isEnabled(): bool
     {
         $value = (new SettingsService())->get('polls_enabled');

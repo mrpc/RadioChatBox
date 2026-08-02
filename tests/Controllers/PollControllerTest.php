@@ -275,6 +275,23 @@ class PollControllerTest extends TestCase
         $this->assertSame(404, (new PollController())->export()->getStatusCode());
     }
 
+    /** The voters view lists who voted for each option (named voting). */
+    public function testAdminVotersListsNames(): void
+    {
+        $id = (new PollService())->create('Pick one', ['A', 'B'], 'dj');
+        $this->pollIds[] = $id;
+        (new PollService())->vote($id, $this->session, $this->user, 0);
+
+        $_GET = ['id' => (string) $id];
+        $response = (new PollController())->voters();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertSame('Pick one', $body['question']);
+        $this->assertContains($this->user, $body['voters'][0]);
+        $this->assertSame([], $body['voters'][1]);
+    }
+
     /** The admin history list includes counts plus the creator/created_at the UI shows. */
     public function testAdminListIncludesCreatorAndCounts(): void
     {

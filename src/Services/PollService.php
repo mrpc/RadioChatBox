@@ -191,6 +191,42 @@ class PollService
         return $rows;
     }
 
+    /**
+     * Who voted for what on a poll (named voting, admin view). Returns the poll's
+     * options plus, per option index, the list of voter usernames (falling back to
+     * a short session tag when a vote was cast without a username).
+     *
+     * @return array{question:string, options:list<string>, voters:array<int, list<string>>}
+     */
+    public function voters(int $pollId): array
+    {
+        $poll = $this->getPoll($pollId);
+        if ($poll === null) {
+            return ['question' => '', 'options' => [], 'voters' => []];
+        }
+        $options = $poll['options'];
+        $voters = array_fill(0, count($options), []);
+
+        $rows = $this->db->preparedQuery(
+            'SELECT option_index, voter_username, voter_session
+             FROM poll_votes WHERE poll_id = :id ORDER BY created_at ASC',
+            ['id' => $pollId]
+        );
+        foreach (($rows ? $rows->fetchAll() : []) as $row) {
+            $idx = (int) $row['option_index'];
+            if ($idx < 0 || $idx >= count($voters)) {
+                continue;
+            }
+            $name = trim((string) ($row['voter_username'] ?? ''));
+            if ($name === '') {
+                $name = 'guest#' . substr((string) ($row['voter_session'] ?? ''), 0, 6);
+            }
+            $voters[$idx][] = $name;
+        }
+
+        return ['question' => (string) $poll['question'], 'options' => $options, 'voters' => $voters];
+    }
+
     /** @return array<string,mixed>|null with `options` decoded to a list */
     private function getPoll(int $pollId): ?array
     {

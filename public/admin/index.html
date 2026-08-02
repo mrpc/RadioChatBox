@@ -9860,11 +9860,12 @@
             const closeBtn = p.is_active
                 ? `<button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="closePoll(${p.id})">Close poll</button>` : '';
             const exportBtn = `<button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="downloadCsv('/api/admin/polls/export?id=${p.id}', 'poll-${p.id}-results.csv')">⬇️ CSV</button>`;
+            const votersBtn = `<button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="showPollVoters(${p.id})">👥 Voters</button>`;
             const by = p.created_by ? ` · by ${escapeHtml(p.created_by)}` : '';
             return `<div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; margin-bottom:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                         <strong style="font-size:15px;">📊 ${escapeHtml(p.question)}</strong>
-                        <div style="display:flex; gap:8px; align-items:center;">${badge}${exportBtn}${closeBtn}</div>
+                        <div style="display:flex; gap:8px; align-items:center;">${badge}${votersBtn}${exportBtn}${closeBtn}</div>
                     </div>
                     <div style="margin-top:10px;">${rows}</div>
                     <div style="color:#6b7280; font-size:12px; margin-top:8px;">${total} vote(s)${by}${when ? ' · ' + when : ''}</div>
@@ -9885,6 +9886,32 @@
                 }
                 box.innerHTML = polls.map(renderPollCard).join('');
             } catch (e) { box.innerHTML = '<p style="color:#ef4444;">Failed to load polls.</p>'; }
+        }
+
+        async function showPollVoters(id) {
+            const modal = document.getElementById('report-details-modal');
+            const body = document.getElementById('report-details-body');
+            if (!modal || !body) return;
+            const heading = modal.querySelector('h2');
+            if (heading) heading.textContent = 'Poll voters';
+            body.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
+            modal.style.display = 'flex';
+            try {
+                const res = await fetch(`/api/admin/polls/voters?id=${id}`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { body.innerHTML = '<p style="color:#ef4444;">Failed to load voters.</p>'; return; }
+                const sections = (data.options || []).map((opt, i) => {
+                    const voters = (data.voters && data.voters[i]) || [];
+                    const chips = voters.length
+                        ? voters.map(v => `<span style="background:#eef2ff;color:#3730a3;border-radius:10px;font-size:12px;padding:2px 10px;">${escapeHtml(v)}</span>`).join(' ')
+                        : '<span style="color:#9ca3af;font-size:12px;">no votes</span>';
+                    return `<div style="margin:8px 0;">
+                        <div style="font-weight:600;font-size:13px;">${escapeHtml(opt)} <span style="color:#6b7280;">(${voters.length})</span></div>
+                        <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
+                    </div>`;
+                }).join('');
+                body.innerHTML = `<div style="font-weight:600;margin-bottom:8px;">📊 ${escapeHtml(data.question)}</div>${sections}`;
+            } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading voters.</p>'; }
         }
 
         async function closePoll(id) {
