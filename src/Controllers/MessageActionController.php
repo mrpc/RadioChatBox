@@ -904,6 +904,14 @@ final class MessageActionController
             }
             unset($message);
 
+            // Attach DM reactions (their own table, keyed by the private_messages
+            // id) so the conversation renders reaction pills like public chat does.
+            $messages = (new ReactionService())->attachToMessages(
+                $messages,
+                $username,
+                'private_message_reactions'
+            );
+
             return Response::json([
                 'success' => true,
                 'messages' => $messages,

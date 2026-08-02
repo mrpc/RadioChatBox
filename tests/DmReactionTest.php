@@ -56,6 +56,26 @@ class DmReactionTest extends TestCase
         $this->assertSame([], $remove['reactions']);
     }
 
+    public function testAttachToMessagesSurfacesDmReactionForHistory(): void
+    {
+        $this->dmId = $this->makeDm('carol_' . uniqid(), 'dave_' . uniqid());
+        $svc = new ReactionService();
+        $svc->toggleDmReaction($this->dmId, 'carol', 'sess-c', '🔥');
+
+        // The DM history path attaches reactions from private_message_reactions,
+        // keyed by the numeric private_messages id (string in the row).
+        $attached = $svc->attachToMessages(
+            [['id' => (string) $this->dmId]],
+            'carol',
+            'private_message_reactions'
+        );
+        $reactions = $attached[0]['reactions'] ?? [];
+        $this->assertNotEmpty($reactions, 'the DM reaction is attached for history');
+        $this->assertSame('🔥', $reactions[0]['emoji']);
+        $this->assertSame(1, $reactions[0]['count']);
+        $this->assertTrue($reactions[0]['mine'], 'the reactor sees it as their own');
+    }
+
     public function testToggleDmReactionRejectsUnknownMessage(): void
     {
         $this->expectException(\RuntimeException::class);

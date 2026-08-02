@@ -2533,43 +2533,86 @@ class RadioChatBox {
             const messageDiv = document.createElement('div');
             const isFromMe = msg.from_username === this.username;
             messageDiv.className = `message private-message ${isFromMe ? 'sent' : 'received'}`;
-            
+            const msgId = msg.id || msg.message_id;
+            if (msgId) messageDiv.dataset.messageId = msgId;
+
             const timestamp = new Date(msg.created_at);
             const timeString = timestamp.toLocaleTimeString();
             const fullDate = timestamp.toLocaleString();
-            
+
             // Use display_name if available, otherwise use username
-            const displayName = isFromMe 
-                ? 'You' 
+            const displayName = isFromMe
+                ? 'You'
                 : (msg.from_display_name || msg.from_username);
-            
-            let content = `
-                <div class="message-header">
-                    <strong class="message-username">${this.escapeHtml(displayName)}</strong>
-                    <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
-                </div>
-            `;
-            
-            // Add message text if present
-            if (msg.message) {
-                content += `<div class="message-text">${this.formatMessageText(msg.message)}</div>`;
+
+            // Reply quote, when this DM is a reply to another one.
+            let replyQuoteHTML = '';
+            if (msg.reply_data && (msg.reply_data.from_username || msg.reply_data.username)) {
+                const rdName = msg.reply_data.from_display_name || msg.reply_data.from_username
+                    || msg.reply_data.display_name || msg.reply_data.username;
+                const rdMsg = msg.reply_data.message || (msg.reply_data.has_attachment ? '[photo]' : '');
+                const rdShort = rdMsg.length > 50 ? rdMsg.substring(0, 50) + '...' : rdMsg;
+                replyQuoteHTML = `
+                    <div class="reply-quote">
+                        <div class="reply-quote-bar"></div>
+                        <div class="reply-quote-content">
+                            <span class="reply-quote-username">${this.escapeHtml(rdName)}</span>
+                            <span class="reply-quote-message">${this.escapeHtml(rdShort)}</span>
+                        </div>
+                    </div>
+                `;
             }
-            
-            // Add photo if present
+
+            // Reply action (any DM can be replied to).
+            const replyButton = msgId ? `
+                <button class="reply-message-btn" data-message-id="${msgId}" title="Reply to this message">↩️</button>
+            ` : '';
+
+            let bodyInner = '';
+            if (msg.message) {
+                bodyInner += `<div class="message-text">${this.formatMessageText(msg.message)}</div>`;
+            }
             if (msg.attachment) {
-                content += `
+                bodyInner += `
                     <div class="message-photo">
-                        <img src="${this.escapeHtml(msg.attachment.file_path)}" 
-                             alt="Photo" 
+                        <img src="${this.escapeHtml(msg.attachment.file_path)}"
+                             alt="Photo"
                              onclick="window.open('${this.escapeHtml(msg.attachment.file_path)}', '_blank')"
                              loading="lazy">
                     </div>
                 `;
             }
-            
-            messageDiv.innerHTML = content;
+
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <strong class="message-username">${this.escapeHtml(displayName)}</strong>
+                    <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
+                </div>
+                ${replyQuoteHTML}
+                <div class="message-body">
+                    ${bodyInner}
+                    <div class="message-actions">
+                        ${replyButton}
+                    </div>
+                </div>
+            `;
             this.messagesContainer.appendChild(messageDiv);
-            
+
+            // Reply button → set reply state targeting this DM's id.
+            const replyBtn = messageDiv.querySelector('.reply-message-btn');
+            if (replyBtn) {
+                replyBtn.addEventListener('click', () => {
+                    this.setReplyState(msgId, displayName, msg.message || '[photo]');
+                    this.showReplyPreview();
+                    this.messageInput.focus();
+                });
+            }
+
+            // Emoji reactions (own DMs are display-only, like public chat).
+            if (msgId) {
+                this.setupReactions(messageDiv, msgId, msg.reactions || [], isFromMe);
+            }
+
             // Fetch and render link preview for any URL in this message
             this.attachLinkPreviews(messageDiv);
 
@@ -3398,10 +3441,16 @@ class RadioChatBox {
         this.renderReactionBar(data.message_id, reactions, { authoritative: false });
     }
 
-    /** Toggle one of our reactions via the API. */
+    /**
+     * Toggle one of our reactions via the API. In a private conversation the DM
+     * endpoint is used (its own table, keyed by the numeric private_messages id);
+     * in public chat the message_id string is used.
+     */
     async toggleReaction(msgId, emoji) {
         try {
-            const resp = await fetch(`${this.apiUrl}/api/react`, {
+            const isPrivate = !!(this.privateChat && this.privateChat.active);
+            const url = isPrivate ? `${this.apiUrl}/api/private/react` : `${this.apiUrl}/api/react`;
+            const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3656,8 +3705,11 @@ class RadioChatBox {
             
             // If in private chat mode, send private message
             if (this.privateChat.active && this.privateChat.withUser) {
-                await this.sendPrivateMessage(this.privateChat.withUser, message, attachmentId);
-                
+                const replyTo = (this.replyState.active && this.replyState.messageId)
+                    ? this.replyState.messageId : null;
+                await this.sendPrivateMessage(this.privateChat.withUser, message, attachmentId, replyTo);
+                this.clearReplyState();
+
                 // Track analytics event
                 if (window.analytics) {
                     window.analytics.trackMessageSent('private');
@@ -3942,6 +3994,17 @@ class RadioChatBox {
     }
     
     handlePrivateMessage(messageData) {
+        // A DM reaction update (shares the private channel, tagged type:'reaction')
+        // is not a new message: update the pills on the target bubble in place.
+        if (messageData && messageData.type === 'reaction') {
+            const other = messageData.from_username === this.username
+                ? messageData.to_username : messageData.from_username;
+            if (this.privateChat.active && other === this.privateChat.withUser && messageData.message_id) {
+                this.handleReactionUpdate({ message_id: messageData.message_id, counts: messageData.counts });
+            }
+            return;
+        }
+
         const isFromMe = messageData.from_username === this.username;
         const otherUser = isFromMe ? messageData.to_username : messageData.from_username;
         const otherUserDisplayName = isFromMe ? messageData.to_display_name : messageData.from_display_name;
@@ -3995,17 +4058,21 @@ class RadioChatBox {
             // Mark as read since we're viewing the conversation
             this.markConversationAsRead(otherUser);
             
-            // Add to private chat messages and re-render
+            // Add to private chat messages and re-render (carry id/reply/reactions
+            // so the reply quote and reaction pills render for live messages too).
             this.privateChat.messages.push({
+                id: messageData.id || messageData.message_id || null,
                 from_username: messageData.from_username,
                 from_display_name: messageData.from_display_name,
                 to_username: messageData.to_username,
                 to_display_name: messageData.to_display_name,
                 message: messageData.message || '',
                 attachment: messageData.attachment || null,
+                reply_data: messageData.reply_data || null,
+                reactions: messageData.reactions || [],
                 created_at: new Date(messageData.timestamp * 1000).toISOString()
             });
-            
+
             this.renderPrivateMessages();
         } else {
             // Not in private chat mode - show inline with indicator
@@ -4074,20 +4141,24 @@ class RadioChatBox {
         }
     }
     
-    async sendPrivateMessage(toUsername, message, attachmentId = null) {
+    async sendPrivateMessage(toUsername, message, attachmentId = null, replyToId = null) {
         try {
             const payload = {
                 from_username: this.username,
                 from_session_id: this.sessionId,
                 to_username: toUsername
             };
-            
+
             if (attachmentId) {
                 payload.attachment_id = attachmentId;
             }
-            
+
             if (message) {
                 payload.message = message;
+            }
+
+            if (replyToId) {
+                payload.reply_to_id = replyToId;
             }
             
             const response = await fetch(`${this.apiUrl}/api/private-message`, {
