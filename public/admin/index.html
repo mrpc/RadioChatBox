@@ -5171,12 +5171,8 @@
             } else if (hash.startsWith('track-stats')) {
                 maybeRestoreTrackStats();
             } else if (hash.startsWith('bot-activity/')) {
-                // Reopen a specific bot conversation from the URL (so refresh keeps it).
-                const rest = hash.substring('bot-activity/'.length).split('/');
-                const fake = decodeURIComponent(rest[0] || '');
-                const peer = decodeURIComponent(rest.slice(1).join('/') || '');
-                switchTab('bot-activity', false);
-                if (fake && peer) setTimeout(() => openBotThread(fake, peer, true), 150);
+                // A bot-conversation deep link is restored by the window 'load'
+                // handler (tryRestoreBotThread); don't switchTab(fullHash) here.
             } else {
                 const initialTab = hash || 'dashboard';
                 // Replace state for initial load so back button works correctly
@@ -12941,10 +12937,25 @@
             }
         }
 
+        // A #bot-activity/<fake>/<peer> deep link: open that conversation. Returns
+        // true when handled, so callers don't fall through to switchTab(fullHash)
+        // (which would be an unknown tab and blank the page).
+        function tryRestoreBotThread(hash) {
+            if (hash !== 'bot-activity' && !hash.startsWith('bot-activity/')) return false;
+            switchTab('bot-activity', false);
+            if (hash.startsWith('bot-activity/')) {
+                const rest = hash.substring('bot-activity/'.length).split('/');
+                const fake = decodeURIComponent(rest[0] || '');
+                const peer = decodeURIComponent(rest.slice(1).join('/') || '');
+                if (fake && peer) setTimeout(() => openBotThread(fake, peer, true), 150);
+            }
+            return true;
+        }
+
         // Handle hash changes (back/forward button navigation)
         window.addEventListener('hashchange', function() {
             const hash = window.location.hash.slice(1);
-            
+
             // If it's an impersonate route with user/sender info
             if (hash.startsWith('impersonate/')) {
                 switchTab('impersonate', false); // Switch to impersonate tab without updating history
@@ -12962,6 +12973,8 @@
                 }, 200);
             } else if (hash.startsWith('track-stats')) {
                 maybeRestoreTrackStats();
+            } else if (tryRestoreBotThread(hash)) {
+                // handled — a bot conversation deep link
             } else if (hash) {
                 // Normal tab hash
                 switchTab(hash, false);
@@ -12985,6 +12998,8 @@
                     }, 500);
                 } else if (hash.startsWith('track-stats')) {
                     routeTrackStatsHash();
+                } else if (tryRestoreBotThread(hash)) {
+                    // handled — a bot conversation deep link
                 } else {
                     // Normal tab
                     switchTab(hash, false);
