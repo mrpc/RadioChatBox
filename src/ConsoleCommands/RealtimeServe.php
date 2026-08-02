@@ -95,13 +95,13 @@ final class RealtimeServe extends CommandBase
         // channel (`private-pm-<username>`). The WS layer never sees the session id
         // (channel auth is an HMAC signature, not the realtime token), so this touches
         // all of a username's rows via ChatService::touchPresenceByUsername — additive
-        // to the HTTP heartbeat, never a replacement. Throttled to once per 20s since
-        // onTick fires on every event-loop iteration.
+        // to the HTTP heartbeat, never a replacement. Throttled to once per 60s (onTick
+        // fires on every event-loop iteration) so it stays off the DB most of the time.
         $presencePrefix = 'private-pm-';
         $lastPresenceAt = 0;
         $server->onTick(function (int $clients, int $subs) use (&$lastPresenceAt, $presencePrefix): void {
             $now = time();
-            if ($now - $lastPresenceAt < 20) {
+            if ($now - $lastPresenceAt < 60) {
                 return;
             }
             $lastPresenceAt = $now;

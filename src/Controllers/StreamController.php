@@ -84,11 +84,14 @@ final class StreamController
 
             // The live connection is itself proof of presence. A connected client can
             // drive presence server-side (in addition to its HTTP heartbeat, which
-            // stays as the safety net). We refresh on connect and then on every idle
-            // tick (~pingInterval, below) via onTick — so an active viewer stays
-            // online within ~20s even if their HTTP heartbeat lags or stalls, instead
-            // of only refreshing on the ~95s reconnect. The connect also records the
-            // device UA so it shows immediately, not only after the first heartbeat.
+            // stays as the safety net). We refresh on connect and then periodically
+            // via onTick — so an active viewer stays online even if their HTTP
+            // heartbeat lags or stalls, instead of only refreshing on the ~95s
+            // reconnect. The connect also records the device UA so it shows
+            // immediately, not only after the first heartbeat. The periodic refresh is
+            // throttled to ~60s (the onTick fires every pingInterval): that matches the
+            // client heartbeat cadence and keeps a live DB write off every 20s tick —
+            // each SSE stream otherwise held/used a PG connection all through its life.
             $canTrackPresence = $username !== null && $sessionId !== null && $sessionId !== '';
             $refreshPresence  = function (string $ua = '') use ($canTrackPresence, $chatService, $username, $sessionId, $clientIp): void {
                 if ($canTrackPresence) {
@@ -96,6 +99,7 @@ final class StreamController
                 }
             };
             $refreshPresence($userAgent);
+            $lastPresenceAt = time(); // connect just refreshed; next onTick write ~60s later
 
             // Initial snapshot.
             if ($publicMode) {
@@ -152,10 +156,16 @@ final class StreamController
                 },
                 maxRuntime: 95,
                 pingInterval: 20,
-                // Keep presence fresh for the still-connected viewer on every idle
-                // tick (~20s), not just on connect/reconnect. Additive to the client
-                // HTTP heartbeat — never a replacement for it.
-                onTick: function (SseWriter $writer) use ($refreshPresence): void {
+                // Keep presence fresh for the still-connected viewer, but throttle the
+                // DB write to ~60s (not every 20s tick) so an SSE stream isn't hitting
+                // Postgres three times a minute for the life of the connection.
+                // Additive to the client HTTP heartbeat — never a replacement for it.
+                onTick: function (SseWriter $writer) use ($refreshPresence, &$lastPresenceAt): void {
+                    $now = time();
+                    if ($now - $lastPresenceAt < 60) {
+                        return;
+                    }
+                    $lastPresenceAt = $now;
                     $refreshPresence();
                 },
             );
