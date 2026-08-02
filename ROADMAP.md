@@ -464,6 +464,10 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
     only** (e.g. `?player=1` forces it on, `?player=0` forces it off; absent → use the
     admin setting). Precedence: **URL param > admin setting**. Lets one site show the
     player and another hide it without changing the global setting.
+  - [ ] **Admin can forbid overrides** — a setting (`player_allow_override`, default on)
+    that, when **off**, makes the app **ignore the `?player=` param entirely** so the
+    global `player_enabled` always wins. Full precedence: **if overrides allowed →
+    URL param > admin setting; if overrides forbidden → admin setting only.**
 
 **Settings:**
 - `charts_enabled`, `charts_default_period`
