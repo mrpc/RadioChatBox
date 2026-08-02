@@ -6595,8 +6595,11 @@
                     box.style.display = 'none';
                     box.dataset.loaded = '';
                     currentBotThread = null;
+                    // Await the conversations refresh before selecting, so the form is
+                    // filled from fresh impersonateData (see botThreadTakeOver).
                     switchTab('impersonate');
-                    selectSender(fakeUser, peer);
+                    await refreshImpersonateConversations();
+                    await selectSender(fakeUser, peer);
                     return;
                 }
 
@@ -6740,8 +6743,13 @@
             const t = currentBotThread;
             if (!t || !(await botThreadAction('take'))) return;
             // Jump to Impersonate and open this conversation to reply as the fake user.
+            // switchTab() kicks off refreshImpersonateConversations() in the background;
+            // await a fresh load so impersonateData + the sender dropdown exist BEFORE
+            // selectSender runs — otherwise the late-completing refresh races the form
+            // fill and it lands half-populated (the "weird delay preventing it").
             switchTab('impersonate');
-            selectSender(t.fakeUser, t.peer);
+            await refreshImpersonateConversations();
+            await selectSender(t.fakeUser, t.peer);
         }
 
         async function botThreadReturn() {
@@ -9808,7 +9816,19 @@
             impersonatePhotoAttachmentId = null;
         }
 
-        async function refreshImpersonateConversations() {
+        // De-duplicate concurrent refreshes: switchTab('impersonate') fires one in
+        // the background and a take-over awaits another right after. Sharing a single
+        // in-flight fetch means the awaited caller can safely run selectSender after
+        // it, with no trailing rebuild resetting the just-set dropdown selection.
+        let impersonateConversationsInflight = null;
+        function refreshImpersonateConversations() {
+            if (impersonateConversationsInflight) return impersonateConversationsInflight;
+            impersonateConversationsInflight = doRefreshImpersonateConversations()
+                .finally(() => { impersonateConversationsInflight = null; });
+            return impersonateConversationsInflight;
+        }
+
+        async function doRefreshImpersonateConversations() {
             try {
                 const response = await fetch('/api/admin/impersonate-conversations', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
@@ -10227,6 +10247,11 @@
 
         async function selectSender(fakeUser, senderUsername) {
             currentSender = senderUsername;
+            currentImpersonateAs = fakeUser;
+            // Reflect the selection in the fake-user dropdown (it may have been opened
+            // programmatically from Bot Activity, where the picker was never touched).
+            const senderSelect = document.getElementById('impersonate-select');
+            if (senderSelect && senderSelect.value !== fakeUser) senderSelect.value = fakeUser;
             document.getElementById('impersonate-current-sender').textContent = senderUsername;
             document.getElementById('impersonate-as-name').textContent = fakeUser;
             document.getElementById('impersonate-as-name-2').textContent = fakeUser;
