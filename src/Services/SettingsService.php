@@ -57,6 +57,8 @@ class SettingsService
         'chat_commands_enabled',
         // Now-playing thumbs up/down voting
         'track_voting_enabled',
+        // Live chat polls
+        'polls_enabled',
         // "User is typing…" indicators — public chat and DMs are toggled separately
         'typing_indicators_enabled',
         'dm_typing_indicators_enabled',

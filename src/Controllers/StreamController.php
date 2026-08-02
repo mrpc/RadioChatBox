@@ -133,6 +133,7 @@ final class StreamController
                                 'message_edited'  => 'message_edited',
                                 'pins_changed'    => 'pins_changed',
                                 'typing'          => 'typing',
+                                'poll'            => 'poll',
                                 // Client's 'message' handler branches on this type to
                                 // refresh history; keep delivering it as 'message'.
                                 'refresh_history' => 'message',
