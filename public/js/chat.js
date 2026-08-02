@@ -2645,6 +2645,11 @@ class RadioChatBox {
                 `;
             }
 
+            // Report action for the other person's DMs (never your own).
+            const reportButton = (msgId && !isFromMe) ? `
+                <button class="report-message-btn" data-message-id="${msgId}" title="Report this message">🚩</button>
+            ` : '';
+
             messageDiv.innerHTML = `
                 <div class="message-header">
                     <strong class="message-username">${this.escapeHtml(displayName)}</strong>
@@ -2655,6 +2660,7 @@ class RadioChatBox {
                     ${bodyInner}
                     <div class="message-actions">
                         ${replyButton}
+                        ${reportButton}
                     </div>
                 </div>
             `;
@@ -2667,6 +2673,15 @@ class RadioChatBox {
                     this.setReplyState(msgId, displayName, msg.message || '[photo]');
                     this.showReplyPreview();
                     this.messageInput.focus();
+                });
+            }
+
+            // Report button → reason menu (private message type).
+            const reportBtn = messageDiv.querySelector('.report-message-btn');
+            if (reportBtn) {
+                reportBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.openReportMenu(reportBtn, msgId, 'private', msg.from_username, msg.message);
                 });
             }
 
