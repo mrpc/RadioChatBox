@@ -701,6 +701,21 @@ final class MessageActionController
                     // Passed so abuse is judged on what was actually sent.
                     $message
                 );
+
+                // Live-refresh the admin Bot Activity view: a peer just messaged a
+                // fake user, so the threads list changed even before any bot reply.
+                // Best-effort refresh cue (no polling).
+                try {
+                    BroadcastingManager::instance()->broadcast(
+                        'chat:admin_notifications',
+                        'bot_activity',
+                        ['signal' => 'bot_activity', 'peer' => $fromUsername]
+                    );
+                // @codeCoverageIgnoreStart
+                } catch (\Throwable $e) {
+                    \Pramnos\Logs\Logger::log('bot_activity signal failed: ' . $e->getMessage(), 'radiochatbox');
+                }
+                // @codeCoverageIgnoreEnd
             }
 
             return Response::json([

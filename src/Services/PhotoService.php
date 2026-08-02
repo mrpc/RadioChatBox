@@ -6,6 +6,7 @@
 
 namespace RadioChatBox\Services;
 
+use Pramnos\Broadcasting\BroadcastingManager;
 use Pramnos\Cache\FlatCache;
 use Pramnos\Database\Database as PramnosDatabase;
 
@@ -132,6 +133,21 @@ class PhotoService
         // Invalidate user cache + the paginator total (a new photo changes it).
         FlatCache::default()->delete("user_attachments:{$username}");
         $this->invalidateCountCache();
+
+        // Signal the admin gallery to refresh live (no polling). Rides the admin
+        // channel as a 'notification'; the payload's `signal` tells the client it
+        // is a refresh cue, not a user-facing notification.
+        try {
+            BroadcastingManager::instance()->broadcast(
+                'chat:admin_notifications',
+                'photo_uploaded',
+                ['signal' => 'photo_uploaded']
+            );
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('PhotoService: photo_uploaded broadcast failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
 
         return [
             'attachment_id' => $attachmentId,

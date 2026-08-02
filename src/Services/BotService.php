@@ -901,6 +901,9 @@ class BotService
             'peer' => $peer,
         ]);
 
+        // Nudge the admin Bot Activity view to refresh (no polling).
+        $this->signalBotActivity($peer);
+
         return $isFarewell
             ? "delivered farewell from {$fakeNickname} to {$peer}"
             : "delivered reply from {$fakeNickname} to {$peer}";
@@ -2754,6 +2757,28 @@ class BotService
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('BotService: failed to record thread error: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+        $this->signalBotActivity($peer);
+    }
+
+    /**
+     * Tell the admin Bot Activity view that a thread changed (a reply delivered, an
+     * error recorded), so it refreshes live instead of polling every few seconds.
+     * Rides the admin channel as a 'notification'; the payload's `signal` marks it
+     * a refresh cue, not a user-facing notification. Best-effort.
+     */
+    private function signalBotActivity(string $peer = ''): void
+    {
+        try {
+            BroadcastingManager::instance()->broadcast(
+                'chat:admin_notifications',
+                'bot_activity',
+                ['signal' => 'bot_activity', 'peer' => $peer]
+            );
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('BotService: bot_activity signal failed: ' . $e->getMessage(), 'radiochatbox');
         }
         // @codeCoverageIgnoreEnd
     }

@@ -3453,6 +3453,17 @@
         }
 
         function handleAdminNotificationEvent(notification) {
+            // Lightweight live-refresh signals ride the admin channel but are NOT
+            // user-facing notifications (no badge, no sound): they replace polling.
+            if (notification && notification.signal === 'photo_uploaded') {
+                onPhotoUploadedSignal();
+                return;
+            }
+            if (notification && notification.signal === 'bot_activity') {
+                onBotActivitySignal(notification);
+                return;
+            }
+
             // Update badge and re-render notifications
             updateNotificationBadge(notification.unread_count);
             
@@ -6697,31 +6708,43 @@
             }
         }
 
-        // Live refresh of the Bot Activity page while it is the active tab: the
-        // threads, the call log, and the open conversation. No SSE for bot chats
-        // (they raise no admin notification), so this polls on a short interval.
-        let botActivityPollTimer = null;
-
-        function startBotActivityPolling() {
-            stopBotActivityPolling();
-            botActivityPollTimer = setInterval(refreshBotActivityLive, 4000);
-        }
-
-        function stopBotActivityPolling() {
-            if (botActivityPollTimer) { clearInterval(botActivityPollTimer); botActivityPollTimer = null; }
-        }
+        // Live refresh of the Bot Activity page is now event-driven: the bot worker
+        // broadcasts a 'bot_activity' signal on the admin channel whenever a thread
+        // changes (a reply delivered, an LLM call logged, an error), and we refresh
+        // only then — no 4s polling, so an open conversation is not re-rendered (and
+        // its scroll yanked) unless something actually happened.
+        function startBotActivityPolling() { /* replaced by socket signals */ }
+        function stopBotActivityPolling() { /* no timer to clear */ }
 
         function refreshBotActivityLive() {
             // Skip when the tab is hidden or bot-activity is not the active tab.
             if (document.hidden) return;
             const active = document.querySelector('.tab-content.active');
-            if (!active || active.id !== 'bot-activity-tab') { stopBotActivityPolling(); return; }
+            if (!active || active.id !== 'bot-activity-tab') return;
 
             loadBotActivityThreads();
             loadBotActivityLog();
             if (currentBotThread) {
                 openBotThread(currentBotThread.fakeUser, currentBotThread.peer);
             }
+        }
+
+        // Socket signal: a bot thread changed. Refresh the Bot Activity view if it
+        // is open (and, when a specific thread is named, only when it is the one on
+        // screen or in the list — always cheap to just refresh the visible page).
+        function onBotActivitySignal(_data) {
+            refreshBotActivityLive();
+        }
+
+        // Socket signal: a photo was uploaded. Refresh the gallery if it is open —
+        // only while viewing page 1 (where the newest photo lands), so browsing an
+        // older page is not yanked back.
+        function onPhotoUploadedSignal() {
+            if (document.hidden) return;
+            const active = document.querySelector('.tab-content.active');
+            if (!active || active.id !== 'photos-tab') return;
+            if ((window.currentPhotosPage || 1) !== 1) return;
+            if (typeof loadPhotos === 'function') loadPhotos(1);
         }
 
         function closeBotThread() {
@@ -8799,6 +8822,7 @@
         });
 
         async function loadPhotos(page = 1) {
+            window.currentPhotosPage = page;
             try {
                 const includeDeleted = document.getElementById('photos-show-deleted')?.checked ? 1 : 0;
                 const response = await fetch(`/api/admin/photos?action=list&page=${page}&limit=20&include_deleted=${includeDeleted}`, {
