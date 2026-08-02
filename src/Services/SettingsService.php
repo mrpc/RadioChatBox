@@ -45,6 +45,15 @@ class SettingsService
         'minimum_users',
         // Radio stream status (Icecast/Shoutcast)
         'radio_status_url',
+        // Top charts panel (Top artists/tracks over day/week/month)
+        'charts_enabled',
+        'charts_default_period',
+        // In-chat radio player (embedded <audio> above the chat)
+        'player_mode',
+        'player_allow_override',
+        'player_stream_url',
+        'player_stream_format',
+        'player_autoplay',
         // Realtime (WebSocket) transport — public address the browser dials, the
         // worker's local bind, and the public app key (see RealtimeSettings).
         'realtime_websocket_enabled',
@@ -152,6 +161,21 @@ class SettingsService
         'bot_typing_max_delay' => [1, 600],
         'bot_read_delay_min' => [0, 300],
         'bot_read_delay_max' => [0, 600],
+    ];
+
+    /**
+     * Settings whose value must be one of a fixed set, validated on write. An
+     * out-of-set value would put the feature in an undefined state (e.g. a bogus
+     * player_mode), so updateFromAdmin() rejects it rather than storing it.
+     *
+     * @var array<string, list<string>>
+     */
+    private const ENUM_VALUES = [
+        // Where the in-chat player shows: never / everywhere / only when embedded
+        // in an iframe / only standalone (not in an iframe).
+        'player_mode'           => ['off', 'on', 'iframe_only', 'app_only'],
+        'player_stream_format'  => ['mp3', 'aac'],
+        'charts_default_period' => ['day', 'week', 'month'],
     ];
 
     public function __construct()
@@ -297,6 +321,14 @@ class SettingsService
                         $rejected[$key] = 'Not a valid price table: expected JSON of '
                             . '{"model": {"cache_hit": 0.14, "cache_miss": 0.14, "output": 0.28}} '
                             . 'with non-negative numbers per 1M tokens.';
+                        continue;
+                    }
+                } elseif (isset(self::ENUM_VALUES[$key])) {
+                    // A value outside the known set would leave the feature in an
+                    // undefined state (e.g. a bogus player_mode), so reject it.
+                    if (!in_array((string) $value, self::ENUM_VALUES[$key], true)) {
+                        $rejected[$key] = 'Invalid value. Allowed: '
+                            . implode(', ', self::ENUM_VALUES[$key]) . '.';
                         continue;
                     }
                 } elseif (isset(self::NUMERIC_BOUNDS[$key])) {

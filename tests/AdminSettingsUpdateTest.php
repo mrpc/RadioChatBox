@@ -53,7 +53,8 @@ class AdminSettingsUpdateTest extends TestCase
         $this->pdo = TestDatabase::connection();
 
         // These tests write to the real settings table; remember what to restore.
-        foreach (array_merge(self::BOT_KEYS, ['max_photo_size_mb', 'page_title']) as $key) {
+        $extraKeys = ['max_photo_size_mb', 'page_title', 'player_mode', 'player_stream_format', 'charts_default_period'];
+        foreach (array_merge(self::BOT_KEYS, $extraKeys) as $key) {
             $stmt = $this->pdo->prepare('SELECT value FROM settings WHERE setting = ?');
             $stmt->execute([$key]);
             $value = $stmt->fetchColumn();
@@ -329,5 +330,44 @@ class AdminSettingsUpdateTest extends TestCase
 
         $this->assertContains('bot_llm_prices', $result['saved']);
         $this->assertSame('', $this->storedValue('bot_llm_prices'));
+    }
+
+    // ------------------------------------------------------------------
+    // Enum-validated settings (player_mode etc.): an out-of-set value would
+    // leave the feature in an undefined state, so it must be rejected.
+    // ------------------------------------------------------------------
+
+    public function testAValidPlayerModeIsSaved(): void
+    {
+        $result = $this->settings->updateFromAdmin(['player_mode' => 'iframe_only']);
+
+        $this->assertContains('player_mode', $result['saved']);
+        $this->assertSame([], $result['rejected']);
+        $this->assertSame('iframe_only', $this->storedValue('player_mode'));
+    }
+
+    public function testAnInvalidPlayerModeIsRejectedAndNotStored(): void
+    {
+        $result = $this->settings->updateFromAdmin(['player_mode' => 'sometimes']);
+
+        $this->assertArrayHasKey('player_mode', $result['rejected']);
+        $this->assertNotContains('player_mode', $result['saved']);
+        $this->assertNull($this->storedValue('player_mode'));
+    }
+
+    public function testAnInvalidStreamFormatIsRejected(): void
+    {
+        $result = $this->settings->updateFromAdmin(['player_stream_format' => 'flac']);
+
+        $this->assertArrayHasKey('player_stream_format', $result['rejected']);
+        $this->assertNull($this->storedValue('player_stream_format'));
+    }
+
+    public function testAnInvalidChartsPeriodIsRejected(): void
+    {
+        $result = $this->settings->updateFromAdmin(['charts_default_period' => 'year']);
+
+        $this->assertArrayHasKey('charts_default_period', $result['rejected']);
+        $this->assertNull($this->storedValue('charts_default_period'));
     }
 }
