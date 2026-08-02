@@ -769,6 +769,47 @@ class ChatServiceTest extends TestCase
     }
 
     /**
+     * touchPresenceByUsername (used by the WebSocket worker, which has no session
+     * id) refreshes the heartbeat on EVERY presence row the user holds, and — being
+     * an UPDATE, not an upsert — never fabricates a row when the user has none.
+     */
+    public function testTouchPresenceByUsernameRefreshesAllRowsButNeverCreates()
+    {
+        $pdo  = TestDatabase::connection();
+        $user = 'wspres_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $s1   = 'wsa_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $s2   = 'wsb_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        try {
+            // No rows yet: touching by username must NOT create one (that is the
+            // heartbeat's / connect's job, not the WS worker's).
+            $this->chatService->touchPresenceByUsername($user);
+            $cnt = $pdo->prepare('SELECT COUNT(*) FROM presence_sessions WHERE username = ?');
+            $cnt->execute([$user]);
+            $this->assertSame(0, (int) $cnt->fetchColumn(), 'no row is fabricated');
+
+            // Two stale sessions for the same user, heartbeat 10 minutes in the past.
+            $ins = $pdo->prepare(
+                "INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                 VALUES (?, ?, '0.0.0.0', NULL, NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes')"
+            );
+            $ins->execute([$user, $s1]);
+            $ins->execute([$user, $s2]);
+
+            $this->chatService->touchPresenceByUsername($user);
+
+            // Both rows are now fresh (heartbeat within the last minute).
+            $fresh = $pdo->prepare(
+                "SELECT COUNT(*) FROM presence_sessions
+                 WHERE username = ? AND last_heartbeat > NOW() - INTERVAL '1 minute'"
+            );
+            $fresh->execute([$user]);
+            $this->assertSame(2, (int) $fresh->fetchColumn(), 'every session for the user is refreshed');
+        } finally {
+            $pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$user]);
+        }
+    }
+
+    /**
      * A heartbeat recreates a session that a prior cleanup removed, instead of the
      * old UPDATE-only behaviour that left an active user offline forever once their
      * row was gone.

@@ -88,6 +88,35 @@ final class RealtimeServe extends CommandBase
             return self::routeMessage($prefix, $channel, $event, $payload);
         });
 
+        // Server-driven presence for WS-transport clients. A WS client uses the WS
+        // transport INSTEAD of SSE, so the SSE onTick presence refresh never runs for
+        // it — without this, a WS user relies solely on the 60s client HTTP heartbeat.
+        // On each tick we refresh presence for every user with a live per-user private
+        // channel (`private-pm-<username>`). The WS layer never sees the session id
+        // (channel auth is an HMAC signature, not the realtime token), so this touches
+        // all of a username's rows via ChatService::touchPresenceByUsername — additive
+        // to the HTTP heartbeat, never a replacement. Throttled to once per 20s since
+        // onTick fires on every event-loop iteration.
+        $presencePrefix = 'private-pm-';
+        $lastPresenceAt = 0;
+        $server->onTick(function (int $clients, int $subs) use (&$lastPresenceAt, $presencePrefix): void {
+            $now = time();
+            if ($now - $lastPresenceAt < 20) {
+                return;
+            }
+            $lastPresenceAt = $now;
+            $chat = new \RadioChatBox\Services\ChatService();
+            foreach ($this->server?->subscribedChannels() ?? [] as $channel) {
+                if (!str_starts_with($channel, $presencePrefix)) {
+                    continue; // skip admin/public channels — only per-user DM channels carry a username
+                }
+                $username = substr($channel, strlen($presencePrefix));
+                if ($username !== '') {
+                    $chat->touchPresenceByUsername($username);
+                }
+            }
+        });
+
         $this->server = $server;
         $this->installStopSignals(function () use ($output): void {
             $output->writeln('<comment>realtime:serve — stop signal, shutting down.</comment>');

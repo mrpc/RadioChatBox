@@ -174,6 +174,31 @@ class ChatService
     }
 
     /**
+     * Mark a user online by their username alone, refreshing every presence row
+     * they hold. Used by the WebSocket worker (realtime:serve): a live WS
+     * subscription proves the user is connected, but the WS layer never sees the
+     * session id (channel auth is an HMAC signature, not the realtime token), so
+     * we cannot target a single session row — we touch them all. Purely additive
+     * to the client HTTP heartbeat and the SSE onTick; it only refreshes existing
+     * rows (never creates one — that is the heartbeat's / connect's job).
+     * Best-effort; never throws.
+     */
+    public function touchPresenceByUsername(string $username): void
+    {
+        if ($username === '') {
+            return;
+        }
+        try {
+            $this->db->queryBuilder()
+                ->from('presence_sessions')
+                ->where('username', '=', $username)
+                ->update(['last_heartbeat' => $this->db->queryBuilder()->raw('NOW()')]);
+        } catch (\Throwable) {
+            // presence is best-effort
+        }
+    }
+
+    /**
      * Get message history from Redis
      *
      * OPTIMIZED: Now uses Redis HASH to track deleted messages instead of querying DB on every load.
