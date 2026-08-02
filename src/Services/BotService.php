@@ -228,7 +228,7 @@ class BotService
     public const DEFAULT_MULTI_MESSAGE_CHANCE = 25;
 
     /** At most this many bubbles from a single reply, so it never spams. */
-    private const MAX_MESSAGE_PARTS = 4;
+    private const MAX_MESSAGE_PARTS = 6;
 
     /**
      * A single line longer than this (chars) is split into sentence-sized bubbles
@@ -742,7 +742,11 @@ class BotService
                 // Kept in Greek here; the greeklish transliteration (if any) is
                 // applied per-bubble at delivery time so the Greek original can be
                 // stored for history (never feed transliterated text to the LLM).
-                $reply = self::sanitizeReply($result['text'], $maxLength);
+                // Cap the WHOLE reply generously (it is split into up to
+                // MAX_MESSAGE_PARTS bubbles, each capped to $maxLength at delivery)
+                // — capping the whole thing at $maxLength here truncated long
+                // multi-message replies mid-sentence.
+                $reply = self::sanitizeReply($result['text'], $maxLength * self::MAX_MESSAGE_PARTS);
             } catch (\Throwable $e) {
                 $this->recordThreadError($fakeUserId, $peer, $e->getMessage());
 
@@ -2611,10 +2615,14 @@ class BotService
         // peer-facing script (greeklish when the peer wrote latin). Both are kept:
         // `message` is what the reader sees, `original` is the Greek fed to the
         // LLM as history — the transliterated text must never become context.
+        // Each bubble is a separate chat message, so cap it to the per-message
+        // limit (the whole reply was allowed to be longer, to span several bubbles).
+        $perBubbleMax = (int) envvar('CHAT_MAX_MESSAGE_LENGTH', 500);
         $parts = [];
         foreach (self::splitIntoMessages($text) as $part) {
             $keepEmoji = $emojiChance > 0 && random_int(1, 100) <= $emojiChance;
             $part = self::filterEmojis($part, $keepEmoji);
+            $part = rtrim(mb_substr($part, 0, $perBubbleMax));
             if ($part !== '') {
                 $parts[] = $this->bubblePair($part, $enforceLanguage);
             }

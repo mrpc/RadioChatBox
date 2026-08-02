@@ -41,10 +41,11 @@ class BotServiceTest extends TestCase
         $this->assertSame(['πρωτο', 'δευτερο'], BotService::splitIntoMessages("πρωτο\nδευτερο"));
         $this->assertSame(['α', 'β'], BotService::splitIntoMessages("α\n\n  \nβ"));
 
-        // Overflow beyond the cap folds into the last message, never dropped.
-        $capped = BotService::splitIntoMessages("1\n2\n3\n4\n5\n6");
-        $this->assertCount(4, $capped);
-        $this->assertSame('4 5 6', $capped[3]);
+        // Overflow beyond the cap (MAX_MESSAGE_PARTS = 6) folds into the last
+        // message, never dropped.
+        $capped = BotService::splitIntoMessages("1\n2\n3\n4\n5\n6\n7\n8");
+        $this->assertCount(6, $capped);
+        $this->assertSame('6 7 8', $capped[5]);
     }
 
     /**
@@ -62,12 +63,14 @@ class BotServiceTest extends TestCase
         $parts = BotService::splitIntoMessages($long);
 
         $this->assertGreaterThan(1, count($parts), 'a long paragraph becomes several bubbles');
-        $this->assertLessThanOrEqual(4, count($parts), 'still capped at MAX_MESSAGE_PARTS');
+        $this->assertLessThanOrEqual(6, count($parts), 'still capped at MAX_MESSAGE_PARTS');
         $this->assertStringContainsString('Σήμερα το πρωί', $parts[0]);
         foreach ($parts as $part) {
             // No single bubble is the whole wall of text.
             $this->assertLessThan(mb_strlen($long), mb_strlen($part));
         }
+        // The tail is NOT lost — the last sentence's content survives the split.
+        $this->assertStringContainsString('βιβλίο μου', implode(' ', $parts));
 
         // A short reply is left as a single message (no over-splitting).
         $this->assertCount(1, BotService::splitIntoMessages('Γεια σου, τι κάνεις;'));
