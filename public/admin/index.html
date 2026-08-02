@@ -1245,6 +1245,11 @@
                         <span>Reports</span>
                         <span id="reports-badge" style="display:none; margin-left:auto; background:#ef4444; color:#fff; border-radius:10px; font-size:11px; padding:1px 7px;">0</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('song-requests')" data-tab="song-requests">
+                        <span class="icon">📻</span>
+                        <span>Song Requests</span>
+                        <span id="song-requests-badge" style="display:none; margin-left:auto; background:#ef4444; color:#fff; border-radius:10px; font-size:11px; padding:1px 7px;">0</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('url-whitelist')" data-tab="url-whitelist">
                         <span class="icon">✅</span>
                         <span>URL Whitelist</span>
@@ -2206,6 +2211,28 @@
                 </div>
             </div>
 
+            <!-- Song Requests Tab -->
+            <div id="song-requests-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2>Song Requests</h2>
+                            <p style="color:#6b7280;">Listener requests &amp; dedications. Approve, mark as played, or reject.</p>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <select id="song-requests-status-filter" onchange="loadSongRequests()" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                                <option value="pending">Pending</option>
+                                <option value="approved">Approved</option>
+                                <option value="played">Played</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                            <button class="btn btn-outline" onclick="loadSongRequests()">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div id="song-requests-table"></div>
+                </div>
+            </div>
+
             <!-- URL Whitelist Tab -->
             <div id="url-whitelist-tab" class="tab-content">
                 <div class="section">
@@ -2387,6 +2414,13 @@
                                 Enable Top Charts panel (📊 button next to now-playing)
                             </label>
                             <small>Shows the top 10 tracks and artists for day/week/month, aggregated from play history.</small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-song-requests-enabled" style="width: auto;">
+                                Enable listener Song Requests (📻 button + admin queue)
+                            </label>
+                            <small>Chat users can request a track with an optional dedication; requests appear in the Song Requests tab.</small>
                         </div>
                         <div class="form-group">
                             <label>Charts default period</label>
@@ -3153,6 +3187,8 @@
             await loadAllData();
             // Surface any pending abuse reports in the sidebar badge on load.
             refreshReportsBadge();
+            // Same for pending song requests.
+            refreshSongRequestsBadge();
             // Connect to SSE stream for real-time notifications (only for root/administrator)
             const storedRole = localStorage.getItem('userRole');
             if (storedRole === 'root' || storedRole === 'administrator' || storedRole === 'owner') {
@@ -3573,6 +3609,12 @@
                 refreshReportsBadge();
                 const active = document.querySelector('.tab-content.active');
                 if (active && active.id === 'reports-tab') loadReports();
+                return;
+            }
+            if (notification && notification.signal === 'song_requests_changed') {
+                refreshSongRequestsBadge();
+                const active = document.querySelector('.tab-content.active');
+                if (active && active.id === 'song-requests-tab') loadSongRequests();
                 return;
             }
             if (notification && notification.signal === 'users_changed') {
@@ -4927,6 +4969,7 @@
                 'ip-bans': {title: 'IP Bans', subtitle: 'Blocked IP addresses'},
                 'nickname-bans': {title: 'Nickname Bans', subtitle: 'Blocked usernames'},
                 'reports': {title: 'Abuse Reports', subtitle: 'User-submitted reports queue'},
+                'song-requests': {title: 'Song Requests', subtitle: 'Listener requests and dedications'},
                 'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
@@ -4998,6 +5041,7 @@
                 origSwitchTab(tabName, updateHistory);
                 if (tabName === 'nickname-bans') loadKickedUsers();
                 if (tabName === 'reports') { loadReports(); loadModerationLog(); }
+                if (tabName === 'song-requests') loadSongRequests();
             };
         })();
         
@@ -8164,6 +8208,7 @@
                     }
                     // Radio player & charts
                     document.getElementById('setting-charts-enabled').checked = settings.charts_enabled === 'true';
+                    document.getElementById('setting-song-requests-enabled').checked = settings.song_requests_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
                     document.getElementById('setting-player-mode').value = settings.player_mode || 'off';
                     document.getElementById('setting-player-allow-override').checked = settings.player_allow_override !== 'false';
@@ -8612,6 +8657,7 @@
                 page_title: document.getElementById('setting-page-title').value,
                 radio_status_url: document.getElementById('setting-radio-status-url').value,
                 charts_enabled: document.getElementById('setting-charts-enabled').checked ? 'true' : 'false',
+                song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,
                 player_mode: document.getElementById('setting-player-mode').value,
                 player_allow_override: document.getElementById('setting-player-allow-override').checked ? 'true' : 'false',
@@ -9058,6 +9104,87 @@
                 const res = await fetch('/api/admin/reports?status=pending&limit=1', { headers: { 'Authorization': `Bearer ${authToken}` } });
                 const data = await res.json();
                 if (data.success) updateReportsBadge(data.pending_count || 0);
+            } catch (e) {}
+        }
+
+        // ---- Song requests queue ----
+        const SONG_REQUEST_STATUS_LABELS = { pending:'Pending', approved:'Approved', played:'Played', rejected:'Rejected' };
+
+        async function loadSongRequests() {
+            const table = document.getElementById('song-requests-table');
+            if (!table) return;
+            const status = document.getElementById('song-requests-status-filter')?.value || 'pending';
+            table.innerHTML = '<div style="color:#6b7280;padding:20px;">Loading…</div>';
+            try {
+                const res = await fetch(`/api/admin/song-requests?status=${encodeURIComponent(status)}&limit=100`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (!data.success) { table.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load requests.</p>'; return; }
+                updateSongRequestsBadge(data.pending_count || 0);
+                if (!data.requests.length) {
+                    table.innerHTML = `<p style="color:#6b7280;padding:20px;text-align:center;">No ${escapeHtml(status)} requests.</p>`;
+                    return;
+                }
+                table.innerHTML = `
+                    <table>
+                        <thead><tr><th>When</th><th>Song</th><th>Artist</th><th>Dedication</th><th>By</th><th>${status === 'pending' ? 'Actions' : 'Status'}</th></tr></thead>
+                        <tbody>
+                            ${data.requests.map(r => {
+                                const byLink = r.requester_username
+                                    ? `<a href="#" onclick="switchTab('users'); setTimeout(()=>viewUserDetails('${escapeHtml(r.requester_username).replace(/'/g, "\\'")}'),0); return false;">${escapeHtml(r.requester_username)}</a>`
+                                    : '-';
+                                const dedication = r.dedication ? `<span style="color:#374151;">“${escapeHtml(r.dedication)}”</span>` : '<em style="color:#9ca3af;">—</em>';
+                                const actions = status === 'pending'
+                                    ? `<td style="min-width:220px;">
+                                        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                                            <button class="btn btn-secondary" onclick="songRequestAction(${r.id}, 'approve')" title="Approve">✓ Approve</button>
+                                            <button class="btn btn-secondary" onclick="songRequestAction(${r.id}, 'played')" title="Mark as played">▶ Played</button>
+                                            <button class="btn btn-outline" onclick="songRequestAction(${r.id}, 'reject')" title="Reject">Reject</button>
+                                        </div>
+                                      </td>`
+                                    : `<td><span style="font-size:12px;color:#6b7280;">${escapeHtml(SONG_REQUEST_STATUS_LABELS[r.status] || r.status)}${r.handled_by ? ' by ' + escapeHtml(r.handled_by) : ''}</span>
+                                        ${status !== 'played' ? `<div style="margin-top:6px;"><button class="btn btn-secondary" onclick="songRequestAction(${r.id}, 'played')">▶ Played</button></div>` : ''}</td>`;
+                                return `<tr>
+                                    <td>${new Date(r.created_at).toLocaleString()}</td>
+                                    <td><strong>${escapeHtml(r.song_title)}</strong></td>
+                                    <td>${r.artist ? escapeHtml(r.artist) : '<em style="color:#9ca3af;">—</em>'}</td>
+                                    <td style="max-width:260px;">${dedication}</td>
+                                    <td>${byLink}</td>
+                                    ${actions}
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) {
+                table.innerHTML = '<p style="color:#ef4444;padding:20px;">Error loading requests.</p>';
+            }
+        }
+
+        async function songRequestAction(id, action) {
+            try {
+                const res = await fetch('/api/admin/song-requests/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ id, action })
+                });
+                const data = await res.json();
+                if (data.success) { loadSongRequests(); } else { alert('Failed: ' + (data.error || 'error')); }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        function updateSongRequestsBadge(count) {
+            const b = document.getElementById('song-requests-badge');
+            if (!b) return;
+            if (count > 0) { b.textContent = count; b.style.display = 'inline-block'; }
+            else { b.style.display = 'none'; }
+        }
+
+        async function refreshSongRequestsBadge() {
+            try {
+                const res = await fetch('/api/admin/song-requests?status=pending&limit=1', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (data.success) updateSongRequestsBadge(data.pending_count || 0);
             } catch (e) {}
         }
 
