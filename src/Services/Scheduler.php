@@ -325,15 +325,32 @@ class Scheduler
 
         return match ($name) {
             'track_poll' => static function (): void {
+                $nowPlaying = (new RadioStatusService())->getNowPlaying();
                 $tracks = new TrackStatsService();
-                $trackId = $tracks->recordPlay((new RadioStatusService())->getNowPlaying());
+                $trackId = $tracks->recordPlay($nowPlaying);
 
-                // A change is exactly when the album and artwork are wanted, so a
-                // track nobody has seen before is enriched immediately instead of
-                // waiting for the sweep. Already-enriched tracks are skipped, or
-                // every replay would hit the external APIs again.
+                // recordPlay returns non-null ONLY when the track just changed, so
+                // this branch is the single server-side detection of a new track.
                 if ($trackId !== null) {
+                    // A change is exactly when the album and artwork are wanted, so a
+                    // track nobody has seen before is enriched immediately instead of
+                    // waiting for the sweep. Already-enriched tracks are skipped, or
+                    // every replay would hit the external APIs again.
                     $tracks->enrichIfPending($trackId);
+
+                    // Push the new track to every connected client so browsers do
+                    // not each poll /api/now-playing — one server poll fans out.
+                    try {
+                        \Pramnos\Broadcasting\BroadcastingManager::instance()->broadcast(
+                            'chat:updates',
+                            'now_playing',
+                            ['type' => 'now_playing', 'nowPlaying' => $nowPlaying]
+                        );
+                    // @codeCoverageIgnoreStart
+                    } catch (\Throwable $e) {
+                        \Pramnos\Logs\Logger::log('Scheduler: now_playing broadcast failed: ' . $e->getMessage(), 'radiochatbox');
+                    }
+                    // @codeCoverageIgnoreEnd
                 }
             },
             'track_enrich' => static fn () => (new TrackStatsService())->enrichPending(5),

@@ -96,6 +96,7 @@ final class StreamController
                                 'clear'           => 'clear',
                                 'message_deleted' => 'message_deleted',
                                 'reaction'        => 'reaction',
+                                'now_playing'     => 'now_playing',
                                 default           => 'message',
                             };
                             $writer->event($name, $payload);

@@ -150,6 +150,7 @@ final class RealtimeServe extends CommandBase
                 'clear'           => 'clear',
                 'message_deleted' => 'message_deleted',
                 'reaction'        => 'reaction',
+                'now_playing'     => 'now_playing',
                 default           => 'message',
             };
             return [['chat:updates', $name, $payload]];

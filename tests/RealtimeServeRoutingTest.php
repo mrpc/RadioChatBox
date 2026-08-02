@@ -21,9 +21,10 @@ class RealtimeServeRoutingTest extends TestCase
             ['type' => 'clear'],           // -> clear
             ['type' => 'message_deleted'], // -> message_deleted
             ['type' => 'reaction'],        // -> reaction
+            ['type' => 'now_playing'],     // -> now_playing (radio track push)
             ['body' => 'hi'],              // no type -> message
         ];
-        $expected = ['clear', 'message_deleted', 'reaction', 'message'];
+        $expected = ['clear', 'message_deleted', 'reaction', 'now_playing', 'message'];
 
         foreach ($cases as $i => $payload) {
             $routes = RealtimeServe::routeMessage(self::PREFIX, self::PREFIX . 'chat:updates', 'message', $payload);

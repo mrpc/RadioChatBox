@@ -668,11 +668,9 @@ class RadioChatBox {
                 return;
             }
 
-            // Immediately fetch once, then poll
+            // Fetch once now; thereafter the server pushes a 'now_playing' event on
+            // every track change (Scheduler -> chat:updates), so no client polling.
             this.updateNowPlaying();
-            if (!this._nowPlayingInterval) {
-                this._nowPlayingInterval = setInterval(() => this.updateNowPlaying(), 15000);
-            }
         } catch (e) {
             // Non-fatal
             console.warn('initNowPlaying error', e);
@@ -685,35 +683,46 @@ class RadioChatBox {
         try {
             const resp = await fetch(`${this.apiUrl}/api/now-playing?t=${Date.now()}`, { cache: 'no-cache' });
             const data = await resp.json();
-            if (data && data.success && data.nowPlaying && data.nowPlaying.active && data.nowPlaying.display) {
-                el.textContent = `🎵 Now Playing: ${data.nowPlaying.display}`;
-                // Remember the current track so it can be pinned to a message.
-                this.currentTrack = data.nowPlaying.display;
-                this._nowPlayingMeta = data.nowPlaying.meta || null;
-                this.updatePinTrackButton();
-                // Fetch the cover art (only when the track actually changes).
-                this.updateNowPlayingCover(data.nowPlaying.artist || '', data.nowPlaying.title || data.nowPlaying.display || '', data.nowPlaying.feed_cover || null);
-
-                // Check if user is admin (also check stored role if userRole not set yet)
-                const userRole = this.userRole || this.getStorage('userRole');
-                if (userRole && ['root'].includes(userRole)) {
-                    if (data.nowPlaying.listeners !== null && data.nowPlaying.listeners !== undefined) {
-                        el.title = `${data.nowPlaying.listeners} listener${data.nowPlaying.listeners === 1 ? '' : 's'}`;
-                    }
-                } else {
-                    el.removeAttribute('title');
-                }
-                
-                el.style.display = 'block';
-            } else {
-                el.style.display = 'none';
-                this.currentTrack = null;
-                this.updatePinTrackButton();
-                this.hideNowPlayingCover();
-            }
+            this.renderNowPlaying(data && data.success ? data.nowPlaying : null);
         } catch (e) {
             // hide on error
             el.style.display = 'none';
+        }
+    }
+
+    /**
+     * Render the now-playing widget from a nowPlaying object. Used both by the
+     * one-shot fetch (on connect) and by the 'now_playing' socket event the server
+     * pushes when the track changes — so the browser never polls for it.
+     */
+    renderNowPlaying(nowPlaying) {
+        const el = document.getElementById('now-playing');
+        if (!el) return;
+        if (nowPlaying && nowPlaying.active && nowPlaying.display) {
+            el.textContent = `🎵 Now Playing: ${nowPlaying.display}`;
+            // Remember the current track so it can be pinned to a message.
+            this.currentTrack = nowPlaying.display;
+            this._nowPlayingMeta = nowPlaying.meta || null;
+            this.updatePinTrackButton();
+            // Fetch the cover art (only when the track actually changes).
+            this.updateNowPlayingCover(nowPlaying.artist || '', nowPlaying.title || nowPlaying.display || '', nowPlaying.feed_cover || null);
+
+            // Check if user is admin (also check stored role if userRole not set yet)
+            const userRole = this.userRole || this.getStorage('userRole');
+            if (userRole && ['root'].includes(userRole)) {
+                if (nowPlaying.listeners !== null && nowPlaying.listeners !== undefined) {
+                    el.title = `${nowPlaying.listeners} listener${nowPlaying.listeners === 1 ? '' : 's'}`;
+                }
+            } else {
+                el.removeAttribute('title');
+            }
+
+            el.style.display = 'block';
+        } else {
+            el.style.display = 'none';
+            this.currentTrack = null;
+            this.updatePinTrackButton();
+            this.hideNowPlayingCover();
         }
     }
 
@@ -1835,7 +1844,7 @@ class RadioChatBox {
                 this._dispatchRealtimeEvent(name, data);
             });
             ['message', 'history', 'users', 'config', 'private', 'clear',
-             'message_deleted', 'message_edited', 'reaction'].forEach(bind);
+             'message_deleted', 'message_edited', 'reaction', 'now_playing'].forEach(bind);
 
             this.eventSource.addEventListener('reconnect', () => {
                 console.log('Server requested reconnect');
@@ -1872,12 +1881,20 @@ class RadioChatBox {
                 break;
             case 'history':         this.loadHistory(data); break;
             case 'users':           this._handleUsersEvent(data); break;
-            case 'config':          this.chatMode = (data && data.chat_mode) || 'public'; this.updateChatModeUI(); break;
+            case 'config':
+                this.chatMode = (data && data.chat_mode) || 'public';
+                this.updateChatModeUI();
+                // The server sends 'config' on every (re)connect — re-sync the
+                // now-playing widget here so a client that reconnected after missing
+                // a track-change push shows the current track (still no polling).
+                this.updateNowPlaying();
+                break;
             case 'private':         this.handlePrivateMessage(data); break;
             case 'clear':           this.handleChatClear(); break;
             case 'message_deleted': this.handleMessageDeleted(data.message_id); break;
             case 'message_edited':  this.handleMessageEdited(data.message_id, data.message, data.edited_at); break;
             case 'reaction':        this.handleReactionUpdate(data); break;
+            case 'now_playing':     this.renderNowPlaying(data && data.nowPlaying); break;
         }
     }
 
