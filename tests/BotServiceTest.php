@@ -143,7 +143,9 @@ class BotServiceTest extends TestCase
     {
         $generated = BotService::buildSystemPrompt(['nickname' => 'Maria']);
         $this->assertStringContainsString('ΜΗΚΟΣ ΑΠΑΝΤΗΣΗΣ', $generated);
-        $this->assertStringContainsString('Γράφε ΣΥΝΤΟΜΑ', $generated);
+        // Short is the default; a long reply is allowed but only as a rare exception.
+        $this->assertStringContainsString('ΣΥΝΤΟΜΑ', $generated);
+        $this->assertStringContainsString('ΣΠΑΝΙΑ', $generated);
 
         $custom = BotService::buildSystemPrompt(['nickname' => 'Maria', 'bot_custom_prompt' => 'δικό μου']);
         $this->assertStringContainsString('ΜΗΚΟΣ ΑΠΑΝΤΗΣΗΣ', $custom);
