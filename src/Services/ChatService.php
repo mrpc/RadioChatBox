@@ -61,6 +61,9 @@ class ChatService
         if (!$this->checkRateLimit($ipAddress)) {
             throw new \RuntimeException('Rate limit exceeded. Please wait before sending another message.');
         }
+
+        // Slow mode: an admin-set minimum gap between a user's messages (0 = off).
+        $this->enforceSlowMode($username);
         
         // Validate reply_to if provided
         $replyData = null;
@@ -379,6 +382,54 @@ class ChatService
         return true;
     }
     
+    /**
+     * The chat-wide "slow mode" gap (seconds) an admin has configured, cached for
+     * a minute. 0 (the default) means slow mode is off.
+     */
+    private function getSlowModeSeconds(): int
+    {
+        $cached = FlatCache::default()->get('settings:slow_mode');
+        if ($cached !== null && $cached !== false) {
+            return (int) $cached;
+        }
+        $seconds = 0;
+        try {
+            $result = $this->db->query("SELECT value FROM settings WHERE setting = 'slow_mode_seconds'");
+            $val = $result ? $result->fetchColumn() : false;
+            $seconds = ($val === false || $val === null) ? 0 : max(0, (int) $val);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('Failed to read slow_mode_seconds: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+        FlatCache::default()->set('settings:slow_mode', $seconds, 60);
+        return $seconds;
+    }
+
+    /**
+     * Enforce slow mode: reject a message when the same user posted less than
+     * `slow_mode_seconds` ago, with a message stating how long to wait. Keyed per
+     * user (lowercased), the marker self-expires after the window.
+     *
+     * @throws \RuntimeException when the user must still wait.
+     */
+    private function enforceSlowMode(string $username): void
+    {
+        $seconds = $this->getSlowModeSeconds();
+        if ($seconds <= 0 || $username === '') {
+            return;
+        }
+        $key = 'slowmode:' . mb_strtolower(trim($username));
+        $last = FlatCache::default()->get($key);
+        if ($last !== null && $last !== false) {
+            $wait = $seconds - (time() - (int) $last);
+            if ($wait > 0) {
+                throw new \RuntimeException("Slow mode is on — wait {$wait}s before sending another message.");
+            }
+        }
+        FlatCache::default()->set($key, time(), $seconds);
+    }
+
     /**
      * Track violations and auto-ban repeat offenders
      */

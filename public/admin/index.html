@@ -2852,6 +2852,11 @@
                         <label>Time Window (seconds)</label>
                         <input type="number" id="setting-rate-limit-window" placeholder="60" min="1">
                     </div>
+                    <div class="form-group">
+                        <label>Slow Mode (seconds between a user's messages)</label>
+                        <input type="number" id="setting-slow-mode-seconds" placeholder="0" min="0" max="3600">
+                        <small style="color:#6b7280;">0 = off. A higher value makes each user wait between messages (spam control).</small>
+                    </div>
                     </div>
                 </div>
 
@@ -8049,6 +8054,7 @@
                     
                     document.getElementById('setting-rate-limit-messages').value = settings.rate_limit_messages || '10';
                     document.getElementById('setting-rate-limit-window').value = settings.rate_limit_window || '60';
+                    document.getElementById('setting-slow-mode-seconds').value = settings.slow_mode_seconds || '0';
 
                     // Fake user auto-replies (bots)
                     botRepliesEnabled = settings.bot_replies_enabled === 'true';
@@ -8424,6 +8430,7 @@
                 minimum_users: document.getElementById('setting-minimum-users').value,
                 rate_limit_messages: document.getElementById('setting-rate-limit-messages').value,
                 rate_limit_window: document.getElementById('setting-rate-limit-window').value,
+                slow_mode_seconds: document.getElementById('setting-slow-mode-seconds').value,
                 
                 // SEO & Branding
                 site_title: document.getElementById('setting-site-title').value,

@@ -705,6 +705,45 @@ class ChatServiceTest extends TestCase
     }
 
     /**
+     * Slow mode (an admin-set minimum gap between a user's messages) rejects a
+     * rapid second message with a "wait" error, and lets it through once the gap
+     * is off again. 0 (default) means slow mode is disabled.
+     */
+    public function testSlowModeRejectsRapidSecondMessage()
+    {
+        $pdo = TestDatabase::connection();
+        $user = 'slowmode_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $ip = '10.44.' . random_int(0, 255) . '.' . random_int(2, 254);
+
+        $pdo->prepare(
+            "INSERT INTO settings (setting, value, updated_at) VALUES ('slow_mode_seconds', '30', NOW())
+             ON CONFLICT (setting) DO UPDATE SET value = '30', updated_at = NOW()"
+        )->execute();
+        \Pramnos\Cache\FlatCache::default()->delete('settings:slow_mode');
+        \Pramnos\Cache\FlatCache::default()->delete('slowmode:' . strtolower($user));
+
+        $ids = [];
+        try {
+            $first = $this->chatService->postMessage($user, 'first message', $ip);
+            $ids[] = $first['id'];
+
+            try {
+                $this->chatService->postMessage($user, 'too fast', $ip);
+                $this->fail('slow mode should reject a rapid second message');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Slow mode', $e->getMessage());
+            }
+        } finally {
+            $pdo->prepare("UPDATE settings SET value = '0' WHERE setting = 'slow_mode_seconds'")->execute();
+            \Pramnos\Cache\FlatCache::default()->delete('settings:slow_mode');
+            \Pramnos\Cache\FlatCache::default()->delete('slowmode:' . strtolower($user));
+            foreach ($ids as $id) {
+                $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$id]);
+            }
+        }
+    }
+
+    /**
      * getAllMessages attaches photo data to DM rows that carry an attachment, so
      * the admin message-history view can render the image (previously invisible).
      */

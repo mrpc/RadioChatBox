@@ -31,6 +31,7 @@ class SettingsService
     public const ADMIN_EDITABLE = [
         'rate_limit_messages',
         'rate_limit_window',
+        'slow_mode_seconds',
         'color_scheme',
         'page_title',
         'require_profile',
@@ -128,6 +129,7 @@ class SettingsService
     private const NUMERIC_BOUNDS = [
         'rate_limit_messages' => [1, 1000],
         'rate_limit_window' => [1, 3600],
+        'slow_mode_seconds' => [0, 3600],
         'minimum_users' => [0, 10000],
         'ads_refresh_interval' => [1, 3600],
         'track_poll_seconds' => [10, 3600],
