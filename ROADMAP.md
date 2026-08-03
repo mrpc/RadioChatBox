@@ -220,7 +220,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Ad zone management (header, sidebar, footer, etc.)
 - [ ] Rotating banner ads
 - [ ] Scheduled ads (show at specific times)
-- [ ] Click tracking and analytics
+- [x] Reach tracking for promo campaigns — cumulative delivery count per campaign (monetization analytics)
 - [ ] Ad performance reports
 - [ ] External ad network integration (Google AdSense, etc.)
 - [ ] Sponsor management interface

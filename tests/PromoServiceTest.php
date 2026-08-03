@@ -133,6 +133,16 @@ class PromoServiceTest extends TestCase
         $this->assertSame(0, $this->service->runDm($c, $now));
     }
 
+    /** Delivery accumulates the campaign's reach (sent_count). */
+    public function testReachTracking(): void
+    {
+        $c = $this->makeCampaign(['target' => 'public', 'message' => 'REACH_MARKER']);
+        $this->service->runPublic($c);
+        $this->service->runPublic($c);
+        $reach = (int) $this->pdo->query('SELECT sent_count FROM promo_campaigns WHERE id = ' . (int) $c['id'])->fetchColumn();
+        $this->assertSame(2, $reach);
+    }
+
     /** create() validates name + message. */
     public function testCreateValidates(): void
     {

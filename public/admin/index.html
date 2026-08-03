@@ -9696,7 +9696,7 @@
                 if (!promos.length) { table.innerHTML = '<p style="color:#6b7280;padding:12px;">No campaigns yet.</p>'; return; }
                 table.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
                     <thead><tr style="text-align:left;color:#6b7280;">
-                        <th style="padding:6px 8px;">Name</th><th style="padding:6px 8px;">Target</th><th style="padding:6px 8px;">Every</th><th style="padding:6px 8px;">Window</th><th style="padding:6px 8px;">Active</th><th style="padding:6px 8px;">Last run</th><th style="padding:6px 8px;"></th>
+                        <th style="padding:6px 8px;">Name</th><th style="padding:6px 8px;">Target</th><th style="padding:6px 8px;">Every</th><th style="padding:6px 8px;">Window</th><th style="padding:6px 8px;">Reach</th><th style="padding:6px 8px;">Active</th><th style="padding:6px 8px;">Last run</th><th style="padding:6px 8px;"></th>
                     </tr></thead><tbody>${promos.map(p => {
                         const active = (p.is_active === true || p.is_active === 't' || p.is_active === 'true' || p.is_active === 1);
                         const win = (p.window_start && p.window_end) ? `${(p.window_start||'').slice(0,5)}–${(p.window_end||'').slice(0,5)}` : 'any';
@@ -9706,6 +9706,7 @@
                             <td style="padding:6px 8px;">${p.target === 'dm' ? '✉️ DM' : '💬 Public'}</td>
                             <td style="padding:6px 8px;">${p.interval_minutes}m</td>
                             <td style="padding:6px 8px;">${escapeHtml(win)}</td>
+                            <td style="padding:6px 8px;">${p.sent_count || 0}</td>
                             <td style="padding:6px 8px;">${active ? '✅' : '⛔'}</td>
                             <td style="padding:6px 8px;">${escapeHtml(last)}</td>
                             <td style="padding:6px 8px;white-space:nowrap;">

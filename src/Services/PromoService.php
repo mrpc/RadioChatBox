@@ -111,6 +111,7 @@ class PromoService
             return 0;
         }
         (new ChatService())->postAsFakeUser($sender, (string) $campaign['message']);
+        $this->addReach((int) $campaign['id'], 1);
         return 1;
     }
 
@@ -149,10 +150,26 @@ class PromoService
             }
             $sent++;
         }
+        if ($sent > 0) {
+            $this->addReach($campaignId, $sent);
+        }
         return $sent;
     }
 
     // ---- Helpers ----------------------------------------------------
+
+    /** Add to a campaign's cumulative reach (best-effort; column is additive). */
+    private function addReach(int $campaignId, int $by): void
+    {
+        try {
+            $this->db->preparedQuery(
+                'UPDATE promo_campaigns SET sent_count = COALESCE(sent_count, 0) + :by WHERE id = :id',
+                ['by' => $by, 'id' => $campaignId]
+            );
+        } catch (\Throwable $e) {
+            // sent_count is analytics only; never fail delivery over it.
+        }
+    }
 
     /** The sender nickname: the campaign's fake user, or a random active bot. */
     private function resolveSender(array $campaign): ?string
