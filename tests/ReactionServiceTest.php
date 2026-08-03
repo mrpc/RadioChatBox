@@ -139,6 +139,35 @@ class ReactionServiceTest extends TestCase
         }
     }
 
+    /** A configured reaction_emojis setting overrides the default allowed set. */
+    public function testCustomReactionEmojiSet(): void
+    {
+        $settings = new \RadioChatBox\Services\SettingsService();
+        $prev = (string) $settings->get('reaction_emojis', '');
+        try {
+            $settings->set('reaction_emojis', '🎉 🚀 ✅');
+            $settings->invalidateCache();
+            ReactionService::resetAllowedCache();
+
+            $allowed = ReactionService::getAllowedEmojis();
+            $this->assertSame(['🎉', '🚀', '✅'], $allowed);
+
+            // A now-allowed emoji works; a former default is rejected.
+            $r = $this->service->toggleReaction($this->messageId, $this->userA, 'sess', '🎉');
+            $this->assertSame('added', $r['action']);
+            $this->expectException(\InvalidArgumentException::class);
+            $this->service->toggleReaction($this->messageId, $this->userB, 'sess', '👍');
+        } finally {
+            if ($prev === '') {
+                TestDatabase::connection()->prepare("DELETE FROM settings WHERE setting = 'reaction_emojis'")->execute();
+            } else {
+                $settings->set('reaction_emojis', $prev);
+            }
+            $settings->invalidateCache();
+            ReactionService::resetAllowedCache();
+        }
+    }
+
     /** popularEmojis ranks emojis by use and includes every allowed emoji. */
     public function testPopularEmojisRanksByUsage(): void
     {

@@ -2634,6 +2634,11 @@
                             <small>Users create polls from the chat with <code>/poll Question | Option 1 | Option 2</code>; others vote once and see live results.</small>
                         </div>
                         <div class="form-group">
+                            <label>Reaction emojis (space-separated, blank = default set)</label>
+                            <input type="text" id="setting-reaction-emojis" placeholder="👍 ❤️ 😂 😮 😢 🔥 🤘">
+                            <small>The emoji shown in the reaction picker. Leave empty to use the defaults.</small>
+                        </div>
+                        <div class="form-group">
                             <label>Who can create polls</label>
                             <select id="setting-poll-min-usertype">
                                 <option value="moderator">Moderators and above</option>
@@ -8752,6 +8757,7 @@
                     document.getElementById('setting-track-voting-enabled').checked = settings.track_voting_enabled === 'true';
                     document.getElementById('setting-polls-enabled').checked = settings.polls_enabled === 'true';
                     document.getElementById('setting-poll-min-usertype').value = settings.poll_min_usertype || 'moderator';
+                    document.getElementById('setting-reaction-emojis').value = settings.reaction_emojis || '';
                     document.getElementById('setting-typing-indicators-enabled').checked = settings.typing_indicators_enabled === 'true';
                     document.getElementById('setting-dm-typing-indicators-enabled').checked = settings.dm_typing_indicators_enabled === 'true';
                     document.getElementById('setting-charts-default-period').value = settings.charts_default_period || 'day';
@@ -9226,6 +9232,7 @@
                 track_voting_enabled: document.getElementById('setting-track-voting-enabled').checked ? 'true' : 'false',
                 polls_enabled: document.getElementById('setting-polls-enabled').checked ? 'true' : 'false',
                 poll_min_usertype: document.getElementById('setting-poll-min-usertype').value,
+                reaction_emojis: document.getElementById('setting-reaction-emojis').value,
                 typing_indicators_enabled: document.getElementById('setting-typing-indicators-enabled').checked ? 'true' : 'false',
                 dm_typing_indicators_enabled: document.getElementById('setting-dm-typing-indicators-enabled').checked ? 'true' : 'false',
                 charts_default_period: document.getElementById('setting-charts-default-period').value,

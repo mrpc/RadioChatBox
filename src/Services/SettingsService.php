@@ -60,6 +60,8 @@ class SettingsService
         // Live chat polls
         'polls_enabled',
         'poll_min_usertype',
+        // Custom reaction emoji set (space/comma-separated; empty = defaults).
+        'reaction_emojis',
         // "User is typing…" indicators — public chat and DMs are toggled separately
         'typing_indicators_enabled',
         'dm_typing_indicators_enabled',

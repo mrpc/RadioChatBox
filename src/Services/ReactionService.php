@@ -22,25 +22,51 @@ class ReactionService
     /** Private channel (per-participant fan-out) for author-directed cues. */
     private const PUBSUB_CHANNEL_PRIVATE = 'chat:private_messages';
 
-    /** Allowed reaction emojis (server-enforced whitelist). */
-    private const ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🤘'];
+    /** Default reaction emojis when the admin hasn't configured a custom set. */
+    private const DEFAULT_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🤘'];
+
+    /** Memoized resolved emoji set (per request). */
+    private static ?array $allowedCache = null;
 
     public function __construct()
     {
         $this->db = PramnosDatabase::getInstance();
     }
 
+    /** Test/seam: forget the memoized emoji set (after a settings change). */
+    public static function resetAllowedCache(): void
+    {
+        self::$allowedCache = null;
+    }
+
     /**
-     * @return string[] The allowed emoji set, in display order.
+     * The allowed reaction emoji set, in display order. Reads the admin-configured
+     * `reaction_emojis` setting (whitespace/comma-separated) when present, else the
+     * defaults. Memoized per request.
+     *
+     * @return string[]
      */
     public static function getAllowedEmojis(): array
     {
-        return self::ALLOWED_EMOJIS;
+        if (self::$allowedCache !== null) {
+            return self::$allowedCache;
+        }
+        try {
+            $raw = (string) (new SettingsService())->get('reaction_emojis', '');
+            $parsed = array_values(array_filter(array_map(
+                'trim',
+                preg_split('/[\s,]+/u', $raw) ?: []
+            ), static fn (string $e): bool => $e !== ''));
+            self::$allowedCache = $parsed !== [] ? array_values(array_unique($parsed)) : self::DEFAULT_EMOJIS;
+        } catch (\Throwable $e) {
+            self::$allowedCache = self::DEFAULT_EMOJIS;
+        }
+        return self::$allowedCache;
     }
 
     private function isAllowed(string $emoji): bool
     {
-        return in_array($emoji, self::ALLOWED_EMOJIS, true);
+        return in_array($emoji, self::getAllowedEmojis(), true);
     }
 
     /**
@@ -340,7 +366,7 @@ class ReactionService
         $days = max(1, min($days, 365));
         $since = date('Y-m-d H:i:s', time() - $days * 86400);
 
-        $counts = array_fill_keys(self::ALLOWED_EMOJIS, 0);
+        $counts = array_fill_keys(self::getAllowedEmojis(), 0);
         try {
             $rows = $this->db->queryBuilder()
                 ->from('message_reactions')
@@ -403,7 +429,7 @@ class ReactionService
 
         // Emit in the canonical emoji order so it matches the reaction pills.
         $out = [];
-        foreach (self::ALLOWED_EMOJIS as $emoji) {
+        foreach (self::getAllowedEmojis() as $emoji) {
             if (!empty($byEmoji[$emoji])) {
                 $out[] = ['emoji' => $emoji, 'count' => count($byEmoji[$emoji]), 'users' => $byEmoji[$emoji]];
             }
@@ -421,7 +447,7 @@ class ReactionService
     private function buildReactionList(array $countMap, array $mineMap): array
     {
         $list = [];
-        foreach (self::ALLOWED_EMOJIS as $emoji) {
+        foreach (self::getAllowedEmojis() as $emoji) {
             $count = $countMap[$emoji] ?? 0;
             if ($count > 0) {
                 $list[] = [
