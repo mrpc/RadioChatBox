@@ -1855,6 +1855,54 @@ class RadioChatBox {
                 if (e.key === 'Enter') submitLogin();
             };
         }
+
+        // ---- Register mode (only when self-registration is enabled) ----
+        const registerModeBtn = document.getElementById('register-mode-btn');
+        const registerForm = document.getElementById('register-form');
+        const registerError = document.getElementById('register-error');
+        const registerSubmit = document.getElementById('register-submit');
+        const selfRegOn = this.settings && this.settings.self_registration_enabled === 'true';
+        if (registerModeBtn && selfRegOn) registerModeBtn.style.display = '';
+
+        const showRegister = () => {
+            [guestModeBtn, loginModeBtn].forEach(b => { b.classList.remove('active'); b.style.background = 'transparent'; b.style.color = '#667eea'; });
+            registerModeBtn.classList.add('active'); registerModeBtn.style.background = '#667eea'; registerModeBtn.style.color = 'white';
+            guestForm.style.display = 'none'; loginForm.style.display = 'none'; registerForm.style.display = 'block';
+            document.getElementById('nickname-error').textContent = '';
+            const u = document.getElementById('register-username-input'); if (u) u.focus();
+        };
+        if (registerModeBtn) registerModeBtn.onclick = showRegister;
+
+        const submitRegister = async () => {
+            const username = (document.getElementById('register-username-input').value || '').trim();
+            const email = (document.getElementById('register-email-input').value || '').trim();
+            const password = document.getElementById('register-password-input').value;
+            const password2 = document.getElementById('register-password2-input').value;
+            registerError.textContent = '';
+            if (!username) { registerError.textContent = 'Please choose a username'; return; }
+            if (password.length < 8) { registerError.textContent = 'Password must be at least 8 characters'; return; }
+            if (password !== password2) { registerError.textContent = 'Passwords do not match'; return; }
+            registerSubmit.disabled = true; registerSubmit.textContent = 'Creating…';
+            try {
+                const resp = await fetch(`${this.apiUrl}/api/register-account`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email, password, password_confirm: password2, sessionId: this.sessionId }),
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.error || 'Registration failed');
+                // Auto-login into the freshly created account.
+                await this.loginAndJoin(username, password);
+            } catch (e) {
+                registerError.textContent = e.message;
+                registerSubmit.disabled = false; registerSubmit.textContent = 'Create account & Join';
+            }
+        };
+        if (registerSubmit) registerSubmit.onclick = submitRegister;
+        ['register-username-input', 'register-email-input', 'register-password-input', 'register-password2-input'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.onkeypress = (e) => { if (e.key === 'Enter') submitRegister(); };
+        });
     }
     
     async loginAndJoin(username, password) {

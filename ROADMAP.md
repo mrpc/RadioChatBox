@@ -137,8 +137,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - Report detail modal with action buttons
 
 ### Enhanced User Authentication
-- [ ] User self-registration (public signup form)
-- [ ] Email/password authentication system
+- [x] User self-registration (public signup form) — `/api/register-account` (gated by self_registration_enabled) + Register tab on the join screen
+- [x] Email/password authentication system — login by username/email + password (RcbAuthDriver, plain bcrypt); self-registration added
 - [ ] Password reset via email
 - [ ] Email verification for new accounts
 - [ ] "Remember Me" functionality

@@ -107,6 +107,95 @@ final class AuthController
     }
 
     /**
+     * POST /api/register-account — public self-registration of a real account
+     * (username + password + optional email). Gated by self_registration_enabled.
+     * Creates a `simple_user` and, when a sessionId is supplied, binds the chat
+     * session to the new account. 200 {success, user}; feature off -> 403; bad
+     * input -> 400; duplicate username -> 409.
+     */
+    #[Route('/api/register-account', methods: 'POST', name: 'auth.register-account')]
+    public function registerAccount(): Response
+    {
+        try {
+            $input = $_POST;
+            if (empty($input)) {
+                throw new InvalidArgumentException('Invalid JSON');
+            }
+
+            if ((new \RadioChatBox\Services\SettingsService())->get('self_registration_enabled', 'false') !== 'true') {
+                return Response::json(['error' => 'Self-registration is disabled'], 403);
+            }
+
+            $error = Validate::check($input, [
+                'username' => 'required',
+                'password' => 'required',
+            ], [
+                'username.required' => 'Username and password are required',
+                'password.required' => 'Username and password are required',
+            ]);
+            if ($error) {
+                return $error;
+            }
+
+            $username = trim((string) $input['username']);
+            $password = (string) $input['password'];
+            $confirm  = (string) ($input['password_confirm'] ?? $password);
+            $email    = trim((string) ($input['email'] ?? ''));
+            $displayName = trim((string) ($input['display_name'] ?? '')) ?: null;
+
+            if ($password !== $confirm) {
+                return Response::json(['error' => 'Passwords do not match'], 400);
+            }
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return Response::json(['error' => 'Invalid email address'], 400);
+            }
+
+            // A brand-new account is always a plain user; staff are promoted by admins.
+            $result = (new UserService())->createUser(
+                $username,
+                $password,
+                'simple_user',
+                $email !== '' ? $email : null,
+                null,
+                $displayName
+            );
+
+            if (empty($result['success'])) {
+                $msg = $result['error'] ?? 'Registration failed';
+                $status = stripos($msg, 'already exists') !== false ? 409 : 400;
+                return Response::json(['error' => $msg], $status);
+            }
+
+            // Optionally bind the current chat session to the new account.
+            $sessionId = trim((string) ($input['sessionId'] ?? ''));
+            if ($sessionId !== '') {
+                $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+                Database::getInstance()->preparedQuery(
+                    'INSERT INTO presence_sessions (username, session_id, ip_address, user_id, last_heartbeat, joined_at)
+                     VALUES (:username, :session_id, :ip_address, :user_id, NOW(), NOW())
+                     ON CONFLICT (username, session_id) DO UPDATE SET
+                         ip_address = :ip_address, user_id = :user_id, last_heartbeat = NOW()',
+                    [
+                        'username'   => $result['user']['username'],
+                        'session_id' => $sessionId,
+                        'ip_address' => $ipAddress,
+                        'user_id'    => $result['user']['userid'] ?? $result['user']['id'] ?? null,
+                    ]
+                );
+            }
+
+            return Response::json(['success' => true, 'user' => $result['user']]);
+        } catch (InvalidArgumentException $e) {
+            return Response::json(['error' => $e->getMessage()], 400);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AuthController::registerAccount failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * POST /api/logout — end a chat session.
      *
      * Replaces public/api/logout.php. Empty/invalid body -> 400 "Invalid JSON";

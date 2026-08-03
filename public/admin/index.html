@@ -2692,6 +2692,13 @@
                         <h3>Registration</h3>
                         <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-self-registration-enabled" style="width: auto;">
+                                Allow public account self-registration (username/password)
+                            </label>
+                            <small style="color:#6b7280;">Adds a "Register" option to the join screen; new accounts are plain users.</small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
                                 <input type="checkbox" id="setting-require-profile" style="width: auto;">
                                 Require Age &amp; Location on Registration
                             </label>
@@ -8771,6 +8778,7 @@
                     document.getElementById('setting-color-scheme').value = settings.color_scheme || 'dark';
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
+                    document.getElementById('setting-self-registration-enabled').checked = settings.self_registration_enabled === 'true';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
                     document.getElementById('setting-gif-provider').value = settings.gif_provider || 'giphy';
@@ -9245,6 +9253,7 @@
                 color_scheme: document.getElementById('setting-color-scheme').value,
                 chat_mode: document.getElementById('setting-chat-mode').value,
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
+                self_registration_enabled: document.getElementById('setting-self-registration-enabled').checked ? 'true' : 'false',
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
                 gif_provider: document.getElementById('setting-gif-provider').value,

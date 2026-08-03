@@ -1,0 +1,88 @@
+<?php
+
+namespace RadioChatBox\Tests\Controllers;
+
+use PDO;
+use PHPUnit\Framework\TestCase;
+use Pramnos\Cache\FlatCache;
+use Pramnos\Framework\Testing\TestDatabase;
+use RadioChatBox\Controllers\AuthController;
+use RadioChatBox\Services\SettingsService;
+
+/**
+ * Public account self-registration: gated by a setting, validates
+ * password-match / email, creates a simple_user, and rejects duplicates.
+ */
+class RegistrationTest extends TestCase
+{
+    private PDO $pdo;
+    private string $user;
+
+    protected function setUp(): void
+    {
+        $this->pdo = TestDatabase::connection();
+        $this->user = 'reg_' . substr(bin2hex(random_bytes(5)), 0, 8);
+        (new SettingsService())->set('self_registration_enabled', 'true');
+    }
+
+    protected function tearDown(): void
+    {
+        $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->user]);
+        $this->pdo->prepare("DELETE FROM settings WHERE setting = 'self_registration_enabled'")->execute();
+        FlatCache::default()->clear();
+        $_POST = [];
+    }
+
+    /** With the feature off, registration is 403. */
+    public function testDisabledReturns403(): void
+    {
+        (new SettingsService())->set('self_registration_enabled', 'false');
+        $_POST = ['username' => $this->user, 'password' => 'secret123'];
+        $this->assertSame(403, (new AuthController())->registerAccount()->getStatusCode());
+    }
+
+    /** The happy path creates a simple_user account. */
+    public function testRegistersNewUser(): void
+    {
+        $_POST = ['username' => $this->user, 'password' => 'secret123', 'password_confirm' => 'secret123', 'email' => 'a@b.com'];
+        $response = (new AuthController())->registerAccount();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertSame($this->user, $body['user']['username']);
+
+        $usertype = $this->pdo->query('SELECT usertype FROM users WHERE username = ' . $this->pdo->quote($this->user))->fetchColumn();
+        $this->assertSame(0, (int) $usertype, 'a fresh account is a plain simple_user');
+    }
+
+    /** Mismatched passwords are a 400. */
+    public function testPasswordMismatch(): void
+    {
+        $_POST = ['username' => $this->user, 'password' => 'secret123', 'password_confirm' => 'different'];
+        $this->assertSame(400, (new AuthController())->registerAccount()->getStatusCode());
+    }
+
+    /** An invalid email is a 400. */
+    public function testInvalidEmail(): void
+    {
+        $_POST = ['username' => $this->user, 'password' => 'secret123', 'email' => 'not-an-email'];
+        $this->assertSame(400, (new AuthController())->registerAccount()->getStatusCode());
+    }
+
+    /** A short password is rejected (UserService rule) with a 400. */
+    public function testShortPassword(): void
+    {
+        $_POST = ['username' => $this->user, 'password' => 'short'];
+        $this->assertSame(400, (new AuthController())->registerAccount()->getStatusCode());
+    }
+
+    /** Registering an existing username is a 409 conflict. */
+    public function testDuplicateUsername(): void
+    {
+        $_POST = ['username' => $this->user, 'password' => 'secret123'];
+        $this->assertSame(200, (new AuthController())->registerAccount()->getStatusCode());
+
+        $_POST = ['username' => $this->user, 'password' => 'secret123'];
+        $this->assertSame(409, (new AuthController())->registerAccount()->getStatusCode());
+    }
+}

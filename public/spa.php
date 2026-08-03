@@ -43,6 +43,9 @@
                 <button id="login-mode-btn" class="mode-toggle-btn" style="flex: 1; padding: 10px; border: 2px solid #667eea; background: transparent; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: bold;">
                     Login
                 </button>
+                <button id="register-mode-btn" class="mode-toggle-btn" style="flex: 1; padding: 10px; border: 2px solid #667eea; background: transparent; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: bold; display: none;">
+                    Register
+                </button>
             </div>
 
             <!-- Guest Mode Form -->
@@ -103,6 +106,17 @@
                 >
                 <div id="login-error" class="error-message"></div>
                 <button id="login-submit">Login & Join Chat</button>
+            </div>
+
+            <!-- Register Form (shown only when self-registration is enabled) -->
+            <div id="register-form" style="display: none;">
+                <p>Create an account:</p>
+                <input type="text" id="register-username-input" placeholder="Username" maxlength="50" autocomplete="username" required>
+                <input type="email" id="register-email-input" placeholder="Email (optional)" autocomplete="email">
+                <input type="password" id="register-password-input" placeholder="Password (min 8 chars)" autocomplete="new-password" required>
+                <input type="password" id="register-password2-input" placeholder="Confirm password" autocomplete="new-password" required>
+                <div id="register-error" class="error-message"></div>
+                <button id="register-submit">Create account & Join</button>
             </div>
         </div>
     </div>

@@ -39,6 +39,8 @@ class SettingsService
         'page_title',
         'require_profile',
         'chat_mode',
+        // Public account self-registration (username/password/email).
+        'self_registration_enabled',
         'allow_photo_uploads',
         'gif_enabled',
         'gif_provider',
