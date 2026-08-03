@@ -94,6 +94,42 @@ class ShowControllerTest extends TestCase
         $this->assertStringContainsString('END:VCALENDAR', $body);
     }
 
+    /** subscribe requires a valid session; subscriptions lists the user's ids. */
+    public function testSubscribeFlow(): void
+    {
+        // A session for the subscriber.
+        $user = 'subctl_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $session = 'subsess_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->pdo->prepare(
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at)
+             VALUES (?, ?, ?, NOW(), NOW())'
+        )->execute([$user, $session, '127.0.0.1']);
+
+        $_POST = ['title' => 'SCtl Sub Show', 'is_recurring' => 'true', 'day_of_week' => '3', 'start_time' => '20:00'];
+        $showId = (int) json_decode((new ShowController())->create()->getBody(), true)['id'];
+        $this->ids[] = $showId;
+
+        try {
+            // Bad session → 403.
+            $_POST = ['username' => $user, 'session_id' => 'nope', 'show_id' => $showId];
+            $this->assertSame(403, (new ShowController())->subscribe()->getStatusCode());
+
+            // Subscribe.
+            $_POST = ['username' => $user, 'session_id' => $session, 'show_id' => $showId, 'subscribe' => 'true'];
+            $resp = (new ShowController())->subscribe();
+            $this->assertSame(200, $resp->getStatusCode());
+            $this->assertTrue(json_decode($resp->getBody(), true)['subscribed']);
+
+            // Listed.
+            $_GET = ['username' => $user, 'session_id' => $session];
+            $list = json_decode((new ShowController())->subscriptions()->getBody(), true);
+            $this->assertContains($showId, $list['show_ids']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM show_subscriptions WHERE show_id = ?')->execute([$showId]);
+            $this->pdo->prepare('DELETE FROM presence_sessions WHERE username = ?')->execute([$user]);
+        }
+    }
+
     /** The public upcoming feed returns a success shape. */
     public function testUpcomingReturnsShape(): void
     {

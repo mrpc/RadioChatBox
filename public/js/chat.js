@@ -2995,10 +2995,14 @@ class RadioChatBox {
         if (!box) return;
         box.innerHTML = '<div class="search-empty">Loading…</div>';
         try {
-            const resp = await fetch(`${this.apiUrl}/api/shows/upcoming?limit=10`);
+            const [resp, subIds] = await Promise.all([
+                fetch(`${this.apiUrl}/api/shows/upcoming?limit=10`),
+                this._loadShowSubscriptions(),
+            ]);
             if (!resp.ok) { box.innerHTML = '<div class="search-empty">Could not load the schedule.</div>'; return; }
             const data = await resp.json();
             const shows = (data && data.shows) || [];
+            this._subShowIds = new Set(subIds);
             if (!shows.length) { box.innerHTML = '<div class="search-empty">No upcoming shows.</div>'; return; }
             box.innerHTML = shows.map(s => {
                 const when = s.next_start ? new Date(s.next_start) : null;
@@ -3006,14 +3010,42 @@ class RadioChatBox {
                 const host = s.host ? ` · ${this.escapeHtml(s.host)}` : '';
                 const desc = s.description ? `<div class="sched-desc">${this.escapeHtml(s.description)}</div>` : '';
                 const archive = s.archive_url ? `<div><a href="${this.escapeHtml(s.archive_url)}" target="_blank" rel="noopener" style="font-size:12px;">▶ past episodes</a></div>` : '';
+                const subbed = this._subShowIds.has(Number(s.id));
+                const bell = this.username ? `<button class="sched-sub${subbed ? ' on' : ''}" onclick="window.chatBox.toggleShowSubscription(${Number(s.id)}, this)" title="${subbed ? 'Unsubscribe from reminders' : 'Remind me before this show'}">${subbed ? '🔔 On' : '🔕 Remind me'}</button>` : '';
                 return `<div class="sched-item">
-                        <div class="sched-when">${this.escapeHtml(whenStr)}</div>
+                        <div class="sched-when">${this.escapeHtml(whenStr)} ${bell}</div>
                         <div class="sched-title">${this.escapeHtml(s.title)}${host}</div>
                         ${desc}
                         ${archive}
                     </div>`;
             }).join('');
         } catch (e) { box.innerHTML = '<div class="search-empty">Error loading the schedule.</div>'; }
+    }
+
+    async _loadShowSubscriptions() {
+        if (!this.username || !this.sessionId) return [];
+        try {
+            const r = await fetch(`${this.apiUrl}/api/shows/subscriptions?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
+            if (!r.ok) return [];
+            const d = await r.json();
+            return (d && d.show_ids) || [];
+        } catch (e) { return []; }
+    }
+
+    async toggleShowSubscription(showId, btn) {
+        const subbed = this._subShowIds && this._subShowIds.has(Number(showId));
+        try {
+            const r = await fetch(`${this.apiUrl}/api/shows/subscribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, show_id: showId, subscribe: subbed ? 'false' : 'true' }),
+            });
+            const d = await r.json();
+            if (!d.success) return;
+            this._subShowIds = this._subShowIds || new Set();
+            if (d.subscribed) { this._subShowIds.add(Number(showId)); btn.textContent = '🔔 On'; btn.classList.add('on'); btn.title = 'Unsubscribe from reminders'; }
+            else { this._subShowIds.delete(Number(showId)); btn.textContent = '🔕 Remind me'; btn.classList.remove('on'); btn.title = 'Remind me before this show'; }
+        } catch (e) { /* best-effort */ }
     }
 
     // ---- Message search ---------------------------------------------

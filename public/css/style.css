@@ -4229,3 +4229,5 @@ body.dark-mode .system-message { color: #94a3b8; }
 #notifications-list .notif-when { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 body.dark-mode #notifications-panel { background:#111827; color:#e5e7eb; border-color:#1f2937; }
 body.dark-mode #notifications-list .notif-item.unread { background:#1e293b; }
+#schedule-list .sched-sub { background:#eef2ff; color:#3730a3; border:none; border-radius:12px; font-size:11px; padding:2px 8px; cursor:pointer; margin-left:6px; }
+#schedule-list .sched-sub.on { background:#dcfce7; color:#166534; }

@@ -105,6 +105,68 @@ final class ShowController
         return $text;
     }
 
+    /**
+     * POST /api/shows/subscribe — {username, session_id, show_id, subscribe?}.
+     * Subscribe/unsubscribe a listener to a show's air reminders. 200
+     * {success, subscribed}; bad input -> 400; bad session -> 403.
+     */
+    #[Route('/api/shows/subscribe', methods: 'POST', name: 'shows.subscribe')]
+    public function subscribe(): Response
+    {
+        try {
+            $input = $_POST;
+            $username = trim((string) ($input['username'] ?? ''));
+            $sessionId = trim((string) ($input['session_id'] ?? ''));
+            $showId = (int) ($input['show_id'] ?? 0);
+            $subscribe = !array_key_exists('subscribe', $input)
+                || in_array(strtolower((string) $input['subscribe']), ['1', 'true', 'on', 'yes'], true);
+
+            if ($username === '' || $sessionId === '' || $showId <= 0) {
+                return Response::json(['error' => 'username, session_id and show_id are required'], 400);
+            }
+            if ((new \RadioChatBox\Services\ChatService())->getSessionInfo($username, $sessionId) === null) {
+                return Response::json(['error' => 'Invalid session'], 403);
+            }
+
+            $state = (new \RadioChatBox\Services\ShowSubscriptionService())->setSubscribed($username, $showId, $subscribe);
+            return Response::json(['success' => true, 'subscribed' => $state]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ShowController::subscribe failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * GET /api/shows/subscriptions?username=&session_id= — the show ids this user
+     * is subscribed to (for rendering the subscribe toggles). 200 {success, show_ids}.
+     */
+    #[Route('/api/shows/subscriptions', methods: 'GET', name: 'shows.subscriptions')]
+    public function subscriptions(): Response
+    {
+        try {
+            $request = Request::getInstance();
+            $username = trim((string) $request->get('username', '', 'get'));
+            $sessionId = trim((string) $request->get('session_id', '', 'get'));
+            if ($username === '' || $sessionId === '') {
+                return Response::json(['error' => 'username and session_id are required'], 400);
+            }
+            if ((new \RadioChatBox\Services\ChatService())->getSessionInfo($username, $sessionId) === null) {
+                return Response::json(['error' => 'Invalid session'], 403);
+            }
+            return Response::json([
+                'success'  => true,
+                'show_ids' => (new \RadioChatBox\Services\ShowSubscriptionService())->subscribedShowIds($username),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ShowController::subscriptions failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
     /** GET /api/admin/shows — the full schedule (admin). 200 {success, shows}. */
     #[Route('/api/admin/shows', methods: 'GET', name: 'admin.shows.list', middleware: [AdminAuthMiddleware::class])]
     public function adminList(): Response
