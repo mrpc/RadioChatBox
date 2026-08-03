@@ -77,6 +77,23 @@ class ShowControllerTest extends TestCase
         $this->assertSame(400, (new ShowController())->delete()->getStatusCode());
     }
 
+    /** The iCal feed returns a valid VCALENDAR containing an upcoming show. */
+    public function testIcalReturnsCalendar(): void
+    {
+        $_POST = ['title' => 'SCtl Ical Show', 'is_recurring' => 'true', 'day_of_week' => '4', 'start_time' => '18:00', 'host' => 'DJ Ical'];
+        $id = (int) json_decode((new ShowController())->create()->getBody(), true)['id'];
+        $this->ids[] = $id;
+
+        $response = (new ShowController())->ical();
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('text/calendar', (string) $response->getHeaderLine('Content-Type'));
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('BEGIN:VCALENDAR', $body);
+        $this->assertStringContainsString('BEGIN:VEVENT', $body);
+        $this->assertStringContainsString('SUMMARY:SCtl Ical Show', $body);
+        $this->assertStringContainsString('END:VCALENDAR', $body);
+    }
+
     /** The public upcoming feed returns a success shape. */
     public function testUpcomingReturnsShape(): void
     {

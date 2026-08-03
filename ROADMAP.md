@@ -511,7 +511,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Links to past show archives
 - [x] Time zone display support — next occurrences computed in the app TZ, rendered in the viewer's locale
 - [ ] Subscribe to show notifications
-- [ ] iCal/Google Calendar export
+- [x] iCal/Google Calendar export — `/api/shows/ical` (.ics feed) + link in the schedule overlay
 
 **Database Changes:**
 - New `shows` table (id, title, description, host, start_time, end_time, recurrence_rule, is_active, created_at)

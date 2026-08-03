@@ -37,6 +37,74 @@ final class ShowController
         // @codeCoverageIgnoreEnd
     }
 
+    /**
+     * GET /api/shows/ical — the upcoming schedule as an iCalendar (.ics) feed,
+     * subscribable in Google/Apple Calendar. Public.
+     */
+    #[Route('/api/shows/ical', methods: 'GET', name: 'shows.ical')]
+    public function ical(): Response
+    {
+        try {
+            $now = new \DateTimeImmutable('now');
+            $shows = (new ShowService())->upcoming($now, 50);
+
+            $lines = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//RadioChatBox//Schedule//EN',
+                'CALSCALE:GREGORIAN',
+                'METHOD:PUBLISH',
+                'X-WR-CALNAME:Radio Schedule',
+            ];
+            foreach ($shows as $show) {
+                $start = new \DateTimeImmutable((string) $show['next_start']);
+                $startUtc = $start->setTimezone(new \DateTimeZone('UTC'));
+                // Duration: use end_time if present, else default to 1 hour.
+                $end = $startUtc->add(new \DateInterval('PT1H'));
+                if (!empty($show['end_time'])) {
+                    [$eh, $em] = array_pad(array_map('intval', explode(':', (string) $show['end_time'])), 2, 0);
+                    $endLocal = $start->setTime($eh, $em);
+                    if ($endLocal <= $start) {
+                        $endLocal = $endLocal->add(new \DateInterval('P1D')); // wraps past midnight
+                    }
+                    $end = $endLocal->setTimezone(new \DateTimeZone('UTC'));
+                }
+
+                $lines[] = 'BEGIN:VEVENT';
+                $lines[] = 'UID:show-' . ((int) $show['id']) . '-' . $startUtc->format('Ymd') . '@radiochatbox';
+                $lines[] = 'DTSTAMP:' . $startUtc->format('Ymd\THis\Z');
+                $lines[] = 'DTSTART:' . $startUtc->format('Ymd\THis\Z');
+                $lines[] = 'DTEND:' . $end->format('Ymd\THis\Z');
+                $lines[] = 'SUMMARY:' . $this->icsEscape((string) $show['title']);
+                if (!empty($show['host'])) {
+                    $lines[] = 'DESCRIPTION:' . $this->icsEscape('Host: ' . $show['host']
+                        . (!empty($show['description']) ? ' — ' . $show['description'] : ''));
+                } elseif (!empty($show['description'])) {
+                    $lines[] = 'DESCRIPTION:' . $this->icsEscape((string) $show['description']);
+                }
+                $lines[] = 'END:VEVENT';
+            }
+            $lines[] = 'END:VCALENDAR';
+
+            $ics = implode("\r\n", $lines) . "\r\n";
+            return Response::make($ics)
+                ->withHeader('Content-Type', 'text/calendar; charset=utf-8')
+                ->withHeader('Content-Disposition', 'attachment; filename="radio-schedule.ics"');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ShowController::ical failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /** Escape a value for an iCalendar text field (RFC 5545). */
+    private function icsEscape(string $text): string
+    {
+        $text = str_replace(['\\', "\n", "\r", ',', ';'], ['\\\\', '\\n', '', '\\,', '\\;'], $text);
+        return $text;
+    }
+
     /** GET /api/admin/shows — the full schedule (admin). 200 {success, shows}. */
     #[Route('/api/admin/shows', methods: 'GET', name: 'admin.shows.list', middleware: [AdminAuthMiddleware::class])]
     public function adminList(): Response

@@ -271,6 +271,7 @@
                 <div id="schedule-panel" style="display: none;">
                     <div class="search-bar">
                         <strong style="flex:1;">📅 Upcoming shows</strong>
+                        <a href="/api/shows/ical" title="Subscribe / add to calendar" style="font-size:12px; text-decoration:none; margin-right:8px;">📆 iCal</a>
                         <button id="schedule-close" class="icon-button" title="Close">✕</button>
                     </div>
                     <div id="schedule-list"></div>
