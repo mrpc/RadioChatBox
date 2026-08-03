@@ -186,7 +186,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 **Priority:** MEDIUM - Improve user experience and interaction
 
 - [x] User blocking/ignoring system (user-initiated, DM-scoped)
-- [ ] Blocked users' messages hidden from view — partial: blocks are DM-scoped; public messages not hidden
+- [x] Blocked users' messages hidden from view — public feed now hides messages from users you've blocked (client-side, reuses the block list)
 - [x] Prevent private messages from blocked users
 - [x] Message pinning (moderators/admins)
 - [x] Pinned messages display at top of chat

@@ -2202,7 +2202,11 @@ class RadioChatBox {
         this.conversationsList = document.getElementById('conversations-list');
         this.unreadBadge = document.getElementById('unread-badge');
         this.scrollToBottomBtn = document.getElementById('scroll-to-bottom');
-        
+
+        // Load the set of users I've blocked so their public messages are hidden
+        // from my feed (blocking is otherwise DM-only). Re-applies once resolved.
+        this.loadBlockedUsers();
+
         // Photo upload elements
         this.photoButton = document.getElementById('photo-button');
         this.photoInput = document.getElementById('photo-input');
@@ -3632,7 +3636,45 @@ class RadioChatBox {
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Failed');
+        // Keep the public-feed block filter in sync, then re-apply it live.
+        const t = (targetUsername || '').toLowerCase();
+        this._blockedPublic = this._blockedPublic || new Set();
+        if (action === 'unblock') this._blockedPublic.delete(t);
+        else this._blockedPublic.add(t);
+        this.applyBlockFilterToPublicFeed();
         return data;
+    }
+
+    /** Whether I've blocked `username` (case-insensitive). Never hides my own. */
+    isBlockedByMe(username) {
+        if (!username || !this._blockedPublic) return false;
+        const u = username.toLowerCase();
+        if (u === (this.username || '').toLowerCase()) return false;
+        return this._blockedPublic.has(u);
+    }
+
+    /** Fetch the list of users I've blocked into a Set for public-feed filtering. */
+    async loadBlockedUsers() {
+        if (!this.username) return;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/block?username=${encodeURIComponent(this.username)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const list = (data && data.blocked_users) || [];
+            this._blockedPublic = new Set(list.map(u => (typeof u === 'string' ? u : (u.username || '')).toLowerCase()).filter(Boolean));
+            this.applyBlockFilterToPublicFeed();
+        } catch (e) { /* best-effort */ }
+    }
+
+    /** Remove any already-rendered public messages from users I've now blocked. */
+    applyBlockFilterToPublicFeed() {
+        if (!this.messagesContainer || this.privateChat.active) return;
+        this.messagesContainer.querySelectorAll('.message-username[data-username]').forEach(nameEl => {
+            if (this.isBlockedByMe(nameEl.getAttribute('data-username'))) {
+                const msg = nameEl.closest('.message');
+                if (msg) msg.remove();
+            }
+        });
     }
 
     async loadBlockState(username) {
@@ -4397,6 +4439,12 @@ class RadioChatBox {
                 || messageData.attachment));
         if (!Number.isFinite(ts) || ts <= 0 || !hasContent) {
             console.warn('Ignoring non-message payload on the public feed:', messageData);
+            return;
+        }
+
+        // Hide public messages from users I've blocked (blocking is otherwise
+        // DM-scoped). My own messages always show.
+        if (messageData.username && this.isBlockedByMe(messageData.username)) {
             return;
         }
 
