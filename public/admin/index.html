@@ -2367,6 +2367,7 @@
                         <button type="button" class="btn btn-outline" onclick="resetShowForm()" id="show-cancel" style="display:none;">Cancel</button>
                         <div id="show-error" style="color:#ef4444; font-size:13px; margin-top:6px; display:none;"></div>
                     </div>
+                    <div id="shows-calendar" style="margin-bottom:16px;"></div>
                     <div id="shows-table"></div>
                 </div>
             </div>
@@ -9550,6 +9551,31 @@
             } catch (e) { alert('Error: ' + e.message); }
         }
 
+        function renderShowsCalendar(shows) {
+            const box = document.getElementById('shows-calendar');
+            if (!box) return;
+            const active = (shows || []).filter(s => {
+                const rec = s.is_recurring === true || s.is_recurring === 't' || s.is_recurring === 'true' || s.is_recurring === 1;
+                const on = s.is_active === true || s.is_active === 't' || s.is_active === 'true' || s.is_active === 1;
+                return rec && on;
+            });
+            const byDay = [[], [], [], [], [], [], []];
+            active.forEach(s => { const d = parseInt(s.day_of_week, 10); if (d >= 0 && d < 7) byDay[d].push(s); });
+            byDay.forEach(list => list.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')));
+            const cols = SHOW_DOW.map((name, d) => {
+                const items = byDay[d].map(s =>
+                    `<div style="background:#eef2ff; border-radius:6px; padding:4px 6px; margin-bottom:4px; font-size:11px;">
+                        <strong>${(s.start_time || '').slice(0,5)}</strong> ${escapeHtml(s.title)}${s.host ? '<div style="color:#6b7280;">' + escapeHtml(s.host) + '</div>' : ''}
+                    </div>`).join('') || '<div style="color:#d1d5db; font-size:11px;">—</div>';
+                return `<div style="flex:1; min-width:90px;">
+                    <div style="font-size:12px; font-weight:600; color:#374151; text-align:center; margin-bottom:6px;">${name.slice(0,3)}</div>
+                    ${items}
+                </div>`;
+            }).join('');
+            box.innerHTML = `<div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Weekly view (recurring shows)</div>
+                <div style="display:flex; gap:8px; overflow-x:auto;">${cols}</div>`;
+        }
+
         async function loadShows() {
             const table = document.getElementById('shows-table');
             if (!table) return;
@@ -9559,6 +9585,7 @@
                 const data = await res.json();
                 if (!data.success) { table.innerHTML = '<p style="color:#ef4444;">Failed to load.</p>'; return; }
                 const shows = data.shows || [];
+                renderShowsCalendar(shows);
                 if (!shows.length) { table.innerHTML = '<p style="color:#6b7280;padding:12px;">No shows scheduled yet.</p>'; return; }
                 table.innerHTML = `<table style="width:100%;border-collapse:collapse;">
                     <thead><tr style="text-align:left;color:#6b7280;font-size:13px;">

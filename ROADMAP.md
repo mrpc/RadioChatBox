@@ -257,7 +257,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Reputation score system — `ReputationService` (messages+reactions − warnings−reports) shown on the profile card
 - [x] Trust levels based on user behavior — registered or established-guest (message-count) trust via `TrustService`
 - [ ] Automatic shadow ban for repeat offenders
-- [ ] Configurable automation rules in admin panel
+- [x] Configurable automation rules in admin panel — auto-mod threshold/action + warning auto-timeout + spam/profanity settings
 - [x] Auto-mod whitelist (exempt trusted users) — staff (moderator+) are always exempt
 - [x] Auto-mod activity logs — actions recorded to the moderation log as `auto_timeout` / `auto_ban`
 
@@ -504,7 +504,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 **Priority:** LOW - Nice to have for show planning
 
 - [x] Display upcoming shows/events — 📅 schedule overlay + `/api/shows/upcoming`
-- [ ] Calendar view of scheduled broadcasts
+- [x] Calendar view of scheduled broadcasts — weekly grid of recurring shows on the admin Schedule tab
 - [x] Show details (host, description, time) — stored per show, shown in the overlay
 - [x] Recurring show support (weekly) + one-off dates — `ShowService`
 - [ ] Reminders/notifications for favorite shows
