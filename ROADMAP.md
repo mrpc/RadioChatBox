@@ -20,9 +20,11 @@ This document outlines the planned features and enhancements for RadioChatBox.
 
 ## Known gaps / discovered (open)
 
-- **Native auth completion**: usertokens-backed API sessions, TOTP **2FA** and
-  WebAuthn **passkeys** + login step-up (route the live login through `LoginFlow`).
-  Needs UX validation — deferred from the autonomous batch.
+- **Native auth (in progress on `feature/roadmap-and-native-auth`)**: self-registration,
+  TOTP **2FA** (enroll/verify/disable + login step-up) and WebAuthn **passkeys**
+  (register/list/revoke + passwordless login) are now built on the framework's
+  `TwoFactorAuthService`/`PasskeyService` (Redis-backed stateless challenge store).
+  Remaining: usertokens-backed API sessions and full `LoginFlow` adoption; needs UX validation.
 - **Admin UX rewrite** to a modern SPA (**Svelte + DaisyUI**, generalised to any
   SPA) — see `docs/ADMIN_REWRITE_PLAN.md`. Plan only; implementation open. (The
   anchorless-nav / incomplete-user-history / no-take-over-from-history complaints

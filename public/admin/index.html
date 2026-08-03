@@ -2703,6 +2703,15 @@
                                 Require Age &amp; Location on Registration
                             </label>
                         </div>
+                        <div class="form-group">
+                            <label>Passkey RP ID (domain, optional)</label>
+                            <input type="text" id="setting-passkey-rp-id" placeholder="e.g. livechats.gr (defaults to the request host)">
+                            <small style="color:#6b7280;">WebAuthn relying-party id — the site's effective domain (no port). Leave blank to auto-detect.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Passkey allowed origins (comma-separated, optional)</label>
+                            <input type="text" id="setting-passkey-origins" placeholder="https://livechats.gr">
+                        </div>
                         <div class="form-group" id="setting-minimum-users-group">
                             <label>Minimum Users (Fake Users Feature)</label>
                             <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
@@ -8779,6 +8788,8 @@
                     document.getElementById('setting-chat-mode').value = settings.chat_mode || 'public';
                     document.getElementById('setting-require-profile').checked = settings.require_profile === 'true';
                     document.getElementById('setting-self-registration-enabled').checked = settings.self_registration_enabled === 'true';
+                    document.getElementById('setting-passkey-rp-id').value = settings.passkey_rp_id || '';
+                    document.getElementById('setting-passkey-origins').value = settings.passkey_origins || '';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
                     document.getElementById('setting-gif-provider').value = settings.gif_provider || 'giphy';
@@ -9254,6 +9265,8 @@
                 chat_mode: document.getElementById('setting-chat-mode').value,
                 require_profile: document.getElementById('setting-require-profile').checked ? 'true' : 'false',
                 self_registration_enabled: document.getElementById('setting-self-registration-enabled').checked ? 'true' : 'false',
+                passkey_rp_id: document.getElementById('setting-passkey-rp-id').value,
+                passkey_origins: document.getElementById('setting-passkey-origins').value,
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
                 gif_provider: document.getElementById('setting-gif-provider').value,

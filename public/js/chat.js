@@ -1864,6 +1864,16 @@ class RadioChatBox {
             };
         }
 
+        // Passkey (passwordless) sign-in. Hide the button where WebAuthn is absent.
+        const loginPasskeyBtn = document.getElementById('login-passkey-btn');
+        if (loginPasskeyBtn) {
+            if (!window.PublicKeyCredential) {
+                loginPasskeyBtn.style.display = 'none';
+            } else {
+                loginPasskeyBtn.onclick = () => this.loginWithPasskey(loginUsernameInput ? loginUsernameInput.value : '');
+            }
+        }
+
         // ---- Register mode (only when self-registration is enabled) ----
         const registerModeBtn = document.getElementById('register-mode-btn');
         const registerForm = document.getElementById('register-form');
@@ -2043,8 +2053,9 @@ class RadioChatBox {
             };
         }
 
-        // Two-factor section: only for registered accounts (a userId is set).
+        // Two-factor + passkey sections: only for registered accounts.
         this._initTwoFactorSection();
+        this._initPasskeySection();
 
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
@@ -2907,6 +2918,130 @@ class RadioChatBox {
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         } catch (e) { /* non-fatal */ }
+    }
+
+    // ---- WebAuthn passkeys ----
+    _b64urlToBuf(value) {
+        let s = String(value).replace(/-/g, '+').replace(/_/g, '/');
+        const pad = s.length % 4; if (pad) s += '===='.slice(pad);
+        const bin = atob(s); const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        return buf.buffer;
+    }
+    _bufToB64url(buf) {
+        const bytes = new Uint8Array(buf); let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    _prepareCreation(o) {
+        o = Object.assign({}, o);
+        o.challenge = this._b64urlToBuf(o.challenge);
+        if (o.user && o.user.id) o.user = Object.assign({}, o.user, { id: this._b64urlToBuf(o.user.id) });
+        if (Array.isArray(o.excludeCredentials)) o.excludeCredentials = o.excludeCredentials.map(c => Object.assign({}, c, { id: this._b64urlToBuf(c.id) }));
+        return o;
+    }
+    _prepareRequest(o) {
+        o = Object.assign({}, o);
+        o.challenge = this._b64urlToBuf(o.challenge);
+        if (Array.isArray(o.allowCredentials)) o.allowCredentials = o.allowCredentials.map(c => Object.assign({}, c, { id: this._b64urlToBuf(c.id) }));
+        return o;
+    }
+    _serializeAttestation(cred) {
+        const r = cred.response;
+        return { id: cred.id, type: cred.type, rawId: this._bufToB64url(cred.rawId),
+            response: { clientDataJSON: this._bufToB64url(r.clientDataJSON), attestationObject: this._bufToB64url(r.attestationObject) },
+            clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {} };
+    }
+    _serializeAssertion(cred) {
+        const r = cred.response;
+        return { id: cred.id, type: cred.type, rawId: this._bufToB64url(cred.rawId),
+            response: { clientDataJSON: this._bufToB64url(r.clientDataJSON), authenticatorData: this._bufToB64url(r.authenticatorData), signature: this._bufToB64url(r.signature), userHandle: r.userHandle ? this._bufToB64url(r.userHandle) : null },
+            clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {} };
+    }
+
+    _initPasskeySection() {
+        const section = document.getElementById('profile-passkey-section');
+        if (!section) return;
+        if (!this.userId || !window.PublicKeyCredential) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        const addBtn = document.getElementById('profile-passkey-add-btn');
+        if (addBtn && !addBtn._wired) { addBtn._wired = true; addBtn.onclick = () => this._addPasskey(); }
+        this._loadPasskeys();
+    }
+    async _loadPasskeys() {
+        const box = document.getElementById('profile-passkey-list');
+        try {
+            const r = await fetch(`${this.apiUrl}/api/passkey/list?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
+            const d = await r.json();
+            const list = (d && d.passkeys) || [];
+            box.innerHTML = list.length
+                ? list.map(p => `<div>🔑 ${this.escapeHtml(p.name || p.label || 'Passkey')} <a href="#" onclick="window.chatBox._revokePasskey(${p.id || p.credentialid}); return false;" style="color:#dc2626; font-size:12px;">remove</a></div>`).join('')
+                : '<span style="color:#6b7280;">No passkeys yet.</span>';
+        } catch (e) { box.innerHTML = ''; }
+    }
+    async _addPasskey() {
+        const err = document.getElementById('profile-passkey-error'); err.textContent = '';
+        try {
+            const optResp = await fetch(`${this.apiUrl}/api/passkey/register/options`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId }),
+            });
+            const options = await optResp.json();
+            if (!optResp.ok) { err.textContent = options.error || 'Could not start'; return; }
+            const cred = await navigator.credentials.create({ publicKey: this._prepareCreation(options) });
+            const label = (prompt('Name this passkey (e.g. "My phone"):', 'Passkey') || 'Passkey').slice(0, 60);
+            const regResp = await fetch(`${this.apiUrl}/api/passkey/register`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, label, credential: this._serializeAttestation(cred) }),
+            });
+            const d = await regResp.json();
+            if (!d.success) { err.textContent = d.error || 'Registration failed'; return; }
+            this._loadPasskeys();
+        } catch (e) { err.textContent = (e && e.name === 'NotAllowedError') ? 'Cancelled.' : 'Passkey error.'; }
+    }
+    async _revokePasskey(id) {
+        if (!id || !confirm('Remove this passkey?')) return;
+        try {
+            await fetch(`${this.apiUrl}/api/passkey/revoke`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, credential_id: id }),
+            });
+            this._loadPasskeys();
+        } catch (e) { /* best-effort */ }
+    }
+
+    /** Passwordless sign-in with a passkey for the username in the login form. */
+    async loginWithPasskey(username) {
+        username = (username || '').trim();
+        const err = document.getElementById('login-error');
+        if (!username) { if (err) err.textContent = 'Enter your username first.'; return; }
+        if (!window.PublicKeyCredential) { if (err) err.textContent = 'Passkeys are not supported on this device.'; return; }
+        try {
+            const optResp = await fetch(`${this.apiUrl}/api/passkey/login/options`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username }),
+            });
+            const options = await optResp.json();
+            if (!optResp.ok) { if (err) err.textContent = options.error || 'No passkey for this account'; return; }
+            const cred = await navigator.credentials.get({ publicKey: this._prepareRequest(options) });
+            const resp = await fetch(`${this.apiUrl}/api/passkey/login`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, sessionId: this.sessionId, credential: this._serializeAssertion(cred) }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) { if (err) err.textContent = data.error || 'Passkey sign-in failed'; return; }
+            // Same post-login path as password login.
+            this.username = data.user.username;
+            this.userId = data.user.id;
+            this.userRole = data.user.role;
+            this.setStorage('chatNickname', this.username);
+            this.setStorage('userId', this.userId);
+            this.setStorage('userRole', this.userRole);
+            this.hideNicknameModal();
+            this.initializeChat();
+        } catch (e) {
+            if (err) err.textContent = (e && e.name === 'NotAllowedError') ? 'Cancelled.' : 'Passkey sign-in error.';
+        }
     }
 
     // ---- Two-factor authentication (profile settings) ----

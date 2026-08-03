@@ -107,6 +107,7 @@
                 <input type="text" id="login-2fa-input" placeholder="6-digit authentication code" inputmode="numeric" autocomplete="one-time-code" style="display:none;">
                 <div id="login-error" class="error-message"></div>
                 <button id="login-submit">Login & Join Chat</button>
+                <button id="login-passkey-btn" type="button" style="margin-top:8px; background:transparent; border:1px solid #667eea; color:#667eea;">🔑 Sign in with a passkey</button>
             </div>
 
             <!-- Register Form (shown only when self-registration is enabled) -->
@@ -207,6 +208,14 @@
                     <button type="button" id="profile-2fa-disable-btn" class="btn-danger">Disable 2FA</button>
                 </div>
                 <div id="profile-2fa-error" class="error-message"></div>
+            </div>
+
+            <!-- Passkeys (registered accounts only) -->
+            <div id="profile-passkey-section" class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+                <label style="font-weight:600;">Passkeys</label>
+                <div id="profile-passkey-list" style="font-size:13px; color:#374151; margin:4px 0;"></div>
+                <button type="button" id="profile-passkey-add-btn" class="btn-secondary">➕ Add a passkey</button>
+                <div id="profile-passkey-error" class="error-message"></div>
             </div>
 
             <div class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">
