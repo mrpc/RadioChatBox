@@ -255,7 +255,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Configurable auto-ban thresholds — `AutoModService` (report threshold + action in Settings)
 - [x] Track reports per user — `ReportService::forReportedUser` (user dossier) + most-reported ranking in the reports dashboard
 - [x] Automatic escalation rules (e.g., 5 reports = auto-ban) — `AutoModService::onReport` (timeout or ban at threshold)
-- [ ] Reputation score system
+- [x] Reputation score system — `ReputationService` (messages+reactions − warnings−reports) shown on the profile card
 - [x] Trust levels based on user behavior — registered or established-guest (message-count) trust via `TrustService`
 - [ ] Automatic shadow ban for repeat offenders
 - [ ] Configurable automation rules in admin panel

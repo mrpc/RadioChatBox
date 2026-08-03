@@ -76,6 +76,7 @@ class UserProfileService
             'is_online'     => !empty($onlineRow['is_online']),
             'message_count' => $messageCount,
             'rank'          => RankService::forCount($messageCount),
+            'reputation'    => (new ReputationService())->forUser($username),
             'first_seen'    => $statsRow['first_seen'] ?? null,
             'last_seen'     => $onlineRow['last_seen'] ?? ($statsRow['last_message'] ?? null),
             'role'          => $roleLabel,

@@ -2814,6 +2814,7 @@ class RadioChatBox {
                 ${meta}
                 <div class="profile-stats">
                     <div><strong>${p.message_count || 0}</strong><span>messages</span></div>
+                    ${p.reputation ? `<div><strong style="color:${this.escapeHtml(p.reputation.color)}">${p.reputation.score}</strong><span>reputation · ${this.escapeHtml(p.reputation.tier)}</span></div>` : ''}
                     ${since ? `<div><strong>${this.escapeHtml(since)}</strong><span>first seen</span></div>` : ''}
                 </div>`;
         } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading profile.</p>'; }
