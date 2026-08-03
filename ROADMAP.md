@@ -508,7 +508,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [x] Show details (host, description, time) — stored per show, shown in the overlay
 - [x] Recurring show support (weekly) + one-off dates — `ShowService`
 - [ ] Reminders/notifications for favorite shows
-- [ ] Links to past show archives
+- [x] Links to past show archives — optional archive_url per show, shown in the schedule overlay
 - [x] Time zone display support — next occurrences computed in the app TZ, rendered in the viewer's locale
 - [ ] Subscribe to show notifications
 - [x] iCal/Google Calendar export — `/api/shows/ical` (.ics feed) + link in the schedule overlay

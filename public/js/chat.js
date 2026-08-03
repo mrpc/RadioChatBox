@@ -3005,10 +3005,12 @@ class RadioChatBox {
                 const whenStr = when ? when.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
                 const host = s.host ? ` · ${this.escapeHtml(s.host)}` : '';
                 const desc = s.description ? `<div class="sched-desc">${this.escapeHtml(s.description)}</div>` : '';
+                const archive = s.archive_url ? `<div><a href="${this.escapeHtml(s.archive_url)}" target="_blank" rel="noopener" style="font-size:12px;">▶ past episodes</a></div>` : '';
                 return `<div class="sched-item">
                         <div class="sched-when">${this.escapeHtml(whenStr)}</div>
                         <div class="sched-title">${this.escapeHtml(s.title)}${host}</div>
                         ${desc}
+                        ${archive}
                     </div>`;
             }).join('');
         } catch (e) { box.innerHTML = '<div class="search-empty">Error loading the schedule.</div>'; }

@@ -167,6 +167,8 @@ class ShowService
             'is_active'    => !array_key_exists('is_active', $data)
                 || in_array(strtolower((string) $data['is_active']), ['1', 'true', 'on', 'yes'], true)
                 || $data['is_active'] === true,
+            'archive_url'  => isset($data['archive_url']) && trim((string) $data['archive_url']) !== ''
+                ? mb_substr(trim((string) $data['archive_url']), 0, 500) : null,
         ];
 
         if ($isRecurring) {

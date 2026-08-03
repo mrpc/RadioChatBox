@@ -2359,6 +2359,10 @@
                             </div>
                         </div>
                         <div class="form-group">
+                            <label>Archive link (optional)</label>
+                            <input type="url" id="show-archive" maxlength="500" placeholder="https://… past episodes">
+                        </div>
+                        <div class="form-group">
                             <label style="display:flex; align-items:center; gap:10px;">
                                 <input type="checkbox" id="show-active" checked style="width:auto;"> Active
                             </label>
@@ -9481,6 +9485,7 @@
             document.getElementById('show-start').value = '';
             document.getElementById('show-end').value = '';
             document.getElementById('show-active').checked = true;
+            document.getElementById('show-archive').value = '';
             document.getElementById('show-form-title').textContent = 'Add a show';
             document.getElementById('show-cancel').style.display = 'none';
             document.getElementById('show-error').style.display = 'none';
@@ -9503,6 +9508,7 @@
                 start_time: document.getElementById('show-start').value,
                 end_time: document.getElementById('show-end').value,
                 is_active: document.getElementById('show-active').checked ? 'true' : 'false',
+                archive_url: document.getElementById('show-archive').value.trim(),
             };
             if (!payload.title) { showErr('Title is required.'); return; }
             if (!payload.start_time) { showErr('Start time is required.'); return; }
@@ -9532,6 +9538,7 @@
             document.getElementById('show-date').value = s.show_date || '';
             document.getElementById('show-start').value = (s.start_time || '').slice(0, 5);
             document.getElementById('show-end').value = (s.end_time || '').slice(0, 5);
+            document.getElementById('show-archive').value = s.archive_url || '';
             document.getElementById('show-active').checked = (s.is_active === true || s.is_active === 't' || s.is_active === 'true' || s.is_active === 1);
             document.getElementById('show-form-title').textContent = 'Edit show #' + s.id;
             document.getElementById('show-cancel').style.display = '';
