@@ -61,7 +61,9 @@ class UserProfileService
         $userRow = ($user && $user->numRows > 0) ? $user->fields : null;
 
         $profile = $this->db->preparedQuery(
-            'SELECT age, sex, location FROM user_profiles WHERE LOWER(username) = LOWER(?) LIMIT 1',
+            'SELECT age, sex, location, bio, status_message
+             FROM user_profiles WHERE LOWER(username) = LOWER(?)
+             ORDER BY created_at DESC NULLS LAST LIMIT 1',
             [$username]
         );
         $profileRow = ($profile && $profile->numRows > 0) ? $profile->fields : null;
@@ -84,6 +86,8 @@ class UserProfileService
             'age'           => $profileRow['age'] ?? null,
             'sex'           => $profileRow['sex'] ?? null,
             'location'      => $profileRow['location'] ?? null,
+            'bio'           => $profileRow['bio'] ?? null,
+            'status'        => $profileRow['status_message'] ?? null,
         ];
     }
 

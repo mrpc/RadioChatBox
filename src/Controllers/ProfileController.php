@@ -172,21 +172,31 @@ final class ProfileController
                 }
             }
 
+            // Optional bio + custom status (shown on the profile card).
+            $bio = isset($input['bio']) && trim((string) $input['bio']) !== ''
+                ? mb_substr(trim((string) $input['bio']), 0, 300) : null;
+            $statusMessage = isset($input['status_message']) && trim((string) $input['status_message']) !== ''
+                ? mb_substr(trim((string) $input['status_message']), 0, 120) : null;
+
             // Update profile (upsert with EXCLUDED — kept as verbatim prepared SQL)
             $db->preparedQuery("
-                INSERT INTO user_profiles (username, session_id, age, sex, location)
-                VALUES (:username, :session_id, :age, :sex, :location)
+                INSERT INTO user_profiles (username, session_id, age, sex, location, bio, status_message)
+                VALUES (:username, :session_id, :age, :sex, :location, :bio, :status_message)
                 ON CONFLICT (username, session_id)
                 DO UPDATE SET
                     age = EXCLUDED.age,
                     sex = EXCLUDED.sex,
-                    location = EXCLUDED.location
+                    location = EXCLUDED.location,
+                    bio = EXCLUDED.bio,
+                    status_message = EXCLUDED.status_message
             ", [
-                'username'   => $username,
-                'session_id' => $sessionId,
-                'age'        => $age,
-                'sex'        => $sex,
-                'location'   => $location,
+                'username'       => $username,
+                'session_id'     => $sessionId,
+                'age'            => $age,
+                'sex'            => $sex,
+                'location'       => $location,
+                'bio'            => $bio,
+                'status_message' => $statusMessage,
             ]);
 
             return Response::json([

@@ -1926,7 +1926,21 @@ class RadioChatBox {
         // Set current values
         profileNickname.value = this.username;
         profileError.textContent = '';
-        
+
+        // Pre-fill the bio/status from my own profile card (best-effort).
+        (async () => {
+            try {
+                const r = await fetch(`${this.apiUrl}/api/user-profile/card?username=${encodeURIComponent(this.username)}`);
+                const d = await r.json();
+                if (d && d.success && d.profile) {
+                    const bioEl = document.getElementById('profile-bio');
+                    const statusEl = document.getElementById('profile-status');
+                    if (bioEl && d.profile.bio) bioEl.value = d.profile.bio;
+                    if (statusEl && d.profile.status) statusEl.value = d.profile.status;
+                }
+            } catch (e) { /* best-effort */ }
+        })();
+
         // Check if user is authenticated (has userId from login)
         const isAuthenticated = !!this.userId;
         
@@ -2038,7 +2052,9 @@ class RadioChatBox {
                     displayName: displayName || null,
                     age: age,
                     sex: sex,
-                    location: location
+                    location: location,
+                    bio: (document.getElementById('profile-bio')?.value || '').trim(),
+                    status_message: (document.getElementById('profile-status')?.value || '').trim()
                 })
             });
 
@@ -2799,6 +2815,8 @@ class RadioChatBox {
             if (p.sex) bits.push(this.escapeHtml(p.sex));
             if (p.location) bits.push(this.escapeHtml(p.location));
             const meta = bits.length ? `<div class="profile-meta">${bits.join(' · ')}</div>` : '';
+            const statusHTML = p.status ? `<div class="profile-status">“${this.escapeHtml(p.status)}”</div>` : '';
+            const bioHTML = p.bio ? `<div class="profile-bio">${this.escapeHtml(p.bio)}</div>` : '';
             const since = p.first_seen ? new Date((p.first_seen + '').replace(' ', 'T')).toLocaleDateString() : null;
             const rank = p.rank
                 ? `<span class="profile-rank" style="background:${this.escapeHtml(p.rank.color)}1a; color:${this.escapeHtml(p.rank.color)};">${this.escapeHtml(p.rank.title)}</span>`
@@ -2811,6 +2829,8 @@ class RadioChatBox {
                         ${online} ${rank}
                     </div>
                 </div>
+                ${statusHTML}
+                ${bioHTML}
                 ${meta}
                 <div class="profile-stats">
                     <div><strong>${p.message_count || 0}</strong><span>messages</span></div>

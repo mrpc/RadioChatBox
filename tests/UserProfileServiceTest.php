@@ -83,4 +83,21 @@ class UserProfileServiceTest extends TestCase
     {
         $this->assertNull((new UserProfileService())->profile('  '));
     }
+
+    /** A saved bio + custom status surface on the profile card. */
+    public function testBioAndStatusSurface(): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO user_profiles (username, session_id, bio, status_message, created_at)
+             VALUES (?, ?, ?, ?, NOW())'
+        )->execute([$this->user, 'psess_' . bin2hex(random_bytes(4)), 'Radio lover from Athens', 'Vibing 🎧']);
+
+        try {
+            $p = (new UserProfileService())->profile($this->user);
+            $this->assertSame('Radio lover from Athens', $p['bio']);
+            $this->assertSame('Vibing 🎧', $p['status']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM user_profiles WHERE username = ?')->execute([$this->user]);
+        }
+    }
 }

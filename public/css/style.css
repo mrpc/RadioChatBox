@@ -4179,3 +4179,5 @@ textarea:focus-visible,
 /* ---- DM read receipts ---- */
 .dm-receipt { margin-left: 6px; font-size: 11px; color: #9ca3af; }
 .dm-receipt.seen { color: #3b82f6; }
+.profile-status { font-style: italic; color: #4b5563; margin-top: 10px; font-size: 14px; }
+.profile-bio { color: #374151; margin-top: 8px; font-size: 13px; white-space: pre-wrap; }

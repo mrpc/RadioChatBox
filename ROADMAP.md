@@ -270,8 +270,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 
 ### Enhanced User Profiles
 - [ ] Profile pictures/avatars (upload & resize)
-- [ ] Custom status messages
-- [ ] User bio/description
+- [x] Custom status messages — per-profile status shown on the profile card
+- [x] User bio/description — optional bio on the profile card (edited in Profile settings)
 - [x] Online status indicator — live online/offline in the profile card (fresh heartbeat)
 - [x] Message count statistics display — public message count in the user profile card
 - [x] User profile modal/page — click a username → profile card (`/api/user-profile/card`)

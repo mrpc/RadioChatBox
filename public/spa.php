@@ -152,6 +152,16 @@
                         <option value="">Select Country</option>
                     </select>
                 </div>
+
+                <div class="profile-info">
+                    <label>Status (optional)</label>
+                    <input type="text" id="profile-status" maxlength="120" placeholder="e.g. Listening in from Athens 🎧">
+                </div>
+
+                <div class="profile-info">
+                    <label>Bio (optional)</label>
+                    <textarea id="profile-bio" maxlength="300" rows="2" placeholder="A few words about you"></textarea>
+                </div>
             </div>
 
             <div id="profile-error" class="error-message"></div>
