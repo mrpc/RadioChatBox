@@ -838,13 +838,13 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### Accessibility (a11y)
 **Priority:** MEDIUM - Important for inclusivity
 
-- [ ] Screen reader support (ARIA labels)
+- [x] Screen reader support (ARIA labels) — aria-labels on controls + aria-live chat log (partial, ongoing)
 - [ ] Keyboard navigation improvements
-- [ ] Focus indicators
+- [x] Focus indicators — visible :focus-visible outlines on interactive elements
 - [ ] Color contrast compliance (WCAG 2.1 AA)
 - [ ] Font size adjustments
 - [ ] High contrast mode
-- [ ] Reduced motion mode
+- [x] Reduced motion mode — honours prefers-reduced-motion (animations/transitions disabled)
 - [ ] Alt text for images
 - [ ] Skip to content links
 

@@ -204,8 +204,8 @@
                         💬
                         <span id="unread-badge" class="badge" style="display: none;">0</span>
                     </button>
-                    <button id="schedule-toggle" class="icon-button" title="Show schedule">📅</button>
-                    <button id="search-toggle" class="icon-button" title="Search messages">🔍</button>
+                    <button id="schedule-toggle" class="icon-button" title="Show schedule" aria-label="Show schedule">📅</button>
+                    <button id="search-toggle" class="icon-button" title="Search messages" aria-label="Search messages">🔍</button>
                     <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
                     <button id="change-nickname" class="icon-button" title="Profile & Settings">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -259,7 +259,7 @@
                 <!-- Message search overlay (toggled from the header 🔍) -->
                 <div id="search-panel" style="display: none;">
                     <div class="search-bar">
-                        <input type="text" id="search-input" placeholder="Search public messages…" autocomplete="off">
+                        <input type="text" id="search-input" placeholder="Search public messages…" autocomplete="off" aria-label="Search public messages">
                         <button id="search-close" class="icon-button" title="Close search">✕</button>
                     </div>
                     <div id="search-results"></div>
@@ -274,7 +274,7 @@
                     <button id="block-user-btn" class="btn btn-block" style="display: none;">🚫 Block</button>
                     <button id="back-to-public" class="btn">← Back to Public Chat</button>
                 </div>
-                <div id="messages"></div>
+                <div id="messages" role="log" aria-live="polite" aria-label="Chat messages"></div>
                 <button id="scroll-to-bottom" title="Scroll to bottom">↓</button>
             </div>
 
