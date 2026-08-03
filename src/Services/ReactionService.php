@@ -109,6 +109,15 @@ class ReactionService
                 'emoji'         => $emoji,
                 'message_id'    => $messageId,
             ]);
+
+            // Persist it to the author's notification inbox (history + unread).
+            (new NotificationService())->add(
+                $author,
+                'reaction',
+                "{$reactor} reacted {$emoji} to your message",
+                null,
+                $messageId
+            );
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('ReactionService::notifyAuthorOfReaction failed: ' . $e->getMessage(), 'radiochatbox');

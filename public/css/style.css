@@ -4213,3 +4213,19 @@ body.dark-mode #schedule-list .sched-item:hover { background: #1e293b; }
 body.dark-mode .pinned-bar { background: #1e293b; color: #e5e7eb; }
 body.dark-mode .icon-button { color: #cbd5e1; }
 body.dark-mode .system-message { color: #94a3b8; }
+
+/* ---- Notifications inbox overlay ---- */
+#notifications-panel {
+    background: #fff; border-bottom: 1px solid #e5e7eb; padding: 10px 12px;
+    max-height: 55%; display: flex; flex-direction: column; overflow: hidden;
+}
+#notifications-panel .search-bar { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+#notifications-list { overflow-y: auto; }
+#notifications-list .notif-item { padding: 8px 10px; border-radius: 8px; border-left: 3px solid transparent; }
+#notifications-list .notif-item.unread { background: #eef2ff; border-left-color: #6366f1; }
+#notifications-list .notif-item[onclick] { cursor: pointer; }
+#notifications-list .notif-title { font-size: 13px; color: #374151; }
+#notifications-list .notif-body { font-size: 12px; color: #6b7280; margin-top: 2px; }
+#notifications-list .notif-when { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+body.dark-mode #notifications-panel { background:#111827; color:#e5e7eb; border-color:#1f2937; }
+body.dark-mode #notifications-list .notif-item.unread { background:#1e293b; }

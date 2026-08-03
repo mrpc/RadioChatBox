@@ -227,6 +227,7 @@
                         💬
                         <span id="unread-badge" class="badge" style="display: none;">0</span>
                     </button>
+                    <button id="notifications-toggle" class="icon-button" title="Notifications" aria-label="Notifications" style="position:relative;">📥<span id="notif-badge" class="badge" style="display:none;">0</span></button>
                     <button id="schedule-toggle" class="icon-button" title="Show schedule" aria-label="Show schedule">📅</button>
                     <button id="search-toggle" class="icon-button" title="Search messages" aria-label="Search messages">🔍</button>
                     <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
@@ -279,6 +280,15 @@
                     </div>
                     <div id="schedule-list"></div>
                     <div id="shoutouts-block"></div>
+                </div>
+                <!-- Notifications inbox overlay (toggled from the header 📥) -->
+                <div id="notifications-panel" style="display: none;">
+                    <div class="search-bar">
+                        <strong style="flex:1;">🔔 Notifications</strong>
+                        <button id="notif-mark-all" class="icon-button" title="Mark all read" style="font-size:12px;">Mark all read</button>
+                        <button id="notifications-close" class="icon-button" title="Close">✕</button>
+                    </div>
+                    <div id="notifications-list"></div>
                 </div>
                 <!-- Message search overlay (toggled from the header 🔍) -->
                 <div id="search-panel" style="display: none;">

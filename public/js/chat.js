@@ -2259,6 +2259,9 @@ class RadioChatBox {
             document.body.classList.add('dark-mode');
         }
 
+        // Initial unread-notification count for the header badge.
+        this.refreshNotificationCount();
+
         // Photo upload elements
         this.photoButton = document.getElementById('photo-button');
         this.photoInput = document.getElementById('photo-input');
@@ -2380,6 +2383,14 @@ class RadioChatBox {
             soundBtn.addEventListener('click', () => this.toggleSound());
             this.updateSoundButton();
         }
+
+        // Notifications inbox
+        const notifBtn = document.getElementById('notifications-toggle');
+        if (notifBtn) notifBtn.addEventListener('click', () => this.toggleNotifications());
+        const notifClose = document.getElementById('notifications-close');
+        if (notifClose) notifClose.addEventListener('click', () => this.toggleNotifications(false));
+        const notifMarkAll = document.getElementById('notif-mark-all');
+        if (notifMarkAll) notifMarkAll.addEventListener('click', () => this.markAllNotificationsRead());
 
         // Show schedule
         const scheduleBtn = document.getElementById('schedule-toggle');
@@ -2881,6 +2892,70 @@ class RadioChatBox {
                     ${since ? `<div><strong>${this.escapeHtml(since)}</strong><span>first seen</span></div>` : ''}
                 </div>`;
         } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading profile.</p>'; }
+    }
+
+    // ---- Notifications inbox ----------------------------------------
+
+    /** Fetch the unread count and update the header badge. */
+    async refreshNotificationCount() {
+        if (!this.username || !this.sessionId) return;
+        try {
+            const r = await fetch(`${this.apiUrl}/api/notifications?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}&unread_only=1`);
+            if (!r.ok) return;
+            const d = await r.json();
+            this.updateNotifBadge((d && d.unread_count) || 0);
+        } catch (e) { /* best-effort */ }
+    }
+
+    updateNotifBadge(count) {
+        const badge = document.getElementById('notif-badge');
+        if (!badge) return;
+        if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = ''; }
+        else { badge.style.display = 'none'; }
+    }
+
+    toggleNotifications(force) {
+        const panel = document.getElementById('notifications-panel');
+        if (!panel) return;
+        const show = force === undefined ? panel.style.display === 'none' : force;
+        panel.style.display = show ? 'flex' : 'none';
+        if (show) this.loadNotifications();
+    }
+
+    async loadNotifications() {
+        const box = document.getElementById('notifications-list');
+        if (!box) return;
+        box.innerHTML = '<div class="search-empty">Loading…</div>';
+        try {
+            const r = await fetch(`${this.apiUrl}/api/notifications?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
+            if (!r.ok) { box.innerHTML = '<div class="search-empty">Could not load notifications.</div>'; return; }
+            const d = await r.json();
+            const items = (d && d.notifications) || [];
+            this.updateNotifBadge(d.unread_count || 0);
+            if (!items.length) { box.innerHTML = '<div class="search-empty">No notifications yet.</div>'; return; }
+            box.innerHTML = items.map(n => {
+                const when = n.created_at ? new Date((n.created_at + '').replace(' ', 'T')).toLocaleString() : '';
+                const unread = !(n.is_read === true || n.is_read === 't');
+                const jump = n.link ? ` onclick="window.chatBox.jumpToMessage('${this.escapeHtml(String(n.link))}')"` : '';
+                return `<div class="notif-item${unread ? ' unread' : ''}"${jump}>
+                        <div class="notif-title">${this.escapeHtml(n.title)}</div>
+                        ${n.body ? `<div class="notif-body">${this.escapeHtml(n.body)}</div>` : ''}
+                        <div class="notif-when">${this.escapeHtml(when)}</div>
+                    </div>`;
+            }).join('');
+        } catch (e) { box.innerHTML = '<div class="search-empty">Error loading notifications.</div>'; }
+    }
+
+    async markAllNotificationsRead() {
+        try {
+            await fetch(`${this.apiUrl}/api/notifications/read`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId }),
+            });
+            this.updateNotifBadge(0);
+            this.loadNotifications();
+        } catch (e) { /* best-effort */ }
     }
 
     // ---- Show schedule ----------------------------------------------
@@ -5579,6 +5654,8 @@ class RadioChatBox {
         if (messageData && messageData.type === 'reaction_notification') {
             if (messageData.to_username === this.username && messageData.from_username !== this.username) {
                 this.showReactionNotification(messageData.from_username, messageData.emoji);
+                // A persistent notification was also written server-side — refresh the badge.
+                this.refreshNotificationCount();
             }
             return;
         }

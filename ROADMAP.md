@@ -358,8 +358,8 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Notification preferences per user — DND + reaction-toast toggles in Profile settings (persisted)
 - [x] Sound/visual notification settings — master sound toggle + DND + reaction-toast prefs
 - [x] Do Not Disturb mode — suppresses all sounds, toasts and title cues (client pref)
-- [ ] Notification history
-- [ ] Mark notifications as read/unread
+- [x] Notification history — persistent per-user inbox (`user_notifications`) + 📥 bell overlay
+- [x] Mark notifications as read/unread — per-item + mark-all-read (`/api/notifications/read`)
 - [ ] Notification grouping
 - [ ] Custom notification sounds
 
