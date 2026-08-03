@@ -375,6 +375,35 @@ final class AdminSystemController
     }
 
     /**
+     * GET /api/admin/user-data-export?username= — a GDPR-style data export for a
+     * user: everything the app stores about them, as a downloadable JSON file.
+     * Admin-only. 400 when username is missing.
+     */
+    #[Route('/api/admin/user-data-export', methods: 'GET', name: 'admin.system.user-data-export', middleware: [AdminAuthMiddleware::class])]
+    public function userDataExport(): Response
+    {
+        try {
+            $username = trim((string) Request::getInstance()->get('username', '', 'get'));
+            if ($username === '') {
+                return Response::json(['error' => 'username is required'], 400);
+            }
+            $data = (new \RadioChatBox\Services\UserDataExportService())->export($username);
+            $data['generated_at'] = date('c');
+
+            $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $safe = preg_replace('/[^A-Za-z0-9_-]/', '_', $username);
+            return Response::make((string) $json)
+                ->withHeader('Content-Type', 'application/json; charset=utf-8')
+                ->withHeader('Content-Disposition', 'attachment; filename="user-data-' . $safe . '.json"');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminSystemController::userDataExport failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/message-edits?message_id= — the edit history of a public
      * message (previous versions, newest first) plus its current text. Admin-only.
      * 200 {success, current, edits}; missing id -> 400.

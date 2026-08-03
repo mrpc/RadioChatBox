@@ -8188,10 +8188,12 @@
                     const user = data.user;
                     const pagination = data.pagination;
                     document.getElementById('user-details-name').textContent = username;
-                    
-                    let profileHtml = '';
+
+                    let profileHtml = `<div style="margin-bottom:12px;">
+                        <button class="btn btn-outline btn-sm" onclick="downloadCsv('/api/admin/user-data-export?username=' + encodeURIComponent('${escapeHtml(username).replace(/'/g, "\\'")}'), 'user-data-${escapeHtml(username).replace(/[^A-Za-z0-9_-]/g, '_')}.json')">⬇️ Export data (GDPR)</button>
+                    </div>`;
                     if (user.profile) {
-                        profileHtml = `
+                        profileHtml += `
                             <h3>Profile</h3>
                             <p><strong>Age:</strong> ${escapeHtml(user.profile.age || 'N/A')}</p>
                             <p><strong>Sex:</strong> ${escapeHtml(user.profile.sex || 'N/A')}</p>
