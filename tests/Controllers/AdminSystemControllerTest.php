@@ -195,6 +195,19 @@ class AdminSystemControllerTest extends TestCase
         }
     }
 
+    /** GET /api/admin/migrations lists applied migrations from schemaversion. */
+    public function testMigrationsListsAppliedMigrations(): void
+    {
+        $response = (new AdminSystemController())->migrations();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertIsArray($body['migrations']);
+        // The baseline schema migration is always present after bootstrap.
+        $keys = array_map(fn ($m) => $m['key'], $body['migrations']);
+        $this->assertContains('create_schema', $keys);
+    }
+
     /**
      * GET /api/admin/photos with the default list action returns success=true, a
      * photos array and the pagination block.

@@ -375,6 +375,37 @@ final class AdminSystemController
     }
 
     /**
+     * GET /api/admin/migrations — the applied database migrations (from the
+     * framework `schemaversion` history table), newest first. Admin-only. 200
+     * {success, migrations}.
+     */
+    #[Route('/api/admin/migrations', methods: 'GET', name: 'admin.system.migrations', middleware: [AdminAuthMiddleware::class])]
+    public function migrations(): Response
+    {
+        try {
+            $db = Database::getInstance();
+            $result = $db->query(
+                'SELECT "key", "when", "scope", "batch", "execution_time", "result", "error_message"
+                 FROM schemaversion
+                 ORDER BY "when" DESC NULLS LAST, "key" DESC
+                 LIMIT 200'
+            );
+            $rows = $result ? $result->fetchAll() : [];
+
+            return Response::json([
+                'success'    => true,
+                'migrations' => $rows,
+                'count'      => count($rows),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminSystemController::migrations failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/user-data-export?username= — a GDPR-style data export for a
      * user: everything the app stores about them, as a downloadable JSON file.
      * Admin-only. 400 when username is missing.

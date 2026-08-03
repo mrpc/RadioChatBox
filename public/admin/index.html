@@ -3298,6 +3298,15 @@
                 </div>
 
                 <div class="section">
+                    <div class="section-header">
+                        <h2>Database Migrations</h2>
+                        <button class="btn btn-outline" onclick="loadMigrations()">🔄 Refresh</button>
+                    </div>
+                    <p style="margin-bottom: 10px; color: #6b7280;">Applied schema migrations (newest first).</p>
+                    <div id="migrations-table"></div>
+                </div>
+
+                <div class="section">
                     <h2>Embed Code</h2>
                     <p style="margin-bottom: 10px; color: #6b7280;">Copy this code to embed the chat on your website:</p>
                     
@@ -8684,7 +8693,33 @@
             }));
         }
 
+        async function loadMigrations() {
+            const box = document.getElementById('migrations-table');
+            if (!box) return;
+            box.innerHTML = '<div style="color:#6b7280;padding:8px;">Loading…</div>';
+            try {
+                const res = await fetch('/api/admin/migrations', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = '<p style="color:#ef4444;">Failed to load.</p>'; return; }
+                const rows = data.migrations || [];
+                if (!rows.length) { box.innerHTML = '<p style="color:#6b7280;">No migrations recorded.</p>'; return; }
+                box.innerHTML = `<div style="max-height:320px; overflow:auto;"><table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead><tr style="text-align:left; color:#6b7280;"><th style="padding:6px 8px;">Migration</th><th style="padding:6px 8px;">When</th><th style="padding:6px 8px;">Scope</th><th style="padding:6px 8px;">Result</th></tr></thead>
+                    <tbody>${rows.map(m => {
+                        const ok = Number(m.result) === 1;
+                        const when = m.when ? new Date((m.when+'').replace(' ','T')).toLocaleString() : '';
+                        return `<tr style="border-top:1px solid #f0f0f0;">
+                            <td style="padding:6px 8px;"><code>${escapeHtml(m.key)}</code></td>
+                            <td style="padding:6px 8px;">${escapeHtml(when)}</td>
+                            <td style="padding:6px 8px;">${escapeHtml(m.scope || 'app')}</td>
+                            <td style="padding:6px 8px;">${ok ? '✅' : '<span style="color:#ef4444;" title="' + escapeHtml(m.error_message || 'failed') + '">❌</span>'}</td>
+                        </tr>`;
+                    }).join('')}</tbody></table></div>`;
+            } catch (e) { box.innerHTML = '<p style="color:#ef4444;">Error loading migrations.</p>'; }
+        }
+
         async function loadSettings() {
+            loadMigrations();
             try {
                 const response = await fetch('/api/admin/settings', {
                     headers: { 'Authorization': `Bearer ${authToken}` }

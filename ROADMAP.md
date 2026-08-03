@@ -71,8 +71,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Automatic migration execution on deployment (auto-migrate on request/console)
 - [x] Rollback capability for failed migrations — **native**: `migrate:rollback`,
       `migrate:reset`, `migrate:refresh`, `migrate:logs`, `Migration::down()`
-- [ ] Migration status dashboard in admin panel — CLI `migrate:status` exists;
-      admin-panel dashboard not yet
+- [x] Migration status dashboard in admin panel — Settings tab lists applied migrations (`/api/admin/migrations`)
 - [x] Database schema versioning
 - [ ] Migration testing in staging environment — covered in CI by the isolated
       test DB (two-phase build in `tests/bootstrap.php`); no separate staging step
