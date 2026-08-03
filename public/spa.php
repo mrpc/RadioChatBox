@@ -108,6 +108,7 @@
                 <div id="login-error" class="error-message"></div>
                 <button id="login-submit">Login & Join Chat</button>
                 <button id="login-passkey-btn" type="button" style="margin-top:8px; background:transparent; border:1px solid #667eea; color:#667eea;">🔑 Sign in with a passkey</button>
+                <div style="margin-top:8px; text-align:center;"><a href="#" id="forgot-password-link" style="font-size:13px; color:#667eea;">Forgot password?</a></div>
             </div>
 
             <!-- Register Form (shown only when self-registration is enabled) -->
@@ -119,6 +120,21 @@
                 <input type="password" id="register-password2-input" placeholder="Confirm password" autocomplete="new-password" required>
                 <div id="register-error" class="error-message"></div>
                 <button id="register-submit">Create account & Join</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Reset Modal (shown when the page is opened with ?reset=<token>) -->
+    <div id="reset-modal" class="modal">
+        <div class="modal-content">
+            <h2>Reset your password</h2>
+            <p>Choose a new password for your account.</p>
+            <input type="password" id="reset-password-input" placeholder="New password (min 8 chars)" autocomplete="new-password">
+            <input type="password" id="reset-password2-input" placeholder="Confirm new password" autocomplete="new-password">
+            <div id="reset-error" class="error-message"></div>
+            <div class="modal-buttons">
+                <button id="reset-submit" class="btn-primary">Reset password</button>
+                <button id="reset-cancel" class="btn-secondary">Cancel</button>
             </div>
         </div>
     </div>

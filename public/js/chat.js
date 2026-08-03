@@ -1864,6 +1864,21 @@ class RadioChatBox {
             };
         }
 
+        // Forgot password → prompt for an identifier and request a reset link.
+        const forgotLink = document.getElementById('forgot-password-link');
+        if (forgotLink) forgotLink.onclick = async (e) => {
+            e.preventDefault();
+            const id = prompt('Enter your username or email:', (loginUsernameInput && loginUsernameInput.value) || '');
+            if (!id) return;
+            try {
+                await fetch(`${this.apiUrl}/api/password/forgot`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: id.trim() }),
+                });
+            } catch (err) { /* ignore */ }
+            alert('If an account matches, a password-reset link has been sent to its email.');
+        };
+
         // Passkey (passwordless) sign-in. Hide the button where WebAuthn is absent.
         const loginPasskeyBtn = document.getElementById('login-passkey-btn');
         if (loginPasskeyBtn) {
@@ -1921,6 +1936,44 @@ class RadioChatBox {
             const el = document.getElementById(id);
             if (el) el.onkeypress = (e) => { if (e.key === 'Enter') submitRegister(); };
         });
+
+        // Password-reset flow: if the page was opened from a reset link (?reset=…),
+        // show the reset modal.
+        this._initPasswordReset();
+    }
+
+    _initPasswordReset() {
+        const modal = document.getElementById('reset-modal');
+        if (!modal) return;
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('reset');
+        const cancel = document.getElementById('reset-cancel');
+        const submit = document.getElementById('reset-submit');
+        const err = document.getElementById('reset-error');
+        const clearParam = () => {
+            const url = new URL(window.location.href); url.searchParams.delete('reset');
+            window.history.replaceState({}, '', url.toString());
+        };
+        if (cancel) cancel.onclick = () => { modal.style.display = 'none'; clearParam(); };
+        if (submit) submit.onclick = async () => {
+            err.textContent = '';
+            const p1 = document.getElementById('reset-password-input').value;
+            const p2 = document.getElementById('reset-password2-input').value;
+            if (p1.length < 8) { err.textContent = 'Password must be at least 8 characters'; return; }
+            if (p1 !== p2) { err.textContent = 'Passwords do not match'; return; }
+            try {
+                const r = await fetch(`${this.apiUrl}/api/password/reset`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, password: p1, password_confirm: p2 }),
+                });
+                const d = await r.json();
+                if (!d.success) { err.textContent = d.error || 'Could not reset password'; return; }
+                modal.style.display = 'none';
+                clearParam();
+                alert('Your password has been reset. Please log in with your new password.');
+            } catch (e) { err.textContent = 'Error resetting password.'; }
+        };
+        if (token) modal.style.display = 'flex';
     }
     
     async loginAndJoin(username, password, code = '') {

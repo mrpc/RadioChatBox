@@ -2712,6 +2712,11 @@
                             <label>Passkey allowed origins (comma-separated, optional)</label>
                             <input type="text" id="setting-passkey-origins" placeholder="https://livechats.gr">
                         </div>
+                        <div class="form-group">
+                            <label>Transactional email "From" address</label>
+                            <input type="email" id="setting-mail-from" placeholder="no-reply@livechats.gr">
+                            <small style="color:#6b7280;">Used for password-reset emails. Requires a configured mailer.</small>
+                        </div>
                         <div class="form-group" id="setting-minimum-users-group">
                             <label>Minimum Users (Fake Users Feature)</label>
                             <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
@@ -8790,6 +8795,7 @@
                     document.getElementById('setting-self-registration-enabled').checked = settings.self_registration_enabled === 'true';
                     document.getElementById('setting-passkey-rp-id').value = settings.passkey_rp_id || '';
                     document.getElementById('setting-passkey-origins').value = settings.passkey_origins || '';
+                    document.getElementById('setting-mail-from').value = settings.mail_from || '';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
                     document.getElementById('setting-gif-provider').value = settings.gif_provider || 'giphy';
@@ -9267,6 +9273,7 @@
                 self_registration_enabled: document.getElementById('setting-self-registration-enabled').checked ? 'true' : 'false',
                 passkey_rp_id: document.getElementById('setting-passkey-rp-id').value,
                 passkey_origins: document.getElementById('setting-passkey-origins').value,
+                mail_from: document.getElementById('setting-mail-from').value,
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
                 gif_provider: document.getElementById('setting-gif-provider').value,

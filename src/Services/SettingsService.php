@@ -41,6 +41,8 @@ class SettingsService
         'chat_mode',
         // Public account self-registration (username/password/email).
         'self_registration_enabled',
+        // From-address for transactional email (password reset, etc).
+        'mail_from',
         // WebAuthn passkeys: RP id (effective domain) + allowed origins.
         'passkey_rp_id',
         'passkey_origins',

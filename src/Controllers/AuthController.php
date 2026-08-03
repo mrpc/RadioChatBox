@@ -214,6 +214,126 @@ final class AuthController
     }
 
     /**
+     * POST /api/password/forgot — {identifier}. Starts a password reset: finds the
+     * account by username OR email and, if found, issues a single-use token and
+     * emails the reset link. Always returns a generic success (never reveals
+     * whether an account exists). 200 {success, message}.
+     */
+    #[Route('/api/password/forgot', methods: 'POST', name: 'auth.password.forgot')]
+    public function forgotPassword(): Response
+    {
+        $generic = Response::json([
+            'success' => true,
+            'message' => 'If an account matches, a reset link has been sent.',
+        ]);
+        try {
+            $identifier = trim((string) ($_POST['identifier'] ?? $_POST['username'] ?? $_POST['email'] ?? ''));
+            if ($identifier === '') {
+                return $generic;
+            }
+
+            $row = Database::getInstance()->preparedQuery(
+                'SELECT userid, username, email FROM users
+                 WHERE (LOWER(username) = LOWER(:id) OR LOWER(email) = LOWER(:id)) AND is_active = TRUE
+                 LIMIT 1',
+                ['id' => $identifier]
+            );
+            $user = ($row && $row->numRows > 0) ? $row->fields : null;
+            if ($user === null || empty($user['email'])) {
+                // No account, or no email on file to send to → generic response.
+                return $generic;
+            }
+
+            $token = (new \RadioChatBox\Services\PasswordResetService())->issue((int) $user['userid']);
+            $this->sendResetEmail((string) $user['email'], (string) $user['username'], $token);
+
+            return $generic;
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AuthController::forgotPassword failed: ' . $e->getMessage(), 'radiochatbox');
+            return $generic; // never leak internal state on this endpoint
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/password/reset — {token, password, password_confirm}. Sets a new
+     * password for the account the token belongs to and consumes the token. 200
+     * {success}; bad/expired token -> 400; weak/mismatched password -> 400.
+     */
+    #[Route('/api/password/reset', methods: 'POST', name: 'auth.password.reset')]
+    public function resetPassword(): Response
+    {
+        try {
+            $token = trim((string) ($_POST['token'] ?? ''));
+            $password = (string) ($_POST['password'] ?? '');
+            $confirm = (string) ($_POST['password_confirm'] ?? $password);
+
+            if ($token === '') {
+                return Response::json(['error' => 'A reset token is required'], 400);
+            }
+            if (strlen($password) < 8) {
+                return Response::json(['error' => 'Password must be at least 8 characters'], 400);
+            }
+            if ($password !== $confirm) {
+                return Response::json(['error' => 'Passwords do not match'], 400);
+            }
+
+            $service = new \RadioChatBox\Services\PasswordResetService();
+            $userId = $service->resolve($token);
+            if ($userId === null) {
+                return Response::json(['error' => 'This reset link is invalid or has expired'], 400);
+            }
+
+            $result = (new UserService())->updateUser($userId, ['password' => $password]);
+            if (empty($result['success'])) {
+                return Response::json(['error' => $result['error'] ?? 'Could not update password'], 400);
+            }
+            $service->consume($token);
+
+            return Response::json(['success' => true, 'message' => 'Your password has been reset — you can now log in.']);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AuthController::resetPassword failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * Email a password-reset link. Best-effort: a missing/failed mailer must not
+     * change the caller's generic response (and the token still exists).
+     */
+    private function sendResetEmail(string $to, string $username, string $token): void
+    {
+        try {
+            $settings = new \RadioChatBox\Services\SettingsService();
+            $base = rtrim((string) ($settings->get('siteurl') ?: ($_SERVER['HTTP_ORIGIN'] ?? '')), '/');
+            $link = ($base !== '' ? $base : '') . '/?reset=' . urlencode($token);
+            $brand = (string) ($settings->get('brand_name') ?: ($settings->get('site_title') ?: 'RadioChatBox'));
+
+            $body = '<p>Hi ' . htmlspecialchars($username) . ',</p>'
+                . '<p>We received a request to reset your ' . htmlspecialchars($brand) . ' password. '
+                . 'Click the link below to choose a new one (valid for 1 hour):</p>'
+                . '<p><a href="' . htmlspecialchars($link) . '">' . htmlspecialchars($link) . '</a></p>'
+                . '<p>If you did not request this, you can safely ignore this email.</p>';
+
+            $email = \Pramnos\Email\Email::getInstance();
+            $email->setTo($to);
+            $email->setSubject($brand . ' — password reset');
+            $email->setBody($body);
+            $from = (string) $settings->get('mail_from', '');
+            if ($from !== '') {
+                $email->setFrom($from);
+            }
+            $email->send();
+        } catch (\Throwable $e) {
+            // Delivery is best-effort; the reset token is already persisted.
+            \Pramnos\Logs\Logger::log('password reset email failed (token still valid): ' . $e->getMessage(), 'radiochatbox');
+        }
+    }
+
+    /**
      * POST /api/logout — end a chat session.
      *
      * Replaces public/api/logout.php. Empty/invalid body -> 400 "Invalid JSON";
