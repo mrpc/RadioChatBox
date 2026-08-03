@@ -4239,3 +4239,17 @@ body.dark-mode #notifications-list .notif-item.unread { background:#1e293b; }
     text-decoration: none; transition: top .15s ease;
 }
 .skip-to-content:focus { top: 0; }
+
+/* ==== High contrast mode (a11y) ==== */
+body.high-contrast { }
+body.high-contrast .message { border: 2px solid #000; box-shadow: none; }
+body.high-contrast .message-username { color: #0000cc; }
+body.high-contrast .message-time { color: #222; }
+body.high-contrast #chat-header,
+body.high-contrast #sidebar { border: 2px solid #000; }
+body.high-contrast .icon-button,
+body.high-contrast button { border: 1px solid #000; }
+body.high-contrast a { text-decoration: underline; }
+body.high-contrast #message-input { border: 2px solid #000; }
+body.high-contrast.dark-mode .message { border-color: #fff; }
+body.high-contrast.dark-mode .message-username { color: #7dd3fc; }

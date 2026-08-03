@@ -842,7 +842,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [x] Focus indicators — visible :focus-visible outlines on interactive elements
 - [ ] Color contrast compliance (WCAG 2.1 AA)
 - [ ] Font size adjustments
-- [ ] High contrast mode
+- [x] High contrast mode — a11y toggle (stronger borders/colours), persisted; composes with dark mode
 - [x] Reduced motion mode — honours prefers-reduced-motion (animations/transitions disabled)
 - [ ] Alt text for images
 - [x] Skip to content links — keyboard skip-to-messages link (focus-revealed)

@@ -1957,6 +1957,14 @@ class RadioChatBox {
             darkEl.checked = document.body.classList.contains('dark-mode');
             darkEl.onchange = () => this.setDarkMode(darkEl.checked);
         }
+        const hcEl = document.getElementById('pref-high-contrast');
+        if (hcEl) {
+            hcEl.checked = document.body.classList.contains('high-contrast');
+            hcEl.onchange = () => {
+                document.body.classList.toggle('high-contrast', hcEl.checked);
+                localStorage.setItem('chatHighContrast', hcEl.checked ? 'true' : 'false');
+            };
+        }
 
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
@@ -2254,9 +2262,12 @@ class RadioChatBox {
         // from my feed (blocking is otherwise DM-only). Re-applies once resolved.
         this.loadBlockedUsers();
 
-        // Ensure the saved dark-mode preference is applied (body is ready here).
+        // Ensure the saved dark-mode / high-contrast preferences are applied.
         if (localStorage.getItem('chatDarkMode') === 'true') {
             document.body.classList.add('dark-mode');
+        }
+        if (localStorage.getItem('chatHighContrast') === 'true') {
+            document.body.classList.add('high-contrast');
         }
 
         // Initial unread-notification count for the header badge.
