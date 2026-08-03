@@ -121,6 +121,23 @@ class ReportServiceTest extends TestCase
         }
     }
 
+    /** An anonymous report stores the flag (and still keeps the reporter for audit). */
+    public function testAnonymousReportStoresFlag(): void
+    {
+        $id = $this->svc()->create('secret_reporter', null, null, 'public', 'baddy', 'spam', null, null, true);
+        $this->ids[] = $id;
+
+        $row = $this->svc()->find($id);
+        $this->assertTrue((bool) $row['is_anonymous']);
+        // Reporter is still recorded internally (for abuse-of-report detection).
+        $this->assertSame('secret_reporter', $row['reporter_username']);
+
+        // A normal report defaults to not anonymous.
+        $id2 = $this->svc()->create('open_reporter', null, null, 'public', 'baddy', 'spam');
+        $this->ids[] = $id2;
+        $this->assertFalse((bool) $this->svc()->find($id2)['is_anonymous']);
+    }
+
     /** resolutionStats() counts handled reports and averages time-to-resolution. */
     public function testResolutionStatsCountsHandled(): void
     {

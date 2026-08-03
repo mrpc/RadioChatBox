@@ -104,7 +104,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Report user/message functionality (message reports MVP)
 - [x] Report submission form with reason selection
 - [x] Report categories (spam, harassment, inappropriate, offensive, impersonation, other)
-- [ ] Reporter anonymity option
+- [x] Reporter anonymity option — 'Report anonymously' checkbox; admin queue shows 🕵️ anonymous (reporter kept for audit)
 - [x] Dedicated admin reports panel
 - [x] Pending reports queue with filtering (status filter)
 - [x] Report details view (reporter, reported user, content, history) — admin modal via `/api/admin/reports/details` (report + reported-user history)

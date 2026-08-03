@@ -49,7 +49,8 @@ class ReportService
         ?string $reportedUsername,
         string $reason,
         ?string $details = null,
-        ?string $contentSnapshot = null
+        ?string $contentSnapshot = null,
+        bool $anonymous = false
     ): int {
         $reporterUsername = trim($reporterUsername);
         if ($reporterUsername === '') {
@@ -69,6 +70,7 @@ class ReportService
             'reason'              => $reason,
             'details'             => ($details !== null && trim($details) !== '') ? mb_substr(trim($details), 0, 1000) : null,
             'content_snapshot'    => ($contentSnapshot !== null && $contentSnapshot !== '') ? mb_substr($contentSnapshot, 0, 2000) : null,
+            'is_anonymous'        => $anonymous,
         ]);
 
         return ($result && isset($result->fields['id'])) ? (int) $result->fields['id'] : 0;

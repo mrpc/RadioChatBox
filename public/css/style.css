@@ -4181,3 +4181,4 @@ textarea:focus-visible,
 .dm-receipt.seen { color: #3b82f6; }
 .profile-status { font-style: italic; color: #4b5563; margin-top: 10px; font-size: 14px; }
 .profile-bio { color: #374151; margin-top: 8px; font-size: 13px; white-space: pre-wrap; }
+.report-menu .report-anon { display:flex; align-items:center; gap:6px; padding:6px 10px; font-size:12px; color:#6b7280; border-top:1px solid #eee; cursor:pointer; }

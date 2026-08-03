@@ -54,7 +54,8 @@ class ReportController
                 isset($input['reported_username']) ? (string) $input['reported_username'] : null,
                 $reason,
                 isset($input['details']) ? (string) $input['details'] : null,
-                isset($input['content_snapshot']) ? (string) $input['content_snapshot'] : null
+                isset($input['content_snapshot']) ? (string) $input['content_snapshot'] : null,
+                isset($input['anonymous']) && in_array(strtolower((string) $input['anonymous']), ['1', 'true', 'on', 'yes'], true)
             );
 
             // Auto-moderation: a new report may push the reported user over the

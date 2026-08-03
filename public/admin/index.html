@@ -9767,7 +9767,7 @@
                                     <td>${new Date(r.created_at).toLocaleString()}</td>
                                     <td><span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:12px;">${escapeHtml(REPORT_REASON_LABELS[r.reason] || r.reason)}</span></td>
                                     <td>${reportedLink}</td>
-                                    <td>${escapeHtml(r.reporter_username || '-')}</td>
+                                    <td>${(r.is_anonymous === true || r.is_anonymous === 't') ? '<span title="Reported anonymously" style="color:#6b7280;">🕵️ anonymous</span>' : escapeHtml(r.reporter_username || '-')}</td>
                                     <td style="max-width:280px;">${content}${details}<div style="margin-top:6px;"><a href="#" onclick="openReportDetails(${r.id}); return false;" style="font-size:12px;">🔍 Details</a></div></td>
                                     <td><span style="font-size:11px;color:#6b7280;">${escapeHtml(r.message_type)}</span></td>
                                     ${actions}
@@ -9849,7 +9849,7 @@
                     ${row('When', new Date(r.created_at).toLocaleString())}
                     ${row('Reason', `<span style="padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;">${escapeHtml(reasonLabel)}</span>`)}
                     ${row('Reported user', escapeHtml(r.reported_username || '-'))}
-                    ${row('Reporter', escapeHtml(r.reporter_username || '-'))}
+                    ${row('Reporter', (r.is_anonymous === true || r.is_anonymous === 't') ? '🕵️ anonymous' : escapeHtml(r.reporter_username || '-'))}
                     ${row('Type', escapeHtml(r.message_type || '-'))}
                     ${row('Status', escapeHtml(r.status || '-') + (r.resolved_by ? ' by ' + escapeHtml(r.resolved_by) : ''))}
                     ${r.details ? row('Note from reporter', '“' + escapeHtml(r.details) + '”') : ''}

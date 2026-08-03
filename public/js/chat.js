@@ -4951,7 +4951,8 @@ class RadioChatBox {
         const menu = document.createElement('div');
         menu.className = 'report-menu';
         menu.innerHTML = '<div class="report-menu-title">Report message</div>'
-            + reasons.map(([v, l]) => `<button class="report-option" data-reason="${v}">${this.escapeHtml(l)}</button>`).join('');
+            + reasons.map(([v, l]) => `<button class="report-option" data-reason="${v}">${this.escapeHtml(l)}</button>`).join('')
+            + '<label class="report-anon"><input type="checkbox" class="report-anon-cb"> Report anonymously</label>';
         document.body.appendChild(menu);
 
         const rect = anchorBtn.getBoundingClientRect();
@@ -4962,10 +4963,15 @@ class RadioChatBox {
         menu.style.top = `${window.scrollY + rect.bottom + 4}px`;
         menu.style.left = `${Math.max(8, left)}px`;
 
+        // Keep the menu open when toggling the anonymous checkbox.
+        const anonLabel = menu.querySelector('.report-anon');
+        if (anonLabel) anonLabel.addEventListener('click', (e) => e.stopPropagation());
+
         menu.querySelectorAll('.report-option').forEach(opt => {
             opt.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.submitReport(msgId, messageType, reportedUsername, opt.getAttribute('data-reason'), contentSnapshot);
+                const anon = !!(menu.querySelector('.report-anon-cb') && menu.querySelector('.report-anon-cb').checked);
+                this.submitReport(msgId, messageType, reportedUsername, opt.getAttribute('data-reason'), contentSnapshot, anon);
                 this.closeReportMenu();
             });
         });
@@ -4987,7 +4993,7 @@ class RadioChatBox {
         }
     }
 
-    async submitReport(msgId, messageType, reportedUsername, reason, contentSnapshot) {
+    async submitReport(msgId, messageType, reportedUsername, reason, contentSnapshot, anonymous = false) {
         try {
             const resp = await fetch(`${this.apiUrl}/api/report`, {
                 method: 'POST',
@@ -5000,6 +5006,7 @@ class RadioChatBox {
                     reported_username: reportedUsername || '',
                     reason: reason,
                     content_snapshot: (contentSnapshot || '').substring(0, 2000),
+                    anonymous: anonymous ? 'true' : 'false',
                 }),
             });
             const data = await resp.json();
