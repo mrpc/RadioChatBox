@@ -86,6 +86,9 @@ final class SendController
 
             $result = $chatService->postMessage($username, $message, $ipAddress, $sessionId, $replyTo, $pinnedTrack);
 
+            // @mentions → a persistent notification for each mentioned, known user.
+            $this->notifyMentions($username, $message, is_array($result) ? ($result['id'] ?? null) : null, $chatService);
+
             return Response::json(['success' => true, 'message' => $result]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
@@ -143,6 +146,41 @@ final class SendController
         } catch (InvalidArgumentException $e) {
             return Response::json(['success' => true, 'command' => true, 'response' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Create an inbox notification for each distinct @mentioned user (other than
+     * the sender) who is a known participant. Best-effort and capped so a message
+     * full of @-tokens can't fan out unboundedly.
+     */
+    private function notifyMentions(string $sender, string $message, ?string $messageId, ChatService $chatService): void
+    {
+        try {
+            if (!preg_match_all('/@([\p{L}\p{N}_]{2,50})/u', $message, $m)) {
+                return;
+            }
+            $names = array_slice(array_values(array_unique($m[1])), 0, 5);
+            $notifier = new \RadioChatBox\Services\NotificationService();
+            foreach ($names as $name) {
+                if (mb_strtolower($name) === mb_strtolower($sender)) {
+                    continue;
+                }
+                // Only notify a name that is (or recently was) a real participant.
+                if ($chatService->isKnownParticipant($name)) {
+                    $notifier->add(
+                        $name,
+                        'mention',
+                        "{$sender} mentioned you",
+                        mb_substr($message, 0, 140),
+                        $messageId
+                    );
+                }
+            }
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('SendController::notifyMentions failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
     }
 
     /** Whether admin-defined slash-commands are switched on. */

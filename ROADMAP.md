@@ -354,7 +354,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 
 ### Notifications System
 - [ ] Browser push notifications
-- [ ] Email notifications for mentions
+- [x] In-app notifications for mentions — @mention a known user → inbox notification (email delivery still open)
 - [x] Notification preferences per user — DND + reaction-toast toggles in Profile settings (persisted)
 - [x] Sound/visual notification settings — master sound toggle + DND + reaction-toast prefs
 - [x] Do Not Disturb mode — suppresses all sounds, toasts and title cues (client pref)

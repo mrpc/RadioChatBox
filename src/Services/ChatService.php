@@ -1470,6 +1470,37 @@ class ChatService
     }
 
     /**
+     * Whether a username belongs to a real participant — a current/recent presence
+     * session or a registered user. Used to avoid creating mention notifications
+     * for names that were never in the chat.
+     */
+    public function isKnownParticipant(string $username): bool
+    {
+        $username = trim($username);
+        if ($username === '') {
+            return false;
+        }
+        try {
+            $inPresence = $this->db->queryBuilder()
+                ->from('presence_sessions')
+                ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
+                ->exists();
+            if ($inPresence) {
+                return true;
+            }
+            return $this->db->queryBuilder()
+                ->from('users')
+                ->whereRaw('LOWER(username) = LOWER(%s)', [$username])
+                ->exists();
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ChatService::isKnownParticipant failed: ' . $e->getMessage(), 'radiochatbox');
+            return false;
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * Get all messages from database with pagination
      */
     /**
