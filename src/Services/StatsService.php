@@ -571,6 +571,51 @@ class StatsService
         return ['dau' => $dau, 'wau' => $wau, 'mau' => $mau, 'stickiness' => $stickiness];
     }
 
+    /**
+     * Message-activity heatmap for the last $days: a 7×24 grid of public-message
+     * counts indexed by [day_of_week][hour] (day 0 = Sunday, hour 0–23), computed
+     * in the app timezone. Backs the "peak usage times" heatmap.
+     *
+     * @return array{days:int, grid:array<int, array<int, int>>, max:int}
+     */
+    public function activityHeatmap(int $days = 30): array
+    {
+        $days = max(1, min($days, 365));
+        $tz = getenv('TZ') ?: 'Europe/Athens';
+
+        $grid = [];
+        for ($d = 0; $d < 7; $d++) {
+            $grid[$d] = array_fill(0, 24, 0);
+        }
+        $max = 0;
+
+        try {
+            $rows = $this->db->query(
+                "SELECT EXTRACT(DOW  FROM created_at AT TIME ZONE '{$tz}')::INT AS dow,
+                        EXTRACT(HOUR FROM created_at AT TIME ZONE '{$tz}')::INT AS hour,
+                        COUNT(*) AS c
+                 FROM chat_messages
+                 WHERE is_deleted = FALSE AND created_at >= NOW() - INTERVAL '{$days} days'
+                 GROUP BY dow, hour"
+            );
+            foreach (($rows ? $rows->fetchAll() : []) as $row) {
+                $dow = (int) $row['dow'];
+                $hour = (int) $row['hour'];
+                $count = (int) $row['c'];
+                if ($dow >= 0 && $dow < 7 && $hour >= 0 && $hour < 24) {
+                    $grid[$dow][$hour] = $count;
+                    $max = max($max, $count);
+                }
+            }
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('StatsService::activityHeatmap failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+
+        return ['days' => $days, 'grid' => $grid, 'max' => $max];
+    }
+
     public function getSummary(): array
     {
         $this->ensureTablesExist();

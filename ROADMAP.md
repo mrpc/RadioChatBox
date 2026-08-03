@@ -590,7 +590,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - Add `room_id` column to `private_messages` table
 
 ### Enhanced Analytics
-- [ ] Peak usage times heatmap visualization
+- [x] Peak usage times heatmap visualization — 7×24 message-activity heatmap (`/api/admin/activity-heatmap`)
 - [x] User retention metrics (daily/weekly/monthly active users) — DAU/WAU/MAU + stickiness (`/api/admin/retention`)
 - [x] Moderator performance metrics — `/api/admin/moderation/performance` (actions per moderator, handled counts)
 - [x] Report resolution time tracking — avg time-to-resolution overall + per resolver (`ReportService::resolutionStats`)

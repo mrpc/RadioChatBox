@@ -1446,6 +1446,7 @@
                         </p>
 
                         <div id="retention-metrics" style="margin-bottom: 20px;"></div>
+                        <div id="activity-heatmap" style="margin-bottom: 20px;"></div>
                         <div id="popular-reactions" style="margin-bottom: 20px;"></div>
 
                         <!-- Statistics Sub-tabs -->
@@ -5368,7 +5369,7 @@
                 if (tabName === 'song-requests') loadSongRequests();
                 if (tabName === 'polls') loadPollsHistory();
                 if (tabName === 'shows') loadShows();
-                if (tabName === 'statistics') { loadPopularReactions(); loadRetentionMetrics(); }
+                if (tabName === 'statistics') { loadPopularReactions(); loadRetentionMetrics(); loadActivityHeatmap(); }
             };
         })();
         
@@ -9579,6 +9580,36 @@
                             </td></tr>`;
                     }).join('')}</tbody></table>`;
             } catch (e) { table.innerHTML = '<p style="color:#ef4444;">Error loading shows.</p>'; }
+        }
+
+        async function loadActivityHeatmap() {
+            const box = document.getElementById('activity-heatmap');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/admin/activity-heatmap?days=30', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = ''; return; }
+                const hm = data.heatmap || {};
+                const grid = hm.grid || [];
+                const max = hm.max || 0;
+                const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const cell = (count) => {
+                    const intensity = max > 0 ? count / max : 0;
+                    const bg = count === 0 ? '#f3f4f6' : `rgba(99,102,241,${(0.15 + intensity * 0.85).toFixed(2)})`;
+                    return `<td title="${count} messages" style="width:16px; height:16px; background:${bg}; border:1px solid #fff;"></td>`;
+                };
+                let head = '<tr><th></th>';
+                for (let h = 0; h < 24; h++) head += `<th style="font-size:9px; color:#9ca3af; font-weight:normal;">${h % 3 === 0 ? h : ''}</th>`;
+                head += '</tr>';
+                let rows = '';
+                for (let d = 0; d < 7; d++) {
+                    rows += `<tr><td style="font-size:11px; color:#6b7280; padding-right:6px; text-align:right;">${dows[d]}</td>`;
+                    for (let h = 0; h < 24; h++) rows += cell((grid[d] && grid[d][h]) || 0);
+                    rows += '</tr>';
+                }
+                box.innerHTML = `<div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Peak usage times — messages by day &amp; hour (last 30 days)</div>
+                    <div style="overflow-x:auto;"><table style="border-collapse:collapse;">${head}${rows}</table></div>`;
+            } catch (e) { box.innerHTML = ''; }
         }
 
         async function loadRetentionMetrics() {

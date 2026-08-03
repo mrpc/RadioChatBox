@@ -548,6 +548,27 @@ final class AdminStatsController
     }
 
     /**
+     * GET /api/admin/activity-heatmap?days=30 — a 7×24 message-activity grid for
+     * the "peak usage times" heatmap. Admin-only.
+     */
+    #[Route('/api/admin/activity-heatmap', methods: 'GET', name: 'admin.activity-heatmap', middleware: [AdminAuthMiddleware::class])]
+    public function activityHeatmap(): Response
+    {
+        try {
+            $days = (int) Request::getInstance()->get('days', 30, 'get');
+            return Response::json([
+                'success' => true,
+                'heatmap' => (new StatsService())->activityHeatmap($days),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminStatsController::activityHeatmap failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/retention — active-user retention metrics (DAU/WAU/MAU +
      * stickiness), computed from public message participation. Admin-only.
      */
