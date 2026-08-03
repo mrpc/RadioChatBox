@@ -1957,6 +1957,14 @@ class RadioChatBox {
             darkEl.checked = document.body.classList.contains('dark-mode');
             darkEl.onchange = () => this.setDarkMode(darkEl.checked);
         }
+        const soundStyleEl = document.getElementById('pref-sound-style');
+        if (soundStyleEl) {
+            soundStyleEl.value = localStorage.getItem('chatSoundStyle') || 'beep';
+            soundStyleEl.onchange = () => {
+                localStorage.setItem('chatSoundStyle', soundStyleEl.value);
+                this.playNotificationSound(); // preview
+            };
+        }
         const hcEl = document.getElementById('pref-high-contrast');
         if (hcEl) {
             hcEl.checked = document.body.classList.contains('high-contrast');
@@ -4563,26 +4571,34 @@ class RadioChatBox {
         }
     }
     
+    /** The tone presets for the notification sound (selectable in preferences). */
+    static get SOUND_PRESETS() {
+        return {
+            beep:  [{ f: 800, t: 'sine', d: 0.10 }],
+            ding:  [{ f: 1200, t: 'sine', d: 0.18 }],
+            pop:   [{ f: 440, t: 'triangle', d: 0.06 }],
+            chime: [{ f: 660, t: 'sine', d: 0.12 }, { f: 990, t: 'sine', d: 0.16, delay: 0.10 }],
+        };
+    }
+
     playNotificationSound() {
         // Do Not Disturb suppresses every audible cue.
         if (this.dndEnabled) return;
-        // Create a simple beep sound using Web Audio API
+        const style = localStorage.getItem('chatSoundStyle') || 'beep';
+        const preset = RadioChatBox.SOUND_PRESETS[style] || RadioChatBox.SOUND_PRESETS.beep;
         try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 800; // frequency in Hz
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.1);
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            preset.forEach(({ f, t, d, delay }) => {
+                const start = ctx.currentTime + (delay || 0);
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.value = f; osc.type = t || 'sine';
+                gain.gain.setValueAtTime(0.3, start);
+                gain.gain.exponentialRampToValueAtTime(0.01, start + d);
+                osc.start(start);
+                osc.stop(start + d);
+            });
         } catch (error) {
             console.error('Failed to play sound:', error);
         }
@@ -6779,7 +6795,7 @@ class RadioChatBox {
         const gifRegex = /(https?:\/\/(?:media\.tenor\.com|media[0-9]*\.giphy\.com|i\.giphy\.com|[a-z0-9-]+\.klipy\.com)\/[^\s]+\.gif)/gi;
         let formatted = escaped.replace(gifRegex, (url) => {
             // Use a data attribute to mark this as a GIF to prevent Twemoji parsing on the URL
-            return `<br><span class="gif-url" data-gif-url="${url}"><img src="${url}" alt="GIF" class="message-gif" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px;"></span>`;
+            return `<br><span class="gif-url" data-gif-url="${url}"><img src="${url}" alt="GIF" loading="lazy" class="message-gif" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px;"></span>`;
         });
         
         // Convert regular URLs to clickable links (excluding GIF URLs which are already handled)

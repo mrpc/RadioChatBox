@@ -361,7 +361,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Notification history — persistent per-user inbox (`user_notifications`) + 📥 bell overlay
 - [x] Mark notifications as read/unread — per-item + mark-all-read (`/api/notifications/read`)
 - [ ] Notification grouping
-- [ ] Custom notification sounds
+- [x] Custom notification sounds — selectable tone (beep/ding/pop/chime) in Profile settings with preview
 
 **Database Changes:**
 - New `notifications` table (id, user_id, type, title, message, link, is_read, created_at)
@@ -809,7 +809,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Redis clustering for high availability
 - [x] PostgreSQL read replicas (supported natively by the Pramnos Framework)
 - [ ] CDN integration for static assets
-- [ ] Lazy loading for images
+- [x] Lazy loading for images — loading="lazy" on message/DM/gallery/GIF images
 - [ ] Image optimization pipeline (WebP conversion)
 
 ### Security Enhancements

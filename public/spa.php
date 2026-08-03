@@ -174,6 +174,15 @@
                     <input type="checkbox" id="pref-reaction-toasts" style="width:auto;"> Show reaction notifications
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+                    Notification sound
+                    <select id="pref-sound-style" style="width:auto; padding:2px 6px;">
+                        <option value="beep">Beep</option>
+                        <option value="ding">Ding</option>
+                        <option value="pop">Pop</option>
+                        <option value="chime">Chime</option>
+                    </select>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
                     <input type="checkbox" id="pref-dark-mode" style="width:auto;"> Dark mode 🌙
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
