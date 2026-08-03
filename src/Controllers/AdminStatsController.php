@@ -602,6 +602,30 @@ final class AdminStatsController
     }
 
     /**
+     * GET /api/admin/song-retention?days=30 — average listener retention per song
+     * (avg listener delta while each track aired). Admin-only.
+     */
+    #[Route('/api/admin/song-retention', methods: 'GET', name: 'admin.song-retention', middleware: [AdminAuthMiddleware::class])]
+    public function songRetention(): Response
+    {
+        try {
+            $req = Request::getInstance();
+            $days = max(1, min((int) $req->get('days', 30, 'get'), 3650));
+            $from = (new \DateTimeImmutable("-{$days} days"))->format('Y-m-d H:i:s');
+            $to   = (new \DateTimeImmutable('+1 hour'))->format('Y-m-d H:i:s');
+            return Response::json([
+                'success' => true,
+                'tracks'  => (new TrackStatsService())->getListenerRetention($from, $to, 50),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminStatsController::songRetention failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/retention — active-user retention metrics (DAU/WAU/MAU +
      * stickiness), computed from public message participation. Admin-only.
      */

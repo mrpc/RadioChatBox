@@ -1454,6 +1454,7 @@
                         </div>
                         <div id="retention-metrics" style="margin-bottom: 20px;"></div>
                         <div id="activity-heatmap" style="margin-bottom: 20px;"></div>
+                        <div id="song-retention" style="margin-bottom: 20px;"></div>
                         <div id="popular-reactions" style="margin-bottom: 20px;"></div>
 
                         <!-- Statistics Sub-tabs -->
@@ -5488,7 +5489,7 @@
                 if (tabName === 'polls') loadPollsHistory();
                 if (tabName === 'shows') loadShows();
                 if (tabName === 'promos') loadPromos();
-                if (tabName === 'statistics') { loadPopularReactions(); loadRetentionMetrics(); loadActivityHeatmap(); }
+                if (tabName === 'statistics') { loadPopularReactions(); loadRetentionMetrics(); loadActivityHeatmap(); loadSongRetention(); }
             };
         })();
         
@@ -9859,6 +9860,34 @@
                             </td></tr>`;
                     }).join('')}</tbody></table>`;
             } catch (e) { table.innerHTML = '<p style="color:#ef4444;">Error loading shows.</p>'; }
+        }
+
+        async function loadSongRetention() {
+            const box = document.getElementById('song-retention');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/admin/song-retention?days=30', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = ''; return; }
+                const tracks = data.tracks || [];
+                if (!tracks.length) { box.innerHTML = ''; return; }
+                const gainers = tracks.slice(0, 5);
+                const losers = tracks.slice(-5).reverse().filter(t => Number(t.avg_listener_delta) < 0);
+                const row = t => {
+                    const d = Number(t.avg_listener_delta);
+                    const col = d >= 0 ? '#059669' : '#dc2626';
+                    const sign = d >= 0 ? '+' : '';
+                    return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;">
+                        <span>${escapeHtml(t.display || t.title || '')}</span>
+                        <span style="color:${col};font-weight:600;">${sign}${d} <span style="color:#9ca3af;font-weight:400;">(${t.plays})</span></span>
+                    </div>`;
+                };
+                box.innerHTML = `<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Average listener change while a song airs (last 30 days)</div>
+                    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:240px;"><strong style="font-size:13px;">📈 Retains listeners</strong>${gainers.map(row).join('')}</div>
+                        ${losers.length ? `<div style="flex:1;min-width:240px;"><strong style="font-size:13px;">📉 Loses listeners</strong>${losers.map(row).join('')}</div>` : ''}
+                    </div>`;
+            } catch (e) { box.innerHTML = ''; }
         }
 
         async function loadActivityHeatmap() {

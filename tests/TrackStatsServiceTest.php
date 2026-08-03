@@ -144,6 +144,48 @@ class TrackStatsServiceTest extends TestCase
     }
 
     /**
+     * getListenerRetention averages the per-play listener delta (next play's
+     * listeners minus this one's) per track: a song gaining listeners scores
+     * positive, one shedding them negative.
+     */
+    public function testListenerRetention(): void
+    {
+        $pdo = TestDatabase::connection();
+        $mk = function (string $tag) use ($pdo): int {
+            $display = 'RetTrack ' . $tag . ' ' . $this->suffix;
+            $pdo->prepare('INSERT INTO tracks (artist, title, display, first_played_at, last_played_at, play_count) VALUES (?, ?, ?, NOW(), NOW(), 0)')
+                ->execute(['Ret Artist', $tag, $display]);
+            return (int) $pdo->query('SELECT id FROM tracks WHERE display = ' . $pdo->quote($display))->fetchColumn();
+        };
+        $a = $mk('A'); $b = $mk('B');
+        $ins = function (int $trackId, string $ago, int $listeners) use ($pdo): void {
+            $pdo->prepare("INSERT INTO track_plays (track_id, listeners, played_at) VALUES (?, ?, NOW() - INTERVAL '{$ago}')")
+                ->execute([$trackId, $listeners]);
+        };
+        // Chronological: A(10) → B(20) → A(30) → B(25)
+        $ins($a, '40 minutes', 10);
+        $ins($b, '30 minutes', 20);
+        $ins($a, '20 minutes', 30);
+        $ins($b, '10 minutes', 25);
+
+        try {
+            $from = (new \DateTimeImmutable('-1 hour'))->format('Y-m-d H:i:s');
+            $to   = (new \DateTimeImmutable('+1 hour'))->format('Y-m-d H:i:s');
+            $rows = $this->service->getListenerRetention($from, $to, 50, 1);
+            $byId = [];
+            foreach ($rows as $r) { $byId[(int) $r['track_id']] = (float) $r['avg_listener_delta']; }
+
+            // A: deltas +10 (10→20) and -5 (30→25) → avg 2.5
+            $this->assertEqualsWithDelta(2.5, $byId[$a] ?? null, 0.01);
+            // B: delta +10 (20→30); its last play has no "next" → avg 10.0
+            $this->assertEqualsWithDelta(10.0, $byId[$b] ?? null, 0.01);
+        } finally {
+            $pdo->prepare('DELETE FROM track_plays WHERE track_id IN (?, ?)')->execute([$a, $b]);
+            $pdo->prepare('DELETE FROM tracks WHERE id IN (?, ?)')->execute([$a, $b]);
+        }
+    }
+
+    /**
      * getArtistSummary aggregates all-time plays for an artist (verbatim SQL).
      */
     public function testArtistSummaryCountsPlays(): void

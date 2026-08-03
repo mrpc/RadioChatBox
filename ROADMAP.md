@@ -402,7 +402,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Export song statistics to CSV
 - [x] Top songs by time period (daily/weekly/monthly)
 - [x] Song genre tracking (optional)
-- [ ] Average listener retention per song
+- [x] Average listener retention per song — avg listener delta per track (`/api/admin/song-retention`) + gainers/losers on the Statistics dashboard
 
 **Database Changes:**
 - New `song_plays` table (id, title, artist, album, genre, played_at, duration, listener_count_start, listener_count_end, listener_count_peak, created_at)

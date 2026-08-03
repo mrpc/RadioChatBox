@@ -415,6 +415,46 @@ class TrackStatsService
     }
 
     /**
+     * Average listener retention per track between two timestamps. For each play,
+     * the listener delta is (the next play's listeners − this play's listeners) —
+     * i.e. whether listeners grew or dropped while the track aired. Averaged per
+     * track: a positive value means the song tends to gain listeners, negative
+     * means it sheds them. Ordered best-retaining first.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getListenerRetention(string $from, string $to, int $limit = 50, int $minPlays = 2): array
+    {
+        try {
+            $result = $this->db->preparedQuery(
+                "WITH deltas AS (
+                    SELECT tp.track_id,
+                           LEAD(tp.listeners) OVER (ORDER BY tp.played_at) - tp.listeners AS delta
+                    FROM track_plays tp
+                    WHERE tp.played_at >= :from AND tp.played_at < :to
+                 )
+                 SELECT t.id AS track_id, t.display, t.artist,
+                        COUNT(*) AS plays,
+                        ROUND(AVG(d.delta) FILTER (WHERE d.delta IS NOT NULL), 1) AS avg_listener_delta
+                 FROM deltas d
+                 JOIN tracks t ON d.track_id = t.id
+                 WHERE t.excluded_from_stats = FALSE
+                 GROUP BY t.id, t.display, t.artist
+                 HAVING COUNT(*) FILTER (WHERE d.delta IS NOT NULL) >= :minplays
+                 ORDER BY avg_listener_delta DESC NULLS LAST
+                 LIMIT :limit",
+                ['from' => $from, 'to' => $to, 'minplays' => max(1, $minPlays), 'limit' => max(1, min($limit, 200))]
+            );
+            return $result ? $result->fetchAll() : [];
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('TrackStatsService::getListenerRetention failed: ' . $e->getMessage(), 'radiochatbox');
+            return [];
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * Most-played artists between two timestamps.
      *
      * @return array<int, array<string, mixed>>
