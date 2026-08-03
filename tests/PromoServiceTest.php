@@ -113,24 +113,40 @@ class PromoServiceTest extends TestCase
         $this->assertSame(1, $count);
     }
 
-    /** DM run sends to online peers up to the cap and respects the cooldown. */
-    public function testRunDmCapAndCooldown(): void
+    /**
+     * DM run honours the per-run cap. The recipient pool is every online user, so
+     * this only asserts the cap via the return value (robust to whoever else is
+     * online during a full-suite run).
+     */
+    public function testRunDmRespectsCap(): void
+    {
+        $this->onlinePeer();
+        $this->onlinePeer();
+        $c = $this->makeCampaign(['target' => 'dm', 'max_recipients' => 1, 'cooldown_hours' => 24, 'message' => 'PROMO_CAP_MARKER']);
+        $sent = $this->service->runDm($c, new \DateTimeImmutable('now'));
+        $this->assertSame(1, $sent, 'never exceeds max_recipients');
+    }
+
+    /**
+     * The per-user cooldown prevents re-DMing the same person within the window.
+     * Asserted per-peer (not on global counts) so it's robust to other online
+     * users in a full-suite run.
+     */
+    public function testRunDmCooldownPerUser(): void
     {
         $p1 = $this->onlinePeer();
-        $this->onlinePeer();
-        $this->onlinePeer();
-        $c = $this->makeCampaign(['target' => 'dm', 'max_recipients' => 2, 'cooldown_hours' => 24, 'message' => 'PROMO_DM_MARKER']);
+        // High cap so our peer is definitely reached on the first run.
+        $c = $this->makeCampaign(['target' => 'dm', 'max_recipients' => 1000, 'cooldown_hours' => 24, 'message' => 'PROMO_CD_MARKER']);
         $now = new \DateTimeImmutable('now');
 
-        $sent = $this->service->runDm($c, $now);
-        $this->assertSame(2, $sent, 'capped at max_recipients');
+        $this->service->runDm($c, $now);
+        $this->service->runDm($c, $now); // cooldown must block a second DM to p1
 
-        // A second run right away sends only to peers not yet contacted (cooldown).
-        $sentAgain = $this->service->runDm($c, $now);
-        $this->assertSame(1, $sentAgain, 'the 3rd peer, the first two are on cooldown');
-
-        // A third run: everyone is now on cooldown.
-        $this->assertSame(0, $this->service->runDm($c, $now));
+        $count = (int) $this->pdo->query(
+            'SELECT COUNT(*) FROM private_messages WHERE to_username = ' . $this->pdo->quote($p1)
+            . ' AND from_username = ' . $this->pdo->quote($this->bot)
+        )->fetchColumn();
+        $this->assertSame(1, $count, 'the peer was DMed exactly once despite two runs');
     }
 
     /** Delivery accumulates the campaign's reach (sent_count). */
