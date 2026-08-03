@@ -375,6 +375,30 @@ final class AdminSystemController
     }
 
     /**
+     * GET /api/admin/backup/export — download a configuration backup (settings +
+     * fake users, shows, promos, URL lists, bans, commands) as a JSON file.
+     * Secrets in settings are redacted. Admin-only.
+     */
+    #[Route('/api/admin/backup/export', methods: 'GET', name: 'admin.system.backup-export', middleware: [AdminAuthMiddleware::class])]
+    public function backupExport(): Response
+    {
+        try {
+            $bundle = (new \RadioChatBox\Services\BackupService())->export();
+            $bundle['generated_at'] = date('c');
+            $json = json_encode($bundle, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $stamp = date('Ymd_His');
+            return Response::make((string) $json)
+                ->withHeader('Content-Type', 'application/json; charset=utf-8')
+                ->withHeader('Content-Disposition', 'attachment; filename="radiochatbox-config-' . $stamp . '.json"');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminSystemController::backupExport failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/migrations — the applied database migrations (from the
      * framework `schemaversion` history table), newest first. Admin-only. 200
      * {success, migrations}.

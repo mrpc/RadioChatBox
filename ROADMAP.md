@@ -170,7 +170,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Settings import (restore from backup)
 - [ ] Automated daily database backups
 - [ ] Backup rotation and retention policy
-- [ ] Manual backup trigger from admin panel
+- [x] Manual backup trigger from admin panel — configuration backup export (`/api/admin/backup/export`, secrets redacted)
 - [ ] Restore from backup functionality
 
 **API Endpoints:**
