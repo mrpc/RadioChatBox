@@ -678,7 +678,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Touch gesture support (swipe actions)
 - [x] Mobile-optimized image uploads — client-side downscale/compress large photos before upload (canvas, ≤1920px JPEG)
 - [x] Adaptive image quality — large images re-encoded to JPEG q0.85 client-side before upload
-- [ ] Battery-efficient SSE reconnection strategy
+- [x] Battery-efficient SSE reconnection strategy — backoff + foreground/online reconnect-and-catch-up (shipped)
 - [ ] Mobile-specific UI adjustments
 - [ ] Virtual keyboard handling improvements
 
@@ -813,7 +813,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Image optimization pipeline (WebP conversion)
 
 ### Security Enhancements
-- [ ] Security audit logging
+- [x] Security audit logging — admin settings changes recorded to the moderation log (who + which keys)
 - [ ] DDoS protection (Cloudflare integration)
 - [ ] CSRF token implementation
 - [ ] Content Security Policy (CSP) headers
@@ -828,7 +828,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Language selector UI
 - [ ] Translatable strings extraction
 - [ ] RTL language support (Arabic, Hebrew)
-- [ ] Date/time localization
+- [x] Date/time localization — client renders all timestamps via the viewer's locale (toLocaleString)
 - [ ] Number/currency formatting
 - [ ] Community translation platform
 - [ ] Auto-detect browser language

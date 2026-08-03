@@ -173,6 +173,26 @@ final class AdminSettingsController
 
             $result = (new SettingsService())->updateFromAdmin($data, $phpMaxUploadMb);
 
+            // Security audit trail: record WHO changed WHICH settings (keys only —
+            // values may be secrets). Best-effort; never blocks the save.
+            try {
+                $changedKeys = array_values(array_diff(
+                    array_keys($data),
+                    array_map(static fn ($r) => is_array($r) ? ($r['key'] ?? '') : (string) $r, $result['ignored'] ?? [])
+                ));
+                if ($changedKeys !== []) {
+                    $admin = AdminAuth::getCurrentUser();
+                    (new \RadioChatBox\Services\ModerationLog())->record(
+                        (string) ($admin['username'] ?? 'admin'),
+                        'settings_update',
+                        null,
+                        'changed: ' . implode(', ', array_slice($changedKeys, 0, 40))
+                    );
+                }
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('settings audit log failed: ' . $e->getMessage(), 'radiochatbox');
+            }
+
             $response = ['success' => true, 'message' => 'Settings updated successfully'];
 
             if (!empty($result['ignored'])) {
