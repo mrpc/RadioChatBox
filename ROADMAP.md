@@ -144,7 +144,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] "Remember Me" functionality
 - [ ] Facebook OAuth integration
 - [x] Account settings page — Profile settings modal (display name, profile, bio/status, notification prefs, dark mode)
-- [ ] Two-factor authentication (2FA)
+- [x] Two-factor authentication (2FA) — TOTP enroll/verify/disable (framework TwoFactorAuthService) + login step-up + backup codes
 - [ ] CAPTCHA/robot protection for sign-in and registration
   - Google reCAPTCHA v3 (invisible) or v2 (checkbox) integration
   - hCaptcha as privacy-friendly alternative

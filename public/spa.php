@@ -104,6 +104,7 @@
                     autocomplete="current-password"
                     required
                 >
+                <input type="text" id="login-2fa-input" placeholder="6-digit authentication code" inputmode="numeric" autocomplete="one-time-code" style="display:none;">
                 <div id="login-error" class="error-message"></div>
                 <button id="login-submit">Login & Join Chat</button>
             </div>
@@ -186,6 +187,26 @@
                     <label>Bio (optional)</label>
                     <textarea id="profile-bio" maxlength="300" rows="2" placeholder="A few words about you"></textarea>
                 </div>
+            </div>
+
+            <!-- Two-factor authentication (registered accounts only) -->
+            <div id="profile-2fa-section" class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+                <label style="font-weight:600;">Two-factor authentication (2FA)</label>
+                <div id="profile-2fa-status" style="font-size:13px; color:#6b7280; margin:4px 0;"></div>
+                <button type="button" id="profile-2fa-setup-btn" class="btn-secondary" style="display:none;">Set up 2FA</button>
+                <div id="profile-2fa-setup" style="display:none; margin-top:8px;">
+                    <p style="font-size:12px; color:#6b7280;">Scan this with your authenticator app, then enter the 6-digit code to enable.</p>
+                    <img id="profile-2fa-qr" alt="2FA QR code" style="max-width:180px; display:block; margin:6px 0;">
+                    <div style="font-size:11px; color:#6b7280;">Manual key: <code id="profile-2fa-secret"></code></div>
+                    <div id="profile-2fa-backup" style="font-size:11px; color:#374151; margin:6px 0;"></div>
+                    <input type="text" id="profile-2fa-code" placeholder="6-digit code" inputmode="numeric">
+                    <button type="button" id="profile-2fa-enable-btn" class="btn-primary">Enable 2FA</button>
+                </div>
+                <div id="profile-2fa-disable" style="display:none; margin-top:8px;">
+                    <input type="text" id="profile-2fa-disable-code" placeholder="Current 6-digit code" inputmode="numeric">
+                    <button type="button" id="profile-2fa-disable-btn" class="btn-danger">Disable 2FA</button>
+                </div>
+                <div id="profile-2fa-error" class="error-message"></div>
             </div>
 
             <div class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">

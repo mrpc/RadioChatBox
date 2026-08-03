@@ -1824,11 +1824,19 @@ class RadioChatBox {
             loginSubmit.disabled = true;
             loginError.textContent = '';
             loginSubmit.textContent = 'Logging in...';
-            
+
+            const twofaInput = document.getElementById('login-2fa-input');
+            const code = twofaInput && twofaInput.style.display !== 'none' ? twofaInput.value.trim() : '';
             try {
-                await this.loginAndJoin(username, password);
+                await this.loginAndJoin(username, password, code);
             } catch (error) {
-                loginError.textContent = error.message;
+                if (error && error.twofaRequired) {
+                    // Reveal the code field and ask for the authenticator code.
+                    if (twofaInput) { twofaInput.style.display = 'block'; twofaInput.focus(); }
+                    loginError.textContent = code ? 'Invalid code — try again.' : 'Enter the code from your authenticator app.';
+                } else {
+                    loginError.textContent = error.message;
+                }
                 loginSubmit.disabled = false;
                 loginSubmit.textContent = 'Login & Join Chat';
             }
@@ -1905,21 +1913,29 @@ class RadioChatBox {
         });
     }
     
-    async loginAndJoin(username, password) {
+    async loginAndJoin(username, password, code = '') {
         try {
             // Call login API
             const response = await fetch(`${this.apiUrl}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    username, 
+                body: JSON.stringify({
+                    username,
                     password,
-                    sessionId: this.sessionId
+                    sessionId: this.sessionId,
+                    code: code || undefined
                 })
             });
-            
+
             const data = await response.json();
-            
+
+            // Two-factor step-up: signal the caller to collect a code and retry.
+            if (data && data.twofa_required && !data.success) {
+                const err = new Error('Two-factor code required');
+                err.twofaRequired = true;
+                throw err;
+            }
+
             if (!response.ok || !data.success) {
                 throw new Error(data.error || 'Login failed');
             }
@@ -2026,6 +2042,9 @@ class RadioChatBox {
                 localStorage.setItem('chatHighContrast', hcEl.checked ? 'true' : 'false');
             };
         }
+
+        // Two-factor section: only for registered accounts (a userId is set).
+        this._initTwoFactorSection();
 
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
@@ -2888,6 +2907,88 @@ class RadioChatBox {
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         } catch (e) { /* non-fatal */ }
+    }
+
+    // ---- Two-factor authentication (profile settings) ----
+    _initTwoFactorSection() {
+        const section = document.getElementById('profile-2fa-section');
+        if (!section) return;
+        // Guests (no account) don't get 2FA.
+        if (!this.userId) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        document.getElementById('profile-2fa-setup').style.display = 'none';
+        document.getElementById('profile-2fa-error').textContent = '';
+
+        const setupBtn = document.getElementById('profile-2fa-setup-btn');
+        const enableBtn = document.getElementById('profile-2fa-enable-btn');
+        const disableBtn = document.getElementById('profile-2fa-disable-btn');
+        if (setupBtn && !setupBtn._wired) { setupBtn._wired = true; setupBtn.onclick = () => this._begin2faSetup(); }
+        if (enableBtn && !enableBtn._wired) { enableBtn._wired = true; enableBtn.onclick = () => this._enable2fa(); }
+        if (disableBtn && !disableBtn._wired) { disableBtn._wired = true; disableBtn.onclick = () => this._disable2fa(); }
+
+        this._refresh2faStatus();
+    }
+
+    async _refresh2faStatus() {
+        const statusEl = document.getElementById('profile-2fa-status');
+        try {
+            const r = await fetch(`${this.apiUrl}/api/2fa/status?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
+            const d = await r.json();
+            const enabled = !!(d.status && d.status.enabled);
+            statusEl.textContent = enabled ? '✅ Enabled' : 'Not enabled';
+            document.getElementById('profile-2fa-setup-btn').style.display = enabled ? 'none' : 'inline-block';
+            document.getElementById('profile-2fa-disable').style.display = enabled ? 'block' : 'none';
+            document.getElementById('profile-2fa-setup').style.display = 'none';
+        } catch (e) { statusEl.textContent = ''; }
+    }
+
+    async _begin2faSetup() {
+        const err = document.getElementById('profile-2fa-error'); err.textContent = '';
+        try {
+            const r = await fetch(`${this.apiUrl}/api/2fa/setup`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId }),
+            });
+            const d = await r.json();
+            if (!d.success) { err.textContent = d.error || 'Could not start setup'; return; }
+            document.getElementById('profile-2fa-qr').src = d.setup.qr_code_data_uri || '';
+            document.getElementById('profile-2fa-secret').textContent = d.setup.manual_entry_key || d.setup.secret || '';
+            const codes = (d.setup.backup_codes || []);
+            document.getElementById('profile-2fa-backup').innerHTML = codes.length
+                ? 'Backup codes (save these): <code>' + codes.map(c => this.escapeHtml(c)).join('</code> <code>') + '</code>' : '';
+            document.getElementById('profile-2fa-setup').style.display = 'block';
+            document.getElementById('profile-2fa-setup-btn').style.display = 'none';
+        } catch (e) { err.textContent = 'Error starting setup.'; }
+    }
+
+    async _enable2fa() {
+        const err = document.getElementById('profile-2fa-error'); err.textContent = '';
+        const code = document.getElementById('profile-2fa-code').value.trim();
+        if (!code) { err.textContent = 'Enter the code from your app.'; return; }
+        try {
+            const r = await fetch(`${this.apiUrl}/api/2fa/verify-setup`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, code }),
+            });
+            const d = await r.json();
+            if (!d.success) { err.textContent = d.error || 'Invalid code'; return; }
+            this._refresh2faStatus();
+        } catch (e) { err.textContent = 'Error enabling 2FA.'; }
+    }
+
+    async _disable2fa() {
+        const err = document.getElementById('profile-2fa-error'); err.textContent = '';
+        const code = document.getElementById('profile-2fa-disable-code').value.trim();
+        if (!code) { err.textContent = 'Enter a current code to disable.'; return; }
+        try {
+            const r = await fetch(`${this.apiUrl}/api/2fa/disable`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, code }),
+            });
+            const d = await r.json();
+            if (!d.success) { err.textContent = d.error || 'Could not disable'; return; }
+            this._refresh2faStatus();
+        } catch (e) { err.textContent = 'Error disabling 2FA.'; }
     }
 
     /** Toggle the dark theme and persist the choice. */

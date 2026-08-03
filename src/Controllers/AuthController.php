@@ -65,6 +65,24 @@ final class AuthController
                 return Response::json(['error' => 'Invalid username or password'], 401);
             }
 
+            // Two-factor step-up: if this account has 2FA enabled, require a valid
+            // TOTP/backup code before the session is bound. The password already
+            // verified above, so a second submit carries the code (stateless).
+            $userId = (int) ($user['userid'] ?? 0);
+            if ($userId > 0) {
+                $twoFactor = new \Pramnos\Auth\TwoFactorAuthService();
+                if ($twoFactor->isEnabled($userId)) {
+                    $code = trim((string) ($input['code'] ?? ''));
+                    if ($code === '') {
+                        // Tell the client to collect a code and resubmit login + code.
+                        return Response::json(['success' => false, 'twofa_required' => true]);
+                    }
+                    if (!$twoFactor->verifyCode($userId, $code)) {
+                        return Response::json(['error' => 'Invalid two-factor code', 'twofa_required' => true], 401);
+                    }
+                }
+            }
+
             // Link the session to this authenticated user
             $db = Database::getInstance();
             $ipAddress = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';

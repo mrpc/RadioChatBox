@@ -1041,6 +1041,12 @@ class ChatService
         // @codeCoverageIgnoreEnd
     }
 
+    /** Public accessor: the account userid for a username, or null for a guest. */
+    public function accountUserId(string $username): ?int
+    {
+        return $this->resolveUserId($username);
+    }
+
     /** userid for a registered username (null for a guest), for presence upserts. */
     private function resolveUserId(string $username): ?int
     {
