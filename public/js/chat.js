@@ -2740,6 +2740,54 @@ class RadioChatBox {
         } catch (e) { /* non-fatal */ }
     }
 
+    // ---- User profile card ------------------------------------------
+
+    async showUserProfile(username) {
+        let modal = document.getElementById('user-profile-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'user-profile-modal';
+            modal.className = 'profile-modal-overlay';
+            modal.innerHTML = `<div class="profile-modal-card"><button class="profile-modal-close" title="Close">✕</button><div id="user-profile-body"></div></div>`;
+            document.body.appendChild(modal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+            modal.querySelector('.profile-modal-close').addEventListener('click', () => { modal.style.display = 'none'; });
+        }
+        const body = modal.querySelector('#user-profile-body');
+        body.innerHTML = '<p style="color:#6b7280;">Loading…</p>';
+        modal.style.display = 'flex';
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/user-profile/card?username=${encodeURIComponent(username)}`);
+            const data = await resp.json();
+            const p = data && data.profile;
+            if (!data.success || !p) { body.innerHTML = '<p style="color:#ef4444;">Could not load profile.</p>'; return; }
+            const name = this.escapeHtml(p.display_name || p.username);
+            const badge = p.badge ? `<span class="profile-badge">${this.escapeHtml(p.badge)}</span>` : '';
+            const online = p.is_online
+                ? '<span class="profile-online"><span class="dot"></span> Online</span>'
+                : '<span class="profile-offline">Offline</span>';
+            const bits = [];
+            if (p.age) bits.push(`${this.escapeHtml(String(p.age))} y/o`);
+            if (p.sex) bits.push(this.escapeHtml(p.sex));
+            if (p.location) bits.push(this.escapeHtml(p.location));
+            const meta = bits.length ? `<div class="profile-meta">${bits.join(' · ')}</div>` : '';
+            const since = p.first_seen ? new Date((p.first_seen + '').replace(' ', 'T')).toLocaleDateString() : null;
+            body.innerHTML = `
+                <div class="profile-head">
+                    <div class="profile-avatar">${this.escapeHtml((p.username || '?').charAt(0).toUpperCase())}</div>
+                    <div>
+                        <div class="profile-name">${name} ${badge}</div>
+                        ${online}
+                    </div>
+                </div>
+                ${meta}
+                <div class="profile-stats">
+                    <div><strong>${p.message_count || 0}</strong><span>messages</span></div>
+                    ${since ? `<div><strong>${this.escapeHtml(since)}</strong><span>first seen</span></div>` : ''}
+                </div>`;
+        } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading profile.</p>'; }
+    }
+
     // ---- Show schedule ----------------------------------------------
 
     /** Show/hide the upcoming-shows overlay, loading it on open. */
@@ -6564,6 +6612,7 @@ class RadioChatBox {
         const pop = document.createElement('div');
         pop.className = 'user-actions-popover';
         let html = `<div class="user-actions-name">${this.escapeHtml(username)}</div>`;
+        html += `<button class="user-action-profile">👤 View profile</button>`;
         if (allowMention) html += `<button class="user-action-mention">@ Mention</button>`;
         if (allowPrivate) html += `<button class="user-action-dm">💬 Send private message</button>`;
         if (allowPrivate) html += `<button class="user-action-block">🚫 Block</button>`;
@@ -6580,6 +6629,15 @@ class RadioChatBox {
         if (left < window.scrollX + margin) left = window.scrollX + margin;
         pop.style.left = `${left}px`;
         pop.style.top = `${window.scrollY + rect.bottom + 4}px`;
+
+        const profileBtn = pop.querySelector('.user-action-profile');
+        if (profileBtn) {
+            profileBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeUserActionsPopover();
+                this.showUserProfile(username);
+            });
+        }
 
         const mentionBtn = pop.querySelector('.user-action-mention');
         if (mentionBtn) {

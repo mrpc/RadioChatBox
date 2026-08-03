@@ -43,4 +43,25 @@ class UserProfileControllerTest extends TestCase
         $this->assertSame(400, $response->getStatusCode());
         $this->assertFalse(json_decode($response->getBody(), true)['success']);
     }
+
+    /** The richer card endpoint returns the profile card shape. */
+    public function testCardReturnsProfileShape(): void
+    {
+        $_GET = ['username' => 'admin'];
+        $response = (new UserProfileController())->card();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertArrayHasKey('message_count', $body['profile']);
+        $this->assertArrayHasKey('is_online', $body['profile']);
+        $this->assertArrayHasKey('badge', $body['profile']);
+        $this->assertArrayHasKey('role', $body['profile']);
+    }
+
+    /** The card endpoint needs a username. */
+    public function testCardMissingUsernameReturns400(): void
+    {
+        $_GET = [];
+        $this->assertSame(400, (new UserProfileController())->card()->getStatusCode());
+    }
 }

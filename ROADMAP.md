@@ -272,10 +272,10 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Profile pictures/avatars (upload & resize)
 - [ ] Custom status messages
 - [ ] User bio/description
-- [ ] Online/away/busy status indicators
-- [ ] Message count statistics display
-- [ ] User profile modal/page
-- [ ] Badge system (verified, moderator, admin, VIP)
+- [x] Online status indicator — live online/offline in the profile card (fresh heartbeat)
+- [x] Message count statistics display — public message count in the user profile card
+- [x] User profile modal/page — click a username → profile card (`/api/user-profile/card`)
+- [x] Badge system — role badges (Moderator/Admin/Root) on the profile card
 - [ ] User activity levels/ranks
 - [ ] Automatic rank progression based on participation
 - [ ] Visual rank indicators (colors, icons, titles)

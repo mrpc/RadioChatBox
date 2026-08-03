@@ -6,6 +6,7 @@ use Pramnos\Http\Request;
 use Pramnos\Http\Response;
 use Pramnos\Routing\Attributes\Route;
 use Pramnos\Database\Database;
+use RadioChatBox\Services\UserProfileService;
 
 /**
  * GET /api/user-profile?username=… — a user's public profile (age/sex/location
@@ -52,6 +53,29 @@ final class UserProfileController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('Error fetching user profile: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['success' => false, 'error' => 'Failed to fetch profile'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * GET /api/user-profile/card?username= — the richer public profile card:
+     * display name, online status, public message count, first/last seen, role
+     * badge and the optional age/sex/location. 200 {success, profile}; missing
+     * username -> 400.
+     */
+    #[Route('/api/user-profile/card', methods: 'GET', name: 'user-profile.card')]
+    public function card(): Response
+    {
+        $username = trim((string) Request::getInstance()->get('username', '', 'get'));
+        if ($username === '') {
+            return Response::json(['success' => false, 'error' => 'Username is required'], 400);
+        }
+        try {
+            return Response::json(['success' => true, 'profile' => (new UserProfileService())->profile($username)]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('UserProfileController::card failed: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['success' => false, 'error' => 'Failed to fetch profile'], 500);
         }
         // @codeCoverageIgnoreEnd
