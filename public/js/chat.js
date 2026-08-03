@@ -2772,12 +2772,15 @@ class RadioChatBox {
             if (p.location) bits.push(this.escapeHtml(p.location));
             const meta = bits.length ? `<div class="profile-meta">${bits.join(' · ')}</div>` : '';
             const since = p.first_seen ? new Date((p.first_seen + '').replace(' ', 'T')).toLocaleDateString() : null;
+            const rank = p.rank
+                ? `<span class="profile-rank" style="background:${this.escapeHtml(p.rank.color)}1a; color:${this.escapeHtml(p.rank.color)};">${this.escapeHtml(p.rank.title)}</span>`
+                : '';
             body.innerHTML = `
                 <div class="profile-head">
-                    <div class="profile-avatar">${this.escapeHtml((p.username || '?').charAt(0).toUpperCase())}</div>
+                    <div class="profile-avatar" style="${p.rank ? 'background:' + this.escapeHtml(p.rank.color) : ''}">${this.escapeHtml((p.username || '?').charAt(0).toUpperCase())}</div>
                     <div>
                         <div class="profile-name">${name} ${badge}</div>
-                        ${online}
+                        ${online} ${rank}
                     </div>
                 </div>
                 ${meta}

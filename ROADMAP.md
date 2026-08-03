@@ -276,9 +276,9 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Message count statistics display — public message count in the user profile card
 - [x] User profile modal/page — click a username → profile card (`/api/user-profile/card`)
 - [x] Badge system — role badges (Moderator/Admin/Root) on the profile card
-- [ ] User activity levels/ranks
-- [ ] Automatic rank progression based on participation
-- [ ] Visual rank indicators (colors, icons, titles)
+- [x] User activity levels/ranks — `RankService` (Newcomer→Legend) from message count
+- [x] Automatic rank progression based on participation — rank is a pure function of message count
+- [x] Visual rank indicators (colors, titles) — coloured rank chip + avatar on the profile card
 
 **Database Changes:**
 - Add `avatar_url`, `bio`, `status`, `status_message` to `user_profiles` table

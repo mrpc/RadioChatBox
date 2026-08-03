@@ -68,12 +68,14 @@ class UserProfileService
 
         $usertype = $userRow !== null ? (int) $userRow['usertype'] : 0;
         $roleLabel = Authz::labelForUsertype($usertype);
+        $messageCount = (int) ($statsRow['cnt'] ?? 0);
 
         return [
             'username'      => $username,
             'display_name'  => $userRow['display_name'] ?? null,
             'is_online'     => !empty($onlineRow['is_online']),
-            'message_count' => (int) ($statsRow['cnt'] ?? 0),
+            'message_count' => $messageCount,
+            'rank'          => RankService::forCount($messageCount),
             'first_seen'    => $statsRow['first_seen'] ?? null,
             'last_seen'     => $onlineRow['last_seen'] ?? ($statsRow['last_message'] ?? null),
             'role'          => $roleLabel,

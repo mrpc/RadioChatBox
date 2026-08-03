@@ -4140,3 +4140,4 @@ body.metal-theme .active-user.current-user {
 .profile-stats div { display: flex; flex-direction: column; }
 .profile-stats strong { font-size: 20px; color: #111827; }
 .profile-stats span { font-size: 12px; color: #6b7280; }
+.profile-rank { border-radius: 8px; font-size: 11px; padding: 2px 8px; font-weight: 600; }
