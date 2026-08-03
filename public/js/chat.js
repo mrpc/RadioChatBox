@@ -5435,8 +5435,29 @@ class RadioChatBox {
     acceptPhotoFile(file) {
         if (!file) return false;
 
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
+        // Type check that tolerates mobile browsers. On Android Chrome a photo
+        // picked from the gallery/camera often arrives with an EMPTY file.type (or
+        // a HEIC type), which the old strict allow-list wrongly rejected — so the
+        // user "couldn't send". Accept when the MIME is a known image type OR,
+        // when the browser didn't give us one, fall back to the file extension.
+        // The server does the authoritative content check (getimagesize), so a
+        // permissive client check is safe.
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        const type = (file.type || '').toLowerCase();
+        const ext = (file.name || '').split('.').pop().toLowerCase();
+        const heicLike = type === 'image/heic' || type === 'image/heif' || ext === 'heic' || ext === 'heif';
+
+        if (heicLike) {
+            alert('HEIC photos aren\'t supported. In your camera settings choose "Most compatible" (JPEG), or pick a JPG/PNG.');
+            return false;
+        }
+        const typeOk = allowedTypes.includes(type);
+        const extOk = allowedExt.includes(ext);
+        // Reject only when we're confident it isn't an image: a non-image MIME that
+        // also has no image extension. Empty/generic MIME with an image extension
+        // (the common Android case) is allowed through.
+        if (!typeOk && !extOk) {
             alert('Please select a valid image file (JPG, PNG, GIF, or WebP)');
             return false;
         }

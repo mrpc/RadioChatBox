@@ -350,8 +350,13 @@ class PhotoService
             throw new \RuntimeException('File is empty');
         }
 
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, $this->allowedExtensions)) {
+        // Extension check. Mobile pickers (esp. Android) sometimes hand us a file
+        // with NO extension in its name — don't reject those here; the actual image
+        // content is verified downstream with getimagesize() + the MIME allow-list,
+        // which is authoritative. Only reject when an extension is present AND it
+        // isn't an allowed image extension (blocks an obvious non-image like .pdf).
+        $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
+        if ($ext !== '' && !in_array($ext, $this->allowedExtensions, true)) {
             throw new \RuntimeException('Invalid file extension');
         }
     }

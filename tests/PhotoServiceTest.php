@@ -283,6 +283,38 @@ class PhotoServiceTest extends TestCase
     }
 
     /**
+     * A real image whose filename carries NO extension still uploads — mobile
+     * pickers (Android) often provide such names. The content-type check
+     * (getimagesize) is authoritative; the extension gate must not reject it.
+     */
+    public function testUploadAcceptsImageWithNoFilenameExtension(): void
+    {
+        $img = imagecreatetruecolor(30, 30);
+        $jpg = tempnam(sys_get_temp_dir(), 'noext');
+        imagejpeg($img, $jpg);
+        imagedestroy($img);
+
+        $uploaded = null;
+        try {
+            $uploaded = $this->acceptingService()->uploadPhoto(
+                ['tmp_name' => $jpg, 'name' => '1000012345', 'size' => (int) filesize($jpg), 'error' => UPLOAD_ERR_OK, 'type' => ''],
+                'u', 'r', '127.0.0.1'
+            );
+            $this->assertSame('image/jpeg', $uploaded['mime_type']);
+            $this->assertStringEndsWith('.jpg', $uploaded['filename']);
+        } finally {
+            @unlink($jpg);
+            if ($uploaded !== null) {
+                $disk = dirname(__DIR__) . '/public' . $uploaded['file_path'];
+                if (is_file($disk)) {
+                    @unlink($disk);
+                }
+                $this->pdo->prepare('DELETE FROM attachments WHERE attachment_id = ?')->execute([$uploaded['attachment_id']]);
+            }
+        }
+    }
+
+    /**
      * uploadPhoto refuses when photo uploads are disabled by setting
      * (allow_photo_uploads=false). The setting is snapshotted/restored.
      */
