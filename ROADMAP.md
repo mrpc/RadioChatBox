@@ -624,7 +624,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Rate limiting per API key
 - [ ] API usage statistics and quotas
 - [ ] Developer dashboard
-- [ ] API documentation (OpenAPI/Swagger)
+- [x] API documentation (OpenAPI/Swagger) — live `/api/openapi.json` + `/api/docs` viewer (generated from attribute routes)
 - [ ] API playground/testing interface
 - [ ] Webhook system for events
 - [ ] OAuth 2.0 for third-party apps
