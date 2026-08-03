@@ -139,6 +139,10 @@ class RadioChatBox {
         this.lastMessageId = null; // Track last received message ID for catch-up on reconnect
         this.heartbeatInterval = null;
         this.soundEnabled = localStorage.getItem('chatSoundEnabled') !== 'false'; // default to true
+        // Notification preferences (client-side, persisted). DND suppresses ALL
+        // sounds/toasts/title cues; reactionToasts gates the "X reacted" toast.
+        this.dndEnabled = localStorage.getItem('chatDnd') === 'true';
+        this.reactionToastsEnabled = localStorage.getItem('chatReactionToasts') !== 'false';
         this.chatMode = 'both'; // Default chat mode, will be updated from server
         this.isEmbedded = window.self !== window.top; // Detect if in iframe
         this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
@@ -1927,6 +1931,24 @@ class RadioChatBox {
         profileNickname.value = this.username;
         profileError.textContent = '';
 
+        // Notification preference toggles (persist immediately on change).
+        const dndEl = document.getElementById('pref-dnd');
+        const toastEl = document.getElementById('pref-reaction-toasts');
+        if (dndEl) {
+            dndEl.checked = this.dndEnabled;
+            dndEl.onchange = () => {
+                this.dndEnabled = dndEl.checked;
+                localStorage.setItem('chatDnd', this.dndEnabled ? 'true' : 'false');
+            };
+        }
+        if (toastEl) {
+            toastEl.checked = this.reactionToastsEnabled;
+            toastEl.onchange = () => {
+                this.reactionToastsEnabled = toastEl.checked;
+                localStorage.setItem('chatReactionToasts', this.reactionToastsEnabled ? 'true' : 'false');
+            };
+        }
+
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
             try {
@@ -2740,6 +2762,7 @@ class RadioChatBox {
 
     /** Transient toast when someone reacts to one of my messages. */
     showReactionNotification(fromUser, emoji) {
+        if (this.dndEnabled || !this.reactionToastsEnabled) return;
         try {
             let host = document.getElementById('rcb-toast-host');
             if (!host) {
@@ -4401,6 +4424,8 @@ class RadioChatBox {
     }
     
     playNotificationSound() {
+        // Do Not Disturb suppresses every audible cue.
+        if (this.dndEnabled) return;
         // Create a simple beep sound using Web Audio API
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -6449,6 +6474,7 @@ class RadioChatBox {
     }
     
     showTitleNotification(text) {
+        if (this.dndEnabled) return;
         if (this.titleNotificationActive) return;
         this.titleNotificationActive = true;
         this.originalTitle = document.title;

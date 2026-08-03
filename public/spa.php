@@ -164,6 +164,16 @@
                 </div>
             </div>
 
+            <div class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">
+                <label style="font-weight:600;">Notifications</label>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+                    <input type="checkbox" id="pref-dnd" style="width:auto;"> Do Not Disturb (mute all sounds &amp; alerts)
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+                    <input type="checkbox" id="pref-reaction-toasts" style="width:auto;"> Show reaction notifications
+                </label>
+            </div>
+
             <div id="profile-error" class="error-message"></div>
 
             <div class="modal-buttons">
