@@ -2972,9 +2972,10 @@ class RadioChatBox {
             const r = await fetch(`${this.apiUrl}/api/notifications?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`);
             if (!r.ok) { box.innerHTML = '<div class="search-empty">Could not load notifications.</div>'; return; }
             const d = await r.json();
-            const items = (d && d.notifications) || [];
+            let items = (d && d.notifications) || [];
             this.updateNotifBadge(d.unread_count || 0);
             if (!items.length) { box.innerHTML = '<div class="search-empty">No notifications yet.</div>'; return; }
+            items = this._groupNotifications(items);
             box.innerHTML = items.map(n => {
                 const when = n.created_at ? new Date((n.created_at + '').replace(' ', 'T')).toLocaleString() : '';
                 const unread = !(n.is_read === true || n.is_read === 't');
@@ -2986,6 +2987,30 @@ class RadioChatBox {
                     </div>`;
             }).join('');
         } catch (e) { box.innerHTML = '<div class="search-empty">Error loading notifications.</div>'; }
+    }
+
+    /**
+     * Collapse multiple reaction notifications on the SAME message into a single
+     * "N reactions to your message" entry (newest timestamp; unread if any were).
+     * Other notification types pass through unchanged.
+     */
+    _groupNotifications(items) {
+        const out = [];
+        const byLink = new Map(); // link -> index in out
+        for (const n of items) {
+            const isReaction = n.type === 'reaction' && n.link;
+            if (!isReaction) { out.push(n); continue; }
+            if (byLink.has(n.link)) {
+                const g = out[byLink.get(n.link)];
+                g._count = (g._count || 1) + 1;
+                if (!(n.is_read === true || n.is_read === 't')) g.is_read = false;
+                g.title = `${g._count} reactions to your message`;
+            } else {
+                byLink.set(n.link, out.length);
+                out.push({ ...n, _count: 1 });
+            }
+        }
+        return out;
     }
 
     async markAllNotificationsRead() {
