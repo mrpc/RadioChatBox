@@ -188,6 +188,14 @@
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
                     <input type="checkbox" id="pref-high-contrast" style="width:auto;"> High contrast
                 </label>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+                    Text size
+                    <select id="pref-font-size" style="width:auto; padding:2px 6px;">
+                        <option value="small">Small</option>
+                        <option value="normal">Normal</option>
+                        <option value="large">Large</option>
+                    </select>
+                </label>
             </div>
 
             <div id="profile-error" class="error-message"></div>

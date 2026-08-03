@@ -838,10 +838,10 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 **Priority:** MEDIUM - Important for inclusivity
 
 - [x] Screen reader support (ARIA labels) — aria-labels on controls + aria-live chat log (partial, ongoing)
-- [ ] Keyboard navigation improvements
+- [x] Keyboard navigation improvements — Escape closes header overlays; focus-visible outlines; skip link
 - [x] Focus indicators — visible :focus-visible outlines on interactive elements
 - [ ] Color contrast compliance (WCAG 2.1 AA)
-- [ ] Font size adjustments
+- [x] Font size adjustments — small/normal/large text-size pref in Profile settings, persisted
 - [x] High contrast mode — a11y toggle (stronger borders/colours), persisted; composes with dark mode
 - [x] Reduced motion mode — honours prefers-reduced-motion (animations/transitions disabled)
 - [ ] Alt text for images

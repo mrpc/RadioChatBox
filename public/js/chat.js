@@ -1957,6 +1957,11 @@ class RadioChatBox {
             darkEl.checked = document.body.classList.contains('dark-mode');
             darkEl.onchange = () => this.setDarkMode(darkEl.checked);
         }
+        const fontEl = document.getElementById('pref-font-size');
+        if (fontEl) {
+            fontEl.value = localStorage.getItem('chatFontSize') || 'normal';
+            fontEl.onchange = () => this.setFontSize(fontEl.value);
+        }
         const soundStyleEl = document.getElementById('pref-sound-style');
         if (soundStyleEl) {
             soundStyleEl.value = localStorage.getItem('chatSoundStyle') || 'beep';
@@ -2277,6 +2282,7 @@ class RadioChatBox {
         if (localStorage.getItem('chatHighContrast') === 'true') {
             document.body.classList.add('high-contrast');
         }
+        this.setFontSize(localStorage.getItem('chatFontSize') || 'normal');
 
         // Initial unread-notification count for the header badge.
         this.refreshNotificationCount();
@@ -2402,6 +2408,15 @@ class RadioChatBox {
             soundBtn.addEventListener('click', () => this.toggleSound());
             this.updateSoundButton();
         }
+
+        // Keyboard: Escape closes any open header overlay.
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            ['notifications-panel', 'schedule-panel', 'search-panel'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.style.display !== 'none') el.style.display = 'none';
+            });
+        });
 
         // Notifications inbox
         const notifBtn = document.getElementById('notifications-toggle');
@@ -2831,6 +2846,14 @@ class RadioChatBox {
     setDarkMode(on) {
         document.body.classList.toggle('dark-mode', !!on);
         localStorage.setItem('chatDarkMode', on ? 'true' : 'false');
+    }
+
+    /** Apply a text-size preference (small|normal|large) and persist it. */
+    setFontSize(size) {
+        document.body.classList.remove('font-small', 'font-large');
+        if (size === 'small') document.body.classList.add('font-small');
+        else if (size === 'large') document.body.classList.add('font-large');
+        localStorage.setItem('chatFontSize', size || 'normal');
     }
 
     // ---- DM read receipts -------------------------------------------

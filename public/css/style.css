@@ -4253,3 +4253,9 @@ body.high-contrast a { text-decoration: underline; }
 body.high-contrast #message-input { border: 2px solid #000; }
 body.high-contrast.dark-mode .message { border-color: #fff; }
 body.high-contrast.dark-mode .message-username { color: #7dd3fc; }
+
+/* Font-size accessibility scale (applied to body). */
+body.font-large .message-text,
+body.font-large .message-username { font-size: 1.12em; }
+body.font-large #message-input { font-size: 16px; }
+body.font-small .message-text { font-size: 0.9em; }
