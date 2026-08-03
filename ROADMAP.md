@@ -595,7 +595,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [x] Moderator performance metrics — `/api/admin/moderation/performance` (actions per moderator, handled counts)
 - [x] Report resolution time tracking — avg time-to-resolution overall + per resolver (`ReportService::resolutionStats`)
 - [ ] Room-specific analytics (if multi-room implemented)
-- [ ] Export analytics to PDF
+- [x] Export analytics (CSV) — daily-stats CSV export (`/api/admin/stats/export`); PDF still open
 - [ ] Customizable dashboard widgets
 - [ ] Funnel analysis (registration → active user)
 

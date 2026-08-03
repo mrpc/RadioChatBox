@@ -246,6 +246,16 @@ class AdminStatsControllerTest extends TestCase
      * monthly/yearly/all), reading the granularity from the query string, and
      * returns 200 {success, results} for each — covering every switch arm.
      */
+    /** The daily-stats CSV export returns a downloadable text/csv response. */
+    public function testStatsExportReturnsCsv(): void
+    {
+        $_GET = ['days' => '30'];
+        $response = (new AdminStatsController())->statsExport();
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('text/csv', (string) $response->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString('attachment; filename="daily-stats.csv"', (string) $response->getHeaderLine('Content-Disposition'));
+    }
+
     public function testAggregateAllGranularities(): void
     {
         $this->authAsAdmin();

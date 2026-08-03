@@ -548,6 +548,39 @@ final class AdminStatsController
     }
 
     /**
+     * GET /api/admin/stats/export?days=90 — download the daily statistics as CSV.
+     * Columns follow the stats_daily schema (whatever it holds). Admin-only.
+     */
+    #[Route('/api/admin/stats/export', methods: 'GET', name: 'admin.stats.export', middleware: [AdminAuthMiddleware::class])]
+    public function statsExport(): Response
+    {
+        try {
+            $days = max(1, min((int) Request::getInstance()->get('days', 90, 'get'), 3650));
+            $from = (new \DateTimeImmutable("-{$days} days"))->format('Y-m-d');
+            $rows = (new StatsService())->getDailyStats($from, null, 3650);
+
+            if ($rows === []) {
+                $csv = Csv::build(['stat_date'], []);
+                return Csv::download($csv, 'daily-stats.csv');
+            }
+
+            $headers = array_keys($rows[0]);
+            $data = array_map(static fn (array $r): array => array_map(
+                static fn ($v) => is_scalar($v) || $v === null ? $v : json_encode($v),
+                array_values($r)
+            ), $rows);
+
+            $csv = Csv::build($headers, $data);
+            return Csv::download($csv, 'daily-stats.csv');
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminStatsController::statsExport failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/activity-heatmap?days=30 — a 7×24 message-activity grid for
      * the "peak usage times" heatmap. Admin-only.
      */

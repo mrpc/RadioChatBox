@@ -1445,6 +1445,9 @@
                             View real-time statistics and analytics for your chat activity.
                         </p>
 
+                        <div style="margin-bottom: 12px;">
+                            <button class="btn btn-outline" onclick="downloadCsv('/api/admin/stats/export?days=90', 'daily-stats.csv')">⬇️ Export daily stats (CSV)</button>
+                        </div>
                         <div id="retention-metrics" style="margin-bottom: 20px;"></div>
                         <div id="activity-heatmap" style="margin-bottom: 20px;"></div>
                         <div id="popular-reactions" style="margin-bottom: 20px;"></div>
