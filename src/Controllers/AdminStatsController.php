@@ -548,6 +548,26 @@ final class AdminStatsController
     }
 
     /**
+     * GET /api/admin/retention — active-user retention metrics (DAU/WAU/MAU +
+     * stickiness), computed from public message participation. Admin-only.
+     */
+    #[Route('/api/admin/retention', methods: 'GET', name: 'admin.retention', middleware: [AdminAuthMiddleware::class])]
+    public function retention(): Response
+    {
+        try {
+            return Response::json([
+                'success'   => true,
+                'retention' => (new StatsService())->activeUserCounts(),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminStatsController::retention failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/reactions/popular?days=30 — most-used reaction emojis across
      * public messages in the window, ranked by count.
      */

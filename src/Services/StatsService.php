@@ -537,6 +537,40 @@ class StatsService
      * 
      * @return array Summary with today, this week, this month, this year stats
      */
+    /**
+     * Active-user retention metrics: distinct usernames that posted a public
+     * message in the last day (DAU), 7 days (WAU) and 30 days (MAU), plus a
+     * simple stickiness ratio (DAU/MAU as a percentage). Computed from
+     * chat_messages so it reflects real participation.
+     *
+     * @return array{dau:int, wau:int, mau:int, stickiness:int}
+     */
+    public function activeUserCounts(): array
+    {
+        $distinct = static function (PramnosDatabase $db, string $interval): int {
+            try {
+                $result = $db->query(
+                    "SELECT COUNT(DISTINCT LOWER(username)) AS c
+                     FROM chat_messages
+                     WHERE is_deleted = FALSE AND created_at >= NOW() - INTERVAL '{$interval}'"
+                );
+                return $result ? (int) $result->fetchColumn() : 0;
+            // @codeCoverageIgnoreStart
+            } catch (\Throwable $e) {
+                \Pramnos\Logs\Logger::log('StatsService::activeUserCounts failed: ' . $e->getMessage(), 'radiochatbox');
+                return 0;
+            }
+            // @codeCoverageIgnoreEnd
+        };
+
+        $dau = $distinct($this->db, '1 day');
+        $wau = $distinct($this->db, '7 days');
+        $mau = $distinct($this->db, '30 days');
+        $stickiness = $mau > 0 ? (int) round($dau / $mau * 100) : 0;
+
+        return ['dau' => $dau, 'wau' => $wau, 'mau' => $mau, 'stickiness' => $stickiness];
+    }
+
     public function getSummary(): array
     {
         $this->ensureTablesExist();

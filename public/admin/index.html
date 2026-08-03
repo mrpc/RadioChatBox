@@ -1445,6 +1445,7 @@
                             View real-time statistics and analytics for your chat activity.
                         </p>
 
+                        <div id="retention-metrics" style="margin-bottom: 20px;"></div>
                         <div id="popular-reactions" style="margin-bottom: 20px;"></div>
 
                         <!-- Statistics Sub-tabs -->
@@ -5367,7 +5368,7 @@
                 if (tabName === 'song-requests') loadSongRequests();
                 if (tabName === 'polls') loadPollsHistory();
                 if (tabName === 'shows') loadShows();
-                if (tabName === 'statistics') loadPopularReactions();
+                if (tabName === 'statistics') { loadPopularReactions(); loadRetentionMetrics(); }
             };
         })();
         
@@ -9578,6 +9579,30 @@
                             </td></tr>`;
                     }).join('')}</tbody></table>`;
             } catch (e) { table.innerHTML = '<p style="color:#ef4444;">Error loading shows.</p>'; }
+        }
+
+        async function loadRetentionMetrics() {
+            const box = document.getElementById('retention-metrics');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/admin/retention', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = ''; return; }
+                const r = data.retention || {};
+                const card = (label, value, sub) =>
+                    `<div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:10px 16px; min-width:110px;">
+                        <div style="font-size:22px; font-weight:700;">${value}</div>
+                        <div style="font-size:12px; color:#6b7280;">${label}</div>
+                        ${sub ? `<div style="font-size:11px; color:#9ca3af;">${sub}</div>` : ''}
+                    </div>`;
+                box.innerHTML = `<div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Active users (by participation)</div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        ${card('Daily active', r.dau || 0, 'last 24h')}
+                        ${card('Weekly active', r.wau || 0, 'last 7d')}
+                        ${card('Monthly active', r.mau || 0, 'last 30d')}
+                        ${card('Stickiness', (r.stickiness || 0) + '%', 'DAU / MAU')}
+                    </div>`;
+            } catch (e) { box.innerHTML = ''; }
         }
 
         async function loadPopularReactions() {

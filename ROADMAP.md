@@ -591,7 +591,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 
 ### Enhanced Analytics
 - [ ] Peak usage times heatmap visualization
-- [ ] User retention metrics (daily/weekly/monthly active users)
+- [x] User retention metrics (daily/weekly/monthly active users) — DAU/WAU/MAU + stickiness (`/api/admin/retention`)
 - [x] Moderator performance metrics — `/api/admin/moderation/performance` (actions per moderator, handled counts)
 - [x] Report resolution time tracking — avg time-to-resolution overall + per resolver (`ReportService::resolutionStats`)
 - [ ] Room-specific analytics (if multi-room implemented)
