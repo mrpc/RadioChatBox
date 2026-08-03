@@ -6010,7 +6010,54 @@ class RadioChatBox {
         this.selectedPhoto = null;
     }
     
+    /**
+     * Downscale/compress a large photo in the browser before upload. Big camera
+     * photos (common on mobile) are drawn onto a canvas capped at ~1920px and
+     * re-encoded as JPEG, which shrinks the upload and avoids server-side size
+     * rejections. Animated GIFs and already-small images are returned unchanged.
+     */
+    async maybeDownscaleImage(file) {
+        try {
+            const type = (file.type || '').toLowerCase();
+            if (type === 'image/gif') return file;                 // keep animation
+            if (file.size && file.size < 1024 * 1024 && type) return file; // small enough
+            const bitmap = await this._loadBitmap(file);
+            if (!bitmap) return file;
+            const maxDim = 1920;
+            let { width, height } = bitmap;
+            if (width <= maxDim && height <= maxDim && file.size < 2 * 1024 * 1024) return file;
+            const scale = Math.min(1, maxDim / Math.max(width, height));
+            const w = Math.max(1, Math.round(width * scale));
+            const h = Math.max(1, Math.round(height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+            if (!blob) return file;
+            const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+            return new File([blob], name, { type: 'image/jpeg' });
+        } catch (e) {
+            return file; // never block the upload on a downscale failure
+        }
+    }
+
+    /** Load a File into an ImageBitmap (or <img> fallback) for canvas drawing. */
+    async _loadBitmap(file) {
+        try {
+            if (window.createImageBitmap) return await createImageBitmap(file);
+        } catch (e) { /* fall through */ }
+        return await new Promise((resolve) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+            img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+            img.src = url;
+        });
+    }
+
     async uploadPhoto(file, recipient) {
+        // Shrink big images client-side first (mobile camera photos especially).
+        file = await this.maybeDownscaleImage(file);
         const formData = new FormData();
         formData.append('photo', file);
         formData.append('username', this.username);

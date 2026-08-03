@@ -676,8 +676,8 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 
 ### Mobile Optimizations
 - [ ] Touch gesture support (swipe actions)
-- [ ] Mobile-optimized image uploads
-- [ ] Adaptive image quality based on connection
+- [x] Mobile-optimized image uploads — client-side downscale/compress large photos before upload (canvas, ≤1920px JPEG)
+- [x] Adaptive image quality — large images re-encoded to JPEG q0.85 client-side before upload
 - [ ] Battery-efficient SSE reconnection strategy
 - [ ] Mobile-specific UI adjustments
 - [ ] Virtual keyboard handling improvements
