@@ -172,6 +172,9 @@
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
                     <input type="checkbox" id="pref-reaction-toasts" style="width:auto;"> Show reaction notifications
                 </label>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+                    <input type="checkbox" id="pref-dark-mode" style="width:auto;"> Dark mode 🌙
+                </label>
             </div>
 
             <div id="profile-error" class="error-message"></div>

@@ -699,7 +699,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] Camera integration for photos/videos
 - [ ] Optimized mobile UI/UX
 - [ ] Offline mode with sync
-- [ ] Dark mode support
+- [x] Dark mode support — toggle in Profile settings (public chat surfaces), persisted
 - [ ] Gesture controls
 - [ ] Deep linking
 

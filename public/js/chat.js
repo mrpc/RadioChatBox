@@ -143,6 +143,10 @@ class RadioChatBox {
         // sounds/toasts/title cues; reactionToasts gates the "X reacted" toast.
         this.dndEnabled = localStorage.getItem('chatDnd') === 'true';
         this.reactionToastsEnabled = localStorage.getItem('chatReactionToasts') !== 'false';
+        // Apply the saved dark-mode preference as early as possible.
+        if (localStorage.getItem('chatDarkMode') === 'true') {
+            try { document.body.classList.add('dark-mode'); } catch (e) { /* body not ready */ }
+        }
         this.chatMode = 'both'; // Default chat mode, will be updated from server
         this.isEmbedded = window.self !== window.top; // Detect if in iframe
         this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
@@ -1948,6 +1952,11 @@ class RadioChatBox {
                 localStorage.setItem('chatReactionToasts', this.reactionToastsEnabled ? 'true' : 'false');
             };
         }
+        const darkEl = document.getElementById('pref-dark-mode');
+        if (darkEl) {
+            darkEl.checked = document.body.classList.contains('dark-mode');
+            darkEl.onchange = () => this.setDarkMode(darkEl.checked);
+        }
 
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
@@ -2244,6 +2253,11 @@ class RadioChatBox {
         // Load the set of users I've blocked so their public messages are hidden
         // from my feed (blocking is otherwise DM-only). Re-applies once resolved.
         this.loadBlockedUsers();
+
+        // Ensure the saved dark-mode preference is applied (body is ready here).
+        if (localStorage.getItem('chatDarkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+        }
 
         // Photo upload elements
         this.photoButton = document.getElementById('photo-button');
@@ -2781,6 +2795,12 @@ class RadioChatBox {
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         } catch (e) { /* non-fatal */ }
+    }
+
+    /** Toggle the dark theme and persist the choice. */
+    setDarkMode(on) {
+        document.body.classList.toggle('dark-mode', !!on);
+        localStorage.setItem('chatDarkMode', on ? 'true' : 'false');
     }
 
     // ---- DM read receipts -------------------------------------------
