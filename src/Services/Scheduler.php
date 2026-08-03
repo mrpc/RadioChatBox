@@ -101,6 +101,11 @@ class Scheduler
             'group' => 'maintenance',
             'description' => 'Notify subscribers shortly before a show they follow airs',
         ],
+        'promo_dispatch' => [
+            'every' => 60,
+            'group' => 'maintenance',
+            'description' => 'Send due promo-campaign messages (public / DM) as fake users',
+        ],
         'prune_llm_log' => [
             'every' => 86400,
             'at_hour' => 3,
@@ -367,6 +372,7 @@ class Scheduler
             'stats_yearly' => static fn () => (new StatsService())->aggregateYearlyStats(),
             'cleanup' => static fn () => (new CleanupService())->runAll(),
             'show_reminders' => static fn () => (new ShowSubscriptionService())->sendDueReminders(),
+            'promo_dispatch' => static fn () => (new PromoService())->dispatchDue(),
             'prune_llm_log' => fn () => (new LlmLog($this->settings))->prune(),
             'llm_balance_snapshot' => fn () => (new LlmAccount($this->settings))->snapshot(true),
             default => null,

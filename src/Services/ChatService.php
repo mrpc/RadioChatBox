@@ -140,6 +140,53 @@ class ChatService
     }
 
     /**
+     * Post a public message AS a fake user (system-driven, e.g. promo campaigns).
+     * Skips the rate limit / ban / slow-mode checks that apply to real users, but
+     * goes through the same append → broadcast → persist path so it renders like
+     * any other message. Returns the stored message data.
+     *
+     * @return array<string,mixed>
+     */
+    public function postAsFakeUser(string $nickname, string $message): array
+    {
+        $nickname = trim($nickname);
+        $message = trim($message);
+        if ($nickname === '' || $message === '') {
+            throw new \InvalidArgumentException('nickname and message are required');
+        }
+        $message = mb_substr($message, 0, 500);
+
+        $messageData = [
+            'id'           => uniqid('msg_', true),
+            'username'     => $nickname,
+            'display_name' => null,
+            'message'      => $message,
+            'timestamp'    => time(),
+            'ip'           => 'system',
+            'reply_to'     => null,
+            'reply_data'   => null,
+            'user_id'      => null,
+            'pinned_track' => null,
+        ];
+
+        $this->messageHistory->append($messageData);
+        $this->messageHistory->cacheReply($messageData['id'], [
+            'username'     => $nickname,
+            'display_name' => null,
+            'message'      => $message,
+        ]);
+        BroadcastingManager::instance()->broadcast(self::PUBSUB_CHANNEL, 'message', $messageData);
+        try {
+            $this->storeMessageInDB($messageData);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('postAsFakeUser store failed: ' . $e->getMessage(), 'radiochatbox');
+        }
+        // @codeCoverageIgnoreEnd
+        return $messageData;
+    }
+
+    /**
      * Lightweight presence refresh (no cleanup/publish overhead): bumps
      * last_heartbeat for the sender's session. Any interaction that reaches this
      * keeps the user "online". Best-effort — never fails the surrounding action.

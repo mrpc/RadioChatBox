@@ -1258,6 +1258,10 @@
                         <span class="icon">📅</span>
                         <span>Schedule</span>
                     </div>
+                    <div class="nav-item" onclick="switchTab('promos')" data-tab="promos">
+                        <span class="icon">📣</span>
+                        <span>Promos</span>
+                    </div>
                     <div class="nav-item" onclick="switchTab('url-whitelist')" data-tab="url-whitelist">
                         <span class="icon">✅</span>
                         <span>URL Whitelist</span>
@@ -2376,6 +2380,79 @@
                     </div>
                     <div id="shows-calendar" style="margin-bottom:16px;"></div>
                     <div id="shows-table"></div>
+                </div>
+            </div>
+
+            <!-- Promo Campaigns Tab -->
+            <div id="promos-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2>Promo Campaigns</h2>
+                            <p style="color:#6b7280;">Scheduled promotional messages sent by fake users — into the public chat or as DMs to listeners, on an interval and within optional active hours.</p>
+                        </div>
+                        <button class="btn btn-outline" onclick="loadPromos()">🔄 Refresh</button>
+                    </div>
+                    <div class="settings-group" style="margin-bottom:16px;">
+                        <h3 id="promo-form-title">Add a campaign</h3>
+                        <input type="hidden" id="promo-id" value="">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="promo-name" maxlength="150" placeholder="e.g. Premium plan promo">
+                        </div>
+                        <div class="form-group">
+                            <label>Message</label>
+                            <textarea id="promo-message" rows="3" maxlength="2000" style="width:100%;" placeholder="Check out our premium plan at…"></textarea>
+                        </div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:140px;">
+                                <label>Target</label>
+                                <select id="promo-target" onchange="onPromoTargetChange()">
+                                    <option value="public">Public chat</option>
+                                    <option value="dm">Direct messages</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:140px;">
+                                <label>Sent by</label>
+                                <select id="promo-fake-user"><option value="">Random active bot</option></select>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:120px;">
+                                <label>Every (minutes)</label>
+                                <input type="number" id="promo-interval" min="1" max="10080" placeholder="60">
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:120px;">
+                                <label>Active from (optional)</label>
+                                <input type="time" id="promo-window-start">
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:120px;">
+                                <label>Active until (optional)</label>
+                                <input type="time" id="promo-window-end">
+                            </div>
+                        </div>
+                        <div id="promo-dm-fields" style="display:none;">
+                            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                                <div class="form-group" style="flex:1; min-width:140px;">
+                                    <label>Per-user cooldown (hours)</label>
+                                    <input type="number" id="promo-cooldown" min="0" max="8760" placeholder="24">
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:140px;">
+                                    <label>Max recipients per run</label>
+                                    <input type="number" id="promo-max" min="1" max="1000" placeholder="20">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="promo-active" checked style="width:auto;"> Active
+                            </label>
+                        </div>
+                        <button type="button" class="btn btn-success" onclick="savePromo()">💾 Save campaign</button>
+                        <button type="button" class="btn btn-outline" id="promo-cancel" onclick="resetPromoForm()" style="display:none;">Cancel</button>
+                        <div id="promo-error" style="color:#ef4444; font-size:13px; margin-top:6px; display:none;"></div>
+                    </div>
+                    <div id="promos-table"></div>
                 </div>
             </div>
 
@@ -5335,6 +5412,7 @@
                 'song-requests': {title: 'Song Requests', subtitle: 'Listener requests and dedications'},
                 'polls': {title: 'Polls', subtitle: 'Chat polls and their results'},
                 'shows': {title: 'Schedule', subtitle: 'Radio show schedule'},
+                'promos': {title: 'Promos', subtitle: 'Scheduled promo campaigns'},
                 'url-whitelist': {title: 'URL Whitelist', subtitle: 'Allowed URLs in public messages'},
                 'url-blacklist': {title: 'URL Blacklist', subtitle: 'Blocked URLs and domains'},
                 'photos': {title: 'Photo Gallery', subtitle: 'User uploaded images'},
@@ -5409,6 +5487,7 @@
                 if (tabName === 'song-requests') loadSongRequests();
                 if (tabName === 'polls') loadPollsHistory();
                 if (tabName === 'shows') loadShows();
+                if (tabName === 'promos') loadPromos();
                 if (tabName === 'statistics') { loadPopularReactions(); loadRetentionMetrics(); loadActivityHeatmap(); }
             };
         })();
@@ -9511,6 +9590,125 @@
 
         // ---- Abuse reports queue ----
         const REPORT_REASON_LABELS = { spam:'Spam', harassment:'Harassment', inappropriate:'Inappropriate', offensive:'Offensive', impersonation:'Impersonation', other:'Other' };
+
+        // ---- Promo campaigns (admin) ----
+        function onPromoTargetChange() {
+            const dm = document.getElementById('promo-target').value === 'dm';
+            document.getElementById('promo-dm-fields').style.display = dm ? 'block' : 'none';
+        }
+        async function populatePromoFakeUsers() {
+            const sel = document.getElementById('promo-fake-user');
+            if (!sel || sel._loaded) return;
+            try {
+                if (!fakeUsersCache || !fakeUsersCache.length) { try { await loadFakeUsers(); } catch (e) {} }
+                (fakeUsersCache || []).forEach(u => {
+                    const o = document.createElement('option'); o.value = u.id; o.textContent = u.nickname; sel.appendChild(o);
+                });
+                sel._loaded = true;
+            } catch (e) {}
+        }
+        function resetPromoForm() {
+            ['promo-id','promo-name','promo-message','promo-interval','promo-window-start','promo-window-end','promo-cooldown','promo-max'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+            document.getElementById('promo-target').value = 'public';
+            document.getElementById('promo-fake-user').value = '';
+            document.getElementById('promo-active').checked = true;
+            document.getElementById('promo-form-title').textContent = 'Add a campaign';
+            document.getElementById('promo-cancel').style.display = 'none';
+            document.getElementById('promo-error').style.display = 'none';
+            onPromoTargetChange();
+        }
+        async function savePromo() {
+            const err = document.getElementById('promo-error');
+            const show = m => { err.textContent = m; err.style.display = 'block'; };
+            err.style.display = 'none';
+            const id = document.getElementById('promo-id').value;
+            const payload = {
+                name: document.getElementById('promo-name').value.trim(),
+                message: document.getElementById('promo-message').value.trim(),
+                target: document.getElementById('promo-target').value,
+                fake_user_id: document.getElementById('promo-fake-user').value || '',
+                interval_minutes: document.getElementById('promo-interval').value || '60',
+                window_start: document.getElementById('promo-window-start').value,
+                window_end: document.getElementById('promo-window-end').value,
+                cooldown_hours: document.getElementById('promo-cooldown').value || '24',
+                max_recipients: document.getElementById('promo-max').value || '20',
+                is_active: document.getElementById('promo-active').checked ? 'true' : 'false',
+            };
+            if (!payload.name) { show('Name is required.'); return; }
+            if (!payload.message) { show('Message is required.'); return; }
+            if (id) payload.id = id;
+            try {
+                const res = await fetch(id ? '/api/admin/promos/update' : '/api/admin/promos', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify(payload),
+                });
+                const d = await res.json();
+                if (d.success) { resetPromoForm(); loadPromos(); } else show(d.error || 'Failed to save.');
+            } catch (e) { show('Error: ' + e.message); }
+        }
+        function editPromo(p) {
+            document.getElementById('promo-id').value = p.id;
+            document.getElementById('promo-name').value = p.name || '';
+            document.getElementById('promo-message').value = p.message || '';
+            document.getElementById('promo-target').value = p.target || 'public';
+            document.getElementById('promo-fake-user').value = p.fake_user_id || '';
+            document.getElementById('promo-interval').value = p.interval_minutes || 60;
+            document.getElementById('promo-window-start').value = (p.window_start || '').slice(0,5);
+            document.getElementById('promo-window-end').value = (p.window_end || '').slice(0,5);
+            document.getElementById('promo-cooldown').value = p.cooldown_hours ?? 24;
+            document.getElementById('promo-max').value = p.max_recipients ?? 20;
+            document.getElementById('promo-active').checked = (p.is_active === true || p.is_active === 't' || p.is_active === 'true' || p.is_active === 1);
+            document.getElementById('promo-form-title').textContent = 'Edit campaign #' + p.id;
+            document.getElementById('promo-cancel').style.display = '';
+            onPromoTargetChange();
+            document.getElementById('promo-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        async function deletePromo(id) {
+            if (!confirm('Delete this campaign?')) return;
+            try { await fetch('/api/admin/promos/delete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify({ id }) }); loadPromos(); } catch (e) { alert('Error: ' + e.message); }
+        }
+        async function runPromo(id) {
+            if (!confirm('Send this campaign now?')) return;
+            try {
+                const res = await fetch('/api/admin/promos/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify({ id }) });
+                const d = await res.json();
+                alert(d.success ? `Sent (${d.sent} message${d.sent === 1 ? '' : 's'}).` : (d.error || 'Failed.'));
+                loadPromos();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+        async function loadPromos() {
+            populatePromoFakeUsers();
+            const table = document.getElementById('promos-table');
+            if (!table) return;
+            table.innerHTML = '<div style="color:#6b7280;padding:12px;">Loading…</div>';
+            try {
+                const res = await fetch('/api/admin/promos', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { table.innerHTML = '<p style="color:#ef4444;">Failed to load.</p>'; return; }
+                const promos = data.promos || [];
+                if (!promos.length) { table.innerHTML = '<p style="color:#6b7280;padding:12px;">No campaigns yet.</p>'; return; }
+                table.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="text-align:left;color:#6b7280;">
+                        <th style="padding:6px 8px;">Name</th><th style="padding:6px 8px;">Target</th><th style="padding:6px 8px;">Every</th><th style="padding:6px 8px;">Window</th><th style="padding:6px 8px;">Active</th><th style="padding:6px 8px;">Last run</th><th style="padding:6px 8px;"></th>
+                    </tr></thead><tbody>${promos.map(p => {
+                        const active = (p.is_active === true || p.is_active === 't' || p.is_active === 'true' || p.is_active === 1);
+                        const win = (p.window_start && p.window_end) ? `${(p.window_start||'').slice(0,5)}–${(p.window_end||'').slice(0,5)}` : 'any';
+                        const last = p.last_run_at ? new Date((p.last_run_at+'').replace(' ','T')).toLocaleString() : '—';
+                        return `<tr style="border-top:1px solid #f0f0f0;">
+                            <td style="padding:6px 8px;"><strong>${escapeHtml(p.name)}</strong></td>
+                            <td style="padding:6px 8px;">${p.target === 'dm' ? '✉️ DM' : '💬 Public'}</td>
+                            <td style="padding:6px 8px;">${p.interval_minutes}m</td>
+                            <td style="padding:6px 8px;">${escapeHtml(win)}</td>
+                            <td style="padding:6px 8px;">${active ? '✅' : '⛔'}</td>
+                            <td style="padding:6px 8px;">${escapeHtml(last)}</td>
+                            <td style="padding:6px 8px;white-space:nowrap;">
+                                <button class="btn btn-outline" style="padding:3px 8px;font-size:12px;" onclick="runPromo(${p.id})" title="Send now">▶</button>
+                                <button class="btn btn-outline" style="padding:3px 8px;font-size:12px;" onclick='editPromo(${JSON.stringify(p).replace(/'/g, "&#39;")})'>✎</button>
+                                <button class="btn btn-danger" style="padding:3px 8px;font-size:12px;" onclick="deletePromo(${p.id})">🗑️</button>
+                            </td></tr>`;
+                    }).join('')}</tbody></table>`;
+            } catch (e) { table.innerHTML = '<p style="color:#ef4444;">Error loading campaigns.</p>'; }
+        }
 
         // ---- Show schedule (admin) ----
         const SHOW_DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
