@@ -1940,6 +1940,24 @@ class RadioChatBox {
         // Password-reset flow: if the page was opened from a reset link (?reset=…),
         // show the reset modal.
         this._initPasswordReset();
+        // Email-verification flow: if opened from a verify link (?verify=…), confirm it.
+        this._initEmailVerification();
+    }
+
+    async _initEmailVerification() {
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('verify');
+        if (!token) return;
+        try {
+            const r = await fetch(`${this.apiUrl}/api/email/verify`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token }),
+            });
+            const d = await r.json();
+            alert(d.success ? '✅ Your email has been verified.' : (d.error || 'Verification link invalid or expired.'));
+        } catch (e) { /* ignore */ }
+        const url = new URL(window.location.href); url.searchParams.delete('verify');
+        window.history.replaceState({}, '', url.toString());
     }
 
     _initPasswordReset() {
@@ -2109,6 +2127,7 @@ class RadioChatBox {
         // Two-factor + passkey sections: only for registered accounts.
         this._initTwoFactorSection();
         this._initPasskeySection();
+        this._initEmailSection();
 
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
@@ -3094,6 +3113,30 @@ class RadioChatBox {
             this.initializeChat();
         } catch (e) {
             if (err) err.textContent = (e && e.name === 'NotAllowedError') ? 'Cancelled.' : 'Passkey sign-in error.';
+        }
+    }
+
+    _initEmailSection() {
+        const section = document.getElementById('profile-email-section');
+        if (!section) return;
+        if (!this.userId) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        const btn = document.getElementById('profile-resend-verify-btn');
+        const msg = document.getElementById('profile-email-msg');
+        if (btn && !btn._wired) {
+            btn._wired = true;
+            btn.onclick = async () => {
+                msg.textContent = 'Sending…';
+                try {
+                    const r = await fetch(`${this.apiUrl}/api/email/resend`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: this.username, session_id: this.sessionId }),
+                    });
+                    const d = await r.json();
+                    msg.textContent = d.already_verified ? '✅ Your email is already verified.'
+                        : (d.success ? 'Verification email sent — check your inbox.' : (d.error || 'Could not send.'));
+                } catch (e) { msg.textContent = 'Error sending email.'; }
+            };
         }
     }
 

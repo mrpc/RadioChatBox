@@ -43,6 +43,8 @@ class SettingsService
         'self_registration_enabled',
         // From-address for transactional email (password reset, etc).
         'mail_from',
+        // Send a verification email on registration.
+        'email_verification_enabled',
         // WebAuthn passkeys: RP id (effective domain) + allowed origins.
         'passkey_rp_id',
         'passkey_origins',

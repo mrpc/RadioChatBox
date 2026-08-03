@@ -2713,9 +2713,15 @@
                             <input type="text" id="setting-passkey-origins" placeholder="https://livechats.gr">
                         </div>
                         <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-email-verification-enabled" style="width:auto;">
+                                Send a verification email on registration
+                            </label>
+                        </div>
+                        <div class="form-group">
                             <label>Transactional email "From" address</label>
                             <input type="email" id="setting-mail-from" placeholder="no-reply@livechats.gr">
-                            <small style="color:#6b7280;">Used for password-reset emails. Requires a configured mailer.</small>
+                            <small style="color:#6b7280;">Used for password-reset &amp; verification emails. Requires a configured mailer.</small>
                         </div>
                         <div class="form-group" id="setting-minimum-users-group">
                             <label>Minimum Users (Fake Users Feature)</label>
@@ -8796,6 +8802,7 @@
                     document.getElementById('setting-passkey-rp-id').value = settings.passkey_rp_id || '';
                     document.getElementById('setting-passkey-origins').value = settings.passkey_origins || '';
                     document.getElementById('setting-mail-from').value = settings.mail_from || '';
+                    document.getElementById('setting-email-verification-enabled').checked = settings.email_verification_enabled === 'true';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
                     document.getElementById('setting-gif-provider').value = settings.gif_provider || 'giphy';
@@ -9274,6 +9281,7 @@
                 passkey_rp_id: document.getElementById('setting-passkey-rp-id').value,
                 passkey_origins: document.getElementById('setting-passkey-origins').value,
                 mail_from: document.getElementById('setting-mail-from').value,
+                email_verification_enabled: document.getElementById('setting-email-verification-enabled').checked ? 'true' : 'false',
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
                 gif_provider: document.getElementById('setting-gif-provider').value,

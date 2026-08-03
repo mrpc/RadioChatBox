@@ -234,6 +234,13 @@
                 <div id="profile-passkey-error" class="error-message"></div>
             </div>
 
+            <!-- Email verification (registered accounts) -->
+            <div id="profile-email-section" class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+                <label style="font-weight:600;">Email</label>
+                <button type="button" id="profile-resend-verify-btn" class="btn-secondary" style="font-size:13px;">Resend verification email</button>
+                <div id="profile-email-msg" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
+            </div>
+
             <div class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">
                 <label style="font-weight:600;">Notifications</label>
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">

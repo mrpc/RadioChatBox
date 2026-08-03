@@ -142,7 +142,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] User self-registration (public signup form) — `/api/register-account` (gated by self_registration_enabled) + Register tab on the join screen
 - [x] Email/password authentication system — login by username/email + password (RcbAuthDriver, plain bcrypt); self-registration added
 - [x] Password reset via email — forgot/reset flow (single-use hashed tokens, anti-enumeration) + emailed link + reset modal
-- [ ] Email verification for new accounts
+- [x] Email verification for new accounts — verify/resend flow (hashed single-use tokens) + `users.email_verified_at`; enabled per setting
 - [ ] "Remember Me" functionality
 - [ ] Facebook OAuth integration
 - [x] Account settings page — Profile settings modal (display name, profile, bio/status, notification prefs, dark mode)

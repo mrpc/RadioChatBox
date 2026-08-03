@@ -202,6 +202,18 @@ final class AuthController
                 );
             }
 
+            // Send a verification email when the feature is on and an email exists.
+            $newUserId = (int) ($result['user']['userid'] ?? $result['user']['id'] ?? 0);
+            if ($email !== '' && $newUserId > 0
+                && (new \RadioChatBox\Services\SettingsService())->get('email_verification_enabled', 'false') === 'true') {
+                try {
+                    $token = (new \RadioChatBox\Services\EmailVerificationService())->issue($newUserId);
+                    $this->sendVerificationEmail($email, $username, $token);
+                } catch (\Throwable $e) {
+                    \Pramnos\Logs\Logger::log('verification email on register failed: ' . $e->getMessage(), 'radiochatbox');
+                }
+            }
+
             return Response::json(['success' => true, 'user' => $result['user']]);
         } catch (InvalidArgumentException $e) {
             return Response::json(['error' => $e->getMessage()], 400);
@@ -211,6 +223,104 @@ final class AuthController
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/email/verify — {token}. Marks the account's email verified and
+     * consumes the token. 200 {success}; bad/expired token -> 400.
+     */
+    #[Route('/api/email/verify', methods: 'POST', name: 'auth.email.verify')]
+    public function verifyEmail(): Response
+    {
+        try {
+            $token = trim((string) ($_POST['token'] ?? ''));
+            if ($token === '') {
+                return Response::json(['error' => 'A verification token is required'], 400);
+            }
+            $userId = (new \RadioChatBox\Services\EmailVerificationService())->verify($token);
+            if ($userId === null) {
+                return Response::json(['error' => 'This verification link is invalid or has expired'], 400);
+            }
+            return Response::json(['success' => true, 'message' => 'Your email has been verified.']);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AuthController::verifyEmail failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/email/resend — {username, session_id}. Re-sends the verification
+     * email for the signed-in account. 200 {success}; bad session/account -> 403;
+     * already verified -> 200 {success, already_verified}.
+     */
+    #[Route('/api/email/resend', methods: 'POST', name: 'auth.email.resend')]
+    public function resendVerification(): Response
+    {
+        try {
+            $username = trim((string) ($_POST['username'] ?? ''));
+            $sessionId = trim((string) ($_POST['session_id'] ?? ''));
+            if ($username === '' || $sessionId === '') {
+                return Response::json(['error' => 'username and session_id are required'], 400);
+            }
+            $chat = new ChatService();
+            if ($chat->getSessionInfo($username, $sessionId) === null) {
+                return Response::json(['error' => 'Invalid session'], 403);
+            }
+            $userId = $chat->accountUserId($username);
+            if ($userId === null) {
+                return Response::json(['error' => 'Not a registered account'], 403);
+            }
+
+            $verifier = new \RadioChatBox\Services\EmailVerificationService();
+            if ($verifier->isVerified($userId)) {
+                return Response::json(['success' => true, 'already_verified' => true]);
+            }
+
+            $row = Database::getInstance()->preparedQuery('SELECT email FROM users WHERE userid = :u LIMIT 1', ['u' => $userId]);
+            $emailAddr = $row ? (string) $row->fetchColumn() : '';
+            if ($emailAddr === '') {
+                return Response::json(['error' => 'No email address on file'], 400);
+            }
+
+            $token = $verifier->issue($userId);
+            $this->sendVerificationEmail($emailAddr, $username, $token);
+            return Response::json(['success' => true]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AuthController::resendVerification failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /** Email a verification link (best-effort; a failed mailer never surfaces). */
+    private function sendVerificationEmail(string $to, string $username, string $token): void
+    {
+        try {
+            $settings = new \RadioChatBox\Services\SettingsService();
+            $base = rtrim((string) ($settings->get('siteurl') ?: ($_SERVER['HTTP_ORIGIN'] ?? '')), '/');
+            $link = $base . '/?verify=' . urlencode($token);
+            $brand = (string) ($settings->get('brand_name') ?: ($settings->get('site_title') ?: 'RadioChatBox'));
+
+            $body = '<p>Hi ' . htmlspecialchars($username) . ',</p>'
+                . '<p>Please confirm your email address for ' . htmlspecialchars($brand)
+                . ' by clicking the link below (valid for 24 hours):</p>'
+                . '<p><a href="' . htmlspecialchars($link) . '">' . htmlspecialchars($link) . '</a></p>';
+
+            $email = \Pramnos\Email\Email::getInstance();
+            $email->setTo($to);
+            $email->setSubject($brand . ' — verify your email');
+            $email->setBody($body);
+            $from = (string) $settings->get('mail_from', '');
+            if ($from !== '') {
+                $email->setFrom($from);
+            }
+            $email->send();
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('verification email failed (token still valid): ' . $e->getMessage(), 'radiochatbox');
+        }
     }
 
     /**
