@@ -20,6 +20,7 @@
     <script id="custom-header-scripts"></script>
 </head>
 <body>
+    <a href="#messages" class="skip-to-content">Skip to messages</a>
     <!-- Nickname Selection Modal -->
     <div id="nickname-modal" class="modal">
         <div class="modal-content">

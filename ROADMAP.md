@@ -143,7 +143,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] Email verification for new accounts
 - [ ] "Remember Me" functionality
 - [ ] Facebook OAuth integration
-- [ ] Account settings page
+- [x] Account settings page — Profile settings modal (display name, profile, bio/status, notification prefs, dark mode)
 - [ ] Two-factor authentication (2FA)
 - [ ] CAPTCHA/robot protection for sign-in and registration
   - Google reCAPTCHA v3 (invisible) or v2 (checkbox) integration
@@ -845,7 +845,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [ ] High contrast mode
 - [x] Reduced motion mode — honours prefers-reduced-motion (animations/transitions disabled)
 - [ ] Alt text for images
-- [ ] Skip to content links
+- [x] Skip to content links — keyboard skip-to-messages link (focus-revealed)
 
 ---
 
