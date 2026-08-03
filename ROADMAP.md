@@ -658,12 +658,12 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 ### PWA Features
 - [ ] Service worker implementation
 - [ ] Offline message queue
-- [ ] Install as mobile app (Add to Home Screen)
+- [x] Install as mobile app (Add to Home Screen) — web manifest + apple-touch meta (iOS home-screen launch)
 - [ ] App-like navigation
 - [ ] Offline indicator
 - [ ] Background sync for queued messages
 - [ ] Push notifications support (via service worker)
-- [ ] App manifest configuration
+- [x] App manifest configuration — manifest.json + theme/apple meta (installable, no service worker)
 - [ ] Splash screen
 - [ ] App icons (all sizes)
 

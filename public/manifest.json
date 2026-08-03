@@ -1,0 +1,19 @@
+{
+  "name": "RadioChatBox — Live Chat",
+  "short_name": "RadioChat",
+  "description": "Real-time chat for radio shows",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111827",
+  "theme_color": "#667eea",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

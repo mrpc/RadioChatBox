@@ -12,6 +12,15 @@
     <meta property="og:type" id="og-type" content="website">
     <meta property="og:image" id="og-image" content="">
     <link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg">
+    <!-- Installable web app (Add to Home Screen). No service worker: avoids
+         stale-asset caching risk while still enabling a home-screen launch. -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RadioChat">
+    <link rel="apple-touch-icon" href="/favicon.svg">
     <!-- CSS with automatic cache-busting version based on file modification time -->
     <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(PUBLIC_PATH . '/css/style.css'); ?>">
     <!-- Twemoji library for emoji support on older Windows versions -->
