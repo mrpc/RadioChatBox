@@ -64,6 +64,12 @@ class ChatService
 
         // Slow mode: an admin-set minimum gap between a user's messages (0 = off).
         $this->enforceSlowMode($username);
+
+        // Spam detection: reject obvious duplicate flooding (same message repeated
+        // in a short window). Opt-in via spam_detection_enabled.
+        if ((new SpamGuard())->isDuplicateSpam($username, $message)) {
+            throw new \RuntimeException('That message looks like spam — please stop repeating it.');
+        }
         
         // Validate reply_to if provided
         $replyData = null;

@@ -151,6 +151,10 @@ class SettingsService
         // Custom profanity filter: off / mask (star out) / block (reject message).
         'profanity_filter_mode',
         'profanity_words',
+        // Spam detection (duplicate flooding).
+        'spam_detection_enabled',
+        'spam_duplicate_threshold',
+        'spam_window_seconds',
     ];
 
     /**
@@ -167,6 +171,8 @@ class SettingsService
         'warning_auto_timeout_minutes' => [1, 1440],
         'automod_report_threshold' => [2, 100],
         'automod_timeout_minutes' => [1, 10080],
+        'spam_duplicate_threshold' => [2, 50],
+        'spam_window_seconds' => [2, 3600],
         'minimum_users' => [0, 10000],
         'ads_refresh_interval' => [1, 3600],
         'track_poll_seconds' => [10, 3600],

@@ -557,7 +557,7 @@ existing now-playing feed (`TrackStatsService`, socket-pushed now-playing). Both
 - [x] Profanity filter with custom word lists — `profanity_words` + mode (off/mask/block) in `MessageFilter`
 - [ ] AI-powered content moderation (OpenAI Moderation API)
 - [ ] NSFW image detection for uploaded photos
-- [ ] Spam detection algorithms
+- [x] Spam detection algorithms — `SpamGuard` duplicate-flood detection in the public send path (settings-gated)
 - [ ] Link safety checking (phishing/malware detection)
 - [ ] CAPTCHA for suspicious activity
 - [x] Configurable filter strictness levels — profanity mode off/mask/block

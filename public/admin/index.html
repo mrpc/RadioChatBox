@@ -3249,6 +3249,28 @@
                     </div>
                 </div>
 
+                <div class="settings-group">
+                    <h3>Spam detection</h3>
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="setting-spam-detection-enabled" style="width:auto;">
+                            Block duplicate flooding in public chat
+                        </label>
+                        <small style="color:#6b7280;">Rejects the same message repeated too many times in a short window (in addition to the IP rate limit and slow mode).</small>
+                    </div>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label>Duplicate threshold</label>
+                            <input type="number" id="setting-spam-duplicate-threshold" placeholder="3" min="2" max="50">
+                            <small style="color:#6b7280;">Identical messages allowed before blocking.</small>
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label>Window (seconds)</label>
+                            <input type="number" id="setting-spam-window-seconds" placeholder="30" min="2" max="3600">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="section">
                     <button class="btn btn-success" onclick="saveSettings()" style="width: 100%; font-size: 16px; padding: 12px;">
                         💾 Save All Settings
@@ -8732,6 +8754,9 @@
                     document.getElementById('setting-automod-timeout-minutes').value = settings.automod_timeout_minutes ?? '60';
                     document.getElementById('setting-profanity-filter-mode').value = settings.profanity_filter_mode || 'off';
                     document.getElementById('setting-profanity-words').value = settings.profanity_words || '';
+                    document.getElementById('setting-spam-detection-enabled').checked = settings.spam_detection_enabled === 'true';
+                    document.getElementById('setting-spam-duplicate-threshold').value = settings.spam_duplicate_threshold ?? '3';
+                    document.getElementById('setting-spam-window-seconds').value = settings.spam_window_seconds ?? '30';
 
                     // Fake user auto-replies (bots)
                     botRepliesEnabled = settings.bot_replies_enabled === 'true';
@@ -9173,6 +9198,9 @@
                 automod_timeout_minutes: document.getElementById('setting-automod-timeout-minutes').value,
                 profanity_filter_mode: document.getElementById('setting-profanity-filter-mode').value,
                 profanity_words: document.getElementById('setting-profanity-words').value,
+                spam_detection_enabled: document.getElementById('setting-spam-detection-enabled').checked ? 'true' : 'false',
+                spam_duplicate_threshold: document.getElementById('setting-spam-duplicate-threshold').value,
+                spam_window_seconds: document.getElementById('setting-spam-window-seconds').value,
                 
                 // SEO & Branding
                 site_title: document.getElementById('setting-site-title').value,
