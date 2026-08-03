@@ -194,7 +194,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Chat commands system (/help, /rules, /tip, etc.) — built-in /help + custom
 - [x] Custom command creation in admin panel
 - [x] Slow mode (configurable message delay)
-- [ ] Different rate limits for new vs trusted users
+- [x] Different rate limits for new vs trusted users — `TrustService` + stricter per-user allowance for untrusted guests
 
 **Database Changes:**
 - New `user_blocks` table (id, blocker_id, blocked_id, created_at)
@@ -256,7 +256,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Track reports per user — `ReportService::forReportedUser` (user dossier) + most-reported ranking in the reports dashboard
 - [x] Automatic escalation rules (e.g., 5 reports = auto-ban) — `AutoModService::onReport` (timeout or ban at threshold)
 - [ ] Reputation score system
-- [ ] Trust levels based on user behavior
+- [x] Trust levels based on user behavior — registered or established-guest (message-count) trust via `TrustService`
 - [ ] Automatic shadow ban for repeat offenders
 - [ ] Configurable automation rules in admin panel
 - [x] Auto-mod whitelist (exempt trusted users) — staff (moderator+) are always exempt

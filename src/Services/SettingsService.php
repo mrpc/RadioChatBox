@@ -155,6 +155,10 @@ class SettingsService
         'spam_detection_enabled',
         'spam_duplicate_threshold',
         'spam_window_seconds',
+        // Tiered rate limit: a stricter allowance for new/untrusted users.
+        'rate_limit_new_user_enabled',
+        'rate_limit_messages_new',
+        'trust_message_threshold',
     ];
 
     /**
@@ -173,6 +177,8 @@ class SettingsService
         'automod_timeout_minutes' => [1, 10080],
         'spam_duplicate_threshold' => [2, 50],
         'spam_window_seconds' => [2, 3600],
+        'rate_limit_messages_new' => [1, 1000],
+        'trust_message_threshold' => [1, 100000],
         'minimum_users' => [0, 10000],
         'ads_refresh_interval' => [1, 3600],
         'track_poll_seconds' => [10, 3600],

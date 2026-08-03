@@ -62,6 +62,12 @@ class ChatService
             throw new \RuntimeException('Rate limit exceeded. Please wait before sending another message.');
         }
 
+        // Stricter, per-username rate limit for brand-new / untrusted users (guests
+        // below the trust threshold). Opt-in via rate_limit_new_user_enabled.
+        if (!$this->checkNewUserRateLimit($username)) {
+            throw new \RuntimeException('You are sending messages too quickly. Please slow down.');
+        }
+
         // Slow mode: an admin-set minimum gap between a user's messages (0 = off).
         $this->enforceSlowMode($username);
 
@@ -417,6 +423,38 @@ class ChatService
      *
      * OPTIMIZED: Fetches both rate limit settings in single query instead of two
      */
+    /**
+     * A stricter, per-username rate limit applied only to untrusted (new/guest)
+     * users. Trusted users (registered, or guests past the trust threshold) skip
+     * it entirely. Returns true when the message is allowed. Gated by
+     * rate_limit_new_user_enabled; reuses rate_limit_window for the window.
+     */
+    private function checkNewUserRateLimit(string $username): bool
+    {
+        if ($this->getSetting('rate_limit_new_user_enabled', 'false') !== 'true') {
+            return true;
+        }
+        if ((new TrustService())->isTrusted($username)) {
+            return true;
+        }
+
+        $allowance = max(1, (int) $this->getSetting('rate_limit_messages_new', 5));
+        $window = max(1, (int) $this->getSetting('rate_limit_window', 60));
+        $key = 'ratelimit:newuser:' . mb_strtolower(trim($username));
+
+        try {
+            if (FlatCache::default()->counter($key) >= $allowance) {
+                return false;
+            }
+            FlatCache::default()->increment($key, 1, $window);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            return true; // never block chat on a counter backend failure
+        }
+        // @codeCoverageIgnoreEnd
+        return true;
+    }
+
     private function checkRateLimit(string $ipAddress): bool
     {
         // Get rate limit settings with caching
