@@ -78,6 +78,25 @@ class SongRequestService
         return $qb->orderBy('created_at', 'desc')->limit($limit)->offset($offset)->getAll();
     }
 
+    /**
+     * Recent public shout-outs: approved or played requests that carry a
+     * dedication, newest first. For the listener-facing shout-outs display.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function shoutouts(int $limit = 10): array
+    {
+        $limit = max(1, min($limit, 50));
+        return $this->db->queryBuilder()
+            ->from('song_requests')
+            ->select(['requester_username', 'song_title', 'artist', 'dedication', 'status', 'created_at'])
+            ->whereIn('status', ['approved', 'played'])
+            ->whereRaw("dedication IS NOT NULL AND TRIM(dedication) <> ''")
+            ->orderBy('created_at', 'desc')
+            ->limit($limit)
+            ->getAll();
+    }
+
     /** Count of requests in a given status (default pending). */
     public function count(string $status = 'pending'): int
     {

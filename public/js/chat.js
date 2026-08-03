@@ -2799,7 +2799,28 @@ class RadioChatBox {
         if (!panel) return;
         const show = force === undefined ? panel.style.display === 'none' : force;
         panel.style.display = show ? 'flex' : 'none';
-        if (show) this.loadSchedule();
+        if (show) { this.loadSchedule(); this.loadShoutouts(); }
+    }
+
+    async loadShoutouts() {
+        const box = document.getElementById('shoutouts-block');
+        if (!box) return;
+        try {
+            const resp = await fetch(`${this.apiUrl}/api/shoutouts?limit=8`);
+            if (!resp.ok) { box.innerHTML = ''; return; }
+            const data = await resp.json();
+            const items = (data && data.shoutouts) || [];
+            if (!items.length) { box.innerHTML = ''; return; }
+            box.innerHTML = `<div class="sched-section">📣 Shout-outs</div>` + items.map(s => {
+                const who = this.escapeHtml(s.requester_username || 'Someone');
+                const song = this.escapeHtml([s.song_title, s.artist].filter(Boolean).join(' — '));
+                const ded = this.escapeHtml(s.dedication || '');
+                return `<div class="shoutout-item">
+                        <div class="shoutout-ded">“${ded}”</div>
+                        <div class="shoutout-meta">${who}${song ? ' · ' + song : ''}</div>
+                    </div>`;
+            }).join('');
+        } catch (e) { box.innerHTML = ''; }
     }
 
     async loadSchedule() {

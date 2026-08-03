@@ -166,6 +166,44 @@ class SongRequestControllerTest extends TestCase
     // ---- service directly -------------------------------------------
 
     /** recentCountForSession counts only this session's rows in the window. */
+    /** shoutouts() returns approved/played requests that carry a dedication. */
+    public function testShoutoutsListsApprovedDedications(): void
+    {
+        $this->enable();
+        $service = new SongRequestService();
+        // Approved + dedication → appears.
+        $a = $service->create($this->user, $this->session, 'Song A', 'Artist', 'Happy birthday Maria!');
+        $service->setStatus($a, 'approved', 'admin');
+        // Pending + dedication → excluded (not yet approved).
+        $service->create($this->user, $this->session, 'Song B', null, 'still pending shout');
+        // Approved without a dedication → excluded.
+        $c = $service->create($this->user, $this->session, 'Song C');
+        $service->setStatus($c, 'approved', 'admin');
+
+        $shoutouts = $service->shoutouts(20);
+        $deds = array_map(fn ($r) => $r['dedication'], $shoutouts);
+        $this->assertContains('Happy birthday Maria!', $deds);
+        $this->assertNotContains('still pending shout', $deds);
+
+        // Endpoint returns them too.
+        $_GET = ['limit' => '20'];
+        $response = (new SongRequestController())->shoutouts();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertIsArray($body['shoutouts']);
+    }
+
+    /** With the feature off, the shout-outs endpoint returns an empty list. */
+    public function testShoutoutsEmptyWhenDisabled(): void
+    {
+        $this->enable(false);
+        $response = (new SongRequestController())->shoutouts();
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertSame([], $body['shoutouts']);
+    }
+
     public function testServiceCountsRecentRequestsPerSession(): void
     {
         $service = new SongRequestService();

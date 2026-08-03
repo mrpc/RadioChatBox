@@ -254,6 +254,7 @@
                         <button id="schedule-close" class="icon-button" title="Close">✕</button>
                     </div>
                     <div id="schedule-list"></div>
+                    <div id="shoutouts-block"></div>
                 </div>
                 <!-- Message search overlay (toggled from the header 🔍) -->
                 <div id="search-panel" style="display: none;">

@@ -4141,3 +4141,9 @@ body.metal-theme .active-user.current-user {
 .profile-stats strong { font-size: 20px; color: #111827; }
 .profile-stats span { font-size: 12px; color: #6b7280; }
 .profile-rank { border-radius: 8px; font-size: 11px; padding: 2px 8px; font-weight: 600; }
+
+/* ---- Shout-outs (in the schedule overlay) ---- */
+#shoutouts-block .sched-section { font-weight: 700; color: #374151; margin: 12px 0 6px; font-size: 13px; }
+#shoutouts-block .shoutout-item { padding: 6px 10px; border-left: 3px solid #f59e0b; background: #fffbeb; border-radius: 6px; margin-bottom: 6px; }
+#shoutouts-block .shoutout-ded { font-size: 13px; color: #374151; }
+#shoutouts-block .shoutout-meta { font-size: 11px; color: #92400e; margin-top: 2px; }

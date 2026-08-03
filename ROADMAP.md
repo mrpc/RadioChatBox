@@ -375,12 +375,12 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] Song request system
 - [x] Song voting/rating (now-playing thumbs up/down)
 - [x] Dedication messages (fold into the request as a shout-out field)
-- [ ] Shout-outs display
+- [x] Shout-outs display — approved/played dedications shown in the 📅 overlay + `/api/shoutouts`
 - [x] Request queue management (admin) — Song Requests tab, live pending badge
 - [x] Request approval workflow (approve / played / reject)
 - [ ] Integration with radio automation software (if applicable)
 - [x] Now-playing voting (thumbs up/down)
-- [ ] Request history tracking (status filters exist; no full audit trail yet)
+- [x] Request history tracking — admin 'All (history)' filter shows every request with status + handler
 
 **Database Changes:**
 - New `song_requests` table (id, user_id, song_title, artist, message, status, requested_at, played_at)

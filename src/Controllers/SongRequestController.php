@@ -88,6 +88,31 @@ class SongRequestController
     }
 
     /**
+     * GET /api/shoutouts?limit=10 — recent public shout-outs (approved/played
+     * requests that carry a dedication). Public; gated by song_requests_enabled.
+     * 200 {success, shoutouts}.
+     */
+    #[Route('/api/shoutouts', methods: 'GET', name: 'shoutouts.list')]
+    public function shoutouts(): Response
+    {
+        try {
+            if (!$this->isEnabled()) {
+                return Response::json(['success' => true, 'shoutouts' => []]);
+            }
+            $limit = (int) Request::getInstance()->get('limit', 10, 'get');
+            return Response::json([
+                'success'   => true,
+                'shoutouts' => (new SongRequestService())->shoutouts($limit),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('SongRequestController::shoutouts failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/song-requests?status=pending&page=1 — the request queue for
      * admins, plus a pending count for the badge. 200 {success, requests,
      * pending_count, pagination}.
