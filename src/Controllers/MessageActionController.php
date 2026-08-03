@@ -1023,4 +1023,62 @@ final class MessageActionController
         }
         // @codeCoverageIgnoreEnd
     }
+
+    /**
+     * POST /api/private/mark-read — mark a DM conversation as read. Body:
+     * {username, session_id, peer}. Sets read_at on every unread message the peer
+     * sent me and broadcasts a 'read' cue so the peer's client can show the "seen"
+     * receipt. 200 {success, marked}; missing fields -> 400; bad session -> 403.
+     */
+    #[Route('/api/private/mark-read', methods: 'POST', name: 'message-action.private.mark-read')]
+    public function markRead(): Response
+    {
+        try {
+            $input = $_POST;
+            $username = trim((string) ($input['username'] ?? ''));
+            $sessionId = trim((string) ($input['session_id'] ?? ''));
+            $peer = trim((string) ($input['peer'] ?? ''));
+
+            if ($username === '' || $sessionId === '' || $peer === '') {
+                return Response::json(['error' => 'username, session_id and peer are required'], 400);
+            }
+
+            // Verify the caller owns this session (no marking as someone else).
+            if ((new ChatService())->getSessionInfo($username, $sessionId) === null) {
+                return Response::json(['error' => 'Invalid session'], 403);
+            }
+
+            $db = Database::getInstance();
+            $result = $db->preparedQuery(
+                'UPDATE private_messages
+                 SET read_at = NOW()
+                 WHERE to_username = :me AND from_username = :peer AND read_at IS NULL
+                 RETURNING id',
+                ['me' => $username, 'peer' => $peer]
+            );
+            $marked = $result ? $result->numRows : 0;
+
+            // Tell the peer their messages were read (so their bubbles show "seen").
+            if ($marked > 0) {
+                try {
+                    BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', [
+                        'type'          => 'read',
+                        'from_username' => $username, // the reader
+                        'to_username'   => $peer,     // the sender being notified
+                    ]);
+                // @codeCoverageIgnoreStart
+                } catch (\Throwable $e) {
+                    \Pramnos\Logs\Logger::log('mark-read broadcast failed: ' . $e->getMessage(), 'radiochatbox');
+                }
+                // @codeCoverageIgnoreEnd
+            }
+
+            return Response::json(['success' => true, 'marked' => $marked]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('MessageActionController::markRead failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
 }

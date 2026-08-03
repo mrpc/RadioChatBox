@@ -2740,6 +2740,30 @@ class RadioChatBox {
         } catch (e) { /* non-fatal */ }
     }
 
+    // ---- DM read receipts -------------------------------------------
+
+    /** Flip every one of my sent DM bubbles to the "seen" (✓✓) receipt. */
+    markMySentMessagesSeen() {
+        if (!this.messagesContainer) return;
+        this.messagesContainer.querySelectorAll('.message.sent .dm-receipt:not(.seen)').forEach(el => {
+            el.classList.add('seen');
+            el.textContent = '✓✓';
+            el.title = 'Seen';
+        });
+    }
+
+    /** Tell the server I've read the open conversation with `peer` (best-effort). */
+    async sendReadReceipt(peer) {
+        if (!peer || !this.username || !this.sessionId) return;
+        try {
+            await fetch(`${this.apiUrl}/api/private/mark-read`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, session_id: this.sessionId, peer }),
+            });
+        } catch (e) { /* best-effort */ }
+    }
+
     // ---- User profile card ------------------------------------------
 
     async showUserProfile(username) {
@@ -3784,10 +3808,15 @@ class RadioChatBox {
                 <button class="report-message-btn" data-message-id="${msgId}" title="Report this message">🚩</button>
             ` : '';
 
+            // Read receipt on MY sent messages: ✓ sent, ✓✓ seen (read_at present).
+            const receiptHTML = isFromMe
+                ? `<span class="dm-receipt${msg.read_at ? ' seen' : ''}" title="${msg.read_at ? 'Seen' : 'Sent'}">${msg.read_at ? '✓✓' : '✓'}</span>`
+                : '';
+
             messageDiv.innerHTML = `
                 <div class="message-header">
                     <strong class="message-username">${this.escapeHtml(displayName)}</strong>
-                    <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
+                    <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}${receiptHTML}</span>
                 </div>
                 ${replyQuoteHTML}
                 <div class="message-body">
@@ -3844,6 +3873,12 @@ class RadioChatBox {
         this.updatePrivateGalleryButton();
 
         this.scrollToBottom();
+
+        // I'm looking at this conversation → mark the peer's messages read (server
+        // skips the broadcast when nothing was unread, so this is cheap to repeat).
+        if (this.privateChat.active && this.privateChat.withUser) {
+            this.sendReadReceipt(this.privateChat.withUser);
+        }
     }
 
     loadHistory(messages) {
@@ -5407,6 +5442,16 @@ class RadioChatBox {
         // A DM typing cue (shares the private channel, tagged type:'typing').
         if (messageData && messageData.type === 'typing') {
             this.handleDmTyping(messageData);
+            return;
+        }
+        // A "read receipt": the peer read the messages I sent them.
+        if (messageData && messageData.type === 'read') {
+            // The reader is from_username; if I'm viewing that conversation, mark my
+            // sent bubbles as seen.
+            if (this.privateChat && this.privateChat.active
+                && this.privateChat.withUser === messageData.from_username) {
+                this.markMySentMessagesSeen();
+            }
             return;
         }
         // Author-directed reaction notification (someone reacted to my message).

@@ -342,7 +342,7 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [x] @mentions with autocomplete
 - [x] Mention notifications (in-page title cue; no server persistence)
 - [x] Typing indicators ("User is typing...")
-- [ ] Message read receipts (for private messages)
+- [x] Message read receipts (for private messages) — ✓/✓✓ receipts via `/api/private/mark-read` + a 'read' cue on the private channel
 - [x] Link previews (title, description, thumbnail)
 - [x] Message search functionality — user-facing public chat search (🔍 overlay + `/api/search`) and admin per-user search
 

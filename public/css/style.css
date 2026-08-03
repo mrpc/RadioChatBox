@@ -4175,3 +4175,7 @@ textarea:focus-visible,
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+
+/* ---- DM read receipts ---- */
+.dm-receipt { margin-left: 6px; font-size: 11px; color: #9ca3af; }
+.dm-receipt.seen { color: #3b82f6; }
