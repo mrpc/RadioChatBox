@@ -639,6 +639,50 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * resendReply force-delivers a text into the chat even when the thread was
+     * ended/taken over (the admin re-sending an undelivered LLM reply): it stores
+     * the private message, counts it, revives the thread and clears the error.
+     */
+    public function testResendReplyForceDeliversPastGuards(): void
+    {
+        $this->incoming('geia');
+        // End + take over the thread and stamp an error — resend must override all.
+        $this->bot->takeOverThread($this->nick, $this->peer, 'admin');
+        $this->pdo->prepare(
+            'UPDATE bot_threads SET farewell_sent_at = NOW(), last_error = :e, messages_sent = 5
+             WHERE fake_user_id = :f AND peer_username = :p'
+        )->execute(['e' => 'was not delivered', 'f' => $this->fakeUserId, 'p' => $this->peer]);
+
+        $text = 'η χαμένη απάντηση επιτέλους';
+        $result = $this->bot->resendReply($this->nick, $this->peer, $text);
+
+        $this->assertNotNull($result);
+        $this->assertArrayHasKey('id', $result);
+
+        // The message is stored from the bot to the peer.
+        $stored = $this->pdo->query(
+            "SELECT message FROM private_messages WHERE id = " . (int) $result['id']
+        )->fetchColumn();
+        $this->assertSame($text, $stored);
+
+        // Counted, revived, error cleared.
+        $row = $this->pdo->query(
+            "SELECT messages_sent, farewell_sent_at, last_error FROM bot_threads
+             WHERE fake_user_id = {$this->fakeUserId} AND peer_username = '{$this->peer}'"
+        )->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame(6, (int) $row['messages_sent']);
+        $this->assertNull($row['farewell_sent_at']);
+        $this->assertNull($row['last_error']);
+    }
+
+    /** resendReply returns null for an unknown fake user or an empty text. */
+    public function testResendReplyRejectsBadInput(): void
+    {
+        $this->assertNull($this->bot->resendReply('no_such_bot_xyz', $this->peer, 'hi'));
+        $this->assertNull($this->bot->resendReply($this->nick, $this->peer, '   '));
+    }
+
+    /**
      * A generated reply that the delivery guard throws away (e.g. the bot was
      * taken over meanwhile) records WHY on the thread, so a vanished reply is
      * explained in Bot Activity instead of the chat silently stalling.

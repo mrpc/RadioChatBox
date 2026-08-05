@@ -981,16 +981,14 @@ class BotService
         $guard = $this->guard($fakeUserId, $peer, $epoch, requireActive: false);
         if ($guard !== null) {
             // A reply was fully generated and is now being thrown away at the last
-            // step — record WHY on the thread so a vanished reply is explained in
-            // Bot Activity instead of the conversation silently stalling. A plain
-            // supersession (the peer typed again) is normal, so it is not recorded.
-            if (!str_contains($guard, 'superseded')) {
-                $this->recordThreadError(
-                    $fakeUserId,
-                    $peer,
-                    'A generated reply was not delivered — ' . $guard . '.'
-                );
-            }
+            // step — record WHY on the thread (including a plain supersession) so a
+            // vanished reply is always explained in Bot Activity instead of the
+            // conversation silently stalling.
+            $this->recordThreadError(
+                $fakeUserId,
+                $peer,
+                'A generated reply was not delivered — ' . $guard . '.'
+            );
 
             return $guard;
         }
@@ -1070,6 +1068,73 @@ class BotService
         return $isFarewell
             ? "delivered farewell from {$fakeNickname} to {$peer}"
             : "delivered reply from {$fakeNickname} to {$peer}";
+    }
+
+    /**
+     * Force a specific text into the chat as a bot reply, bypassing every guard —
+     * the admin's "resend this LLM response to chat" tool for a reply that was
+     * generated but never delivered. Stores the private message, broadcasts it
+     * live, counts it as a sent message, revives an ended thread, clears the
+     * thread error and bumps the epoch so it is the live state.
+     *
+     * @return array{id:int}|null Null for an unknown fake user or empty text.
+     */
+    public function resendReply(string $fakeNickname, string $peer, string $text): ?array
+    {
+        $text = trim($text);
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+        if ($fakeUserId === null || trim($peer) === '' || $text === '') {
+            return null;
+        }
+
+        $toSessionId   = $this->resolvePeerSessionId($peer, '') ?? '';
+        $fromSessionId = 'fake_' . md5($fakeNickname);
+
+        $result = $this->db->preparedQuery('SELECT display_name FROM users WHERE username = ?', [$peer]);
+        $toDisplayName = $result ? $result->fetchColumn() : false;
+        $toDisplayName = $toDisplayName === false ? null : $toDisplayName;
+
+        $result = $this->db->preparedQuery('
+            INSERT INTO private_messages
+                (from_username, from_session_id, from_display_name, to_username, to_session_id, to_display_name, message, created_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, NOW())
+            RETURNING id, created_at
+        ', [$fakeNickname, $fromSessionId, $peer, $toSessionId, $toDisplayName, $text]);
+        $row = ($result && $result->numRows > 0) ? $result->fields : null;
+
+        if ($row === null) {
+            return null;
+        }
+
+        BroadcastingManager::instance()->broadcast('chat:private_messages', 'private', [
+            'id'                => $row['id'],
+            'from_username'     => $fakeNickname,
+            'from_display_name' => null,
+            'to_username'       => $peer,
+            'to_display_name'   => $toDisplayName,
+            'message'           => $text,
+            'attachment'        => null,
+            'timestamp'         => strtotime($row['created_at']),
+            'type'              => 'private',
+        ]);
+
+        // Count it, revive an ended thread, clear the "not delivered" error.
+        $this->db->preparedQuery('
+            UPDATE bot_threads
+            SET messages_sent    = messages_sent + 1,
+                last_reply_at    = NOW(),
+                last_error       = NULL,
+                farewell_sent_at = NULL,
+                updated_at       = NOW()
+            WHERE fake_user_id = :fake_user_id AND peer_username = :peer
+        ', ['fake_user_id' => $fakeUserId, 'peer' => $peer]);
+
+        // Fresh epoch so any stale queued job is a no-op and this is the live state.
+        $this->bumpEpoch($fakeUserId, $peer);
+        $this->signalBotActivity($peer);
+        $this->signalMessagesChanged();
+
+        return ['id' => (int) $row['id']];
     }
 
     // ========================================================================

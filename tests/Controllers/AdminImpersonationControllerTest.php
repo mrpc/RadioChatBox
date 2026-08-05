@@ -608,6 +608,24 @@ class AdminImpersonationControllerTest extends TestCase
         $this->assertSame(400, (new AdminImpersonationController())->botRollback()->getStatusCode());
     }
 
+    /** bot-resend refuses non-root callers with 403. */
+    public function testBotResendForbiddenWithoutRootRole(): void
+    {
+        $this->unauthenticate();
+        $_POST = ['fake_user' => 'bot', 'peer' => 'peer', 'message' => 'x'];
+
+        $this->assertSame(403, (new AdminImpersonationController())->botResend()->getStatusCode());
+    }
+
+    /** bot-resend requires fake_user, peer and a non-empty message. */
+    public function testBotResendValidatesInput(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['fake_user' => 'bot', 'peer' => 'peer', 'message' => '   '];
+
+        $this->assertSame(400, (new AdminImpersonationController())->botResend()->getStatusCode());
+    }
+
     /** The impersonate typing cue refuses non-root callers with 403. */
     public function testTypingForbiddenWithoutRootRole(): void
     {

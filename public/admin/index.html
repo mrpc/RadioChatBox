@@ -7613,6 +7613,40 @@
             }
         }
 
+        let currentBotCall = null; // the call shown in the LLM Call modal
+
+        // Force the shown LLM reply into the chat (a reply that was generated but
+        // never delivered). Bypasses the bot guards on the server.
+        async function resendBotReply() {
+            const c = currentBotCall;
+            if (!c || !c.reply || !c.fake_nickname || !c.peer_username) return;
+            if (!confirm(`Send this response into the chat as ${c.fake_nickname} → ${c.peer_username}?`)) return;
+            try {
+                const res = await fetch('/api/admin/bot-resend', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({ fake_user: c.fake_nickname, peer: c.peer_username, message: c.reply })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Sent to chat.');
+                    closeBotCallModal();
+                    loadBotActivityThreads();
+                    if (currentBotThread && currentBotThread.fakeUser === c.fake_nickname && currentBotThread.peer === c.peer_username) {
+                        openBotThread(c.fake_nickname, c.peer_username);
+                    }
+                } else {
+                    alert('Error: ' + (data.error || 'could not resend'));
+                }
+            } catch (e) {
+                console.error('Failed to resend reply:', e);
+                alert('Failed to resend the reply.');
+            }
+        }
+
         async function openBotCall(id) {
             const modal = document.getElementById('bot-activity-call-modal');
             const body = document.getElementById('bot-activity-call-body');
@@ -7629,6 +7663,7 @@
                 }
 
                 const c = data.call;
+                currentBotCall = c; // for "Resend to chat"
                 const u = (typeof c.usage === 'string' ? JSON.parse(c.usage || '{}') : c.usage) || {};
                 const messages = (typeof c.messages === 'string' ? JSON.parse(c.messages || '[]') : c.messages) || [];
                 const pre = 'white-space: pre-wrap; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; font-size: 12px; max-height: 240px; overflow: auto;';
@@ -7648,7 +7683,11 @@
                         </div>
                     </div>
                     ${c.error ? `<div style="padding: 10px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-size: 13px; margin-bottom: 14px;"><strong>Error:</strong> ${escapeHtml(c.error)}</div>` : ''}
-                    <h3 style="font-size: 13px;">Reply</h3>
+                    <h3 style="font-size: 13px; display:flex; align-items:center; gap:10px;">Reply
+                        ${(c.reply && c.fake_nickname && c.peer_username)
+                            ? `<button class="btn btn-secondary" style="padding:2px 10px;font-size:12px;" title="Send this response into the chat now (for a reply that was generated but never delivered)" onclick="resendBotReply()">📨 Resend to chat</button>`
+                            : ''}
+                    </h3>
                     <div style="${pre}">${c.reply ? escapeHtml(c.reply) : '<em>empty</em>'}</div>
                     <h3 style="font-size: 13px; margin-top: 14px;">Token usage</h3>
                     <div style="${pre}">${escapeHtml(JSON.stringify(u, null, 2))}</div>
