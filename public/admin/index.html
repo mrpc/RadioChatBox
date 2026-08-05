@@ -6125,8 +6125,12 @@
                                     const clickStyle = isPrivate ? ' cursor: pointer;' : '';
                                     // Render a DM photo inline (stopPropagation so opening
                                     // the image doesn't also open the conversation row).
+                                    // Click opens the in-page lightbox modal, like every
+                                    // other photo view — not a raw new browser tab.
+                                    const photoSrcArg = (msg.attachment && msg.attachment.file_path) ? msg.attachment.file_path.replace(/'/g, "\\'") : '';
+                                    const photoFnArg = String((msg.attachment && msg.attachment.filename) || 'photo').replace(/'/g, "\\'");
                                     const photoHtml = (msg.attachment && msg.attachment.file_path)
-                                        ? `<img src="${escapeHtml(msg.attachment.file_path)}" style="max-width:120px;max-height:90px;border-radius:4px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); window.open('${escapeHtml(msg.attachment.file_path)}','_blank')" onerror="this.style.display='none'">`
+                                        ? `<img src="${escapeHtml(msg.attachment.file_path)}" style="max-width:120px;max-height:90px;border-radius:4px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); openPhotoLightbox('${photoSrcArg}', '${photoFnArg}')" onerror="this.style.display='none'">`
                                         : '';
                                     const msgText = msg.message ? escapeHtml(msg.message) : (photoHtml ? '' : '<em style="color:#9ca3af;">[attachment]</em>');
                                     const editedHtml = (!isPrivate && msg.edited_at)
