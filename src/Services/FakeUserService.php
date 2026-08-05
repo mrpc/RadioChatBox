@@ -29,7 +29,7 @@ class FakeUserService
     /** The fake-user columns returned by the read/RETURNING queries. */
     private const SELECT_COLUMNS = [
         'id', 'nickname', 'age', 'sex', 'location', 'is_active', 'created_at',
-        'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_max_messages',
+        'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_context_prompt', 'bot_max_messages',
         'bot_typing_seconds_per_word', 'bot_farewell_messages',
         'bot_llm_provider', 'bot_llm_model', 'bot_reply_language', 'bot_ignore_chance', 'bot_self_facts',
         'bot_allow_explicit',
@@ -84,7 +84,7 @@ class FakeUserService
         // value by its PHP type (bool/int/null), so no explicit PDO type map is
         // needed any more.
         $columns = [
-            'bot_enabled', 'bot_allow_explicit', 'bot_persona', 'bot_custom_prompt', 'bot_self_facts',
+            'bot_enabled', 'bot_allow_explicit', 'bot_persona', 'bot_custom_prompt', 'bot_context_prompt', 'bot_self_facts',
             'bot_farewell_messages', 'bot_max_messages', 'bot_ignore_chance',
             'bot_typing_seconds_per_word',
             // Per-bot overrides, so bots can run on different LLMs side by side

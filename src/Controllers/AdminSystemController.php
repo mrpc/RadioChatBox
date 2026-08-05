@@ -124,6 +124,66 @@ final class AdminSystemController
     }
 
     /**
+     * POST /api/admin/restart-workers — ask every running background worker to
+     * restart, so freshly-deployed code is picked up.
+     *
+     * PHP loads a class once per process, so a long-running worker keeps executing
+     * the code it started with until it is replaced. This drops the graceful-stop
+     * sentinel (`<lock>.stop`) next to each worker's lock — exactly what the
+     * worker's shouldStop() watches — so it exits cleanly and the daemon supervisor
+     * respawns it with the new code. If the supervisor is not running the workers
+     * will stop but not come back on their own, so the response says which case it
+     * was. Restricted to full admins (it is a service-control action).
+     */
+    #[Route('/api/admin/restart-workers', methods: 'POST', name: 'admin.system.restart-workers', middleware: [AdminAuthMiddleware::class])]
+    public function restartWorkers(): Response
+    {
+        $current = AdminAuth::getCurrentUser();
+        if (!$current || !in_array($current['role'], ['root', 'owner', 'administrator'], true)) {
+            return Response::json(['error' => 'Forbidden: restarting workers requires an administrator'], 403);
+        }
+
+        try {
+            $status    = (new RadioChatBoxDaemons())->status();
+            $signalled = [];
+            $failed    = [];
+
+            foreach (($status['daemons'] ?? []) as $daemon) {
+                $lockFile = isset($daemon['lockFile']) ? (string) $daemon['lockFile'] : '';
+                $id       = (string) ($daemon['id'] ?? ($lockFile !== '' ? basename($lockFile) : 'worker'));
+
+                // Only signal a worker that actually has a live lock file.
+                if ($lockFile === '' || !file_exists($lockFile)) {
+                    continue;
+                }
+
+                if (@file_put_contents($lockFile . '.stop', '1') !== false) {
+                    $signalled[] = $id;
+                } else {
+                    $failed[] = $id;
+                }
+            }
+
+            $supervisorRunning = (bool) ($status['running'] ?? false);
+
+            return Response::json([
+                'success'            => true,
+                'supervisor_running' => $supervisorRunning,
+                'restarted'          => $signalled,
+                'failed'             => $failed,
+                'message'            => $supervisorRunning
+                    ? 'Signalled ' . count($signalled) . ' worker(s) to restart — the supervisor will respawn them with the new code within a few seconds.'
+                    : 'Signalled ' . count($signalled) . ' worker(s) to stop, but the supervisor is not running, so they will only come back when your service manager restarts it.',
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('restart-workers error: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Failed to signal the workers'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/worker-status — health of the background worker, its
      * supervisor and the periodic-task schedule, for the dashboard.
      *

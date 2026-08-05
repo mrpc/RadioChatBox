@@ -535,6 +535,49 @@ class BotServicePipelineTest extends TestCase
         $this->assertFalse($jobs[0]['payload']['is_farewell']);
     }
 
+    /**
+     * listThreads/countThreads filter by a nickname query matched against both
+     * the bot's nickname and the peer's username, case-insensitively.
+     */
+    public function testListThreadsFiltersByNicknameSearch(): void
+    {
+        // A thread for this bot with our peer.
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'geia');
+
+        // Match on the peer's username (upper-cased to prove case-insensitivity).
+        $hit = $this->bot->listThreads(100, 0, strtoupper($this->peer));
+        $this->assertNotEmpty($hit);
+        $this->assertContains($this->peer, array_column($hit, 'peer_username'));
+        $this->assertGreaterThanOrEqual(1, $this->bot->countThreads($this->peer));
+
+        // Match on the bot's nickname.
+        $byBot = $this->bot->listThreads(100, 0, $this->nick);
+        $this->assertContains($this->peer, array_column($byBot, 'peer_username'));
+
+        // A query that matches neither returns nothing for this pair.
+        $miss = $this->bot->listThreads(100, 0, 'zzz_no_such_' . $this->nick);
+        $this->assertNotContains($this->peer, array_column($miss, 'peer_username'));
+    }
+
+    /**
+     * A per-bot context override (fake_users.bot_context_prompt) is used in the
+     * system prompt instead of the global/built-in context block.
+     */
+    public function testPerBotContextOverridesTheGlobalContext(): void
+    {
+        $marker = 'PROMO_CONTEXT_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $this->setBotColumn('bot_context_prompt', "Δουλεύεις για την υπηρεσία X. {$marker}");
+        $this->incoming('geia');
+        $this->llm->reply = 'geia';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertStringContainsString($marker, $this->llm->calls[0]['system']);
+        // The built-in default context must NOT also be present (it was replaced).
+        $this->assertStringNotContainsString(BotService::DEFAULT_CONTEXT_PROMPT, $this->llm->calls[0]['system']);
+    }
+
     public function testTypingDelayScalesWithTheReplyLength(): void
     {
         $this->incoming('pes mou kati');
@@ -1697,6 +1740,64 @@ class BotServicePipelineTest extends TestCase
         $this->assertSame(1, (int) $thread['insult_count'], 'blocked on the first strike');
         $this->assertNotNull($thread['blocked_at']);
         $this->assertTrue((new BlockService())->hasBlocked($this->nick, $this->peer));
+    }
+
+    /**
+     * The operator is the boss: even an abusive message from staff, with the
+     * immediate-block chance maxed out, is answered instead of blocked — the
+     * block path is skipped entirely for staff.
+     */
+    public function testStaffAreNeverBlockedForAbuse(): void
+    {
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, 90)')
+            ->execute([$this->peer, 'x']);
+
+        try {
+            $this->settings->values['bot_immediate_block_chance'] = '100';
+            $this->incoming('poutana');
+
+            $replied = $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'poutana');
+
+            $this->assertTrue($replied, 'staff get a reply, never a block');
+            $thread = $this->threadRow();
+            $this->assertNull($thread['blocked_at'], 'the block path must be skipped for staff');
+            $this->assertFalse((new BlockService())->hasBlocked($this->nick, $this->peer));
+        } finally {
+            $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->peer]);
+        }
+    }
+
+    /**
+     * When the peer is staff the unrestricted admin-mode directive is added to the
+     * system prompt (never offended, never blocks, refuses nothing, accepts NSFW);
+     * for an ordinary peer it is absent.
+     */
+    public function testAdminModeDirectiveIsAddedForStaffOnly(): void
+    {
+        $this->incoming('geia');
+        $this->llm->reply = 'geia sou';
+
+        // Ordinary (guest) peer: no admin-mode directive.
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $this->assertStringNotContainsString(
+            BotService::ADMIN_MODE_DIRECTIVE,
+            $this->llm->calls[0]['system']
+        );
+
+        // Same peer promoted to staff: the directive is now present.
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, 90)')
+            ->execute([$this->peer, 'x']);
+        try {
+            $this->incoming('pes mou kati');
+            $this->bot->processReplyJob($this->replyPayload(0));
+            $calls = $this->llm->calls;
+            $this->assertStringContainsString(
+                BotService::ADMIN_MODE_DIRECTIVE,
+                end($calls)['system']
+            );
+        } finally {
+            $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->peer]);
+        }
     }
 
     /**

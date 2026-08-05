@@ -1854,6 +1854,12 @@
                             </div>
 
                             <div class="form-group">
+                                <label>Context override (advanced)</label>
+                                <textarea id="fake-bot-context-prompt" rows="4" maxlength="4000" placeholder="Leave empty to use the global context setting" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                                <small style="color: #6b7280;">Overrides <em>only</em> the context block (where the chat happens, its rules) for this bot — the persona/guardrails stay. Empty falls back to the global Fake User context setting. Useful for a bot that promotes a service.</small>
+                            </div>
+
+                            <div class="form-group">
                                 <label>Self-facts (canon)</label>
                                 <textarea id="fake-bot-self-facts" rows="3" maxlength="2000" placeholder="e.g. ύψος 1.60, μπλε μαλλιά, πράσινα μάτια — ό,τι πρέπει να λέει πάντα ίδιο για τον εαυτό του" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
                                 <small style="color: #6b7280;">Stable facts the bot has committed to (appearance, personal details). Kept consistent across all conversations, and updated automatically from what the bot says. You can seed or correct it here.</small>
@@ -2550,6 +2556,10 @@
                 <div class="section">
                     <h2>Conversations</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Click one to see its messages and the calls behind them.</p>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+                        <input type="search" id="bot-thread-search" placeholder="Search by nickname (bot or user)…" oninput="botThreadSearchInput()" style="flex:1; min-width:220px; padding:8px 10px; border:2px solid #e5e7eb; border-radius:6px;">
+                        <button class="btn btn-secondary" onclick="clearBotThreadSearch()" title="Clear the search">✕ Clear</button>
+                    </div>
                     <div id="bot-activity-threads"></div>
                 </div>
 
@@ -2597,6 +2607,12 @@
                         <div class="form-group">
                             <label>Page Title</label>
                             <input type="text" id="setting-page-title" placeholder="RadioChatBox">
+                        </div>
+                        <div class="form-group">
+                            <label>Timezone</label>
+                            <input type="text" id="setting-timezone" list="timezone-list" placeholder="Europe/Athens">
+                            <datalist id="timezone-list"></datalist>
+                            <small style="color: #6b7280;">IANA timezone id used for the "current time" the bots reason with. Default Europe/Athens.</small>
                         </div>
                         <div class="form-group">
                             <label>Color Scheme</label>
@@ -7043,12 +7059,47 @@
                     <code>radiochatbox-daemon@${escapeHtml(data.instance || '')}</code>.
                 </div>` : ''}
 
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+                    <button class="btn btn-warning" id="restart-workers-btn" onclick="restartWorkers()" title="Ask every running worker to restart so newly-deployed code is loaded">
+                        🔄 Restart workers
+                    </button>
+                    <span style="font-size:12px;color:#6b7280;">Use after a deploy: long-running workers keep the old code until they restart.</span>
+                </div>
+
                 <h3 style="font-size: 14px; color: #374151;">Periodic tasks</h3>
                 <table>
                     <thead><tr><th>Task</th><th>Every</th><th>Last run</th><th>Result</th><th>Runs</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="5" style="color:#6b7280;">No task has run yet — the worker runs them with --schedule.</td></tr>'}</tbody>
                 </table>`;
             modal.style.display = 'flex';
+        }
+
+        // Signal every running worker to restart (picks up freshly-deployed code).
+        async function restartWorkers() {
+            const btn = document.getElementById('restart-workers-btn');
+            if (!confirm('Restart the background workers? Running bot replies and periodic tasks will briefly pause while they respawn with the latest code.')) {
+                return;
+            }
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Restarting…'; }
+            try {
+                const res = await fetch('/api/admin/restart-workers', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(data.message || 'Workers signalled to restart.');
+                    // Give the supervisor a moment to respawn, then refresh the panel.
+                    setTimeout(() => { openWorkerStatus(); }, 4000);
+                } else {
+                    alert('Error: ' + (data.error || 'could not restart workers'));
+                    if (btn) { btn.disabled = false; btn.textContent = '🔄 Restart workers'; }
+                }
+            } catch (e) {
+                console.error('Failed to restart workers:', e);
+                alert('Failed to restart workers.');
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Restart workers'; }
+            }
         }
 
         function closeWorkerStatus() {
@@ -7182,6 +7233,29 @@
         const BOT_PAGE_SIZE = 10;
         let botThreadsOffset = 0;
         let botLogOffset = 0;
+        let botThreadSearch = '';
+        let botThreadSearchTimer = null;
+
+        // Debounced nickname search over the bot conversations list.
+        function botThreadSearchInput() {
+            const el = document.getElementById('bot-thread-search');
+            const value = el ? el.value.trim() : '';
+            clearTimeout(botThreadSearchTimer);
+            botThreadSearchTimer = setTimeout(() => {
+                botThreadSearch = value;
+                botThreadsOffset = 0; // a new query starts at the first page
+                loadBotActivityThreads();
+            }, 250);
+        }
+
+        function clearBotThreadSearch() {
+            const el = document.getElementById('bot-thread-search');
+            if (el) el.value = '';
+            clearTimeout(botThreadSearchTimer);
+            botThreadSearch = '';
+            botThreadsOffset = 0;
+            loadBotActivityThreads();
+        }
 
         function paginationControls(offset, total, pageSize, prevFn, nextFn) {
             if (total <= pageSize) return '';
@@ -7207,7 +7281,7 @@
             if (!box) return;
 
             try {
-                const data = await botActivityFetch({ view: 'threads', limit: BOT_PAGE_SIZE, offset: botThreadsOffset });
+                const data = await botActivityFetch({ view: 'threads', limit: BOT_PAGE_SIZE, offset: botThreadsOffset, search: botThreadSearch });
                 if (!data.success) return;
 
                 const threshold = Number(data.insult_threshold || 0);
@@ -7220,7 +7294,9 @@
                 }
 
                 if (!data.threads.length) {
-                    box.innerHTML = '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
+                    box.innerHTML = botThreadSearch
+                        ? `<p style="color: #6b7280; padding: 16px; text-align: center;">No conversations match “${escapeHtml(botThreadSearch)}”.</p>`
+                        : '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
                     return;
                 }
 
@@ -8025,6 +8101,7 @@
             document.getElementById('fake-bot-allow-explicit').checked = !!user.bot_allow_explicit;
             document.getElementById('fake-bot-persona').value = user.bot_persona || '';
             document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
+            document.getElementById('fake-bot-context-prompt').value = user.bot_context_prompt || '';
             document.getElementById('fake-bot-self-facts').value = user.bot_self_facts || '';
             populateFakeBotProviderOptions(user.bot_llm_provider || '', user.bot_llm_model || '');
             populateSelectOptions(
@@ -8121,6 +8198,7 @@
                 bot_allow_explicit: document.getElementById('fake-bot-allow-explicit').checked,
                 bot_persona: document.getElementById('fake-bot-persona').value.trim(),
                 bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
+                bot_context_prompt: document.getElementById('fake-bot-context-prompt').value.trim(),
                 bot_self_facts: document.getElementById('fake-bot-self-facts').value.trim(),
                 bot_llm_provider: document.getElementById('fake-bot-provider').value,
                 bot_llm_model: document.getElementById('fake-bot-model').value,
@@ -8846,6 +8924,24 @@
             } catch (e) { box.innerHTML = '<p style="color:#ef4444;">Error loading migrations.</p>'; }
         }
 
+        // Fill the timezone datalist once, preferring the browser's full IANA list.
+        function populateTimezoneList() {
+            const list = document.getElementById('timezone-list');
+            if (!list || list.dataset.filled) return;
+            let zones = [];
+            try {
+                if (typeof Intl.supportedValuesOf === 'function') {
+                    zones = Intl.supportedValuesOf('timeZone');
+                }
+            } catch (e) { /* fall back below */ }
+            if (!zones.length) {
+                zones = ['Europe/Athens', 'Europe/London', 'Europe/Berlin', 'Europe/Paris',
+                    'UTC', 'America/New_York', 'America/Los_Angeles', 'Asia/Nicosia'];
+            }
+            list.innerHTML = zones.map(z => `<option value="${escapeHtml(z)}"></option>`).join('');
+            list.dataset.filled = '1';
+        }
+
         async function loadSettings() {
             loadMigrations();
             try {
@@ -8858,6 +8954,8 @@
                     const settings = data.settings;
                     pageTitle = settings.page_title || 'RadioChatBox';  // Store for use in page titles
                     document.getElementById('setting-page-title').value = pageTitle;
+                    populateTimezoneList();
+                    document.getElementById('setting-timezone').value = settings.timezone || 'Europe/Athens';
                     document.getElementById('setting-radio-status-url').value = settings.radio_status_url || '';
                     // Track Stats only makes sense with a radio stream configured.
                     const trackNav = document.getElementById('nav-track-stats');
@@ -9344,6 +9442,7 @@
             
             const settings = {
                 page_title: document.getElementById('setting-page-title').value,
+                timezone: document.getElementById('setting-timezone').value.trim() || 'Europe/Athens',
                 radio_status_url: document.getElementById('setting-radio-status-url').value,
                 charts_enabled: document.getElementById('setting-charts-enabled').checked ? 'true' : 'false',
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',

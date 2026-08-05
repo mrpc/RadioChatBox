@@ -695,15 +695,17 @@ final class AdminStatsController
 
             switch ($view) {
                 case 'threads':
+                    $search = trim((string) $req->get('search', '', 'get'));
                     return Response::json([
                         'success' => true,
                         'enabled' => $settings->get('bot_replies_enabled', 'false') === 'true',
                         // So the panel can show strikes as "2/3" rather than a bare count.
                         'insult_threshold' => $bot->insultBlockThreshold(),
-                        'total' => $bot->countThreads(),
+                        'total' => $bot->countThreads($search),
                         'threads' => $bot->listThreads(
                             (int) $req->get('limit', 100, 'get'),
-                            (int) $req->get('offset', 0, 'get')
+                            (int) $req->get('offset', 0, 'get'),
+                            $search
                         ),
                     ]);
 
