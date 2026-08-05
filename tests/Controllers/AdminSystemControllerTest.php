@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Pramnos\Framework\Testing\TestDatabase;
 use Pramnos\Http\Request;
 use Pramnos\Http\Response;
+use Pramnos\Cache\FlatCache;
 use RadioChatBox\Controllers\AdminSystemController;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 
@@ -24,12 +25,62 @@ use RadioChatBox\Middleware\AdminAuthMiddleware;
  */
 class AdminSystemControllerTest extends TestCase
 {
+    private ?string $sessionKey = null;
+
     protected function tearDown(): void
     {
         $_GET   = [];
         $_POST  = [];
         $_FILES = [];
         unset($_SERVER['REQUEST_METHOD']);
+        if ($this->sessionKey !== null) {
+            try {
+                FlatCache::default()->delete($this->sessionKey);
+            } catch (\Throwable) {
+                // best effort
+            }
+            $this->sessionKey = null;
+        }
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+    }
+
+    /** Establish an admin session so AdminAuth::getCurrentUser() returns a role. */
+    private function authAsAdmin(string $role = 'administrator'): void
+    {
+        $id = 'systemadmin';
+        $key = 'admin_session:' . $id;
+        FlatCache::default()->set($key, ['username' => $id, 'role' => $role], 120);
+        $this->sessionKey = $key;
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $id . ':x';
+    }
+
+    /**
+     * POST /api/admin/restart-workers is refused for a non-admin (the action's own
+     * RBAC gate fires because an unauthenticated request has no current user).
+     */
+    public function testRestartWorkersForbiddenWithoutAdmin(): void
+    {
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+
+        $response = (new AdminSystemController())->restartWorkers();
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertFalse(json_decode($response->getBody(), true)['success'] ?? false);
+    }
+
+    /**
+     * A moderator session is also refused — restarting workers is a full-admin
+     * (service-control) action, so the RBAC gate rejects the lesser role before
+     * any .stop sentinel is dropped (keeping the test free of side effects).
+     */
+    public function testRestartWorkersForbiddenForModerator(): void
+    {
+        $this->authAsAdmin('moderator');
+
+        $response = (new AdminSystemController())->restartWorkers();
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertFalse(json_decode($response->getBody(), true)['success'] ?? false);
     }
 
     /**
