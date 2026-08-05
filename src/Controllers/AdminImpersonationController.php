@@ -523,6 +523,43 @@ final class AdminImpersonationController
     }
 
     /**
+     * POST /api/admin/bot-resend — {fake_user, peer, message}. Force a generated
+     * LLM reply that never reached the chat into the conversation, bypassing every
+     * guard (see BotService::resendReply). Root/owner only. 200 {success, id};
+     * bad input -> 400.
+     */
+    #[Route('/api/admin/bot-resend', methods: 'POST', name: 'admin.bot-resend', middleware: [AdminAuthMiddleware::class])]
+    public function botResend(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        try {
+            $input = $_POST;
+            $fake = trim((string) ($input['fake_user'] ?? ''));
+            $peer = trim((string) ($input['peer'] ?? ''));
+            $message = trim((string) ($input['message'] ?? ''));
+            if ($fake === '' || $peer === '' || $message === '') {
+                return Response::json(['error' => 'fake_user, peer and a non-empty message are required'], 400);
+            }
+
+            $result = (new BotService())->resendReply($fake, $peer, $message);
+            if ($result === null) {
+                return Response::json(['error' => 'Unknown fake user or empty message'], 400);
+            }
+
+            return Response::json(['success' => true, 'id' => $result['id']]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('bot-resend error: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * List every active fake user's inbound private conversations
      * (replaces public/api/admin/impersonate-conversations.php).
      *
