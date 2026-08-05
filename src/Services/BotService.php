@@ -824,6 +824,16 @@ class BotService
 
         if ($reply === '') {
             if (!$isFarewell) {
+                // The LLM returned nothing usable — most often the provider itself
+                // refused/emptied the completion (its own content filter) even on a
+                // 200. Record WHY on the thread so the conversation doesn't just
+                // silently stall with no explanation in Bot Activity.
+                $this->recordThreadError(
+                    $fakeUserId,
+                    $peer,
+                    'The LLM returned an empty reply (the provider may have refused the content), so nothing was sent.'
+                );
+
                 return 'skipped: empty reply after sanitising';
             }
 
@@ -850,11 +860,21 @@ class BotService
             $reply = self::sanitizeReply($this->pickDeflection(), $maxLength);
         }
 
-        // Same content rules as a human message (dangerous content, blacklisted URLs).
-        $reply = $this->applyChatFilter($reply);
+        // Same content rules as a human message (dangerous content, blacklisted
+        // URLs). Skipped for staff: admin mode is deliberately unrestricted, and a
+        // filter that emptied the reply would silently stall the operator's chat.
+        if (!$this->peerIsStaff($peer)) {
+            $reply = $this->applyChatFilter($reply);
 
-        if ($reply === '') {
-            return 'skipped: reply removed by the message filter';
+            if ($reply === '') {
+                $this->recordThreadError(
+                    $fakeUserId,
+                    $peer,
+                    'The reply was removed by the message filter (dangerous content / blacklisted URL), so nothing was sent.'
+                );
+
+                return 'skipped: reply removed by the message filter';
+            }
         }
 
         $delay = $this->queueDelivery($payload, $reply, $isFarewell, $enforceLanguage);
@@ -960,6 +980,18 @@ class BotService
         // the reply is already written and dropping it is the worse outcome.
         $guard = $this->guard($fakeUserId, $peer, $epoch, requireActive: false);
         if ($guard !== null) {
+            // A reply was fully generated and is now being thrown away at the last
+            // step — record WHY on the thread so a vanished reply is explained in
+            // Bot Activity instead of the conversation silently stalling. A plain
+            // supersession (the peer typed again) is normal, so it is not recorded.
+            if (!str_contains($guard, 'superseded')) {
+                $this->recordThreadError(
+                    $fakeUserId,
+                    $peer,
+                    'A generated reply was not delivered — ' . $guard . '.'
+                );
+            }
+
             return $guard;
         }
 
@@ -1402,7 +1434,8 @@ class BotService
                      WHERE (pm.from_username = f.nickname AND pm.to_username = t.peer_username)
                         OR (pm.from_username = t.peer_username AND pm.to_username = f.nickname)
                      ORDER BY pm.created_at DESC, pm.id DESC LIMIT 1
-                   ) AS last_message
+                   ) AS last_message,
+                   (SELECT u.usertype FROM users u WHERE u.username = t.peer_username LIMIT 1) AS peer_usertype
             FROM bot_threads t
             JOIN fake_users f ON f.id = t.fake_user_id
             ' . $searchSql . '
@@ -1424,6 +1457,11 @@ class BotService
             // An inactive fake user cannot reply: the guard skips its jobs. The
             // panel needs this to distinguish it from a healthy "replying" thread.
             $thread['is_active'] = (bool) $thread['is_active'];
+            // Staff peers never hit the message cap (admin mode), so the panel
+            // shows their budget as unlimited rather than N/max.
+            $thread['peer_is_staff'] = $thread['peer_usertype'] !== null
+                && (int) $thread['peer_usertype'] >= Authz::MODERATOR;
+            unset($thread['peer_usertype']);
         }
 
         return $threads;
@@ -1665,6 +1703,8 @@ class BotService
             'is_active' => (bool) $row['is_active'],
             'messages_sent' => (int) ($row['messages_sent'] ?? 0),
             'max_messages' => $maxMessages,
+            // Staff peers are never capped (admin mode): the panel shows ∞.
+            'peer_is_staff' => $this->peerIsStaff($peer),
             'is_taken_over' => (bool) ($row['is_taken_over'] ?? false),
             // The bot decided not to pick this conversation up at all.
             'is_ignored' => (bool) ($row['is_ignored'] ?? false),
