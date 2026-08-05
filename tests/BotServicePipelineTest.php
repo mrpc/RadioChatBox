@@ -785,6 +785,61 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * A hostile peer message makes the bot angry and, because hostility is a strong
+     * event, the anger bleeds to the GLOBAL mood — so a different peer inherits it,
+     * and this reply's prompt already carries the angry-mood directive.
+     */
+    public function testAHostileMessageMakesTheBotAngryAcrossChats(): void
+    {
+        $this->incoming('αντε γαμησου');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $system = $this->llm->calls[0]['system'];
+        $this->assertStringContainsString(\RadioChatBox\Services\MoodService::label('angry'), $system);
+
+        $eff = (new \RadioChatBox\Services\MoodService($this->settings))
+            ->effective($this->fakeUserId, 'someone_else_' . $this->peer);
+        $this->assertSame('angry', $eff['mood']);
+        $this->assertSame('global', $eff['scope'], 'strong hostility bleeds globally');
+    }
+
+    /**
+     * A warm peer message lifts the mood but only LOCALLY (a mild event), so the
+     * bot's other conversations are unaffected.
+     */
+    public function testAWarmMessageLiftsMoodOnlyLocally(): void
+    {
+        $this->incoming('ευχαριστω, εισαι πολυ γλυκια');
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertStringContainsString(
+            \RadioChatBox\Services\MoodService::label('happy'),
+            $this->llm->calls[0]['system']
+        );
+
+        // Global mood untouched → a different peer stays at baseline.
+        $eff = (new \RadioChatBox\Services\MoodService($this->settings))
+            ->effective($this->fakeUserId, 'someone_else_' . $this->peer);
+        $this->assertSame('baseline', $eff['scope']);
+    }
+
+    /**
+     * classifyMoodEvent maps hostility to a strong anger event and warmth to a mild
+     * happy one, and returns null for neutral chatter.
+     */
+    public function testClassifyMoodEvent(): void
+    {
+        $bot = ['bot_allow_explicit' => false];
+        $this->assertSame('angry', BotService::classifyMoodEvent('ηλιθια εισαι', $bot)['mood']);
+        $this->assertGreaterThanOrEqual(60, BotService::classifyMoodEvent('ηλιθια εισαι', $bot)['strength']);
+        $this->assertSame('happy', BotService::classifyMoodEvent('σ αγαπω πολυ', $bot)['mood']);
+        $this->assertNull(BotService::classifyMoodEvent('τι ωρα ειναι;', $bot));
+
+        // An explicit persona does not treat sexual words as hostility.
+        $this->assertNull(BotService::classifyMoodEvent('γλυψε μου τα αρχιδια', ['bot_allow_explicit' => true]));
+    }
+
+    /**
      * A per-bot context override (fake_users.bot_context_prompt) is used in the
      * system prompt instead of the global/built-in context block.
      */
