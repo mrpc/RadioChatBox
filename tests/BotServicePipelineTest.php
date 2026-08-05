@@ -1700,6 +1700,64 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * The operator is the boss: even an abusive message from staff, with the
+     * immediate-block chance maxed out, is answered instead of blocked — the
+     * block path is skipped entirely for staff.
+     */
+    public function testStaffAreNeverBlockedForAbuse(): void
+    {
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, 90)')
+            ->execute([$this->peer, 'x']);
+
+        try {
+            $this->settings->values['bot_immediate_block_chance'] = '100';
+            $this->incoming('poutana');
+
+            $replied = $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'poutana');
+
+            $this->assertTrue($replied, 'staff get a reply, never a block');
+            $thread = $this->threadRow();
+            $this->assertNull($thread['blocked_at'], 'the block path must be skipped for staff');
+            $this->assertFalse((new BlockService())->hasBlocked($this->nick, $this->peer));
+        } finally {
+            $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->peer]);
+        }
+    }
+
+    /**
+     * When the peer is staff the unrestricted admin-mode directive is added to the
+     * system prompt (never offended, never blocks, refuses nothing, accepts NSFW);
+     * for an ordinary peer it is absent.
+     */
+    public function testAdminModeDirectiveIsAddedForStaffOnly(): void
+    {
+        $this->incoming('geia');
+        $this->llm->reply = 'geia sou';
+
+        // Ordinary (guest) peer: no admin-mode directive.
+        $this->bot->processReplyJob($this->replyPayload(0));
+        $this->assertStringNotContainsString(
+            BotService::ADMIN_MODE_DIRECTIVE,
+            $this->llm->calls[0]['system']
+        );
+
+        // Same peer promoted to staff: the directive is now present.
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, 90)')
+            ->execute([$this->peer, 'x']);
+        try {
+            $this->incoming('pes mou kati');
+            $this->bot->processReplyJob($this->replyPayload(0));
+            $calls = $this->llm->calls;
+            $this->assertStringContainsString(
+                BotService::ADMIN_MODE_DIRECTIVE,
+                end($calls)['system']
+            );
+        } finally {
+            $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->peer]);
+        }
+    }
+
+    /**
      * Context matters: hostile/dismissive words are always abuse, but sexual/
      * anatomical words are only abuse OUTSIDE an erotic (explicit) persona's chat.
      */
