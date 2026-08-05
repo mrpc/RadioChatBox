@@ -581,6 +581,33 @@ class AdminImpersonationControllerTest extends TestCase
         $this->assertSame(400, (new AdminImpersonationController())->botSteer()->getStatusCode());
     }
 
+    /** bot-rollback refuses non-root callers with 403. */
+    public function testBotRollbackForbiddenWithoutRootRole(): void
+    {
+        $this->unauthenticate();
+        $_POST = ['fake_user' => 'bot', 'peer' => 'peer', 'from_message_id' => '5'];
+
+        $this->assertSame(403, (new AdminImpersonationController())->botRollback()->getStatusCode());
+    }
+
+    /** bot-rollback requires fake_user, peer and a positive from_message_id. */
+    public function testBotRollbackValidatesInput(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['fake_user' => 'bot', 'peer' => 'peer', 'from_message_id' => '0'];
+
+        $this->assertSame(400, (new AdminImpersonationController())->botRollback()->getStatusCode());
+    }
+
+    /** bot-rollback on an unknown fake user is a 400. */
+    public function testBotRollbackUnknownFakeUserIs400(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['fake_user' => 'no_such_bot_' . bin2hex(random_bytes(3)), 'peer' => 'peer', 'from_message_id' => '5'];
+
+        $this->assertSame(400, (new AdminImpersonationController())->botRollback()->getStatusCode());
+    }
+
     /** The impersonate typing cue refuses non-root callers with 403. */
     public function testTypingForbiddenWithoutRootRole(): void
     {

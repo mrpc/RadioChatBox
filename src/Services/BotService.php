@@ -1090,6 +1090,109 @@ class BotService
     }
 
     /**
+     * Roll a conversation back to an earlier stage by deleting a message and every
+     * later message in the thread — so an admin can undo a bad turn and let the bot
+     * (or an impersonator) continue from that point.
+     *
+     * Deletes both directions of private_messages with id >= $fromMessageId for
+     * this bot/peer pair, then repairs the thread's derived state:
+     *  - messages_sent is decremented by the number of the bot's own deleted
+     *    messages (floored at 0), so the reply budget matches the rolled-back
+     *    state (lenient by design: it never leaves the bot over its cap);
+     *  - a farewell/last-error left by the deleted tail is cleared;
+     *  - the rolling summary is dropped when it covered any deleted message
+     *    (summary_upto_id >= the cut), since it may reference gone content;
+     *  - the reply epoch is bumped so any still-queued reply for the old state
+     *    becomes a no-op.
+     *
+     * @return array{deleted:int, messages_sent:int}|null Null for an unknown fake
+     *   user; otherwise how many messages were removed and the new budget count.
+     */
+    public function rollbackThread(string $fakeNickname, string $peer, int $fromMessageId): ?array
+    {
+        $fakeUserId = $this->getFakeUserId($fakeNickname);
+        if ($fakeUserId === null || $fromMessageId <= 0) {
+            return null;
+        }
+
+        // How many of the bot's OWN messages fall in the deleted range — this is
+        // what the message budget counted, so it is what we give back.
+        $countResult = $this->db->preparedQuery('
+            SELECT COUNT(*) AS c
+            FROM private_messages
+            WHERE id >= :fromid
+              AND from_username = :fake
+              AND to_username = :peer
+        ', ['fromid' => $fromMessageId, 'fake' => $fakeNickname, 'peer' => $peer]);
+        $botDeleted = $countResult ? (int) $countResult->fetchColumn() : 0;
+
+        // Total rows to be removed (both directions) — counted before the DELETE
+        // since a DELETE result does not report an affected-row count here.
+        $totalResult = $this->db->preparedQuery('
+            SELECT COUNT(*) AS c
+            FROM private_messages
+            WHERE id >= :fromid
+              AND (
+                    (from_username = :fake  AND to_username = :peer)
+                 OR (from_username = :peer2 AND to_username = :fake2)
+              )
+        ', [
+            'fromid' => $fromMessageId,
+            'fake'   => $fakeNickname,
+            'peer'   => $peer,
+            'peer2'  => $peer,
+            'fake2'  => $fakeNickname,
+        ]);
+        $deleted = $totalResult ? (int) $totalResult->fetchColumn() : 0;
+
+        // Delete the message and everything after it, both directions of the pair.
+        $this->db->preparedQuery('
+            DELETE FROM private_messages
+            WHERE id >= :fromid
+              AND (
+                    (from_username = :fake  AND to_username = :peer)
+                 OR (from_username = :peer2 AND to_username = :fake2)
+              )
+        ', [
+            'fromid' => $fromMessageId,
+            'fake'   => $fakeNickname,
+            'peer'   => $peer,
+            'peer2'  => $peer,
+            'fake2'  => $fakeNickname,
+        ]);
+
+        // Repair the derived thread state. The summary is only dropped when it
+        // covered a now-deleted message (summary_upto_id >= the cut point).
+        $this->db->preparedQuery('
+            UPDATE bot_threads
+            SET messages_sent    = GREATEST(0, messages_sent - :botdeleted),
+                farewell_sent_at = NULL,
+                last_error       = NULL,
+                summary          = CASE WHEN summary_upto_id IS NOT NULL AND summary_upto_id >= :fromid THEN NULL ELSE summary END,
+                summary_upto_id  = CASE WHEN summary_upto_id IS NOT NULL AND summary_upto_id >= :fromid2 THEN NULL ELSE summary_upto_id END,
+                updated_at       = NOW()
+            WHERE fake_user_id = :fake_user_id AND peer_username = :peer
+        ', [
+            'botdeleted'   => $botDeleted,
+            'fromid'       => $fromMessageId,
+            'fromid2'      => $fromMessageId,
+            'fake_user_id' => $fakeUserId,
+            'peer'         => $peer,
+        ]);
+
+        // Any reply already queued for the pre-rollback state is now a no-op.
+        $this->bumpEpoch($fakeUserId, $peer);
+
+        $stateResult = $this->db->preparedQuery(
+            'SELECT messages_sent FROM bot_threads WHERE fake_user_id = :fake AND peer_username = :peer',
+            ['fake' => $fakeUserId, 'peer' => $peer]
+        );
+        $messagesSent = $stateResult ? (int) $stateResult->fetchColumn() : 0;
+
+        return ['deleted' => $deleted, 'messages_sent' => $messagesSent];
+    }
+
+    /**
      * Force the bot to pick a stuck conversation back up.
      *
      * Clears the states that stop it replying — ignored, ended (farewell), taken

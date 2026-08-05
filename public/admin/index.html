@@ -5883,20 +5883,15 @@
 
         /**
          * Render the "Private Conversations" partner buttons for a user profile.
-         * A conversation with a bot also gets a shortcut into LLM activity, so an
-         * admin can jump from the profile straight to that bot thread.
+         * Opening one (viewConversation) shows the thread inline; the jump into LLM
+         * activity for a bot conversation lives inside that opened view.
          */
         function conversationButtonsHtml(username, convList) {
             const uArg = String(username).replace(/'/g, "\\'");
             return convList.map(c => {
                 const pEsc = escapeHtml(c.partner);
                 const pArg = String(c.partner).replace(/'/g, "\\'");
-                const botBtn = isBotPartner(c.partner)
-                    ? `<button class="btn btn-secondary" style="margin-left:4px;padding:6px 10px;" title="Open this bot conversation in LLM activity" onclick="openConversationFromHistory('${uArg}', '${pArg}')">🤖 LLM activity</button>`
-                    : '';
-                return `<span style="display:inline-flex;align-items:center;margin-bottom:8px;">
-                    <button class="btn" onclick="viewConversation('${uArg}', '${pArg}')">💬 ${pEsc} (${c.message_count})</button>${botBtn}
-                </span>`;
+                return `<button class="btn" onclick="viewConversation('${uArg}', '${pArg}')">💬 ${pEsc} (${c.message_count})</button>`;
             }).join('');
         }
 
@@ -7070,11 +7065,15 @@
 
                 const bubbles = data.messages.map(m => {
                     const mine = m.from_username === fakeUser;
+                    // Rollback control: delete this message and everything after it.
+                    const rollBtn = m.id
+                        ? `<button title="Roll back the conversation to before this message (deletes this and every later message)" onclick="botThreadRollback(${Number(m.id)})" style="background:none;border:none;color:#b45309;cursor:pointer;font-size:11px;padding:0;margin-left:8px;">⤺ rollback to here</button>`
+                        : '';
                     return `
                         <div style="display: flex; justify-content: ${mine ? 'flex-end' : 'flex-start'}; margin-bottom: 8px;">
                             <div style="max-width: 70%; padding: 8px 12px; border-radius: 10px; background: ${mine ? '#eef2ff' : '#f3f4f6'};">
                                 <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">
-                                    ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}
+                                    ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}${rollBtn}
                                 </div>
                                 <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="openPhotoLightbox('${m.attachment.file_path.replace(/'/g, "\\'")}', '${String(m.attachment.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
                             </div>
@@ -7342,6 +7341,33 @@
             if (!t || !(await botThreadAction('stop'))) return;
             loadBotActivityThreads();
             openBotThread(t.fakeUser, t.peer);
+        }
+
+        // Delete a message and everything after it, rolling the conversation back.
+        async function botThreadRollback(fromMessageId) {
+            const t = currentBotThread;
+            if (!t || !fromMessageId) return;
+            if (!confirm('Roll back the conversation to before this message? This permanently deletes this message and every later one in the thread.')) return;
+            try {
+                const res = await fetch('/api/admin/bot-rollback', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({ fake_user: t.fakeUser, peer: t.peer, from_message_id: String(fromMessageId) })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadBotActivityThreads();
+                    openBotThread(t.fakeUser, t.peer);
+                } else {
+                    alert('Error: ' + (data.error || 'could not roll back'));
+                }
+            } catch (e) {
+                console.error('Failed to roll back conversation:', e);
+                alert('Failed to roll back the conversation.');
+            }
         }
 
         async function botThreadBlock() {
@@ -8421,11 +8447,16 @@
             }
             if (!thread) return;
 
+            // When the partner is one of our bots, offer a jump into LLM activity
+            // from INSIDE the open conversation.
+            const botJumpBtn = isBotPartner(user2)
+                ? `<button class="btn btn-secondary" title="Open this bot conversation in LLM activity" onclick="openConversationFromHistory('${String(user1).replace(/'/g, "\\'")}', '${String(user2).replace(/'/g, "\\'")}')">🤖 LLM activity</button>`
+                : '';
             const headerHtml = `
                 <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 10px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h4 style="margin: 0;">💬 Conversation: ${escapeHtml(user1)} ↔ ${escapeHtml(user2)}</h4>
-                        <button class="btn" onclick="closeConversation()">✕ Close</button>
+                        <div style="display:flex; gap:8px;">${botJumpBtn}<button class="btn" onclick="closeConversation()">✕ Close</button></div>
                     </div>
                     <div style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 6px;">`;
 
