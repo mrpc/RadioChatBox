@@ -3052,6 +3052,16 @@
                             </small>
                         </div>
                         <div class="form-group">
+                            <label>Recognise a returning person (%)</label>
+                            <input type="number" id="setting-bot-identity-link-chance" min="0" max="100" placeholder="60">
+                            <small>
+                                Chance that, when a bot starts a NEW conversation, it checks whether it has
+                                chatted before with what looks like the same person (same nickname/age/location)
+                                who returned under a different name or device — and, if so, is reminded of that
+                                earlier chat as "maybe the same person". 0 = never link past conversations.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>Emoji chance (%)</label>
                             <input type="number" id="setting-bot-emoji-chance" min="0" max="100" placeholder="5">
                             <small>
@@ -6235,6 +6245,25 @@
             if (modal) modal.style.display = 'none';
         }
 
+        /** True when a conversation partner is one of our bots (a fake user). */
+        function isBotPartner(name) {
+            return (fakeUsersCache || []).some(u => u.nickname === name);
+        }
+
+        /**
+         * Render the "Private Conversations" partner buttons for a user profile.
+         * Opening one (viewConversation) shows the thread inline; the jump into LLM
+         * activity for a bot conversation lives inside that opened view.
+         */
+        function conversationButtonsHtml(username, convList) {
+            const uArg = String(username).replace(/'/g, "\\'");
+            return convList.map(c => {
+                const pEsc = escapeHtml(c.partner);
+                const pArg = String(c.partner).replace(/'/g, "\\'");
+                return `<button class="btn" onclick="viewConversation('${uArg}', '${pArg}')">💬 ${pEsc} (${c.message_count})</button>`;
+            }).join('');
+        }
+
         async function loadIPBans() {
             try {
                 const response = await fetch('/api/admin/ban-ip', {
@@ -7405,11 +7434,15 @@
 
                 const bubbles = data.messages.map(m => {
                     const mine = m.from_username === fakeUser;
+                    // Rollback control: delete this message and everything after it.
+                    const rollBtn = m.id
+                        ? `<button title="Roll back the conversation to before this message (deletes this and every later message)" onclick="botThreadRollback(${Number(m.id)})" style="background:none;border:none;color:#b45309;cursor:pointer;font-size:11px;padding:0;margin-left:8px;">⤺ rollback to here</button>`
+                        : '';
                     return `
                         <div style="display: flex; justify-content: ${mine ? 'flex-end' : 'flex-start'}; margin-bottom: 8px;">
                             <div style="max-width: 70%; padding: 8px 12px; border-radius: 10px; background: ${mine ? '#eef2ff' : '#f3f4f6'};">
                                 <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">
-                                    ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}
+                                    ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}${rollBtn}
                                 </div>
                                 <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="openPhotoLightbox('${m.attachment.file_path.replace(/'/g, "\\'")}', '${String(m.attachment.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
                             </div>
@@ -7677,6 +7710,33 @@
             if (!t || !(await botThreadAction('stop'))) return;
             loadBotActivityThreads();
             openBotThread(t.fakeUser, t.peer);
+        }
+
+        // Delete a message and everything after it, rolling the conversation back.
+        async function botThreadRollback(fromMessageId) {
+            const t = currentBotThread;
+            if (!t || !fromMessageId) return;
+            if (!confirm('Roll back the conversation to before this message? This permanently deletes this message and every later one in the thread.')) return;
+            try {
+                const res = await fetch('/api/admin/bot-rollback', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({ fake_user: t.fakeUser, peer: t.peer, from_message_id: String(fromMessageId) })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadBotActivityThreads();
+                    openBotThread(t.fakeUser, t.peer);
+                } else {
+                    alert('Error: ' + (data.error || 'could not roll back'));
+                }
+            } catch (e) {
+                console.error('Failed to roll back conversation:', e);
+                alert('Failed to roll back the conversation.');
+            }
         }
 
         async function botThreadBlock() {
@@ -8442,6 +8502,9 @@
                     const user = data.user;
                     const pagination = data.pagination;
                     document.getElementById('user-details-name').textContent = username;
+                    // Loaded so the private-conversation list can flag bot partners
+                    // and offer the LLM-activity shortcut.
+                    if (!fakeUsersCache || !fakeUsersCache.length) { try { await loadFakeUsers(); } catch (e) { /* read-only fallback */ } }
 
                     let profileHtml = `<div style="margin-bottom:12px;">
                         <button class="btn btn-outline btn-sm" onclick="downloadCsv('/api/admin/user-data-export?username=' + encodeURIComponent('${escapeHtml(username).replace(/'/g, "\\'")}'), 'user-data-${escapeHtml(username).replace(/[^A-Za-z0-9_-]/g, '_')}.json')">⬇️ Export data (GDPR)</button>
@@ -8538,13 +8601,7 @@
                         }
                         if (convList && convList.length > 0) {
                             privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                            convList.forEach(c => {
-                                privateMessagesHtml += `
-                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(c.partner)}')">
-                                        💬 ${escapeHtml(c.partner)} (${c.message_count})
-                                    </button>
-                                `;
-                            });
+                            privateMessagesHtml += conversationButtonsHtml(username, convList);
                             privateMessagesHtml += '</div>';
                             privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
                         } else {
@@ -8600,6 +8657,9 @@
                     const user = data.user;
                     const pagination = data.pagination;
                     document.getElementById('inactive-user-details-name').textContent = username;
+                    // Loaded so the private-conversation list can flag bot partners
+                    // and offer the LLM-activity shortcut.
+                    if (!fakeUsersCache || !fakeUsersCache.length) { try { await loadFakeUsers(); } catch (e) { /* read-only fallback */ } }
                     
                     let profileHtml = '';
                     if (user.profile) {
@@ -8695,13 +8755,7 @@
                         }
                         if (convList && convList.length > 0) {
                             privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                            convList.forEach(c => {
-                                privateMessagesHtml += `
-                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(c.partner)}')">
-                                        💬 ${escapeHtml(c.partner)} (${c.message_count})
-                                    </button>
-                                `;
-                            });
+                            privateMessagesHtml += conversationButtonsHtml(username, convList);
                             privateMessagesHtml += '</div>';
                             privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
                         } else {
@@ -8764,11 +8818,16 @@
             }
             if (!thread) return;
 
+            // When the partner is one of our bots, offer a jump into LLM activity
+            // from INSIDE the open conversation.
+            const botJumpBtn = isBotPartner(user2)
+                ? `<button class="btn btn-secondary" title="Open this bot conversation in LLM activity" onclick="openConversationFromHistory('${String(user1).replace(/'/g, "\\'")}', '${String(user2).replace(/'/g, "\\'")}')">🤖 LLM activity</button>`
+                : '';
             const headerHtml = `
                 <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 10px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h4 style="margin: 0;">💬 Conversation: ${escapeHtml(user1)} ↔ ${escapeHtml(user2)}</h4>
-                        <button class="btn" onclick="closeConversation()">✕ Close</button>
+                        <div style="display:flex; gap:8px;">${botJumpBtn}<button class="btn" onclick="closeConversation()">✕ Close</button></div>
                     </div>
                     <div style="max-height: 400px; overflow-y: auto; background: white; padding: 15px; border-radius: 6px;">`;
 
@@ -9090,6 +9149,7 @@
                     document.getElementById('setting-bot-ignore-per-active-chat').value = settings.bot_ignore_chance_per_active_chat ?? '5';
                     document.getElementById('setting-bot-returning-peer-boost').value = settings.bot_returning_peer_reply_boost ?? '80';
                     document.getElementById('setting-bot-multi-message-chance').value = settings.bot_multi_message_chance ?? '25';
+                    document.getElementById('setting-bot-identity-link-chance').value = settings.bot_identity_link_chance ?? '60';
                     document.getElementById('setting-bot-emoji-chance').value = settings.bot_emoji_chance ?? '5';
                     document.getElementById('setting-bot-insult-threshold').value = settings.bot_insult_block_threshold ?? '3';
                     document.getElementById('setting-bot-immediate-block-chance').value = settings.bot_immediate_block_chance ?? '30';
@@ -9547,6 +9607,9 @@
                 bot_multi_message_chance: document.getElementById('setting-bot-multi-message-chance').value === ''
                     ? '25'
                     : document.getElementById('setting-bot-multi-message-chance').value,
+                bot_identity_link_chance: document.getElementById('setting-bot-identity-link-chance').value === ''
+                    ? '60'
+                    : document.getElementById('setting-bot-identity-link-chance').value,
                 bot_emoji_chance: document.getElementById('setting-bot-emoji-chance').value === ''
                     ? '5'
                     : document.getElementById('setting-bot-emoji-chance').value,

@@ -481,6 +481,48 @@ final class AdminImpersonationController
     }
 
     /**
+     * POST /api/admin/bot-rollback — {fake_user, peer, from_message_id}. Deletes
+     * the given message and every later one in that bot conversation, rolling it
+     * back to an earlier stage and repairing the thread's budget/summary state
+     * (see BotService::rollbackThread). Root/owner only (it deletes messages).
+     * 200 {success, deleted, messages_sent}; bad input -> 400.
+     */
+    #[Route('/api/admin/bot-rollback', methods: 'POST', name: 'admin.bot-rollback', middleware: [AdminAuthMiddleware::class])]
+    public function botRollback(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        try {
+            $input = $_POST;
+            $fake = trim((string) ($input['fake_user'] ?? ''));
+            $peer = trim((string) ($input['peer'] ?? ''));
+            $fromId = (int) ($input['from_message_id'] ?? 0);
+            if ($fake === '' || $peer === '' || $fromId <= 0) {
+                return Response::json(['error' => 'fake_user, peer and a positive from_message_id are required'], 400);
+            }
+
+            $result = (new BotService())->rollbackThread($fake, $peer, $fromId);
+            if ($result === null) {
+                return Response::json(['error' => 'Unknown fake user'], 400);
+            }
+
+            return Response::json([
+                'success'       => true,
+                'deleted'       => $result['deleted'],
+                'messages_sent' => $result['messages_sent'],
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('bot-rollback error: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * List every active fake user's inbound private conversations
      * (replaces public/api/admin/impersonate-conversations.php).
      *

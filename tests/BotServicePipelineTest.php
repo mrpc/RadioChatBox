@@ -536,6 +536,140 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * On the first reply of a brand-new conversation, a peer whose profile (age +
+     * location) matches an earlier conversation of the same bot is flagged as a
+     * likely returning person, and that earlier chat's summary is seeded into the
+     * system prompt as uncertain context.
+     */
+    public function testIdentityLinkSeedsPriorSummaryForLikelyReturningPeer(): void
+    {
+        $this->settings->values['bot_identity_link_chance'] = '100';
+
+        $oldPeer = 'oldpeer_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $summary = 'IDENTITY_SUMMARY_' . substr(bin2hex(random_bytes(3)), 0, 6);
+
+        // The current peer and a PAST peer of the same bot share age + location.
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$this->peer, 'sess_' . $this->peer, '25', 'female', 'Athens']);
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$oldPeer, 'sess_' . $oldPeer, '25', 'female', 'Athens']);
+        // A past conversation with a real summary to seed from.
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads (fake_user_id, peer_username, messages_sent, last_reply_at, summary)
+             VALUES (?, ?, 3, NOW(), ?)'
+        )->execute([$this->fakeUserId, $oldPeer, $summary]);
+
+        try {
+            $this->incoming('geia');
+            $this->llm->reply = 'geia';
+            $this->bot->processReplyJob($this->replyPayload(0));
+
+            $system = $this->llm->calls[0]['system'];
+            $this->assertStringContainsString('ΠΙΘΑΝΗ ΠΑΛΙΑ ΓΝΩΡΙΜΙΑ', $system);
+            $this->assertStringContainsString($summary, $system, 'the prior summary is seeded');
+        } finally {
+            $this->pdo->prepare('DELETE FROM user_profiles WHERE username IN (?, ?)')->execute([$this->peer, $oldPeer]);
+        }
+    }
+
+    /** With the identity-link chance at 0 the prior-conversation note is never added. */
+    public function testIdentityLinkIsSkippedWhenChanceIsZero(): void
+    {
+        $this->settings->values['bot_identity_link_chance'] = '0';
+
+        $oldPeer = 'oldpeer_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$this->peer, 'sess_' . $this->peer, '25', 'female', 'Athens']);
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$oldPeer, 'sess_' . $oldPeer, '25', 'female', 'Athens']);
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads (fake_user_id, peer_username, messages_sent, last_reply_at, summary)
+             VALUES (?, ?, 3, NOW(), ?)'
+        )->execute([$this->fakeUserId, $oldPeer, 'some prior summary']);
+
+        try {
+            $this->incoming('geia');
+            $this->llm->reply = 'geia';
+            $this->bot->processReplyJob($this->replyPayload(0));
+
+            $this->assertStringNotContainsString('ΠΙΘΑΝΗ ΠΑΛΙΑ ΓΝΩΡΙΜΙΑ', $this->llm->calls[0]['system']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM user_profiles WHERE username IN (?, ?)')->execute([$this->peer, $oldPeer]);
+        }
+    }
+
+    /**
+     * normalizeNick reduces a name to a loose stem (lower-case, trailing digits and
+     * separators dropped) so returning-under-a-new-name variants collapse together.
+     */
+    public function testNormalizeNickReducesToAStem(): void
+    {
+        $ref = new \ReflectionMethod(BotService::class, 'normalizeNick');
+        $ref->setAccessible(true);
+        $this->assertSame('maria', $ref->invoke(null, 'Maria'));
+        $this->assertSame('maria', $ref->invoke(null, 'maria2'));
+        $this->assertSame('maria', $ref->invoke(null, 'Maria_3'));
+        $this->assertSame('', $ref->invoke(null, '12345'));
+    }
+
+    /**
+     * rollbackThread deletes the chosen message and every later one in the thread,
+     * decrements the reply budget by the bot's own deleted messages, clears a
+     * farewell left by the tail, and drops a summary that covered deleted content.
+     */
+    public function testRollbackThreadDeletesFromAPointAndRepairsState(): void
+    {
+        // A short conversation: peer m1, bot r1, peer m2, bot r2 (chronological).
+        $this->incoming('m1');
+        $this->botSaid('r1');
+        $this->incoming('m2');
+        $this->botSaid('r2');
+
+        // A thread row with a spent budget, a farewell and a summary that covers
+        // the whole conversation (summary_upto_id past the cut point).
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'm2');
+        $fromId = (int) $this->pdo->query(
+            "SELECT id FROM private_messages WHERE message = 'm2' AND from_username = '{$this->peer}'"
+        )->fetchColumn();
+        $this->pdo->prepare(
+            'UPDATE bot_threads SET messages_sent = 2, farewell_sent_at = NOW(),
+             summary = :s, summary_upto_id = :u WHERE fake_user_id = :f AND peer_username = :p'
+        )->execute(['s' => 'remembered stuff', 'u' => $fromId, 'f' => $this->fakeUserId, 'p' => $this->peer]);
+
+        // Roll back from m2: deletes m2 (peer) and r2 (bot) — two rows, one of them
+        // the bot's, so the budget drops from 2 to 1.
+        $result = $this->bot->rollbackThread($this->nick, $this->peer, $fromId);
+
+        $this->assertNotNull($result);
+        $this->assertSame(2, $result['deleted'], 'm2 and r2 are removed');
+        $this->assertSame(1, $result['messages_sent'], 'budget drops by the one bot message deleted');
+
+        // m1 and r1 survive; m2 and r2 are gone.
+        $left = $this->pdo->query(
+            "SELECT message FROM private_messages
+             WHERE (from_username = '{$this->nick}' AND to_username = '{$this->peer}')
+                OR (from_username = '{$this->peer}' AND to_username = '{$this->nick}')
+             ORDER BY id"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        $this->assertSame(['m1', 'r1'], $left);
+
+        // Farewell and the now-stale summary are cleared.
+        $row = $this->pdo->query(
+            "SELECT farewell_sent_at, summary FROM bot_threads
+             WHERE fake_user_id = {$this->fakeUserId} AND peer_username = '{$this->peer}'"
+        )->fetch(PDO::FETCH_ASSOC);
+        $this->assertNull($row['farewell_sent_at']);
+        $this->assertNull($row['summary']);
+    }
+
+    /** rollbackThread returns null for an unknown fake user or a non-positive id. */
+    public function testRollbackThreadRejectsBadInput(): void
+    {
+        $this->assertNull($this->bot->rollbackThread('no_such_bot_xyz', $this->peer, 5));
+        $this->assertNull($this->bot->rollbackThread($this->nick, $this->peer, 0));
+    }
+
+    /**
      * listThreads/countThreads filter by a nickname query matched against both
      * the bot's nickname and the peer's username, case-insensitively.
      */
