@@ -3090,6 +3090,17 @@
                             </small>
                         </div>
                         <div class="form-group">
+                            <label style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="setting-bot-mood-llm-enabled" style="width:auto;">
+                                LLM-driven mood (v2)
+                            </label>
+                            <small>
+                                Instead of keyword matching, let the model read the whole conversation and report
+                                its own mood. Richer and more accurate. It rides the reply (no extra API call), but
+                                asks the model to append a hidden tag we strip. Requires bot moods enabled.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>Emoji chance (%)</label>
                             <input type="number" id="setting-bot-emoji-chance" min="0" max="100" placeholder="5">
                             <small>
@@ -9291,6 +9302,7 @@
                     document.getElementById('setting-bot-multi-message-chance').value = settings.bot_multi_message_chance ?? '25';
                     document.getElementById('setting-bot-identity-link-chance').value = settings.bot_identity_link_chance ?? '60';
                     document.getElementById('setting-bot-moods-enabled').checked = settings.bot_moods_enabled !== 'false';
+                    document.getElementById('setting-bot-mood-llm-enabled').checked = settings.bot_mood_llm_enabled === 'true';
                     document.getElementById('setting-bot-emoji-chance').value = settings.bot_emoji_chance ?? '5';
                     document.getElementById('setting-bot-insult-threshold').value = settings.bot_insult_block_threshold ?? '3';
                     document.getElementById('setting-bot-immediate-block-chance').value = settings.bot_immediate_block_chance ?? '30';
@@ -9749,6 +9761,7 @@
                     ? '25'
                     : document.getElementById('setting-bot-multi-message-chance').value,
                 bot_moods_enabled: document.getElementById('setting-bot-moods-enabled').checked ? 'true' : 'false',
+                bot_mood_llm_enabled: document.getElementById('setting-bot-mood-llm-enabled').checked ? 'true' : 'false',
                 bot_identity_link_chance: document.getElementById('setting-bot-identity-link-chance').value === ''
                     ? '60'
                     : document.getElementById('setting-bot-identity-link-chance').value,

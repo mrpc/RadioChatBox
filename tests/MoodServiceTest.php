@@ -160,6 +160,34 @@ class MoodServiceTest extends TestCase
         $this->assertFalse($this->mood->setBaseline($this->fakeUserId, 'zany'));
     }
 
+    /** The LLM mood tag is parsed (valid moods only) and stripped from a reply. */
+    public function testParseAndStripMoodTag(): void
+    {
+        $this->assertSame(['mood' => 'angry', 'strength' => 70], MoodService::parseTag('ελα ρε [[mood:angry|70]]'));
+        $this->assertSame(['mood' => 'flirty', 'strength' => 100], MoodService::parseTag('[[ mood : flirty | 250 ]]'), 'strength clamps to 100');
+        $this->assertNull(MoodService::parseTag('no tag here'));
+        $this->assertNull(MoodService::parseTag('[[mood:banana|50]]'), 'unknown moods are rejected');
+
+        $this->assertSame('γεια σου', MoodService::stripTags("γεια σου\n[[mood:happy|40]]"));
+    }
+
+    /** LLM-driven mode requires BOTH the feature and the v2 flag on. */
+    public function testIsLlmDrivenNeedsBothFlags(): void
+    {
+        $s = new SettingsService();
+        $s->set('bot_moods_enabled', 'true');
+        $s->set('bot_mood_llm_enabled', 'false');
+        $this->assertFalse((new MoodService($s))->isLlmDriven());
+
+        $s->set('bot_mood_llm_enabled', 'true');
+        $this->assertTrue((new MoodService($s))->isLlmDriven());
+
+        $s->set('bot_moods_enabled', 'false');
+        $this->assertFalse((new MoodService($s))->isLlmDriven(), 'the master switch still gates it');
+
+        $s->set('bot_mood_llm_enabled', null);
+    }
+
     /** With the feature off, events do nothing and no directive is produced. */
     public function testDisabledIsInert(): void
     {

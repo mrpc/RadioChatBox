@@ -60,10 +60,63 @@ class MoodService
         $this->settings = $settings ?? new SettingsService();
     }
 
+    /**
+     * Matches the private mood self-report tag a bot appends when LLM-driven mood
+     * is on, e.g. "[[mood:angry|70]]". Stripped before delivery, never shown.
+     */
+    public const TAG_PATTERN = '/\[\[\s*mood\s*:\s*([a-z_]+)\s*\|\s*(\d{1,3})\s*\]\]/i';
+
     /** Whether the mood feature is switched on. */
     public function isEnabled(): bool
     {
         return $this->settings->get('bot_moods_enabled', 'true') === 'true';
+    }
+
+    /**
+     * Whether moods are driven by the LLM's own self-assessment (v2) rather than
+     * only the keyword heuristic (v1). Opt-in — it rides the reply so it costs no
+     * extra call, but it asks the model to emit a tag, so it is off by default.
+     */
+    public function isLlmDriven(): bool
+    {
+        return $this->isEnabled() && $this->settings->get('bot_mood_llm_enabled', 'false') === 'true';
+    }
+
+    /**
+     * The instruction appended to the reply prompt (LLM-driven mode) asking the
+     * bot to end with a private machine tag reporting its own current mood — read
+     * from the FULL conversation, richer than keyword matching.
+     */
+    public function llmReportInstruction(): string
+    {
+        $list = implode(', ', array_keys(self::MOODS));
+        return 'ΕΣΩΤΕΡΙΚΗ ΣΗΜΕΙΩΣΗ ΔΙΑΘΕΣΗΣ (ΔΕΝ φαίνεται ποτέ στον χρήστη — αφαιρείται αυτόματα): '
+            . 'Στο ΤΕΛΟΣ της απάντησής σου, σε ΝΕΑ ξεχωριστή γραμμή, γράψε ΑΚΡΙΒΩΣ ένα tag [[mood:ΧΧΧ|Ν]] '
+            . 'όπου ΧΧΧ είναι η διάθεσή σου ΤΩΡΑ, ΜΟΝΟ μία από αυτές τις αγγλικές λέξεις: ' . $list . '· '
+            . 'και Ν η έντασή της, ακέραιος 0-100 (πόσο έντονα τη νιώθεις μετά από αυτό το μήνυμα). '
+            . 'ΜΗΝ το σχολιάσεις, ΜΗΝ το εξηγήσεις — απλώς πρόσθεσέ το στο τέλος.';
+    }
+
+    /**
+     * Parse the mood self-report tag out of an LLM reply.
+     *
+     * @return array{mood:string, strength:int}|null
+     */
+    public static function parseTag(string $text): ?array
+    {
+        if (preg_match(self::TAG_PATTERN, $text, $m) === 1) {
+            $mood = strtolower($m[1]);
+            if (self::isValidMood($mood)) {
+                return ['mood' => $mood, 'strength' => max(0, min(100, (int) $m[2]))];
+            }
+        }
+        return null;
+    }
+
+    /** Remove every mood tag from a reply (so it is never delivered to the peer). */
+    public static function stripTags(string $text): string
+    {
+        return trim(preg_replace(self::TAG_PATTERN, '', $text) ?? $text);
     }
 
     public static function isValidMood(string $mood): bool
