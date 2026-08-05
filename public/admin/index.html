@@ -7018,7 +7018,7 @@
                                     <tr>
                                         <td><strong>${escapeHtml(t.nickname)}</strong></td>
                                         <td>${escapeHtml(t.peer_username)}</td>
-                                        <td>${t.messages_sent}/${t.max_messages}</td>
+                                        <td>${t.peer_is_staff ? t.messages_sent + ' / ∞' : t.messages_sent + '/' + t.max_messages}</td>
                                         <td>${t.message_count}</td>
                                         <td style="color: ${color};">${state}${strikeNote}</td>
                                         <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}${lastMsgHtml}</td>
@@ -7115,7 +7115,7 @@
                         <button class="btn btn-secondary" style="padding:2px 8px;font-size:12px;" onclick="openPeerProfileFromThread('${jsPeer}')" title="View this user's profile">👤</button>
                     </h2>
                     <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4b5563; margin-bottom: 12px;">
-                        <span>Budget: <strong>${state.messages_sent ?? 0}/${state.max_messages ?? '-'}</strong></span>
+                        <span>Budget: <strong>${state.peer_is_staff ? (state.messages_sent ?? 0) + ' / ∞' : (state.messages_sent ?? 0) + '/' + (state.max_messages ?? '-')}</strong>${state.peer_is_staff ? ' <span style="color:#6b7280;font-weight:normal;font-size:12px;">(staff — unlimited)</span>' : ''}</span>
                         <span>${state.is_active === false
                             ? '💤 fake user inactive — the bot will not reply until it is active again'
                             : (state.blocked_at

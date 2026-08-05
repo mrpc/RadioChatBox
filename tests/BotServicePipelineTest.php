@@ -613,6 +613,52 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * listThreads and getThreadState flag a staff peer, so the panel can show the
+     * budget as unlimited (staff are never capped in admin mode).
+     */
+    public function testThreadReportsWhetherPeerIsStaff(): void
+    {
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'geia');
+
+        // Guest peer (no users row) is not staff.
+        $row = $this->threadInList();
+        $this->assertNotNull($row);
+        $this->assertFalse($row['peer_is_staff']);
+        $this->assertFalse($this->bot->getThreadState($this->nick, $this->peer)['peer_is_staff']);
+
+        // Promote the peer to staff → both report true.
+        $this->pdo->prepare('INSERT INTO users (username, password, usertype) VALUES (?, ?, 90)')
+            ->execute([$this->peer, 'x']);
+        try {
+            $this->assertTrue($this->threadInList()['peer_is_staff']);
+            $this->assertTrue($this->bot->getThreadState($this->nick, $this->peer)['peer_is_staff']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$this->peer]);
+        }
+    }
+
+    /**
+     * A generated reply that the delivery guard throws away (e.g. the bot was
+     * taken over meanwhile) records WHY on the thread, so a vanished reply is
+     * explained in Bot Activity instead of the chat silently stalling.
+     */
+    public function testDroppedDeliveryRecordsAReason(): void
+    {
+        $this->incoming('geia');
+        // Mark the thread taken over so the delivery guard rejects the write.
+        $this->bot->takeOverThread($this->nick, $this->peer, 'admin');
+
+        $payload = $this->replyPayload(0) + ['message' => 'μια χαμένη απάντηση', 'is_final' => true];
+        $result = $this->bot->processDeliverJob($payload);
+
+        $this->assertStringContainsString('taken over', $result);
+        $state = $this->bot->getThreadState($this->nick, $this->peer);
+        $this->assertNotNull($state['last_error']);
+        $this->assertStringContainsString('was not delivered', $state['last_error']);
+    }
+
+    /**
      * rollbackThread deletes the chosen message and every later one in the thread,
      * decrements the reply budget by the bot's own deleted messages, clears a
      * farewell left by the tail, and drops a summary that covered deleted content.
