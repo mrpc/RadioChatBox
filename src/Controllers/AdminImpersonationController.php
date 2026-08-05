@@ -11,6 +11,8 @@ use RadioChatBox\AdminAuth;
 use RadioChatBox\Services\BlockService;
 use Pramnos\Broadcasting\BroadcastingManager;
 use RadioChatBox\Services\BotService;
+use RadioChatBox\Services\FakeUserService;
+use RadioChatBox\Services\MoodService;
 use Pramnos\Database\Database;
 use RadioChatBox\Services\MessageFilter;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
@@ -554,6 +556,55 @@ final class AdminImpersonationController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('bot-resend error: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/admin/bot-mood — {fake_user, action:set|reset, mood?, intensity?}.
+     * Set a bot's global mood or reset it back to its baseline everywhere. Root/
+     * owner only. 200 {success}; bad input -> 400.
+     */
+    #[Route('/api/admin/bot-mood', methods: 'POST', name: 'admin.bot-mood', middleware: [AdminAuthMiddleware::class])]
+    public function botMood(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        try {
+            $input = $_POST;
+            $fake = trim((string) ($input['fake_user'] ?? ''));
+            $action = (string) ($input['action'] ?? 'set');
+            if ($fake === '') {
+                return Response::json(['error' => 'fake_user is required'], 400);
+            }
+
+            $fakeUser = (new FakeUserService())->getFakeUserByNickname($fake);
+            if ($fakeUser === null) {
+                return Response::json(['error' => 'Unknown fake user'], 400);
+            }
+            $id = (int) $fakeUser['id'];
+            $mood = new MoodService();
+
+            if ($action === 'reset') {
+                $mood->resetMood($id);
+                return Response::json(['success' => true, 'action' => 'reset']);
+            }
+
+            $moodName = trim((string) ($input['mood'] ?? ''));
+            $intensity = (int) ($input['intensity'] ?? 70);
+            if (!MoodService::isValidMood($moodName)) {
+                return Response::json(['error' => 'Unknown mood'], 400);
+            }
+            $mood->setGlobalMood($id, $moodName, $intensity);
+
+            return Response::json(['success' => true, 'action' => 'set', 'mood' => $moodName]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('bot-mood error: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd

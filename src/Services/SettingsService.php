@@ -142,6 +142,8 @@ class SettingsService
         'bot_returning_peer_reply_boost',
         'bot_multi_message_chance',
         'bot_identity_link_chance',
+        // Persistent, cross-conversation bot mood (annoyed/happy/…).
+        'bot_moods_enabled',
         'bot_emoji_chance',
         'bot_insult_block_threshold',
         'bot_immediate_block_chance',

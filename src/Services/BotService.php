@@ -437,6 +437,7 @@ class BotService
     private SettingsService $settings;
     private JobQueue $queue;
     private ?LlmService $llm;
+    private ?MoodService $moodService = null;
 
     public function __construct(
         ?SettingsService $settings = null,
@@ -448,6 +449,12 @@ class BotService
         $this->queue = $queue ?? new JobQueue();
         // Built from the settings on first use unless one was injected.
         $this->llm = $llm;
+    }
+
+    /** The bot mood engine (persistent, cross-conversation emotional state). */
+    private function mood(): MoodService
+    {
+        return $this->moodService ??= new MoodService($this->settings);
     }
 
     /**
@@ -706,6 +713,14 @@ class BotService
         $peerMessage = $this->latestInboundMessage((string) $fakeUser['nickname'], $peer);
         $enforceLanguage = self::resolveEnforceLanguage($fakeUser, $peerMessage);
 
+        // Let what the peer just said move the bot's mood BEFORE we build the
+        // prompt, so this reply already reflects it. Hostility bleeds globally
+        // (annoyed in every chat); warmth lifts this chat locally. Best-effort.
+        $moodEvent = self::classifyMoodEvent($peerMessage, $fakeUser);
+        if ($moodEvent !== null) {
+            $this->mood()->applyEvent($fakeUserId, $peer, $moodEvent['mood'], $moodEvent['strength']);
+        }
+
         if (!$llm->isConfigured()) {
             $this->recordThreadError(
                 $fakeUserId,
@@ -747,6 +762,13 @@ class BotService
             $peerIsStaff = $this->peerIsStaff($peer);
             if ($peerIsStaff) {
                 $systemPrompt .= "\n\n" . self::ADMIN_MODE_DIRECTIVE;
+            }
+
+            // Current mood (persistent, cross-conversation): colours the tone but
+            // never reveals its cause. Empty when the bot is at a neutral baseline.
+            $moodDirective = $this->mood()->directiveFor($fakeUserId, $peer);
+            if ($moodDirective !== '') {
+                $systemPrompt .= "\n\n" . $moodDirective;
             }
 
             // Brand-new conversation: this peer might be someone the bot already
@@ -1475,6 +1497,9 @@ class BotService
                    f.bot_enabled,
                    f.is_active,
                    f.bot_max_messages,
+                   f.mood AS bot_mood,
+                   f.mood_intensity AS bot_mood_intensity,
+                   f.mood_updated_at AS bot_mood_updated_at,
                    t.peer_username,
                    t.messages_sent,
                    t.is_taken_over,
@@ -1527,6 +1552,17 @@ class BotService
             $thread['peer_is_staff'] = $thread['peer_usertype'] !== null
                 && (int) $thread['peer_usertype'] >= Authz::MODERATOR;
             unset($thread['peer_usertype']);
+
+            // The bot's current global mood (time-decayed), shown as a badge. Below
+            // the felt floor it reads as no mood.
+            $moodIntensity = MoodService::decayedIntensity(
+                (int) ($thread['bot_mood_intensity'] ?? 0),
+                $thread['bot_mood_updated_at'] ?? null
+            );
+            $thread['mood'] = ($thread['bot_mood'] && $thread['bot_mood'] !== 'neutral'
+                && $moodIntensity >= MoodService::MIN_FELT_INTENSITY) ? $thread['bot_mood'] : null;
+            $thread['mood_intensity'] = $moodIntensity;
+            unset($thread['bot_mood'], $thread['bot_mood_intensity'], $thread['bot_mood_updated_at']);
         }
 
         return $threads;
@@ -1730,10 +1766,12 @@ class BotService
     public function getThreadState(string $fakeNickname, string $peer): ?array
     {
         $result = $this->db->preparedQuery('
-            SELECT f.nickname,
+            SELECT f.id,
+                   f.nickname,
                    f.bot_enabled,
                    f.is_active,
                    f.bot_max_messages,
+                   f.mood_baseline,
                    t.messages_sent,
                    t.is_taken_over,
                    t.taken_over_at,
@@ -1761,8 +1799,16 @@ class BotService
             ? (int) $row['bot_max_messages']
             : (int) $this->settings->get('bot_max_messages_per_thread', 4);
 
+        // The mood the bot is expressing to this peer (blended global+local).
+        $effectiveMood = $this->mood()->effective((int) $row['id'], $peer);
+
         return [
             'globally_enabled' => $this->isEnabled(),
+            'moods_enabled' => $this->mood()->isEnabled(),
+            'mood' => $effectiveMood['mood'],
+            'mood_intensity' => $effectiveMood['intensity'],
+            'mood_scope' => $effectiveMood['scope'],
+            'mood_baseline' => ($row['mood_baseline'] ?? null) ?: MoodService::DEFAULT_BASELINE,
             'bot_enabled' => (bool) $row['bot_enabled'],
             // An inactive fake user cannot reply: the guard skips its jobs.
             'is_active' => (bool) $row['is_active'],
@@ -1981,6 +2027,59 @@ class BotService
         }
 
         return false;
+    }
+
+    /**
+     * A loose "this reads warm/affectionate" check for the mood engine: gratitude,
+     * compliments, affection, laughter, hearts. Kept deliberately simple (v1 mood
+     * is heuristic); false positives only nudge the LOCAL mood mildly.
+     */
+    public static function looksPositive(string $text): bool
+    {
+        $t = mb_strtolower($text);
+        $needles = [
+            'ευχαριστ', 'efxarist', 'eyxarist',
+            'ομορφ', 'omorf', 'γλυκ', 'glyk', 'glik',
+            'αγαπ', 'agap', 'λατρ', 'latr',
+            'τελει', 'telei', 'υπεροχ', 'yperox', 'iperox',
+            'μ αρεσ', "μ'αρεσ", 'mou aresei', 'mareseis',
+            'χαχα', 'xaxa', 'haha',
+        ];
+        foreach ($needles as $n) {
+            if (mb_strpos($t, $n) !== false) {
+                return true;
+            }
+        }
+        // Affectionate emoji.
+        return preg_match('/[\x{2764}\x{1F60D}\x{1F618}\x{1F970}\x{1F60A}\x{1F929}]/u', $text) === 1;
+    }
+
+    /**
+     * Classify what a peer's message does to the bot's mood, for the mood engine.
+     * Hostility is a STRONG event (bleeds into the bot's other chats); warmth is a
+     * mild, local lift. Returns null when nothing notable was said.
+     *
+     * @param array<string,mixed> $fakeUser
+     * @return array{mood:string, strength:int}|null
+     */
+    public static function classifyMoodEvent(string $message, array $fakeUser): ?array
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return null;
+        }
+
+        // Hostility → anger, strong enough to bleed globally.
+        if (self::looksAbusive($message, !empty($fakeUser['bot_allow_explicit']))) {
+            return ['mood' => 'angry', 'strength' => 75];
+        }
+
+        // Warmth → a mild, local lift.
+        if (self::looksPositive($message)) {
+            return ['mood' => 'happy', 'strength' => 35];
+        }
+
+        return null;
     }
 
     /**

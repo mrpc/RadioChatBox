@@ -106,6 +106,11 @@ class Scheduler
             'group' => 'maintenance',
             'description' => 'Send due promo-campaign messages (public / DM) as fake users',
         ],
+        'mood_decay' => [
+            'every' => 600,
+            'group' => 'maintenance',
+            'description' => 'Fade bot moods back toward baseline over time',
+        ],
         'prune_llm_log' => [
             'every' => 86400,
             'at_hour' => 3,
@@ -373,6 +378,7 @@ class Scheduler
             'cleanup' => static fn () => (new CleanupService())->runAll(),
             'show_reminders' => static fn () => (new ShowSubscriptionService())->sendDueReminders(),
             'promo_dispatch' => static fn () => (new PromoService())->dispatchDue(),
+            'mood_decay' => fn () => (new MoodService($this->settings))->decay(),
             'prune_llm_log' => fn () => (new LlmLog($this->settings))->prune(),
             'llm_balance_snapshot' => fn () => (new LlmAccount($this->settings))->snapshot(true),
             default => null,

@@ -59,6 +59,8 @@ Scheduler::call($task('show_reminders'))->everyMinute()->withoutOverlapping()
     ->description('Notify subscribers shortly before a show they follow airs');
 Scheduler::call($task('promo_dispatch'))->everyMinute()->withoutOverlapping()
     ->description('Send due promo-campaign messages (public / DM) as fake users');
+Scheduler::call($task('mood_decay'))->cron('*/10 * * * *')->withoutOverlapping()
+    ->description('Fade bot moods back toward baseline over time');
 Scheduler::call($task('prune_llm_log'))->cron('0 3 * * *')->withoutOverlapping()
     ->description('Drop LLM log entries past the retention window');
 Scheduler::call($task('llm_balance_snapshot'))->hourly()->withoutOverlapping()

@@ -225,6 +225,7 @@ final class AdminFakeUsersController
                 'bot_llm_provider',
                 'bot_llm_model',
                 'bot_reply_language',
+                'mood_baseline',
             ];
 
             $options = [];
