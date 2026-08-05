@@ -771,6 +771,14 @@ class BotService
                 $systemPrompt .= "\n\n" . $moodDirective;
             }
 
+            // LLM-driven mood (v2): ask the bot to end with a private mood tag we
+            // parse and strip. Read from the whole conversation, richer than the
+            // keyword heuristic; rides the reply, so it costs no extra call.
+            $moodLlm = $this->mood()->isLlmDriven();
+            if ($moodLlm) {
+                $systemPrompt .= "\n\n" . $this->mood()->llmReportInstruction();
+            }
+
             // Brand-new conversation: this peer might be someone the bot already
             // chatted with, back with a different name/device. If a likely match is
             // found, feed that earlier chat's summary as "maybe the same person".
@@ -833,6 +841,16 @@ class BotService
                 // — capping the whole thing at $maxLength here truncated long
                 // multi-message replies mid-sentence.
                 $reply = self::sanitizeReply($result['text'], $maxLength * self::MAX_MESSAGE_PARTS);
+
+                // LLM-driven mood (v2): read the bot's self-reported mood tag from
+                // the raw reply, apply it, and strip every tag so it is never sent.
+                if ($moodLlm) {
+                    $tag = MoodService::parseTag((string) $result['text']);
+                    if ($tag !== null) {
+                        $this->mood()->applyEvent($fakeUserId, $peer, $tag['mood'], $tag['strength']);
+                    }
+                    $reply = MoodService::stripTags($reply);
+                }
             } catch (\Throwable $e) {
                 $this->recordThreadError($fakeUserId, $peer, $e->getMessage());
 

@@ -133,6 +133,8 @@ class SettingsService
         'bot_identity_link_chance',
         // Persistent, cross-conversation bot mood (annoyed/happy/…).
         'bot_moods_enabled',
+        // v2: let the LLM self-report its mood (richer than the keyword heuristic).
+        'bot_mood_llm_enabled',
         'bot_emoji_chance',
         'bot_insult_block_threshold',
         'bot_immediate_block_chance',

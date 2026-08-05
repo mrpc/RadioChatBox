@@ -804,6 +804,36 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * With LLM-driven mood on, the bot's self-reported mood tag is parsed and
+     * applied (a strong reading bleeds globally), the reply prompt carries the tag
+     * instruction, and the tag is stripped from what the peer actually receives.
+     */
+    public function testLlmDrivenMoodTagIsAppliedAndStripped(): void
+    {
+        $this->settings->values['bot_mood_llm_enabled'] = 'true';
+        $this->incoming('χαχα τελεια εισαι');
+        $this->llm->reply = "χαχα ναι ρε! να σαι καλα\n[[mood:excited|85]]";
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        // The prompt asked for the tag.
+        $this->assertStringContainsString('[[mood:ΧΧΧ|Ν]]', $this->llm->calls[0]['system']);
+
+        // The delivered bubbles never contain the tag.
+        $jobs = array_filter($this->claimAll(), fn ($j) => $j['type'] === BotService::JOB_DELIVER);
+        $this->assertNotEmpty($jobs);
+        foreach ($jobs as $j) {
+            $this->assertStringNotContainsString('[[mood', $j['payload']['message']);
+        }
+
+        // The strong self-reported mood bled to the global mood.
+        $eff = (new \RadioChatBox\Services\MoodService($this->settings))
+            ->effective($this->fakeUserId, 'someone_else_' . $this->peer);
+        $this->assertSame('excited', $eff['mood']);
+        $this->assertSame('global', $eff['scope']);
+    }
+
+    /**
      * A warm peer message lifts the mood but only LOCALLY (a mild event), so the
      * bot's other conversations are unaffected.
      */
