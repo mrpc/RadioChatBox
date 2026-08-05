@@ -201,6 +201,15 @@ class BotService
     public const DEFAULT_IGNORE_CHANCE = 30;
 
     /**
+     * Chance (%) that, on the FIRST reply of a brand-new conversation, the bot
+     * checks whether it has chatted before with what looks like the same person
+     * under a different name/device (same nickname stem, or same age + location)
+     * and, if so, is fed that earlier conversation's summary as "maybe the same
+     * person" context. Not certain by design, hence a probability.
+     */
+    public const DEFAULT_IDENTITY_LINK_CHANCE = 60;
+
+    /**
      * Added to the ignore chance for each other conversation the bot is already
      * in: a person juggling several chats picks up fewer new ones. Percentage
      * points per active chat.
@@ -738,6 +747,16 @@ class BotService
             $peerIsStaff = $this->peerIsStaff($peer);
             if ($peerIsStaff) {
                 $systemPrompt .= "\n\n" . self::ADMIN_MODE_DIRECTIVE;
+            }
+
+            // Brand-new conversation: this peer might be someone the bot already
+            // chatted with, back with a different name/device. If a likely match is
+            // found, feed that earlier chat's summary as "maybe the same person".
+            if ((int) $thread['messages_sent'] === 0 && !$peerIsStaff) {
+                $priorNote = $this->findPriorConversationContext($fakeUserId, $peer, $peerFacts);
+                if ($priorNote !== '') {
+                    $systemPrompt .= "\n\n" . $priorNote;
+                }
             }
 
             // Admin steering: a directive the moderator attached to this thread.
@@ -3233,6 +3252,95 @@ class BotService
         // @codeCoverageIgnoreEnd
 
         return $facts;
+    }
+
+    /**
+     * A nickname stem for loose identity matching: lower-cased, with any trailing
+     * digits and separators stripped, so "Maria", "maria2" and "maria_" all reduce
+     * to "maria". Returns '' for a name that is only digits/separators.
+     */
+    private static function normalizeNick(string $name): string
+    {
+        $stem = strtolower(trim($name));
+        // Drop a trailing run of digits and separators (maria_2 -> maria).
+        $stem = preg_replace('/[\s._-]*\d+$/u', '', $stem) ?? $stem;
+        return trim($stem, " \t._-");
+    }
+
+    /**
+     * When a bot opens a NEW conversation, look for an earlier conversation of the
+     * SAME bot with what is probably the same person returning under a different
+     * name/device, and return a "maybe the same person" note carrying that earlier
+     * chat's summary (empty string when nothing matches or the dice say no).
+     *
+     * "Probably the same person" = the other peer has the same nickname stem, OR
+     * the same age AND location (both known) — i.e. whatever we actually know. It
+     * is deliberately uncertain: the note tells the bot it MIGHT be the same person
+     * and to reference the past only if it fits, never to assume it.
+     *
+     * @param array<string,mixed> $peerFacts As from describePeerFor().
+     */
+    private function findPriorConversationContext(int $fakeUserId, string $peer, array $peerFacts): string
+    {
+        $chance = (int) $this->settings->get('bot_identity_link_chance', self::DEFAULT_IDENTITY_LINK_CHANCE);
+        if ($chance <= 0 || random_int(1, 100) > $chance) {
+            return '';
+        }
+
+        $age      = isset($peerFacts['age']) && $peerFacts['age'] !== '' ? (int) $peerFacts['age'] : null;
+        $location = strtolower(trim((string) ($peerFacts['location'] ?? '')));
+        $stem     = self::normalizeNick($peer);
+
+        // Nothing to match on → don't guess.
+        if ($stem === '' && ($age === null || $location === '')) {
+            return '';
+        }
+
+        try {
+            // Candidate past conversations of THIS bot, with a real summary to seed
+            // from, newest first. The peer's profile is looked up per candidate.
+            $result = $this->db->preparedQuery('
+                SELECT t.peer_username, t.summary,
+                       (SELECT up.age FROM user_profiles up WHERE up.username = t.peer_username ORDER BY up.created_at DESC LIMIT 1) AS p_age,
+                       (SELECT up.location FROM user_profiles up WHERE up.username = t.peer_username ORDER BY up.created_at DESC LIMIT 1) AS p_location
+                FROM bot_threads t
+                WHERE t.fake_user_id = :fake
+                  AND t.peer_username <> :peer
+                  AND t.summary IS NOT NULL AND t.summary <> \'\'
+                ORDER BY t.last_reply_at DESC NULLS LAST
+                LIMIT 30
+            ', ['fake' => $fakeUserId, 'peer' => $peer]);
+
+            $rows = $result ? $result->fetchAll() : [];
+        } catch (\Throwable $e) {
+            // @codeCoverageIgnoreStart
+            \Pramnos\Logs\Logger::log('BotService: identity-link lookup failed: ' . $e->getMessage(), 'radiochatbox');
+            return '';
+            // @codeCoverageIgnoreEnd
+        }
+
+        foreach ($rows as $row) {
+            $candNick = self::normalizeNick((string) $row['peer_username']);
+            $nickMatch = $stem !== '' && $candNick === $stem;
+
+            $candAge = isset($row['p_age']) && $row['p_age'] !== null && $row['p_age'] !== '' ? (int) $row['p_age'] : null;
+            $candLoc = strtolower(trim((string) ($row['p_location'] ?? '')));
+            $profileMatch = $age !== null && $location !== '' && $candAge === $age && $candLoc === $location;
+
+            if ($nickMatch || $profileMatch) {
+                $summary = trim((string) $row['summary']);
+                if ($summary === '') {
+                    continue;
+                }
+
+                return 'ΠΙΘΑΝΗ ΠΑΛΙΑ ΓΝΩΡΙΜΙΑ: Ίσως έχεις ξαναμιλήσει με αυτό το άτομο (μπορεί να μπήκε ξανά με άλλο όνομα ή άλλη συσκευή). '
+                    . 'Σε εκείνη τη συζήτηση είχατε πει, σε γενικές γραμμές: ' . $summary . ' '
+                    . 'ΔΕΝ είναι σίγουρο ότι είναι το ίδιο άτομο. Αν ταιριάζει με τη ροή, μπορείς διακριτικά να δείξεις ότι κάτι σου θυμίζει ή να το αναφέρεις έμμεσα, '
+                    . 'αλλά ΜΗΝ το θεωρήσεις δεδομένο, ΜΗΝ πεις ότι κρατάς σημειώσεις ή ιστορικό, και αν δεν κολλάει, αγνόησέ το τελείως.';
+            }
+        }
+
+        return '';
     }
 
     /**

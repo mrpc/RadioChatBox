@@ -536,6 +536,83 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * On the first reply of a brand-new conversation, a peer whose profile (age +
+     * location) matches an earlier conversation of the same bot is flagged as a
+     * likely returning person, and that earlier chat's summary is seeded into the
+     * system prompt as uncertain context.
+     */
+    public function testIdentityLinkSeedsPriorSummaryForLikelyReturningPeer(): void
+    {
+        $this->settings->values['bot_identity_link_chance'] = '100';
+
+        $oldPeer = 'oldpeer_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $summary = 'IDENTITY_SUMMARY_' . substr(bin2hex(random_bytes(3)), 0, 6);
+
+        // The current peer and a PAST peer of the same bot share age + location.
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$this->peer, 'sess_' . $this->peer, '25', 'female', 'Athens']);
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$oldPeer, 'sess_' . $oldPeer, '25', 'female', 'Athens']);
+        // A past conversation with a real summary to seed from.
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads (fake_user_id, peer_username, messages_sent, last_reply_at, summary)
+             VALUES (?, ?, 3, NOW(), ?)'
+        )->execute([$this->fakeUserId, $oldPeer, $summary]);
+
+        try {
+            $this->incoming('geia');
+            $this->llm->reply = 'geia';
+            $this->bot->processReplyJob($this->replyPayload(0));
+
+            $system = $this->llm->calls[0]['system'];
+            $this->assertStringContainsString('ΠΙΘΑΝΗ ΠΑΛΙΑ ΓΝΩΡΙΜΙΑ', $system);
+            $this->assertStringContainsString($summary, $system, 'the prior summary is seeded');
+        } finally {
+            $this->pdo->prepare('DELETE FROM user_profiles WHERE username IN (?, ?)')->execute([$this->peer, $oldPeer]);
+        }
+    }
+
+    /** With the identity-link chance at 0 the prior-conversation note is never added. */
+    public function testIdentityLinkIsSkippedWhenChanceIsZero(): void
+    {
+        $this->settings->values['bot_identity_link_chance'] = '0';
+
+        $oldPeer = 'oldpeer_' . substr(bin2hex(random_bytes(4)), 0, 8);
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$this->peer, 'sess_' . $this->peer, '25', 'female', 'Athens']);
+        $this->pdo->prepare('INSERT INTO user_profiles (username, session_id, age, sex, location) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$oldPeer, 'sess_' . $oldPeer, '25', 'female', 'Athens']);
+        $this->pdo->prepare(
+            'INSERT INTO bot_threads (fake_user_id, peer_username, messages_sent, last_reply_at, summary)
+             VALUES (?, ?, 3, NOW(), ?)'
+        )->execute([$this->fakeUserId, $oldPeer, 'some prior summary']);
+
+        try {
+            $this->incoming('geia');
+            $this->llm->reply = 'geia';
+            $this->bot->processReplyJob($this->replyPayload(0));
+
+            $this->assertStringNotContainsString('ΠΙΘΑΝΗ ΠΑΛΙΑ ΓΝΩΡΙΜΙΑ', $this->llm->calls[0]['system']);
+        } finally {
+            $this->pdo->prepare('DELETE FROM user_profiles WHERE username IN (?, ?)')->execute([$this->peer, $oldPeer]);
+        }
+    }
+
+    /**
+     * normalizeNick reduces a name to a loose stem (lower-case, trailing digits and
+     * separators dropped) so returning-under-a-new-name variants collapse together.
+     */
+    public function testNormalizeNickReducesToAStem(): void
+    {
+        $ref = new \ReflectionMethod(BotService::class, 'normalizeNick');
+        $ref->setAccessible(true);
+        $this->assertSame('maria', $ref->invoke(null, 'Maria'));
+        $this->assertSame('maria', $ref->invoke(null, 'maria2'));
+        $this->assertSame('maria', $ref->invoke(null, 'Maria_3'));
+        $this->assertSame('', $ref->invoke(null, '12345'));
+    }
+
+    /**
      * rollbackThread deletes the chosen message and every later one in the thread,
      * decrements the reply budget by the bot's own deleted messages, clears a
      * farewell left by the tail, and drops a summary that covered deleted content.
