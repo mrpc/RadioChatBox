@@ -5876,6 +5876,30 @@
             if (modal) modal.style.display = 'none';
         }
 
+        /** True when a conversation partner is one of our bots (a fake user). */
+        function isBotPartner(name) {
+            return (fakeUsersCache || []).some(u => u.nickname === name);
+        }
+
+        /**
+         * Render the "Private Conversations" partner buttons for a user profile.
+         * A conversation with a bot also gets a shortcut into LLM activity, so an
+         * admin can jump from the profile straight to that bot thread.
+         */
+        function conversationButtonsHtml(username, convList) {
+            const uArg = String(username).replace(/'/g, "\\'");
+            return convList.map(c => {
+                const pEsc = escapeHtml(c.partner);
+                const pArg = String(c.partner).replace(/'/g, "\\'");
+                const botBtn = isBotPartner(c.partner)
+                    ? `<button class="btn btn-secondary" style="margin-left:4px;padding:6px 10px;" title="Open this bot conversation in LLM activity" onclick="openConversationFromHistory('${uArg}', '${pArg}')">🤖 LLM activity</button>`
+                    : '';
+                return `<span style="display:inline-flex;align-items:center;margin-bottom:8px;">
+                    <button class="btn" onclick="viewConversation('${uArg}', '${pArg}')">💬 ${pEsc} (${c.message_count})</button>${botBtn}
+                </span>`;
+            }).join('');
+        }
+
         async function loadIPBans() {
             try {
                 const response = await fetch('/api/admin/ban-ip', {
@@ -8083,6 +8107,9 @@
                     const user = data.user;
                     const pagination = data.pagination;
                     document.getElementById('user-details-name').textContent = username;
+                    // Loaded so the private-conversation list can flag bot partners
+                    // and offer the LLM-activity shortcut.
+                    if (!fakeUsersCache || !fakeUsersCache.length) { try { await loadFakeUsers(); } catch (e) { /* read-only fallback */ } }
                     
                     let profileHtml = '';
                     if (user.profile) {
@@ -8177,13 +8204,7 @@
                         }
                         if (convList && convList.length > 0) {
                             privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                            convList.forEach(c => {
-                                privateMessagesHtml += `
-                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(c.partner)}')">
-                                        💬 ${escapeHtml(c.partner)} (${c.message_count})
-                                    </button>
-                                `;
-                            });
+                            privateMessagesHtml += conversationButtonsHtml(username, convList);
                             privateMessagesHtml += '</div>';
                             privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
                         } else {
@@ -8239,6 +8260,9 @@
                     const user = data.user;
                     const pagination = data.pagination;
                     document.getElementById('inactive-user-details-name').textContent = username;
+                    // Loaded so the private-conversation list can flag bot partners
+                    // and offer the LLM-activity shortcut.
+                    if (!fakeUsersCache || !fakeUsersCache.length) { try { await loadFakeUsers(); } catch (e) { /* read-only fallback */ } }
                     
                     let profileHtml = '';
                     if (user.profile) {
@@ -8334,13 +8358,7 @@
                         }
                         if (convList && convList.length > 0) {
                             privateMessagesHtml += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
-                            convList.forEach(c => {
-                                privateMessagesHtml += `
-                                    <button class="btn" onclick="viewConversation('${escapeHtml(username)}', '${escapeHtml(c.partner)}')">
-                                        💬 ${escapeHtml(c.partner)} (${c.message_count})
-                                    </button>
-                                `;
-                            });
+                            privateMessagesHtml += conversationButtonsHtml(username, convList);
                             privateMessagesHtml += '</div>';
                             privateMessagesHtml += '<div id="conversation-thread" style="display: none;"></div>';
                         } else {
