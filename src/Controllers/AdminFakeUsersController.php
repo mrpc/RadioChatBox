@@ -216,6 +216,7 @@ final class AdminFakeUsersController
                 'bot_allow_explicit',
                 'bot_persona',
                 'bot_custom_prompt',
+                'bot_context_prompt',
                 'bot_self_facts',
                 'bot_farewell_messages',
                 'bot_max_messages',
@@ -242,6 +243,11 @@ final class AdminFakeUsersController
 
             if (isset($options['bot_farewell_messages']) && mb_strlen((string) $options['bot_farewell_messages']) > 4000) {
                 throw new InvalidArgumentException('Goodbye variants are limited to 4000 characters in total');
+            }
+
+            // The context block is longer than the persona snippets but still bounded.
+            if (isset($options['bot_context_prompt']) && mb_strlen((string) $options['bot_context_prompt']) > 4000) {
+                throw new InvalidArgumentException('The context override is limited to 4000 characters');
             }
 
             $fakeUser = (new FakeUserService())->updateBotSettings($id, $options);

@@ -713,9 +713,15 @@ class BotService
             }
         } else {
             $peerFacts = $this->describePeerFor($peer, (string) $fakeUser['nickname']);
+            // A bot may override the context block (where the chat happens, its
+            // rules) with its own; empty falls back to the global setting.
+            $botContext = trim((string) ($fakeUser['bot_context_prompt'] ?? ''));
+            if ($botContext === '') {
+                $botContext = (string) $this->settings->get('bot_context_prompt', '');
+            }
             $systemPrompt = self::buildSystemPrompt(
                 $fakeUser,
-                (string) $this->settings->get('bot_context_prompt', ''),
+                $botContext,
                 $peerFacts,
                 $summaryState['summary']
             );
@@ -3113,7 +3119,7 @@ class BotService
     {
         $result = $this->db->preparedQuery('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
-                   bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
+                   bot_custom_prompt, bot_context_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
                    bot_reply_language, bot_ignore_chance, bot_self_facts, bot_allow_explicit
             FROM fake_users
@@ -3140,7 +3146,7 @@ class BotService
 
         $result = $this->db->preparedQuery('
             SELECT id, nickname, age, sex, location, bot_enabled, bot_persona,
-                   bot_custom_prompt, bot_max_messages, bot_typing_seconds_per_word,
+                   bot_custom_prompt, bot_context_prompt, bot_max_messages, bot_typing_seconds_per_word,
                    bot_farewell_messages, bot_llm_provider, bot_llm_model,
                    bot_reply_language, bot_ignore_chance, bot_self_facts, bot_allow_explicit
             FROM fake_users

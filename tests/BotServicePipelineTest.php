@@ -535,6 +535,24 @@ class BotServicePipelineTest extends TestCase
         $this->assertFalse($jobs[0]['payload']['is_farewell']);
     }
 
+    /**
+     * A per-bot context override (fake_users.bot_context_prompt) is used in the
+     * system prompt instead of the global/built-in context block.
+     */
+    public function testPerBotContextOverridesTheGlobalContext(): void
+    {
+        $marker = 'PROMO_CONTEXT_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $this->setBotColumn('bot_context_prompt', "Δουλεύεις για την υπηρεσία X. {$marker}");
+        $this->incoming('geia');
+        $this->llm->reply = 'geia';
+
+        $this->bot->processReplyJob($this->replyPayload(0));
+
+        $this->assertStringContainsString($marker, $this->llm->calls[0]['system']);
+        // The built-in default context must NOT also be present (it was replaced).
+        $this->assertStringNotContainsString(BotService::DEFAULT_CONTEXT_PROMPT, $this->llm->calls[0]['system']);
+    }
+
     public function testTypingDelayScalesWithTheReplyLength(): void
     {
         $this->incoming('pes mou kati');

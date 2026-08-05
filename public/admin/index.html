@@ -1840,6 +1840,12 @@
                             </div>
 
                             <div class="form-group">
+                                <label>Context override (advanced)</label>
+                                <textarea id="fake-bot-context-prompt" rows="4" maxlength="4000" placeholder="Leave empty to use the global context setting" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
+                                <small style="color: #6b7280;">Overrides <em>only</em> the context block (where the chat happens, its rules) for this bot — the persona/guardrails stay. Empty falls back to the global Fake User context setting. Useful for a bot that promotes a service.</small>
+                            </div>
+
+                            <div class="form-group">
                                 <label>Self-facts (canon)</label>
                                 <textarea id="fake-bot-self-facts" rows="3" maxlength="2000" placeholder="e.g. ύψος 1.60, μπλε μαλλιά, πράσινα μάτια — ό,τι πρέπει να λέει πάντα ίδιο για τον εαυτό του" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-family: inherit;"></textarea>
                                 <small style="color: #6b7280;">Stable facts the bot has committed to (appearance, personal details). Kept consistent across all conversations, and updated automatically from what the bot says. You can seed or correct it here.</small>
@@ -7666,6 +7672,7 @@
             document.getElementById('fake-bot-allow-explicit').checked = !!user.bot_allow_explicit;
             document.getElementById('fake-bot-persona').value = user.bot_persona || '';
             document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
+            document.getElementById('fake-bot-context-prompt').value = user.bot_context_prompt || '';
             document.getElementById('fake-bot-self-facts').value = user.bot_self_facts || '';
             populateFakeBotProviderOptions(user.bot_llm_provider || '', user.bot_llm_model || '');
             populateSelectOptions(
@@ -7762,6 +7769,7 @@
                 bot_allow_explicit: document.getElementById('fake-bot-allow-explicit').checked,
                 bot_persona: document.getElementById('fake-bot-persona').value.trim(),
                 bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
+                bot_context_prompt: document.getElementById('fake-bot-context-prompt').value.trim(),
                 bot_self_facts: document.getElementById('fake-bot-self-facts').value.trim(),
                 bot_llm_provider: document.getElementById('fake-bot-provider').value,
                 bot_llm_model: document.getElementById('fake-bot-model').value,
