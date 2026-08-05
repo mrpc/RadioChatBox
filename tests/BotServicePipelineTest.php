@@ -536,6 +536,31 @@ class BotServicePipelineTest extends TestCase
     }
 
     /**
+     * listThreads/countThreads filter by a nickname query matched against both
+     * the bot's nickname and the peer's username, case-insensitively.
+     */
+    public function testListThreadsFiltersByNicknameSearch(): void
+    {
+        // A thread for this bot with our peer.
+        $this->incoming('geia');
+        $this->bot->onIncomingMessage($this->nick, $this->peer, $this->peerSession, 'geia');
+
+        // Match on the peer's username (upper-cased to prove case-insensitivity).
+        $hit = $this->bot->listThreads(100, 0, strtoupper($this->peer));
+        $this->assertNotEmpty($hit);
+        $this->assertContains($this->peer, array_column($hit, 'peer_username'));
+        $this->assertGreaterThanOrEqual(1, $this->bot->countThreads($this->peer));
+
+        // Match on the bot's nickname.
+        $byBot = $this->bot->listThreads(100, 0, $this->nick);
+        $this->assertContains($this->peer, array_column($byBot, 'peer_username'));
+
+        // A query that matches neither returns nothing for this pair.
+        $miss = $this->bot->listThreads(100, 0, 'zzz_no_such_' . $this->nick);
+        $this->assertNotContains($this->peer, array_column($miss, 'peer_username'));
+    }
+
+    /**
      * A per-bot context override (fake_users.bot_context_prompt) is used in the
      * system prompt instead of the global/built-in context block.
      */

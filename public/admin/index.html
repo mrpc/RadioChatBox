@@ -2368,6 +2368,10 @@
                 <div class="section">
                     <h2>Conversations</h2>
                     <p style="color: #6b7280; margin-bottom: 15px;">Click one to see its messages and the calls behind them.</p>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+                        <input type="search" id="bot-thread-search" placeholder="Search by nickname (bot or user)…" oninput="botThreadSearchInput()" style="flex:1; min-width:220px; padding:8px 10px; border:2px solid #e5e7eb; border-radius:6px;">
+                        <button class="btn btn-secondary" onclick="clearBotThreadSearch()" title="Clear the search">✕ Clear</button>
+                    </div>
                     <div id="bot-activity-threads"></div>
                 </div>
 
@@ -6829,6 +6833,29 @@
         const BOT_PAGE_SIZE = 10;
         let botThreadsOffset = 0;
         let botLogOffset = 0;
+        let botThreadSearch = '';
+        let botThreadSearchTimer = null;
+
+        // Debounced nickname search over the bot conversations list.
+        function botThreadSearchInput() {
+            const el = document.getElementById('bot-thread-search');
+            const value = el ? el.value.trim() : '';
+            clearTimeout(botThreadSearchTimer);
+            botThreadSearchTimer = setTimeout(() => {
+                botThreadSearch = value;
+                botThreadsOffset = 0; // a new query starts at the first page
+                loadBotActivityThreads();
+            }, 250);
+        }
+
+        function clearBotThreadSearch() {
+            const el = document.getElementById('bot-thread-search');
+            if (el) el.value = '';
+            clearTimeout(botThreadSearchTimer);
+            botThreadSearch = '';
+            botThreadsOffset = 0;
+            loadBotActivityThreads();
+        }
 
         function paginationControls(offset, total, pageSize, prevFn, nextFn) {
             if (total <= pageSize) return '';
@@ -6854,7 +6881,7 @@
             if (!box) return;
 
             try {
-                const data = await botActivityFetch({ view: 'threads', limit: BOT_PAGE_SIZE, offset: botThreadsOffset });
+                const data = await botActivityFetch({ view: 'threads', limit: BOT_PAGE_SIZE, offset: botThreadsOffset, search: botThreadSearch });
                 if (!data.success) return;
 
                 const threshold = Number(data.insult_threshold || 0);
@@ -6867,7 +6894,9 @@
                 }
 
                 if (!data.threads.length) {
-                    box.innerHTML = '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
+                    box.innerHTML = botThreadSearch
+                        ? `<p style="color: #6b7280; padding: 16px; text-align: center;">No conversations match “${escapeHtml(botThreadSearch)}”.</p>`
+                        : '<p style="color: #6b7280; padding: 16px; text-align: center;">No bot conversations yet.</p>';
                     return;
                 }
 

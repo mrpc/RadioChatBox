@@ -1246,8 +1246,10 @@ class BotService
      *
      * @return list<array<string,mixed>>
      */
-    public function listThreads(int $limit = 100, int $offset = 0): array
+    public function listThreads(int $limit = 100, int $offset = 0, string $search = ''): array
     {
+        [$searchSql, $searchParams] = $this->threadSearchClause($search);
+
         $result = $this->db->preparedQuery('
             SELECT f.nickname,
                    f.bot_enabled,
@@ -1280,9 +1282,10 @@ class BotService
                    ) AS last_message
             FROM bot_threads t
             JOIN fake_users f ON f.id = t.fake_user_id
+            ' . $searchSql . '
             ORDER BY COALESCE(t.last_reply_at, t.created_at) DESC
             LIMIT :limit OFFSET :offset
-        ', ['limit' => max(1, min(500, $limit)), 'offset' => max(0, $offset)]);
+        ', $searchParams + ['limit' => max(1, min(500, $limit)), 'offset' => max(0, $offset)]);
 
         $threads = $result ? $result->fetchAll() : [];
         $globalMax = (int) $this->settings->get('bot_max_messages_per_thread', 4);
@@ -1304,9 +1307,48 @@ class BotService
     }
 
     /** Total number of bot conversations, for paginating the admin overview. */
-    public function countThreads(): int
+    public function countThreads(string $search = ''): int
     {
-        return (int) $this->db->queryBuilder()->from('bot_threads')->count();
+        [$searchSql, $searchParams] = $this->threadSearchClause($search);
+
+        if ($searchSql === '') {
+            return (int) $this->db->queryBuilder()->from('bot_threads')->count();
+        }
+
+        $result = $this->db->preparedQuery('
+            SELECT COUNT(*) AS c
+            FROM bot_threads t
+            JOIN fake_users f ON f.id = t.fake_user_id
+            ' . $searchSql, $searchParams);
+
+        return $result ? (int) $result->fetchColumn() : 0;
+    }
+
+    /**
+     * Build the WHERE clause (and its bound params) that filters bot threads by a
+     * free-text nickname query — matched against BOTH the bot's nickname and the
+     * peer's username, case-insensitively. An empty query filters nothing.
+     *
+     * @return array{0:string, 1:array<string,mixed>}
+     */
+    private function threadSearchClause(string $search): array
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return ['', []];
+        }
+
+        // Escape LIKE wildcards so a literal % or _ in the query is not a wildcard.
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+
+        // The framework binds each named placeholder once, so the two ILIKEs get
+        // their own param (mirrors describePeerFor's :peer/:peer2).
+        $like = '%' . $escaped . '%';
+
+        return [
+            "WHERE (f.nickname ILIKE :search1 OR t.peer_username ILIKE :search2)",
+            ['search1' => $like, 'search2' => $like],
+        ];
     }
 
     /**
