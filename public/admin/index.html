@@ -2421,6 +2421,12 @@
                             <input type="text" id="setting-page-title" placeholder="RadioChatBox">
                         </div>
                         <div class="form-group">
+                            <label>Timezone</label>
+                            <input type="text" id="setting-timezone" list="timezone-list" placeholder="Europe/Athens">
+                            <datalist id="timezone-list"></datalist>
+                            <small style="color: #6b7280;">IANA timezone id used for the "current time" the bots reason with. Default Europe/Athens.</small>
+                        </div>
+                        <div class="form-group">
                             <label>Color Scheme</label>
                             <select id="setting-color-scheme">
                                 <option value="dark">Dark</option>
@@ -6694,12 +6700,47 @@
                     <code>radiochatbox-daemon@${escapeHtml(data.instance || '')}</code>.
                 </div>` : ''}
 
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+                    <button class="btn btn-warning" id="restart-workers-btn" onclick="restartWorkers()" title="Ask every running worker to restart so newly-deployed code is loaded">
+                        🔄 Restart workers
+                    </button>
+                    <span style="font-size:12px;color:#6b7280;">Use after a deploy: long-running workers keep the old code until they restart.</span>
+                </div>
+
                 <h3 style="font-size: 14px; color: #374151;">Periodic tasks</h3>
                 <table>
                     <thead><tr><th>Task</th><th>Every</th><th>Last run</th><th>Result</th><th>Runs</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="5" style="color:#6b7280;">No task has run yet — the worker runs them with --schedule.</td></tr>'}</tbody>
                 </table>`;
             modal.style.display = 'flex';
+        }
+
+        // Signal every running worker to restart (picks up freshly-deployed code).
+        async function restartWorkers() {
+            const btn = document.getElementById('restart-workers-btn');
+            if (!confirm('Restart the background workers? Running bot replies and periodic tasks will briefly pause while they respawn with the latest code.')) {
+                return;
+            }
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Restarting…'; }
+            try {
+                const res = await fetch('/api/admin/restart-workers', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(data.message || 'Workers signalled to restart.');
+                    // Give the supervisor a moment to respawn, then refresh the panel.
+                    setTimeout(() => { openWorkerStatus(); }, 4000);
+                } else {
+                    alert('Error: ' + (data.error || 'could not restart workers'));
+                    if (btn) { btn.disabled = false; btn.textContent = '🔄 Restart workers'; }
+                }
+            } catch (e) {
+                console.error('Failed to restart workers:', e);
+                alert('Failed to restart workers.');
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Restart workers'; }
+            }
         }
 
         function closeWorkerStatus() {
@@ -8497,6 +8538,24 @@
             }));
         }
 
+        // Fill the timezone datalist once, preferring the browser's full IANA list.
+        function populateTimezoneList() {
+            const list = document.getElementById('timezone-list');
+            if (!list || list.dataset.filled) return;
+            let zones = [];
+            try {
+                if (typeof Intl.supportedValuesOf === 'function') {
+                    zones = Intl.supportedValuesOf('timeZone');
+                }
+            } catch (e) { /* fall back below */ }
+            if (!zones.length) {
+                zones = ['Europe/Athens', 'Europe/London', 'Europe/Berlin', 'Europe/Paris',
+                    'UTC', 'America/New_York', 'America/Los_Angeles', 'Asia/Nicosia'];
+            }
+            list.innerHTML = zones.map(z => `<option value="${escapeHtml(z)}"></option>`).join('');
+            list.dataset.filled = '1';
+        }
+
         async function loadSettings() {
             try {
                 const response = await fetch('/api/admin/settings', {
@@ -8508,6 +8567,8 @@
                     const settings = data.settings;
                     pageTitle = settings.page_title || 'RadioChatBox';  // Store for use in page titles
                     document.getElementById('setting-page-title').value = pageTitle;
+                    populateTimezoneList();
+                    document.getElementById('setting-timezone').value = settings.timezone || 'Europe/Athens';
                     document.getElementById('setting-radio-status-url').value = settings.radio_status_url || '';
                     // Track Stats only makes sense with a radio stream configured.
                     const trackNav = document.getElementById('nav-track-stats');
@@ -8976,6 +9037,7 @@
             
             const settings = {
                 page_title: document.getElementById('setting-page-title').value,
+                timezone: document.getElementById('setting-timezone').value.trim() || 'Europe/Athens',
                 radio_status_url: document.getElementById('setting-radio-status-url').value,
                 charts_enabled: document.getElementById('setting-charts-enabled').checked ? 'true' : 'false',
                 song_requests_enabled: document.getElementById('setting-song-requests-enabled').checked ? 'true' : 'false',

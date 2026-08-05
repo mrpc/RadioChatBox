@@ -37,6 +37,8 @@ class SettingsService
         'warning_auto_timeout_minutes',
         'color_scheme',
         'page_title',
+        // IANA timezone the app reasons in (bot "current time" note, etc.)
+        'timezone',
         'require_profile',
         'chat_mode',
         'allow_photo_uploads',
@@ -212,6 +214,30 @@ class SettingsService
     }
 
     /**
+     * The configured application timezone as a DateTimeZone.
+     *
+     * Falls back to the TZ env var and then Europe/Athens, and tolerates a stored
+     * value that is no longer a valid IANA id (so a bad row can never make every
+     * time calculation throw).
+     */
+    public function timezone(): \DateTimeZone
+    {
+        $configured = trim((string) $this->get('timezone', ''));
+        foreach ([$configured, getenv('TZ') ?: '', 'Europe/Athens'] as $candidate) {
+            if ($candidate === '') {
+                continue;
+            }
+            try {
+                return new \DateTimeZone($candidate);
+            } catch (\Throwable) {
+                // Try the next fallback.
+            }
+        }
+
+        return new \DateTimeZone('UTC');
+    }
+
+    /**
      * Get all settings (cached in Redis)
      */
     public function getAll(): array
@@ -325,6 +351,13 @@ class SettingsService
 
                 if ($key === 'max_photo_size_mb') {
                     $value = $this->validatePhotoSize($value, $maxPhotoSizeMb);
+                } elseif ($key === 'timezone') {
+                    // A bogus zone would make DateTimeZone throw everywhere it is
+                    // used (the bot "current time" note), so only accept real IANA ids.
+                    if (!in_array((string) $value, timezone_identifiers_list(), true)) {
+                        $rejected[$key] = 'Unknown timezone. Use an IANA id, e.g. Europe/Athens.';
+                        continue;
+                    }
                 } elseif ($key === 'bot_llm_provider') {
                     // An unknown provider would leave the bots with no endpoint.
                     // "both" is allowed here (global only): pick one per conversation.

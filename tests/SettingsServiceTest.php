@@ -43,6 +43,50 @@ class SettingsServiceTest extends TestCase
         }
     }
 
+    /**
+     * timezone() returns the configured IANA zone, falls back to Europe/Athens
+     * when unset, and tolerates a stored bogus value without throwing.
+     */
+    public function testTimezoneResolvesConfiguredValueWithSafeFallback()
+    {
+        // Configured value wins.
+        $this->settingsService->set('timezone', 'America/New_York');
+        $this->settingsService->invalidateCache();
+        $this->assertSame('America/New_York', $this->settingsService->timezone()->getName());
+
+        // A garbage stored value must not make it throw — it falls back.
+        $this->settingsService->set('timezone', 'Not/AZone');
+        $this->settingsService->invalidateCache();
+        $tz = $this->settingsService->timezone();
+        $this->assertNotSame('Not/AZone', $tz->getName());
+
+        // Unset → Europe/Athens (env TZ is unset in the test container).
+        $this->settingsService->set('timezone', null);
+        $this->settingsService->invalidateCache();
+        $this->assertSame('Europe/Athens', $this->settingsService->timezone()->getName());
+    }
+
+    /**
+     * updateFromAdmin accepts a real IANA timezone and rejects an invalid one
+     * (reported in `rejected`, not saved), leaving the stored value untouched.
+     */
+    public function testUpdateFromAdminValidatesTimezone()
+    {
+        $ok = $this->settingsService->updateFromAdmin(['timezone' => 'Europe/Berlin']);
+        $this->assertContains('timezone', $ok['saved']);
+
+        // A bogus zone is rejected, not saved.
+        $bad = $this->settingsService->updateFromAdmin(['timezone' => 'Mars/Base']);
+        $this->assertNotContains('timezone', $bad['saved']);
+        $this->assertArrayHasKey('timezone', $bad['rejected']);
+
+        // The good value from before the rejection is still in place.
+        $this->settingsService->invalidateCache();
+        $this->assertSame('Europe/Berlin', $this->settingsService->get('timezone'));
+
+        $this->settingsService->set('timezone', null);
+    }
+
     public function testSetUpdatesSettingValue()
     {
         $testKey = 'test_setting_' . time();

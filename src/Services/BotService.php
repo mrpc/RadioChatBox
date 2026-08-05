@@ -728,7 +728,8 @@ class BotService
 
             // The current day/time, in the system prompt (not buried in history)
             // so the model actually honours it — no "back from work" on a Sunday.
-            $tz = new \DateTimeZone(getenv('TZ') ?: 'Europe/Athens');
+            // The zone comes from the admin "timezone" setting (Europe/Athens by default).
+            $tz = $this->settings->timezone();
             $systemPrompt .= "\n\n" . self::currentTimeNote(new \DateTime('now', $tz));
 
             // Talking to staff (the operator): drop every content/rudeness limit and
