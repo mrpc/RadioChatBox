@@ -626,6 +626,27 @@ class AdminImpersonationControllerTest extends TestCase
         $this->assertSame(400, (new AdminImpersonationController())->botResend()->getStatusCode());
     }
 
+    /** bot-mood refuses non-root callers with 403. */
+    public function testBotMoodForbiddenWithoutRootRole(): void
+    {
+        $this->unauthenticate();
+        $_POST = ['fake_user' => 'bot', 'action' => 'set', 'mood' => 'angry'];
+
+        $this->assertSame(403, (new AdminImpersonationController())->botMood()->getStatusCode());
+    }
+
+    /** bot-mood requires a fake_user, and rejects an unknown mood. */
+    public function testBotMoodValidatesInput(): void
+    {
+        $this->authAsRoot();
+
+        $_POST = ['action' => 'set', 'mood' => 'angry']; // no fake_user
+        $this->assertSame(400, (new AdminImpersonationController())->botMood()->getStatusCode());
+
+        $_POST = ['fake_user' => 'no_such_bot_' . bin2hex(random_bytes(3)), 'action' => 'set', 'mood' => 'angry'];
+        $this->assertSame(400, (new AdminImpersonationController())->botMood()->getStatusCode());
+    }
+
     /** The impersonate typing cue refuses non-root callers with 403. */
     public function testTypingForbiddenWithoutRootRole(): void
     {

@@ -78,6 +78,16 @@ class FakeUserBotSettingsTest extends TestCase
         $this->assertNull($result['bot_reply_language']);
     }
 
+    /** A valid resting mood is stored; an unknown one is dropped to "no override". */
+    public function testMoodBaselineIsStoredAndValidated(): void
+    {
+        $ok = $this->service->updateBotSettings($this->fakeUserId, ['mood_baseline' => 'flirty']);
+        $this->assertSame('flirty', $ok['mood_baseline']);
+
+        $bad = $this->service->updateBotSettings($this->fakeUserId, ['mood_baseline' => 'hangry']);
+        $this->assertNull($bad['mood_baseline']);
+    }
+
     public function testClearingAnOverrideRestoresTheGlobalSetting(): void
     {
         $this->service->updateBotSettings($this->fakeUserId, [

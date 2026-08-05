@@ -32,7 +32,7 @@ class FakeUserService
         'bot_enabled', 'bot_persona', 'bot_custom_prompt', 'bot_context_prompt', 'bot_max_messages',
         'bot_typing_seconds_per_word', 'bot_farewell_messages',
         'bot_llm_provider', 'bot_llm_model', 'bot_reply_language', 'bot_ignore_chance', 'bot_self_facts',
-        'bot_allow_explicit',
+        'bot_allow_explicit', 'mood', 'mood_intensity', 'mood_baseline',
     ];
 
     public function __construct()
@@ -89,6 +89,8 @@ class FakeUserService
             'bot_typing_seconds_per_word',
             // Per-bot overrides, so bots can run on different LLMs side by side
             'bot_llm_provider', 'bot_llm_model', 'bot_reply_language',
+            // The bot's resting mood (personality default).
+            'mood_baseline',
         ];
 
         $updateData = [];
@@ -117,6 +119,12 @@ class FakeUserService
                 }
             } elseif ($column === 'bot_reply_language') {
                 if (!isset(BotService::LANGUAGES[(string) $value])) {
+                    $value = null;
+                }
+            } elseif ($column === 'mood_baseline') {
+                // An unknown baseline would break the mood engine; fall back to "no
+                // override" (neutral).
+                if (!MoodService::isValidMood((string) $value)) {
                     $value = null;
                 }
             }

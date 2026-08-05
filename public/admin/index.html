@@ -1851,6 +1851,22 @@
                                 <small style="color: #6b7280;">Stable facts the bot has committed to (appearance, personal details). Kept consistent across all conversations, and updated automatically from what the bot says. You can seed or correct it here.</small>
                             </div>
 
+                            <div class="form-group">
+                                <label>Resting mood (baseline)</label>
+                                <select id="fake-bot-mood-baseline" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px;">
+                                    <option value="neutral">😐 Neutral</option>
+                                    <option value="content">🙂 Content</option>
+                                    <option value="happy">😄 Happy</option>
+                                    <option value="flirty">😏 Flirty</option>
+                                    <option value="excited">🤩 Excited</option>
+                                    <option value="bored">🥱 Bored</option>
+                                    <option value="annoyed">😒 Annoyed</option>
+                                    <option value="sad">😔 Sad</option>
+                                    <option value="angry">😠 Angry</option>
+                                </select>
+                                <small style="color: #6b7280;">The mood this bot returns to over time (its personality default). Events in chats shift it away temporarily; it decays back to this. Requires bot moods enabled in Settings.</small>
+                            </div>
+
                             <div style="display: flex; gap: 15px;">
                                 <div class="form-group" style="flex: 1;">
                                     <label>LLM provider</label>
@@ -2839,6 +2855,18 @@
                                 chatted before with what looks like the same person (same nickname/age/location)
                                 who returned under a different name or device — and, if so, is reminded of that
                                 earlier chat as "maybe the same person". 0 = never link past conversations.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="setting-bot-moods-enabled" style="width:auto;">
+                                Persistent bot moods
+                            </label>
+                            <small>
+                                Bots carry a mood (annoyed, happy, …) that colours their tone. A strong event —
+                                someone being hostile — makes a bot annoyed across ALL its conversations until it
+                                calms down or you reset it; warmth lifts the current chat. Moods never reveal their
+                                cause and fade back to each bot's baseline over time.
                             </small>
                         </div>
                         <div class="form-group">
@@ -7020,7 +7048,7 @@
                                         <td>${escapeHtml(t.peer_username)}</td>
                                         <td>${t.peer_is_staff ? t.messages_sent + ' / ∞' : t.messages_sent + '/' + t.max_messages}</td>
                                         <td>${t.message_count}</td>
-                                        <td style="color: ${color};">${state}${strikeNote}</td>
+                                        <td style="color: ${color};">${state}${strikeNote}${t.mood ? '<br>' + moodBadge(t.mood, t.mood_intensity, 'global') : ''}</td>
                                         <td>${t.last_reply_at ? new Date(t.last_reply_at).toLocaleString() : '-'}${lastMsgHtml}</td>
                                         <td style="white-space:nowrap;"><button class="btn btn-secondary" onclick="openBotThread('${nk}', '${pk}', true)">View</button>${forceBtn}<button class="btn btn-secondary" style="margin-left:6px;" title="Stop the bot in this conversation (reversible with Force)" onclick="botRowStop('${nk}', '${pk}')">⏹️ Stop</button>${blockBtn}</td>
                                     </tr>`;
@@ -7037,6 +7065,73 @@
         let currentBotThreadData = null; // last fetched {state, messages, calls} for export
         let botAskAnswerText = '';       // last "Ask the LLM" answer (survives re-renders)
         let botAskAnswerKey = '';        // "fake|peer" the answer belongs to
+
+        // Bot mood (persistent, cross-conversation) — emoji + label per mood.
+        const MOOD_UI = {
+            angry:   { e: '😠', l: 'Angry' },
+            annoyed: { e: '😒', l: 'Annoyed' },
+            sad:     { e: '😔', l: 'Sad' },
+            bored:   { e: '🥱', l: 'Bored' },
+            neutral: { e: '😐', l: 'Neutral' },
+            content: { e: '🙂', l: 'Content' },
+            happy:   { e: '😄', l: 'Happy' },
+            flirty:  { e: '😏', l: 'Flirty' },
+            excited: { e: '🤩', l: 'Excited' },
+        };
+
+        // A small mood badge (or '' when there is no felt mood).
+        function moodBadge(mood, intensity, scope) {
+            if (!mood || mood === 'neutral') return '';
+            const m = MOOD_UI[mood] || { e: '❔', l: mood };
+            const scopeNote = scope === 'global' ? ' (all chats)' : (scope === 'local' ? ' (here)' : '');
+            return `<span title="Mood${scopeNote}${intensity ? ' · intensity ' + intensity : ''}" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:12px;padding:2px 8px;font-size:12px;">${m.e} ${m.l}${intensity ? ' ' + intensity : ''}</span>`;
+        }
+
+        // The mood dropdown + Reset control for a thread's bot.
+        function moodControlsHtml(current) {
+            const opts = Object.keys(MOOD_UI).map(k => `<option value="${k}"${k === current ? ' selected' : ''}>${MOOD_UI[k].e} ${MOOD_UI[k].l}</option>`).join('');
+            return `<span style="display:inline-flex;align-items:center;gap:6px;">
+                <select id="bot-mood-select" style="padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">${opts}</select>
+                <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px;" onclick="setBotMood()" title="Set this bot's global mood (affects all its chats)">Set mood</button>
+                <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px;" onclick="resetBotMood()" title="Reset this bot back to its baseline everywhere">Reset</button>
+            </span>`;
+        }
+
+        async function setBotMood() {
+            const t = currentBotThread;
+            const sel = document.getElementById('bot-mood-select');
+            if (!t || !sel) return;
+            await postBotMood({ fake_user: t.fakeUser, action: 'set', mood: sel.value, intensity: 75 });
+        }
+
+        async function resetBotMood() {
+            const t = currentBotThread;
+            if (!t) return;
+            if (!confirm(`Reset ${t.fakeUser} back to its baseline mood in every conversation?`)) return;
+            await postBotMood({ fake_user: t.fakeUser, action: 'reset' });
+        }
+
+        async function postBotMood(params) {
+            try {
+                const res = await fetch('/api/admin/bot-mood', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams(params)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (currentBotThread) openBotThread(currentBotThread.fakeUser, currentBotThread.peer);
+                    loadBotActivityThreads();
+                } else {
+                    alert('Error: ' + (data.error || 'could not update mood'));
+                }
+            } catch (e) {
+                console.error('Failed to update mood:', e);
+                alert('Failed to update the mood.');
+            }
+        }
+
+        async function openBotThread(fakeUser, peer, scroll = false) {
 
         async function openBotThread(fakeUser, peer, scroll = false) {
             const box = document.getElementById('bot-activity-thread-detail');
@@ -7123,8 +7218,10 @@
                             : (state.is_ignored ? '🙈 ignored from the start — the bot never replies here'
                             : (state.is_taken_over ? '👤 taken over' : (state.farewell_sent_at ? '🚪 ended' : '🤖 active'))))}</span>
                         ${state.insult_count && !state.blocked_at ? `<span style="color:#b45309;" title="The bot blocks at ${data.insult_threshold}">⚠️ ${state.insult_count}/${data.insult_threshold} abusive message(s)</span>` : ''}
+                        ${state.moods_enabled ? moodBadge(state.mood, state.mood_intensity, state.mood_scope) : ''}
                         ${state.last_error ? `<span style="color:#b91c1c;">error: ${escapeHtml(state.last_error)}</span>` : ''}
                     </div>
+                    ${state.moods_enabled ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:#6b7280;">Mood: ${moodControlsHtml(state.mood)}<span>baseline: ${(MOOD_UI[state.mood_baseline] || {e:'',l:state.mood_baseline||'neutral'}).l}</span></div>` : ''}
                     ${state.summary ? `<div style="padding: 10px 12px; background: #f9fafb; border-left: 3px solid #6366f1; border-radius: 6px; font-size: 13px; margin-bottom: 12px;"><strong>📝 Remembers:</strong> ${escapeHtml(state.summary)}</div>` : ''}
                     <div id="bot-thread-messages" style="max-height: 420px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
                         ${bubbles || '<p style="color:#9ca3af;">No messages.</p>'}
@@ -7847,6 +7944,7 @@
             document.getElementById('fake-bot-custom-prompt').value = user.bot_custom_prompt || '';
             document.getElementById('fake-bot-context-prompt').value = user.bot_context_prompt || '';
             document.getElementById('fake-bot-self-facts').value = user.bot_self_facts || '';
+            document.getElementById('fake-bot-mood-baseline').value = user.mood_baseline || 'neutral';
             populateFakeBotProviderOptions(user.bot_llm_provider || '', user.bot_llm_model || '');
             populateSelectOptions(
                 'fake-bot-language',
@@ -7944,6 +8042,7 @@
                 bot_custom_prompt: document.getElementById('fake-bot-custom-prompt').value.trim(),
                 bot_context_prompt: document.getElementById('fake-bot-context-prompt').value.trim(),
                 bot_self_facts: document.getElementById('fake-bot-self-facts').value.trim(),
+                mood_baseline: document.getElementById('fake-bot-mood-baseline').value,
                 bot_llm_provider: document.getElementById('fake-bot-provider').value,
                 bot_llm_model: document.getElementById('fake-bot-model').value,
                 bot_reply_language: document.getElementById('fake-bot-language').value,
@@ -8788,6 +8887,7 @@
                     document.getElementById('setting-bot-returning-peer-boost').value = settings.bot_returning_peer_reply_boost ?? '80';
                     document.getElementById('setting-bot-multi-message-chance').value = settings.bot_multi_message_chance ?? '25';
                     document.getElementById('setting-bot-identity-link-chance').value = settings.bot_identity_link_chance ?? '60';
+                    document.getElementById('setting-bot-moods-enabled').checked = settings.bot_moods_enabled !== 'false';
                     document.getElementById('setting-bot-emoji-chance').value = settings.bot_emoji_chance ?? '5';
                     document.getElementById('setting-bot-insult-threshold').value = settings.bot_insult_block_threshold ?? '3';
                     document.getElementById('setting-bot-immediate-block-chance').value = settings.bot_immediate_block_chance ?? '30';
@@ -9227,6 +9327,7 @@
                 bot_multi_message_chance: document.getElementById('setting-bot-multi-message-chance').value === ''
                     ? '25'
                     : document.getElementById('setting-bot-multi-message-chance').value,
+                bot_moods_enabled: document.getElementById('setting-bot-moods-enabled').checked ? 'true' : 'false',
                 bot_identity_link_chance: document.getElementById('setting-bot-identity-link-chance').value === ''
                     ? '60'
                     : document.getElementById('setting-bot-identity-link-chance').value,

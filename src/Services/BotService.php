@@ -1497,6 +1497,9 @@ class BotService
                    f.bot_enabled,
                    f.is_active,
                    f.bot_max_messages,
+                   f.mood AS bot_mood,
+                   f.mood_intensity AS bot_mood_intensity,
+                   f.mood_updated_at AS bot_mood_updated_at,
                    t.peer_username,
                    t.messages_sent,
                    t.is_taken_over,
@@ -1549,6 +1552,17 @@ class BotService
             $thread['peer_is_staff'] = $thread['peer_usertype'] !== null
                 && (int) $thread['peer_usertype'] >= Authz::MODERATOR;
             unset($thread['peer_usertype']);
+
+            // The bot's current global mood (time-decayed), shown as a badge. Below
+            // the felt floor it reads as no mood.
+            $moodIntensity = MoodService::decayedIntensity(
+                (int) ($thread['bot_mood_intensity'] ?? 0),
+                $thread['bot_mood_updated_at'] ?? null
+            );
+            $thread['mood'] = ($thread['bot_mood'] && $thread['bot_mood'] !== 'neutral'
+                && $moodIntensity >= MoodService::MIN_FELT_INTENSITY) ? $thread['bot_mood'] : null;
+            $thread['mood_intensity'] = $moodIntensity;
+            unset($thread['bot_mood'], $thread['bot_mood_intensity'], $thread['bot_mood_updated_at']);
         }
 
         return $threads;
@@ -1752,10 +1766,12 @@ class BotService
     public function getThreadState(string $fakeNickname, string $peer): ?array
     {
         $result = $this->db->preparedQuery('
-            SELECT f.nickname,
+            SELECT f.id,
+                   f.nickname,
                    f.bot_enabled,
                    f.is_active,
                    f.bot_max_messages,
+                   f.mood_baseline,
                    t.messages_sent,
                    t.is_taken_over,
                    t.taken_over_at,
@@ -1783,8 +1799,16 @@ class BotService
             ? (int) $row['bot_max_messages']
             : (int) $this->settings->get('bot_max_messages_per_thread', 4);
 
+        // The mood the bot is expressing to this peer (blended global+local).
+        $effectiveMood = $this->mood()->effective((int) $row['id'], $peer);
+
         return [
             'globally_enabled' => $this->isEnabled(),
+            'moods_enabled' => $this->mood()->isEnabled(),
+            'mood' => $effectiveMood['mood'],
+            'mood_intensity' => $effectiveMood['intensity'],
+            'mood_scope' => $effectiveMood['scope'],
+            'mood_baseline' => ($row['mood_baseline'] ?? null) ?: MoodService::DEFAULT_BASELINE,
             'bot_enabled' => (bool) $row['bot_enabled'],
             // An inactive fake user cannot reply: the guard skips its jobs.
             'is_active' => (bool) $row['is_active'],
