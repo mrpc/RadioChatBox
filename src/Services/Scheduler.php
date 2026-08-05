@@ -96,6 +96,11 @@ class Scheduler
             'group' => 'maintenance',
             'description' => 'Expired bans and DM blocks, stale sessions, old messages (was: the cleanup.php cron URL)',
         ],
+        'mood_decay' => [
+            'every' => 600,
+            'group' => 'maintenance',
+            'description' => 'Fade bot moods back toward baseline over time',
+        ],
         'prune_llm_log' => [
             'every' => 86400,
             'at_hour' => 3,
@@ -361,6 +366,7 @@ class Scheduler
             'stats_monthly' => static fn () => (new StatsService())->aggregateMonthlyStats(),
             'stats_yearly' => static fn () => (new StatsService())->aggregateYearlyStats(),
             'cleanup' => static fn () => (new CleanupService())->runAll(),
+            'mood_decay' => fn () => (new MoodService($this->settings))->decay(),
             'prune_llm_log' => fn () => (new LlmLog($this->settings))->prune(),
             'llm_balance_snapshot' => fn () => (new LlmAccount($this->settings))->snapshot(true),
             default => null,

@@ -55,6 +55,8 @@ Scheduler::call($task('stats_yearly'))->cron('40 0 * * *')->withoutOverlapping()
     ->description('Aggregate the year so far');
 Scheduler::call($task('cleanup'))->hourly()->withoutOverlapping()
     ->description('Expired bans/DM blocks, stale sessions, old messages');
+Scheduler::call($task('mood_decay'))->cron('*/10 * * * *')->withoutOverlapping()
+    ->description('Fade bot moods back toward baseline over time');
 Scheduler::call($task('prune_llm_log'))->cron('0 3 * * *')->withoutOverlapping()
     ->description('Drop LLM log entries past the retention window');
 Scheduler::call($task('llm_balance_snapshot'))->hourly()->withoutOverlapping()
