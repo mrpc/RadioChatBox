@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client on track change (Scheduler → `chat:updates` `now_playing`) instead of a
   15s per-client poll. Only connection-health reconnects and the presence
   heartbeat remain as timers.
+- **Every photo in the admin opens in the lightbox, and steps through the page.**
+  Three views still dumped the raw file into a new browser tab (the impersonation
+  conversation, live and on load, and the read-only conversation modal) while the
+  rest used the lightbox. All nine thumbnail sites now share it, and once open
+  you can walk the rest of the photos on screen — the gallery page you are
+  browsing, or the photos in the conversation you are reading — with ‹ › buttons,
+  the arrow keys, and a position counter. Nothing has to register a gallery: the
+  group is whatever is visible.
+- **The photo list links to the conversation the photo came from** — a DM opens
+  the read-only thread between the two people, a public upload jumps to the
+  message list. Previously the gallery told you who uploaded what but left you to
+  hunt for the context by hand.
 - **Presence tells "backgrounded" apart from "gone".** A phone that goes into the
   background freezes the page, heartbeat included, so after five minutes the
   session was deleted and a reader with the chat in their pocket stopped counting

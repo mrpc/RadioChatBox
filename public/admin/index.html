@@ -206,6 +206,29 @@
             50% { opacity: 0.5; }
         }
 
+        /* Lightbox prev/next arrows. Hidden when there is nothing to step to. */
+        .rcb-lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 46px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            line-height: 1;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.10);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .rcb-lightbox-nav:hover { background: rgba(255, 255, 255, 0.22); }
+        .rcb-lightbox-nav[hidden] { display: none; }
+
         /* Reaction pills — read-only in the admin (no picker, no click). */
         .rcb-reactions {
             display: flex;
@@ -2645,8 +2668,11 @@
 
             <!-- Photo lightbox -->
             <div id="photo-lightbox" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.88); box-sizing:border-box; padding:24px; align-items:center; justify-content:center; flex-direction:column; gap:18px;" onclick="if(event.target===this)closePhotoLightbox()">
+                <button id="photo-lightbox-prev" class="rcb-lightbox-nav" onclick="event.stopPropagation(); stepPhotoLightbox(-1)" title="Previous (←)" style="left:16px;">‹</button>
+                <button id="photo-lightbox-next" class="rcb-lightbox-nav" onclick="event.stopPropagation(); stepPhotoLightbox(1)" title="Next (→)" style="right:16px;">›</button>
                 <img id="photo-lightbox-img" src="" alt="" style="max-width:90vw; max-height:78vh; object-fit:contain; border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,0.5);">
                 <div style="display:flex; gap:12px; align-items:center;">
+                    <span id="photo-lightbox-counter" style="color:rgba(255,255,255,0.75); font-size:13px; min-width:64px; text-align:center;"></span>
                     <a id="photo-lightbox-download" href="#" download style="display:inline-flex; align-items:center; gap:6px; background:#10b981; color:#fff; text-decoration:none; padding:9px 18px; border-radius:8px; font-weight:600; font-size:14px;">⬇️ Download</a>
                     <button onclick="closePhotoLightbox()" style="background:transparent; color:#fff; border:1px solid rgba(255,255,255,0.6); padding:9px 18px; border-radius:8px; font-size:14px; cursor:pointer;">✕ Close</button>
                 </div>
@@ -4874,9 +4900,11 @@
             if (message.attachment && message.attachment.file_path) {
                 content += `
                     <div style="margin-bottom: 8px;">
-                        <img src="${escapeHtml(message.attachment.file_path)}" 
-                             style="max-width: 250px; border-radius: 8px; cursor: pointer;" 
-                             onclick="window.open('${escapeHtml(message.attachment.file_path)}', '_blank')">
+                        <img src="${escapeHtml(message.attachment.file_path)}"
+                             class="rcb-lightbox"
+                             data-filename="${escapeHtml(message.attachment.filename || 'photo')}"
+                             style="max-width: 250px; border-radius: 8px; cursor: zoom-in;"
+                             onclick="event.stopPropagation(); openPhotoLightbox(this)">
                     </div>`;
             }
             
@@ -6450,9 +6478,8 @@
                 let messageCell;
                 if (hasPhoto) {
                     const srcAttr = escapeHtml(msg.attachment.file_path);
-                    const srcArg = msg.attachment.file_path.replace(/'/g, "\\'");
-                    const fnArg = String(msg.attachment.filename || 'photo').replace(/'/g, "\\'");
-                    messageCell = `<img src="${srcAttr}" onclick="event.stopPropagation(); openPhotoLightbox('${srcArg}', '${fnArg}')" onerror="this.style.display='none'" style="max-width: 120px; max-height: 90px; border-radius: 4px; cursor: zoom-in; display: block; margin-bottom: 4px;" alt="attachment" title="Click to enlarge">${caption}`;
+                    const fnAttr = escapeHtml(String(msg.attachment.filename || 'photo'));
+                    messageCell = `<img src="${srcAttr}" class="rcb-lightbox" data-filename="${fnAttr}" onclick="event.stopPropagation(); openPhotoLightbox(this)" onerror="this.style.display='none'" style="max-width: 120px; max-height: 90px; border-radius: 4px; cursor: zoom-in; display: block; margin-bottom: 4px;" alt="attachment" title="Click to enlarge">${caption}`;
                 } else if (rawMsg !== '') {
                     messageCell = caption;
                 } else {
@@ -6666,10 +6693,9 @@
                                     // the image doesn't also open the conversation row).
                                     // Click opens the in-page lightbox modal, like every
                                     // other photo view — not a raw new browser tab.
-                                    const photoSrcArg = (msg.attachment && msg.attachment.file_path) ? msg.attachment.file_path.replace(/'/g, "\\'") : '';
-                                    const photoFnArg = String((msg.attachment && msg.attachment.filename) || 'photo').replace(/'/g, "\\'");
+                                    const photoFnAttr = escapeHtml(String((msg.attachment && msg.attachment.filename) || 'photo'));
                                     const photoHtml = (msg.attachment && msg.attachment.file_path)
-                                        ? `<img src="${escapeHtml(msg.attachment.file_path)}" style="max-width:120px;max-height:90px;border-radius:4px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); openPhotoLightbox('${photoSrcArg}', '${photoFnArg}')" onerror="this.style.display='none'">`
+                                        ? `<img src="${escapeHtml(msg.attachment.file_path)}" class="rcb-lightbox" data-filename="${photoFnAttr}" style="max-width:120px;max-height:90px;border-radius:4px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); openPhotoLightbox(this)" onerror="this.style.display='none'">`
                                         : '';
                                     const msgText = msg.message ? escapeHtml(msg.message) : (photoHtml ? '' : '<em style="color:#9ca3af;">[attachment]</em>');
                                     const editedHtml = (!isPrivate && msg.edited_at)
@@ -6773,7 +6799,7 @@
                         <div style="display:flex; justify-content:${mine ? 'flex-end' : 'flex-start'}; margin-bottom:8px;">
                             <div class="rcb-bubble" style="max-width:70%; padding:8px 12px; border-radius:10px; background:${mine ? '#eef2ff' : '#f3f4f6'};">
                                 <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}</div>
-                                <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="openPhotoLightbox('${m.attachment.file_path.replace(/'/g, "\\'")}', '${String(m.attachment.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
+                                <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" class="rcb-lightbox" data-filename="${escapeHtml(m.attachment.filename || 'photo')}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); openPhotoLightbox(this)" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
                                 ${reactionPillsHtml(m.reactions)}
                             </div>
                         </div>`;
@@ -8053,7 +8079,7 @@
                                 <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">
                                     ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}${rollBtn}
                                 </div>
-                                <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="openPhotoLightbox('${m.attachment.file_path.replace(/'/g, "\\'")}', '${String(m.attachment.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
+                                <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" class="rcb-lightbox" data-filename="${escapeHtml(m.attachment.filename || 'photo')}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="event.stopPropagation(); openPhotoLightbox(this)" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
                                 ${reactionPillsHtml(m.reactions)}
                             </div>
                         </div>`;
@@ -9521,7 +9547,7 @@
             messages.forEach(msg => {
                 const isSentByUser1 = msg.from_username === user1;
                 const photo = (msg.attachment && msg.attachment.file_path)
-                    ? `<img src="${escapeHtml(msg.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-top:6px;" onclick="window.open('${escapeHtml(msg.attachment.file_path)}','_blank')" onerror="this.style.display='none'">`
+                    ? `<img src="${escapeHtml(msg.attachment.file_path)}" class="rcb-lightbox" data-filename="${escapeHtml(msg.attachment.filename || 'photo')}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-top:6px;" onclick="event.stopPropagation(); openPhotoLightbox(this)" onerror="this.style.display='none'">`
                     : '';
                 const text = msg.message ? escapeHtml(msg.message) : (photo ? '' : '<em>[attachment]</em>');
                 body += `
@@ -11781,28 +11807,133 @@
         }
 
         // Photos Management
-        function openPhotoLightbox(src, filename) {
+        // ============================================================================
+        // PHOTO LIGHTBOX
+        // ============================================================================
+        //
+        // Every photo in the admin opens here — the gallery, the moderation list,
+        // every conversation view, the bot threads and the impersonation panel —
+        // so "click a photo" behaves the same everywhere instead of some places
+        // dumping the raw file into a new tab.
+        //
+        // Whatever the viewer opened it from, they can then step through all the
+        // other photos on screen: the group is every visible .rcb-lightbox image
+        // in document order, which is the page of the gallery, or the photos in
+        // the conversation they are reading, without any of those views having to
+        // register anything.
+
+        /** The photos currently steppable, and where we are in them. */
+        let photoLightboxGroup = [];
+        let photoLightboxIndex = 0;
+
+        /** Visible thumbnails, in the order they appear on the page. */
+        function collectLightboxGroup() {
+            return Array.from(document.querySelectorAll('img.rcb-lightbox'))
+                .filter(img => img.offsetParent !== null && img.getAttribute('src'));
+        }
+
+        /**
+         * @param {HTMLImageElement|string} target the clicked thumbnail (preferred:
+         *        it anchors the position in the group), or a bare src.
+         * @param {string} [filenameWhenSrc] only used when target is a src string.
+         */
+        function openPhotoLightbox(target, filenameWhenSrc) {
             const box = document.getElementById('photo-lightbox');
+            if (!box) return;
+
+            let src, filename;
+            if (typeof target === 'string') {
+                // Legacy call shape: no element, so there is nothing to step through.
+                src = target;
+                filename = filenameWhenSrc || 'photo';
+                photoLightboxGroup = [];
+                photoLightboxIndex = 0;
+            } else {
+                photoLightboxGroup = collectLightboxGroup();
+                photoLightboxIndex = Math.max(0, photoLightboxGroup.indexOf(target));
+                src = target.getAttribute('src');
+                filename = target.dataset.filename || 'photo';
+            }
+
+            showPhotoLightbox(src, filename);
+            box.style.display = 'flex';
+        }
+
+        function showPhotoLightbox(src, filename) {
             document.getElementById('photo-lightbox-img').src = src;
             const dl = document.getElementById('photo-lightbox-download');
             dl.href = src;
             dl.setAttribute('download', filename || 'photo');
-            box.style.display = 'flex';
+
+            const many = photoLightboxGroup.length > 1;
+            document.getElementById('photo-lightbox-prev').hidden = !many;
+            document.getElementById('photo-lightbox-next').hidden = !many;
+            document.getElementById('photo-lightbox-counter').textContent = many
+                ? `${photoLightboxIndex + 1} / ${photoLightboxGroup.length}`
+                : '';
+        }
+
+        /** Move by delta within the group, wrapping around at either end. */
+        function stepPhotoLightbox(delta) {
+            const total = photoLightboxGroup.length;
+            if (total < 2) return;
+
+            photoLightboxIndex = (photoLightboxIndex + delta + total) % total;
+            const img = photoLightboxGroup[photoLightboxIndex];
+            showPhotoLightbox(img.getAttribute('src'), img.dataset.filename || 'photo');
         }
 
         function closePhotoLightbox() {
             const box = document.getElementById('photo-lightbox');
             box.style.display = 'none';
             document.getElementById('photo-lightbox-img').src = '';
+            photoLightboxGroup = [];
         }
 
-        // Close the lightbox on Escape.
+        // Escape closes, arrows step.
         document.addEventListener('keydown', function(e) {
+            const box = document.getElementById('photo-lightbox');
+            if (!box || box.style.display !== 'flex') return;
+
             if (e.key === 'Escape') {
-                const box = document.getElementById('photo-lightbox');
-                if (box && box.style.display === 'flex') closePhotoLightbox();
+                closePhotoLightbox();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                stepPhotoLightbox(-1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                stepPhotoLightbox(1);
             }
         });
+
+        /** Single-quote a value for an inline onclick argument. */
+        function jsQuote(value) {
+            return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
+        /**
+         * "Where did this photo come from?" — the gallery lists an upload but not
+         * the conversation it belongs to, so moderating one meant hunting for it
+         * by hand. A DM opens the read-only thread between the two people (a
+         * modal, so it works from this tab); a public upload sends you to the
+         * message list, which is where its context lives.
+         */
+        function photoConversationLink(photo) {
+            const from = photo.uploaded_by || '';
+            const to = photo.recipient || '';
+
+            if (from && to) {
+                return `<a href="#" title="Open the ${escapeHtml(from)} ↔ ${escapeHtml(to)} conversation"
+                    onclick="openReadOnlyConversation('${jsQuote(from)}', '${jsQuote(to)}'); return false;"
+                    style="color:#3b82f6; white-space:nowrap;">💬 View</a>`;
+            }
+            if (from) {
+                return `<a href="#" title="Public upload — open the message list"
+                    onclick="switchTab('messages'); return false;"
+                    style="color:#6b7280; white-space:nowrap;">📢 Public</a>`;
+            }
+            return '-';
+        }
 
         async function loadPhotos(page = 1) {
             window.currentPhotosPage = page;
@@ -11831,6 +11962,7 @@
                                     <th>Filename</th>
                                     <th>Uploaded By</th>
                                     <th>Recipient</th>
+                                    <th>Conversation</th>
                                     <th>Size</th>
                                     <th>Dimensions</th>
                                     <th>Uploaded</th>
@@ -11841,7 +11973,7 @@
                                 ${photos.map(photo => `
                                     <tr${photo.is_deleted ? ' style="opacity:0.6;"' : ''}>
                                         <td>
-                                            <img src="${photo.file_path}" onclick="openPhotoLightbox('${photo.file_path.replace(/'/g, "\\'")}', '${(photo.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<span style=\\'color:#9ca3af;font-size:11px;\\'>file gone</span>');" style="max-width: 80px; max-height: 60px; border-radius: 4px; cursor: zoom-in;" alt="Preview" title="Click to enlarge">
+                                            <img src="${photo.file_path}" class="rcb-lightbox" data-filename="${escapeHtml(photo.filename || 'photo')}" onclick="openPhotoLightbox(this)" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<span style=\\'color:#9ca3af;font-size:11px;\\'>file gone</span>');" style="max-width: 80px; max-height: 60px; border-radius: 4px; cursor: zoom-in;" alt="Preview" title="Click to enlarge">
                                         </td>
                                         <td><code>${photo.filename}</code>${photo.is_deleted ? ' <span style="background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 6px;font-size:11px;">deleted</span>' : ''}</td>
                                         <td>
@@ -11850,6 +11982,7 @@
                                             </a>
                                         </td>
                                         <td>${photo.recipient || '-'}</td>
+                                        <td>${photoConversationLink(photo)}</td>
                                         <td>${formatFileSize(photo.file_size)}</td>
                                         <td>${photo.width}×${photo.height}</td>
                                         <td>${new Date(photo.uploaded_at).toLocaleString()}</td>
@@ -11889,6 +12022,7 @@
                                     <th>Preview</th>
                                     <th>Filename</th>
                                     <th>Recipient</th>
+                                    <th>Conversation</th>
                                     <th>Size</th>
                                     <th>Dimensions</th>
                                     <th>Uploaded</th>
@@ -11899,10 +12033,11 @@
                                 ${photos.map(photo => `
                                     <tr>
                                         <td>
-                                            <img src="${photo.file_path}" onclick="openPhotoLightbox('${photo.file_path.replace(/'/g, "\\'")}', '${(photo.filename || 'photo').replace(/'/g, "\\'")}')" style="max-width: 80px; max-height: 60px; border-radius: 4px; cursor: zoom-in;" alt="Preview" title="Click to enlarge">
+                                            <img src="${photo.file_path}" class="rcb-lightbox" data-filename="${escapeHtml(photo.filename || 'photo')}" onclick="openPhotoLightbox(this)" style="max-width: 80px; max-height: 60px; border-radius: 4px; cursor: zoom-in;" alt="Preview" title="Click to enlarge">
                                         </td>
                                         <td><code>${photo.filename}</code></td>
                                         <td>${photo.recipient || '-'}</td>
+                                        <td>${photoConversationLink(photo)}</td>
                                         <td>${formatFileSize(photo.file_size)}</td>
                                         <td>${photo.width}×${photo.height}</td>
                                         <td>${new Date(photo.uploaded_at).toLocaleString()}</td>
@@ -13463,9 +13598,11 @@
                         if (msg.attachment && msg.attachment.file_path) {
                             content += `
                                 <div style="margin-bottom: 8px;">
-                                    <img src="${escapeHtml(msg.attachment.file_path)}" 
-                                         style="max-width: 250px; border-radius: 8px; cursor: pointer;" 
-                                         onclick="window.open('${escapeHtml(msg.attachment.file_path)}', '_blank')">
+                                    <img src="${escapeHtml(msg.attachment.file_path)}"
+                                         class="rcb-lightbox"
+                                         data-filename="${escapeHtml(msg.attachment.filename || 'photo')}"
+                                         style="max-width: 250px; border-radius: 8px; cursor: zoom-in;"
+                                         onclick="event.stopPropagation(); openPhotoLightbox(this)">
                                 </div>`;
                         }
                         
