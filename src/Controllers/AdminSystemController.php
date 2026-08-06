@@ -18,6 +18,7 @@ use RadioChatBox\Installation;
 use RadioChatBox\JobQueue;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
 use RadioChatBox\Services\PhotoService;
+use RadioChatBox\Services\ReactionService;
 use RadioChatBox\Services\Scheduler;
 use RadioChatBox\Services\SettingsService;
 use Pramnos\Console\WorkerLock;
@@ -411,6 +412,7 @@ final class AdminSystemController
             $chatMode = $chatService->getSetting('chat_mode') ?? 'both';
 
             $messages   = $chatService->getAllMessages($limit, $offset, $includePrivate, $type);
+            $messages   = $this->attachMixedReactions($messages);
             $total      = $chatService->getTotalMessagesCount($includePrivate, $type);
             $totalPages = ceil($total / $limit);
 
@@ -557,6 +559,47 @@ final class AdminSystemController
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * Attach reaction pills to a moderation list that mixes public messages and
+     * DMs. The two live in separate tables — and the row's `message_id` is the
+     * varchar id for a public message but the private_messages id cast to text
+     * for a DM — so each type is resolved against its own table and the rows are
+     * put back in their original positions (the list is ordered by date).
+     *
+     * @param array<int, array<string, mixed>> $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachMixedReactions(array $messages): array
+    {
+        if (empty($messages)) {
+            return $messages;
+        }
+
+        $buckets = ['public' => [], 'private' => []];
+        foreach ($messages as $i => $message) {
+            $kind = ($message['message_type'] ?? 'public') === 'private' ? 'private' : 'public';
+            $buckets[$kind][$i] = $message;
+        }
+
+        $tables  = ['public' => 'message_reactions', 'private' => 'private_message_reactions'];
+        $service = new ReactionService();
+
+        foreach ($buckets as $kind => $rows) {
+            if (empty($rows)) {
+                continue;
+            }
+            // No username: "mine" is meaningless for a moderator looking at other
+            // people's conversations — the admin list shows counts only.
+            $attached = $service->attachToMessages(array_values($rows), null, $tables[$kind]);
+            $positions = array_keys($rows);
+            foreach ($attached as $j => $row) {
+                $messages[$positions[$j]] = $row;
+            }
+        }
+
+        return $messages;
     }
 
     /**

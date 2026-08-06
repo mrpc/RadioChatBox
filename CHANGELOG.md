@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client on track change (Scheduler → `chat:updates` `now_playing`) instead of a
   15s per-client poll. Only connection-health reconnects and the presence
   heartbeat remain as timers.
+- **Reactions are visible in the admin.** They existed only for the two people in
+  the conversation; a moderator reading the same thread saw none of them.
+  Read-only pills (emoji + count, no picker) now render everywhere the admin
+  reads messages: the impersonation conversation — live, so a reaction lands
+  while you watch — both read-only conversation views, the Bot Activity thread
+  and the Messages moderation list. The two admin endpoints that returned no
+  reactions at all now attach them, each type resolved against its own table.
+- **Realtime connection indicator in the admin header**, the same amber/green/red
+  vocabulary as the chat. The panel is entirely socket-driven, so "the numbers
+  stopped moving" and "nothing is happening" used to look identical.
 - **Search boxes** on the Fake Users, Active Users, Inactive Users and User
   Management lists (client-side filter; Inactive Users is server-side/paginated).
 - **Profile shortcuts in the Bot Activity conversation view** — edit a fake

@@ -726,7 +726,14 @@ final class AdminStatsController
                         'success'          => true,
                         'insult_threshold' => $bot->insultBlockThreshold(),
                         'state'            => $bot->getThreadState($fakeUser, $peer),
-                        'messages'         => $bot->threadMessages($fakeUser, $peer),
+                        // Reaction pills, so the conversation reads the same here as
+                        // it does for the two people actually in it.
+                        'messages'         => (new \RadioChatBox\Services\ReactionService())
+                            ->attachToMessages(
+                                $bot->threadMessages($fakeUser, $peer),
+                                null,
+                                'private_message_reactions'
+                            ),
                         'calls'            => array_map([$this, 'decodeJsonColumns'], $log->page(20, 0, [
                             'fake_nickname' => $fakeUser,
                             'peer_username' => $peer,

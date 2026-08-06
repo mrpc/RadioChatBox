@@ -219,6 +219,64 @@ class AdminSystemControllerTest extends TestCase
     }
 
     /**
+     * The moderation list carries reaction pills, resolved per message type.
+     *
+     * Public reactions and DM reactions live in separate tables, and a row's
+     * `message_id` is the varchar id for a public message but the private_messages
+     * id cast to text for a DM — so a single lookup against one table would show
+     * a public message the reactions of the DM that happens to share its number.
+     * Seeds one of each with different emoji and asserts neither leaks into the
+     * other. Root, so the list includes DMs.
+     */
+    public function testMessagesAttachReactionsFromTheRightTablePerType(): void
+    {
+        $pdo = TestDatabase::connection();
+        $this->authAsAdmin('root');
+
+        $publicId = 'msg_rx_' . bin2hex(random_bytes(6));
+        $pdo->prepare(
+            'INSERT INTO chat_messages (message_id, username, message, ip_address, created_at)
+             VALUES (?, ?, ?, ?, NOW())'
+        )->execute([$publicId, 'rx_author', 'public with a reaction', '127.0.0.1']);
+
+        $pdo->prepare(
+            'INSERT INTO private_messages (from_username, to_username, message, created_at)
+             VALUES (?, ?, ?, NOW())'
+        )->execute(['rx_from', 'rx_to', 'dm with a reaction']);
+        $dmId = (string) $pdo->lastInsertId();
+
+        $pdo->prepare(
+            'INSERT INTO message_reactions (message_id, username, emoji) VALUES (?, ?, ?)'
+        )->execute([$publicId, 'rx_fan', '👍']);
+        $pdo->prepare(
+            'INSERT INTO private_message_reactions (message_id, username, emoji) VALUES (?, ?, ?)'
+        )->execute([$dmId, 'rx_to', '❤️']);
+
+        try {
+            $_GET = ['page' => '1', 'limit' => '50'];
+            $body = json_decode((new AdminSystemController())->messages()->getBody(), true);
+
+            $byId = [];
+            foreach ($body['messages'] as $m) {
+                $byId[(string) $m['message_id']] = $m;
+            }
+
+            $this->assertArrayHasKey($publicId, $byId, 'the seeded public message must be listed');
+            $this->assertArrayHasKey($dmId, $byId, 'the seeded DM must be listed for a root admin');
+
+            $emoji = static fn (array $m): array => array_column($m['reactions'] ?? [], 'count', 'emoji');
+
+            $this->assertSame(['👍' => 1], $emoji($byId[$publicId]), 'public message keeps its own reaction');
+            $this->assertSame(['❤️' => 1], $emoji($byId[$dmId]), 'DM keeps its own reaction');
+        } finally {
+            $pdo->prepare('DELETE FROM message_reactions WHERE message_id = ?')->execute([$publicId]);
+            $pdo->prepare('DELETE FROM private_message_reactions WHERE message_id = ?')->execute([$dmId]);
+            $pdo->prepare('DELETE FROM chat_messages WHERE message_id = ?')->execute([$publicId]);
+            $pdo->prepare('DELETE FROM private_messages WHERE id = ?')->execute([$dmId]);
+        }
+    }
+
+    /**
      * GET /api/admin/messages/export returns a downloadable CSV with the header
      * row and any seeded public message. Unauthenticated-in-process, so private
      * messages are excluded.

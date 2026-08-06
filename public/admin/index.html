@@ -175,6 +175,60 @@
             gap: 16px;
         }
 
+        /* Realtime connection indicator — same vocabulary as the chat header
+           (public/css/style.css #status): amber connecting, green live, red down. */
+        #rt-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--gray-600, #4b5563);
+            white-space: nowrap;
+        }
+
+        #rt-status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #9ca3af;
+            animation: rt-pulse 2s infinite;
+        }
+
+        #rt-status-dot.rt-connecting { background: #fbbf24; }
+        #rt-status-dot.rt-connected  { background: #10b981; }
+        #rt-status-dot.rt-disconnected { background: #ef4444; }
+
+        @keyframes rt-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Reaction pills — read-only in the admin (no picker, no click). */
+        .rcb-reactions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 6px;
+        }
+
+        .rcb-reaction-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 7px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.06);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            font-size: 12px;
+            line-height: 18px;
+        }
+
+        .rcb-reaction-pill span {
+            font-size: 11px;
+            font-weight: 600;
+            color: #4b5563;
+        }
+
         .user-info {
             display: flex;
             align-items: center;
@@ -1303,6 +1357,10 @@
                     <p id="page-subtitle">Welcome to RadioChatBox Admin Panel</p>
                 </div>
                 <div class="header-right">
+                    <div id="rt-status" title="Realtime connection to the server">
+                        <span id="rt-status-dot" class="rt-connecting"></span>
+                        <span id="rt-status-text">Connecting…</span>
+                    </div>
                     <button class="btn btn-outline" onclick="window.open('/', '_blank')">
                         🚀 Open Chat
                     </button>
@@ -3906,6 +3964,7 @@
         // unchanged default. The WS path subscribes to the admin-only private
         // channel, authorized by the admin Bearer (a fetch can send it).
         async function connectAdminStream() {
+            updateAdminRtStatus('connecting', 'Connecting…');
             if (adminStreamEventSource) { adminStreamEventSource.close(); adminStreamEventSource = null; }
             if (adminWs) { try { adminWs.onclose = null; adminWs.close(); } catch (_) {} adminWs = null; }
 
@@ -3963,6 +4022,7 @@
                         }
                     } catch (e) { console.warn('admin notifications channel authorization failed', e); }
                     console.log('Admin WebSocket connected');
+                    updateAdminRtStatus('connected', 'Live');
                     return;
                 }
                 if (ev === 'pusher:ping') { try { ws.send(JSON.stringify({ event: 'pusher:pong', data: {} })); } catch (_) {} return; }
@@ -3980,6 +4040,7 @@
                 clearTimeout(openTimer);
                 if (!established) { fallback('closed'); return; }
                 adminWs = null;
+                updateAdminRtStatus('disconnected', 'Disconnected');
                 reconnectAdminStream();
             };
         }
@@ -4026,6 +4087,7 @@
 
                 adminStreamEventSource.addEventListener('open', () => {
                     console.log('Admin SSE stream connected');
+                    updateAdminRtStatus('connected', 'Live');
                     sseEverOpened = true;
                     adminStreamReconnectAttempts = 0;
                     // Clear periodic reconnect timer
@@ -4076,6 +4138,7 @@
                     // the dead token. Drop it and the next attempt gets a fresh one.
                     // A stream that DID open is a normal disconnect: keep the token.
                     if (!sseEverOpened) adminSessionToken = null;
+                    updateAdminRtStatus('disconnected', 'Disconnected');
                     reconnectAdminStream();
                 });
 
@@ -4096,6 +4159,7 @@
             const delay = Math.min(adminStreamReconnectDelay * Math.pow(1.5, adminStreamReconnectAttempts - 1), adminStreamMaxReconnectDelay);
 
             console.log(`Admin stream reconnection attempt ${adminStreamReconnectAttempts} in ${Math.round(delay / 1000)}s...`);
+            updateAdminRtStatus('connecting', `Reconnecting in ${Math.round(delay / 1000)}s…`);
 
             setTimeout(() => {
                 connectAdminStream();
@@ -4104,6 +4168,64 @@
                     refreshNotifications();
                 }, 500);
             }, delay);
+        }
+
+        /**
+         * Realtime connection indicator in the header — the admin equivalent of the
+         * chat's updateStatus() (public/js/chat.js). Worth having here for the same
+         * reason: this panel is now entirely socket-driven, so "the numbers stopped
+         * moving" and "nothing is happening" look identical without it.
+         *
+         * @param {string} state connecting | connected | disconnected
+         */
+        function updateAdminRtStatus(state, text) {
+            const dot = document.getElementById('rt-status-dot');
+            const label = document.getElementById('rt-status-text');
+            if (!dot || !label) return;
+            dot.className = 'rt-' + state;
+            label.textContent = text;
+        }
+
+        // ============================================================================
+        // REACTION PILLS
+        // ============================================================================
+        //
+        // Read-only here: the admin looks at other people's conversations, so the
+        // pills show who-many, never a picker. The payload is the same one the chat
+        // renders — [{emoji, count, mine}] — attached by ReactionService.
+
+        /** Pills markup for one message, or '' when nothing was reacted. */
+        function reactionPillsHtml(reactions) {
+            if (!Array.isArray(reactions) || reactions.length === 0) return '';
+            const pills = reactions
+                .filter(r => r && r.emoji && (r.count | 0) > 0)
+                .map(r => `<span class="rcb-reaction-pill">${escapeHtml(r.emoji)}<span>${r.count | 0}</span></span>`)
+                .join('');
+            return pills ? `<div class="rcb-reactions">${pills}</div>` : '';
+        }
+
+        /**
+         * Apply a live reaction update to a rendered bubble. The broadcast carries
+         * a {emoji: count} map rather than the pill list, so it is converted here.
+         *
+         * @param {HTMLElement} container element holding [data-message-id] bubbles
+         */
+        function applyReactionUpdate(container, messageId, counts) {
+            if (!container || messageId == null) return;
+            const bubble = container.querySelector(`[data-message-id="${String(messageId)}"]`);
+            if (!bubble) return; // not on screen (older page / other conversation)
+
+            const list = Object.keys(counts || {})
+                .map(emoji => ({ emoji: emoji, count: counts[emoji] | 0 }))
+                .filter(r => r.count > 0);
+
+            const existing = bubble.querySelector('.rcb-reactions');
+            if (existing) existing.remove();
+            if (!list.length) return; // last reaction removed → no pills at all
+
+            // Inside the bubble body, so the pills sit under the text like in chat.
+            const target = bubble.querySelector('.rcb-bubble') || bubble.firstElementChild || bubble;
+            target.insertAdjacentHTML('beforeend', reactionPillsHtml(list));
         }
 
         // ============================================================================
@@ -4374,6 +4496,7 @@
                 clearInterval(adminStreamPeriodicReconnectTimer);
                 adminStreamPeriodicReconnectTimer = null;
             }
+            updateAdminRtStatus('disconnected', 'Offline');
         }
 
         // ============================================================================
@@ -4545,7 +4668,18 @@
             // drawn as an empty bubble stamped "unknown time". The chat client
             // has always filtered them (handlePrivateMessage in js/chat.js);
             // this view never did.
-            if (message.type === 'typing' || message.type === 'reaction') return;
+            if (message.type === 'typing') return;
+
+            // A reaction is not a new message — it repaints the pills on one that
+            // is already on screen.
+            if (message.type === 'reaction') {
+                applyReactionUpdate(
+                    document.getElementById('impersonate-messages'),
+                    message.message_id,
+                    message.counts
+                );
+                return;
+            }
 
             // Belt and braces for anything else that may later share the channel:
             // a real DM always has an id and either text or an attachment.
@@ -4569,8 +4703,9 @@
             const wrapperDiv = document.createElement('div');
             wrapperDiv.style.cssText = `display: flex; ${isFromFake ? 'justify-content: flex-end;' : 'justify-content: flex-start;'} margin: 8px 0;`;
             wrapperDiv.setAttribute('data-message-id', msgId);
-            
+
             const msgDiv = document.createElement('div');
+            msgDiv.className = 'rcb-bubble';
             msgDiv.style.cssText = `display: inline-block; padding: 12px 15px; border-radius: 12px; max-width: 70%; ${isFromFake ? 'background: #667eea; color: white; text-align: right;' : 'background: #f3f4f6; border: 1px solid #e5e7eb; text-align: left;'}`;
             
             // Parse timestamp robustly - handle various formats
@@ -4618,7 +4753,9 @@
                 const formatted = formatImpersonateMessageText(message.message);
                 content += `<div style="word-wrap: break-word; line-height: 1.4;">${formatted}</div>`;
             }
-            
+
+            content += reactionPillsHtml(message.reactions);
+
             msgDiv.innerHTML = content;
             // Was the admin already at the bottom? Capture BEFORE appending.
             const nearBottom = (messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight) < 80;
@@ -6414,7 +6551,7 @@
                                             ? `<td>${fromLink}</td><td>${toLink}</td>`
                                             : `<td>${fromLink}</td>`
                                         }
-                                        <td>${photoHtml}${msgText}${editedHtml}</td>
+                                        <td>${photoHtml}${msgText}${editedHtml}${reactionPillsHtml(msg.reactions)}</td>
                                         ${!includePrivate ? `<td>${msg.ip_address}</td>` : ''}
                                     </tr>
                                 `;
@@ -6502,9 +6639,10 @@
                     const mine = m.from_username === a;
                     return `
                         <div style="display:flex; justify-content:${mine ? 'flex-end' : 'flex-start'}; margin-bottom:8px;">
-                            <div style="max-width:70%; padding:8px 12px; border-radius:10px; background:${mine ? '#eef2ff' : '#f3f4f6'};">
+                            <div class="rcb-bubble" style="max-width:70%; padding:8px 12px; border-radius:10px; background:${mine ? '#eef2ff' : '#f3f4f6'};">
                                 <div style="font-size:11px; color:#6b7280; margin-bottom:2px;">${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}</div>
                                 <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="openPhotoLightbox('${m.attachment.file_path.replace(/'/g, "\\'")}', '${String(m.attachment.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
+                                ${reactionPillsHtml(m.reactions)}
                             </div>
                         </div>`;
                 }).join('') + `</div>`;
@@ -7778,12 +7916,13 @@
                         ? `<button title="Roll back the conversation to before this message (deletes this and every later message)" onclick="botThreadRollback(${Number(m.id)})" style="background:none;border:none;color:#b45309;cursor:pointer;font-size:11px;padding:0;margin-left:8px;">⤺ rollback to here</button>`
                         : '';
                     return `
-                        <div style="display: flex; justify-content: ${mine ? 'flex-end' : 'flex-start'}; margin-bottom: 8px;">
-                            <div style="max-width: 70%; padding: 8px 12px; border-radius: 10px; background: ${mine ? '#eef2ff' : '#f3f4f6'};">
+                        <div style="display: flex; justify-content: ${mine ? 'flex-end' : 'flex-start'}; margin-bottom: 8px;"${m.id != null ? ` data-message-id="${escapeHtml(String(m.id))}"` : ''}>
+                            <div class="rcb-bubble" style="max-width: 70%; padding: 8px 12px; border-radius: 10px; background: ${mine ? '#eef2ff' : '#f3f4f6'};">
                                 <div style="font-size: 11px; color: #6b7280; margin-bottom: 2px;">
                                     ${escapeHtml(m.from_username)} · ${new Date(m.created_at).toLocaleString()}${rollBtn}
                                 </div>
                                 <div>${(m.attachment && m.attachment.file_path) ? `<img src="${escapeHtml(m.attachment.file_path)}" style="max-width:220px;max-height:160px;border-radius:6px;cursor:zoom-in;display:block;margin-bottom:4px;" onclick="openPhotoLightbox('${m.attachment.file_path.replace(/'/g, "\\'")}', '${String(m.attachment.filename || 'photo').replace(/'/g, "\\'")}')" onerror="this.style.display='none'">` : ''}${m.message ? escapeHtml(m.message) : ((m.attachment && m.attachment.file_path) ? '' : '<em>[attachment]</em>')}</div>
+                                ${reactionPillsHtml(m.reactions)}
                             </div>
                         </div>`;
                 }).join('');
@@ -9245,6 +9384,7 @@
                             <small style="color: #6b7280;">${new Date(msg.created_at || (msg.timestamp ? msg.timestamp * 1000 : Date.now())).toLocaleString()}</small>
                         </div>
                         <div style="color: #374151;">${text}${photo}</div>
+                        ${reactionPillsHtml(msg.reactions)}
                     </div>`;
             });
             if (messages.length === 0) {
@@ -13152,8 +13292,16 @@
                         // Create wrapper for proper alignment
                         const wrapperDiv = document.createElement('div');
                         wrapperDiv.style.cssText = `display: flex; ${isFromFake ? 'justify-content: flex-end;' : 'justify-content: flex-start;'} margin: 8px 0;`;
-                        
+                        // Tag history bubbles too: the live handler de-dups on this
+                        // attribute (a DM already in history used to be appended a
+                        // second time when its broadcast landed), and a reaction
+                        // update needs to find the bubble it belongs to.
+                        if (msg.id != null || msg.message_id != null) {
+                            wrapperDiv.setAttribute('data-message-id', msg.id != null ? msg.id : msg.message_id);
+                        }
+
                         const msgDiv = document.createElement('div');
+                        msgDiv.className = 'rcb-bubble';
                         msgDiv.style.cssText = `display: inline-block; padding: 12px 15px; border-radius: 12px; max-width: 70%; ${isFromFake ? 'background: #667eea; color: white; text-align: right;' : 'background: #f3f4f6; border: 1px solid #e5e7eb; text-align: left;'}`;
                         
                         const timestamp = new Date(msg.created_at);
@@ -13180,7 +13328,9 @@
                             const formatted = formatImpersonateMessageText(msg.message);
                             content += `<div style="word-wrap: break-word; line-height: 1.4;">${formatted}</div>`;
                         }
-                        
+
+                        content += reactionPillsHtml(msg.reactions);
+
                         msgDiv.innerHTML = content;
                         wrapperDiv.appendChild(msgDiv);
                         messagesDiv.appendChild(wrapperDiv);
