@@ -57,6 +57,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native 2FA/passkeys, no forced password reset).
 
 ### Fixed
+- **Stray empty bubbles in the impersonation conversation**: three different
+  payloads ride the private channel under the same `private` event — real DMs,
+  typing cues and DM reaction updates. The chat client filters the last two; the
+  admin's impersonation view rendered them as a message. A typing cue became an
+  empty bubble stamped "unknown time", and a reaction became an empty bubble
+  carrying the *reacted* message's id — which then blocked the real message with
+  that id from ever appearing (the de-dup matched the impostor). Both are now
+  filtered, plus a sanity check that a rendered DM actually has an id and a body.
+- **Admin panel silently went deaf after being backgrounded**: reconnection hung
+  entirely off the socket's `onclose`, which is exactly the event a frozen
+  connection never fires — a suspended tab comes back with `readyState` still
+  OPEN while the socket is dead, so the panel sat with stale numbers and no live
+  signals until someone hit refresh. And because every signal handler drops the
+  event while `document.hidden`, whatever arrived during the suspend was lost
+  even when the socket survived. The admin now does what the chat client already
+  did: on returning to the foreground it probes the socket with a ping and
+  reconnects only if no pong comes back (no churn on a healthy one), reconnects
+  immediately when nothing is live, treats a returning network the same way, and
+  reconciles the open view so a dropped signal cannot leave the screen lying.
+  Applies to the notification stream and to an open impersonation conversation,
+  whose thread is redrawn without stealing focus mid-reply. Related: the SSE
+  stream token is minted once at login with a 24h TTL and never rotated, and the
+  client only asked for a new one when it held none — so a machine that slept
+  longer than a day retried a token Redis had forgotten, forever. A stream that
+  fails before it ever opens now drops the token so the next attempt mints one.
 - **Statistics reported "Active Users: 0" while the chat was busy**: every user
   count (active/guest/registered, hourly through yearly) was derived from the
   public messages table alone, so an install whose traffic is direct messages
