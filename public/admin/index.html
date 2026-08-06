@@ -3576,6 +3576,11 @@
         let adminWs = null;
         let adminWsFellBack = false;
 
+        // Background/resume state — see the "BACKGROUND / RESUME" section below.
+        let adminHiddenSince = null;
+        let adminWsLastPongAt = 0;
+        let impersonateWsLastPongAt = 0;
+
         // Admin notifications realtime: WebSocket when /api/realtime-config
         // advertises it, else SSE — and any WS failure falls back to SSE, the
         // unchanged default. The WS path subscribes to the admin-only private
@@ -3641,6 +3646,10 @@
                     return;
                 }
                 if (ev === 'pusher:ping') { try { ws.send(JSON.stringify({ event: 'pusher:pong', data: {} })); } catch (_) {} return; }
+                // Our own liveness probe answers here (see ensureAdminRealtimeFresh):
+                // a socket that survived a background suspend can report OPEN while
+                // being dead, and only a returning pong proves otherwise.
+                if (ev === 'pusher:pong') { adminWsLastPongAt = Date.now(); return; }
                 if (!ev || ev.indexOf('pusher') === 0) return;
                 let data = null;
                 try { data = typeof f.data === 'string' ? JSON.parse(f.data) : f.data; } catch (_) { return; }
@@ -3693,9 +3702,11 @@
                 }
                 
                 adminStreamEventSource = new EventSource(`/api/admin/stream?session_token=${encodeURIComponent(adminSessionToken)}`);
+                let sseEverOpened = false;
 
                 adminStreamEventSource.addEventListener('open', () => {
                     console.log('Admin SSE stream connected');
+                    sseEverOpened = true;
                     adminStreamReconnectAttempts = 0;
                     // Clear periodic reconnect timer
                     if (adminStreamPeriodicReconnectTimer) {
@@ -3736,6 +3747,15 @@
                 adminStreamEventSource.addEventListener('error', (e) => {
                     console.error('Admin SSE error:', e);
                     adminStreamEventSource.close();
+                    // Never opened → most likely the stream token was refused. It is
+                    // minted once at login with a 24h TTL and never rotated (unlike
+                    // the chat's, which rides every heartbeat), so a laptop that
+                    // slept longer than that wakes up holding a token Redis has
+                    // already forgotten — and connectAdminSSE only mints a new one
+                    // when the variable is empty, so retrying would loop forever on
+                    // the dead token. Drop it and the next attempt gets a fresh one.
+                    // A stream that DID open is a normal disconnect: keep the token.
+                    if (!sseEverOpened) adminSessionToken = null;
                     reconnectAdminStream();
                 });
 
@@ -3765,6 +3785,201 @@
                 }, 500);
             }, delay);
         }
+
+        // ============================================================================
+        // BACKGROUND / RESUME  (mirrors the chat client — see public/js/chat.js)
+        // ============================================================================
+        //
+        // Nothing here closes a socket when the panel is backgrounded; the browser
+        // does that on its own (mobile freezes the whole page). The problem is the
+        // way back: reconnection hung entirely off `onclose`, which is exactly the
+        // event a frozen connection never fires — readyState stays OPEN while the
+        // socket is dead, so the panel sat with stale numbers and no live signals
+        // until someone hit refresh. And because every signal handler drops the
+        // event while `document.hidden`, whatever arrived during the suspend was
+        // gone even when the socket did survive.
+        //
+        // So, exactly as the chat does: probe rather than trust readyState, force a
+        // reconnect only when no pong comes back, and reconcile the visible view on
+        // every return so a dropped signal cannot leave the screen lying.
+
+        /**
+         * Re-run the refreshes whose live signals were dropped while hidden.
+         *
+         * The notification count and the active-users KPI are two cheap fetches and
+         * always run. Reloading the open tab's list is heavier, so it is reserved
+         * for a real absence (`full`) — on a two-second alt-tab almost nothing can
+         * have been missed, and the next signal refreshes it anyway.
+         */
+        function refreshAdminAfterResume(full = true) {
+            if (document.hidden || !authToken) return;
+
+            if (typeof refreshNotifications === 'function') refreshNotifications();
+            if (typeof refreshActiveUsersKpi === 'function') refreshActiveUsersKpi();
+
+            if (!full) return;
+
+            const active = document.querySelector('.tab-content.active');
+            if (!active) return;
+
+            switch (active.id) {
+                case 'dashboard-tab':
+                    if (typeof loadDashboardKPIs === 'function') loadDashboardKPIs();
+                    break;
+                case 'users-tab':
+                    if (typeof loadUsers === 'function') loadUsers();
+                    break;
+                case 'messages-tab':
+                    // Page 1 only, so browsing an older page is never yanked.
+                    if ((window.currentMessagesPage || 1) === 1 && typeof loadMessages === 'function') {
+                        loadMessages(1);
+                    }
+                    break;
+                case 'photos-tab':
+                    if ((window.currentPhotosPage || 1) === 1 && typeof loadPhotos === 'function') {
+                        loadPhotos(1);
+                    }
+                    break;
+                case 'bot-activity-tab':
+                    if (typeof refreshBotActivityLive === 'function') refreshBotActivityLive();
+                    break;
+                case 'nickname-bans-tab':
+                    if (typeof loadNicknameBans === 'function') loadNicknameBans();
+                    if (typeof loadKickedUsers === 'function') loadKickedUsers();
+                    break;
+            }
+        }
+
+        /**
+         * Make sure the admin notification transport is live and the view is not
+         * stale. A brief tab-switch just reconciles over HTTP; after a longer
+         * suspend a WebSocket is probed with a ping and torn down only if no pong
+         * arrives — tearing down a healthy socket on every return is needless churn.
+         */
+        function ensureAdminRealtimeFresh(hiddenMs = 0) {
+            if (!authToken) return;
+
+            const wsOpen = adminWs && adminWs.readyState === 1;
+            const sseOpen = adminStreamEventSource && adminStreamEventSource.readyState === 1;
+            const staleAfterSuspend = hiddenMs > 8000;
+
+            const forceReconnect = () => {
+                adminStreamReconnectAttempts = 0; // back in foreground → reconnect now, no backoff
+                try { if (adminWs) { adminWs.onclose = null; adminWs.close(); } } catch (_) {}
+                adminWs = null;
+                if (adminStreamEventSource) {
+                    try { adminStreamEventSource.close(); } catch (_) {}
+                    adminStreamEventSource = null;
+                }
+                if (adminStreamPeriodicReconnectTimer) {
+                    clearInterval(adminStreamPeriodicReconnectTimer);
+                    adminStreamPeriodicReconnectTimer = null;
+                }
+                connectAdminStream();
+                setTimeout(() => refreshAdminAfterResume(true), 800);
+            };
+
+            // Nothing live at all → reconnect immediately.
+            if (!wsOpen && !sseOpen) { forceReconnect(); return; }
+
+            if (wsOpen && staleAfterSuspend) {
+                const probeAt = Date.now();
+                try {
+                    adminWs.send(JSON.stringify({ event: 'pusher:ping', data: {} }));
+                } catch (_) { forceReconnect(); return; }
+                setTimeout(() => {
+                    if (adminWsLastPongAt >= probeAt) {
+                        refreshAdminAfterResume(); // alive — just reconcile
+                    } else {
+                        forceReconnect();          // no pong → genuinely dead
+                    }
+                }, 3000);
+                return;
+            }
+
+            // SSE has no app-level pong to probe and reconnecting it is cheap.
+            if (sseOpen && staleAfterSuspend) { forceReconnect(); return; }
+
+            // Healthy and only briefly hidden — the cheap reconcile is enough.
+            refreshAdminAfterResume(false);
+        }
+
+        /** The same treatment for an open impersonation conversation (its own socket). */
+        function ensureImpersonateRealtimeFresh(hiddenMs = 0) {
+            if (!currentImpersonateConversation) return;
+
+            const wsOpen = impersonateWs && impersonateWs.readyState === 1;
+            const sseOpen = impersonateChatEventSource && impersonateChatEventSource.readyState === 1;
+            const staleAfterSuspend = hiddenMs > 8000;
+            const conv = currentImpersonateConversation;
+
+            // Redraw the thread without stealing focus — the admin may be mid-reply.
+            const reloadConversation = () => {
+                if (typeof renderImpersonateThread === 'function') {
+                    renderImpersonateThread(conv.fakeUser, conv.senderUsername, false);
+                }
+            };
+
+            const forceReconnect = () => {
+                impersonateChatReconnectAttempts = 0;
+                try { if (impersonateWs) { impersonateWs.onclose = null; impersonateWs.close(); } } catch (_) {}
+                impersonateWs = null;
+                if (impersonateChatEventSource) {
+                    try { impersonateChatEventSource.close(); } catch (_) {}
+                    impersonateChatEventSource = null;
+                }
+                if (impersonateChatPeriodicReconnectTimer) {
+                    clearInterval(impersonateChatPeriodicReconnectTimer);
+                    impersonateChatPeriodicReconnectTimer = null;
+                }
+                connectImpersonateChatStream(conv.fakeUser, conv.senderUsername);
+                // Reload the thread: a DM that landed during the suspend never
+                // reached handleImpersonateChatMessage().
+                setTimeout(reloadConversation, 800);
+            };
+
+            if (!wsOpen && !sseOpen) { forceReconnect(); return; }
+
+            if (wsOpen && staleAfterSuspend) {
+                const probeAt = Date.now();
+                try {
+                    impersonateWs.send(JSON.stringify({ event: 'pusher:ping', data: {} }));
+                } catch (_) { forceReconnect(); return; }
+                setTimeout(() => {
+                    if (impersonateWsLastPongAt >= probeAt) reloadConversation();
+                    else forceReconnect();
+                }, 3000);
+                return;
+            }
+
+            if (sseOpen && staleAfterSuspend) { forceReconnect(); return; }
+
+            reloadConversation();
+        }
+
+        // Returning to the foreground: remember how long we were away so a quick
+        // tab-switch is told apart from a real suspend.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                adminHiddenSince = Date.now();
+                return;
+            }
+            if (!authToken) return;
+
+            const hiddenMs = adminHiddenSince ? (Date.now() - adminHiddenSince) : 0;
+            adminHiddenSince = null;
+
+            ensureAdminRealtimeFresh(hiddenMs);
+            ensureImpersonateRealtimeFresh(hiddenMs);
+        });
+
+        // Network came back (laptop woke, mobile regained coverage): treat it as a
+        // real suspend — the sockets did not survive it even if they say they did.
+        window.addEventListener('online', () => {
+            if (!authToken) return;
+            ensureAdminRealtimeFresh(9000);
+            ensureImpersonateRealtimeFresh(9000);
+        });
 
         function handleAdminNotificationEvent(notification) {
             // Lightweight live-refresh signals ride the admin channel but are NOT
@@ -3912,6 +4127,7 @@
                     return;
                 }
                 if (ev === 'pusher:ping') { try { ws.send(JSON.stringify({ event: 'pusher:pong', data: {} })); } catch (_) {} return; }
+                if (ev === 'pusher:pong') { impersonateWsLastPongAt = Date.now(); return; }
                 if (!ev || ev.indexOf('pusher') === 0) return;
                 let data = null;
                 try { data = typeof f.data === 'string' ? JSON.parse(f.data) : f.data; } catch (_) { return; }
@@ -11936,6 +12152,18 @@
             // stop replying as this fake user in this thread.
             takeOverImpersonateBot(fakeUser, senderUsername);
 
+            await renderImpersonateThread(fakeUser, senderUsername);
+        }
+
+        /**
+         * Fetch and render one impersonation thread. Split out of selectSender so
+         * the resume path can redraw the conversation after a suspend — a DM that
+         * arrived while the panel was frozen never reached the socket handler —
+         * without re-running the take-over POST or pushing a history entry.
+         *
+         * @param {boolean} focusInput false when refreshing under the admin's feet.
+         */
+        async function renderImpersonateThread(fakeUser, senderUsername, focusInput = true) {
             // Generate fake session ID using MD5 to match the format in private-message.php
             const fakeSessionId = 'fake_' + md5(fakeUser);
 
@@ -12006,9 +12234,9 @@
                     
                     // Scroll to bottom
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    
+
                     // Focus on message input
-                    document.getElementById('impersonate-message').focus();
+                    if (focusInput) document.getElementById('impersonate-message').focus();
                 } else {
                     console.error('Invalid data received:', data);
                     messagesDiv.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px;">Error loading messages</div>';
