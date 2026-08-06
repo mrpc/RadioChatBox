@@ -230,6 +230,11 @@ class RadioChatBox {
         // from a long suspend (mobile freezes the socket while in the background).
         if (document.hidden) {
             this._hiddenSince = Date.now();
+            // Say we are going, instead of letting the server infer it from
+            // silence. A backgrounded phone freezes this page — heartbeat and all
+            // — and the server used to drop the session after five minutes, so a
+            // reader with the app in their pocket stopped counting as present.
+            this.sendAwayBeacon();
             return;
         }
         if (!this.username) {
@@ -247,6 +252,39 @@ class RadioChatBox {
         const hiddenMs = this._hiddenSince ? (Date.now() - this._hiddenSince) : 0;
         this._hiddenSince = null;
         this.ensureRealtimeFresh(hiddenMs);
+        // Back in the room: clear the away flag now rather than up to a minute
+        // from now, so the user list shows them again immediately.
+        this.sendHeartbeat();
+    }
+
+    /**
+     * Tell the server we are backgrounding, on the way out.
+     *
+     * sendBeacon is the only call that reliably survives a page being frozen or
+     * unloaded — a normal fetch is cancelled — which is exactly the moment we
+     * need to report. Sent form-encoded on purpose: that is a "simple" request,
+     * so it needs no CORS preflight and works from an embed on another origin,
+     * where a JSON beacon would be silently dropped.
+     */
+    sendAwayBeacon() {
+        if (!this.username || !this.sessionId) {
+            return;
+        }
+        const url = `${this.apiUrl}/api/heartbeat`;
+        const body = new URLSearchParams({
+            username: this.username,
+            sessionId: this.sessionId,
+            state: 'away'
+        });
+        try {
+            if (navigator.sendBeacon && navigator.sendBeacon(url, body)) {
+                return;
+            }
+            // Older browsers: keepalive lets the request outlive the page.
+            fetch(url, { method: 'POST', body: body, keepalive: true }).catch(() => {});
+        } catch (e) {
+            // Presence is best-effort; never let this break the page teardown.
+        }
     }
 
     /**

@@ -48,12 +48,19 @@ final class HeartbeatController
             $ipAddress = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
             $userAgent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
 
+            // A backgrounding client announces itself with state=away, delivered by
+            // navigator.sendBeacon as the page freezes (see chat.js). Anything else
+            // — including no state at all — is a normal, present heartbeat.
+            $state = ((string) ($input['state'] ?? '')) === ChatService::PRESENCE_AWAY
+                ? ChatService::PRESENCE_AWAY
+                : ChatService::PRESENCE_ACTIVE;
+
             $chatService = new ChatService();
 
             // Balance fake users first, then update the heartbeat (which publishes
             // the user update carrying the correct count) and records the device UA.
             $chatService->balanceFakeUsers();
-            $chatService->updateHeartbeat($username, $sessionId, $ipAddress, $userAgent);
+            $chatService->updateHeartbeat($username, $sessionId, $ipAddress, $userAgent, $state);
 
             $sessionInfo = $chatService->getSessionInfo($username, $sessionId);
 

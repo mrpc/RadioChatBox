@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client on track change (Scheduler → `chat:updates` `now_playing`) instead of a
   15s per-client poll. Only connection-health reconnects and the presence
   heartbeat remain as timers.
+- **Presence tells "backgrounded" apart from "gone".** A phone that goes into the
+  background freezes the page, heartbeat included, so after five minutes the
+  session was deleted and a reader with the chat in their pocket stopped counting
+  as present — peak concurrency read low for a mobile audience. One timestamp was
+  answering two questions, and widening it would have put ghosts straight into
+  the user list. The client now *announces* the absence with a `sendBeacon` on
+  `visibilitychange` (the one call that survives a page being frozen), stored as
+  `presence_sessions.state`: an `away` session is kept for 30 minutes and still
+  counted as present, but is **not** in the user list, which keeps its strict
+  five-minute rule. Silence is still read as gone — only a declared absence gets
+  the longer rope, and it expires too.
 - **One shared realtime contract** (`public/js/realtime-contract.js`), loaded by
   both the chat and the admin panel. Several unrelated payloads ride the private
   channel under a single `private` event — a DM, a typing cue, a read receipt, a

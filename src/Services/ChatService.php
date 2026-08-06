@@ -16,6 +16,17 @@ class ChatService
     private const RATE_LIMIT_PREFIX = 'ratelimit:';
     private const USER_UPDATE_CHANNEL = 'chat:user_updates';
 
+    /**
+     * Presence states. A session is `away` only when the client explicitly said
+     * so (the visibilitychange beacon) — silence is never read as away, it stays
+     * `active` and expires normally. See the presence_away_state migration.
+     */
+    public const PRESENCE_ACTIVE = 'active';
+    public const PRESENCE_AWAY = 'away';
+
+    /** A backgrounded session still counts as present for this long. */
+    public const AWAY_CONCURRENCY_WINDOW = '30 minutes';
+
     public function __construct()
     {
         $this->db = PramnosDatabase::getInstance();
@@ -204,11 +215,15 @@ class ChatService
      * send (public and DM) so an actively-chatting user always shows online.
      * Best-effort; never fails the surrounding action.
      */
-    public function refreshPresence(string $username, string $sessionId, string $ipAddress = '', ?int $userId = null, string $userAgent = ''): void
+    public function refreshPresence(string $username, string $sessionId, string $ipAddress = '', ?int $userId = null, string $userAgent = '', string $state = self::PRESENCE_ACTIVE): void
     {
         if ($username === '' || $sessionId === '') {
             return;
         }
+        // Every path that is not the explicit "I am backgrounding" beacon is
+        // proof the user is here (a message, an SSE connect, a beating tab), so
+        // it clears any earlier away flag.
+        $state = $state === self::PRESENCE_AWAY ? self::PRESENCE_AWAY : self::PRESENCE_ACTIVE;
         $ip = $ipAddress !== '' ? $ipAddress : '0.0.0.0'; // ip_address is NOT NULL
         try {
             $qb = $this->db->queryBuilder()->from('presence_sessions');
@@ -219,11 +234,12 @@ class ChatService
                 'user_id'        => $userId,
                 'last_heartbeat' => $qb->raw('NOW()'),
                 'joined_at'      => $qb->raw('NOW()'),
+                'state'          => $state,
             ];
             // On the username+session unique conflict, refresh heartbeat and ip.
             // user_id is left out of the conflict-update so an existing row keeps
             // its user link.
-            $updateOnConflict = ['last_heartbeat', 'ip_address'];
+            $updateOnConflict = ['last_heartbeat', 'ip_address', 'state'];
             // Only record the user agent when we actually have one (the heartbeat
             // path). Other callers (SSE connect, message send) pass '' — don't let
             // them overwrite a good UA with an empty string.
@@ -1061,7 +1077,7 @@ class ChatService
      *
      * OPTIMIZED: Rate-limits user list updates to reduce SSE spam
      */
-    public function updateHeartbeat(string $username, string $sessionId, string $ipAddress = '', string $userAgent = ''): bool
+    public function updateHeartbeat(string $username, string $sessionId, string $ipAddress = '', string $userAgent = '', string $state = self::PRESENCE_ACTIVE): bool
     {
         try {
             // Clean up inactive sessions first (this might change the user list)
@@ -1073,7 +1089,7 @@ class ChatService
             // still open and beating would stay offline forever, never recreated.
             // The user is clearly present (they just beat), so (re)create the row.
             // The heartbeat carries the browser UA — the one path that records it.
-            $this->refreshPresence($username, $sessionId, $ipAddress, $this->resolveUserId($username), $userAgent);
+            $this->refreshPresence($username, $sessionId, $ipAddress, $this->resolveUserId($username), $userAgent, $state);
 
             // PERFORMANCE OPTIMIZATION: Only publish user updates every 10 seconds
             // Heartbeats happen frequently (every 10-30s per user), no need to spam SSE
@@ -1193,6 +1209,8 @@ class ChatService
                  FROM presence_sessions a
                  LEFT JOIN user_profiles p ON a.username = p.username
                  LEFT JOIN users u ON a.user_id = u.userid
+                 WHERE COALESCE(a.state, \'active\') <> \'away\'
+                   AND a.last_heartbeat > NOW() - INTERVAL \'5 minutes\'
                  ORDER BY a.username, a.joined_at ASC'
             );
 

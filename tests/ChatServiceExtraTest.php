@@ -307,4 +307,89 @@ class ChatServiceExtraTest extends TestCase
         }
         $this->fail("reply message '{$text}' not found in history");
     }
+
+    /**
+     * A backgrounded phone is still someone in the chat.
+     *
+     * Mobile freezes the page, so the 60s heartbeat stops and the old five-minute
+     * rule deleted the session — the reader vanished from presence while still
+     * very much there, and peak concurrency under-reported a mobile audience.
+     * The client now announces the absence (sendBeacon → state=away) and the two
+     * questions are answered separately: OUT of the user list, so no ghosts, but
+     * still counted as present.
+     */
+    public function testAwaySessionLeavesTheUserListButStillCountsAsPresent(): void
+    {
+        $pdo = TestDatabase::connection();
+
+        // Two people: one beating normally, one that just backgrounded.
+        $this->service->refreshPresence($this->user, $this->session, $this->ip);
+        $away = 'away' . $this->suffix;
+        $this->service->refreshPresence($away, 'sess_away' . $this->suffix, $this->ip, null, '', ChatService::PRESENCE_AWAY);
+
+        $stmt = $pdo->prepare('SELECT state FROM presence_sessions WHERE username = ?');
+        $stmt->execute([$away]);
+        $this->assertSame('away', $stmt->fetchColumn(), 'the beacon is recorded as a state, not a deletion');
+
+        $listed = array_column($this->service->getActiveUsers(), 'username');
+        $this->assertContains($this->user, $listed);
+        $this->assertNotContains($away, $listed, 'an away session must never show up as online');
+
+        // ...but it is still present for the purpose of counting concurrency.
+        $counted = (int) $pdo->query(
+            "SELECT COUNT(DISTINCT username) FROM presence_sessions
+             WHERE (COALESCE(state, 'active') <> 'away' AND last_heartbeat > NOW() - INTERVAL '5 minutes')
+                OR (state = 'away' AND last_heartbeat > NOW() - INTERVAL '30 minutes')"
+        )->fetchColumn();
+        $this->assertGreaterThanOrEqual(2, $counted, 'both sessions count toward concurrency');
+    }
+
+    /**
+     * Coming back clears the flag: any presence refresh other than the beacon is
+     * proof the user is here, so they reappear in the list without waiting for a
+     * state to be reset explicitly.
+     */
+    public function testReturningFromAwayPutsTheUserBackInTheList(): void
+    {
+        $this->service->refreshPresence($this->user, $this->session, $this->ip, null, '', ChatService::PRESENCE_AWAY);
+        $this->assertNotContains($this->user, array_column($this->service->getActiveUsers(), 'username'));
+
+        $this->service->refreshPresence($this->user, $this->session, $this->ip);
+
+        $this->assertContains($this->user, array_column($this->service->getActiveUsers(), 'username'));
+    }
+
+    /**
+     * The two expiries: silence still means gone after five minutes, an announced
+     * absence gets half an hour. Both are enforced by cleanup_inactive_sessions()
+     * in one pass, so a stale away row cannot linger forever either.
+     */
+    public function testCleanupKeepsAnAwaySessionButDropsASilentOne(): void
+    {
+        $pdo = TestDatabase::connection();
+
+        $silent = 'silent' . $this->suffix;
+        $away   = 'away' . $this->suffix;
+        $stale  = 'stale' . $this->suffix;
+
+        $insert = $pdo->prepare(
+            'INSERT INTO presence_sessions (username, session_id, ip_address, last_heartbeat, joined_at, state)
+             VALUES (?, ?, ?, NOW() - (? || \' minutes\')::interval, NOW(), ?)'
+        );
+        $insert->execute([$silent, 's1' . $this->suffix, $this->ip, 10, 'active']);
+        $insert->execute([$away, 's2' . $this->suffix, $this->ip, 10, 'away']);
+        $insert->execute([$stale, 's3' . $this->suffix, $this->ip, 45, 'away']);
+
+        $pdo->query('SELECT cleanup_inactive_sessions()');
+
+        $survivors = $pdo->prepare(
+            'SELECT username FROM presence_sessions WHERE username IN (?, ?, ?)'
+        );
+        $survivors->execute([$silent, $away, $stale]);
+        $left = $survivors->fetchAll(\PDO::FETCH_COLUMN);
+
+        $this->assertNotContains($silent, $left, 'silent for 10 minutes → gone');
+        $this->assertContains($away, $left, 'away for 10 minutes → still here');
+        $this->assertNotContains($stale, $left, 'away for 45 minutes → expired too');
+    }
 }

@@ -5,6 +5,7 @@ namespace RadioChatBox\Services;
 use Pramnos\Cache\FlatCache;
 use RuntimeException;
 use Pramnos\Database\Database as PramnosDatabase;
+use RadioChatBox\Services\ChatService;
 
 /**
  * StatsService - Handles collection and retrieval of statistics
@@ -106,17 +107,30 @@ class StatsService
         }
         $this->ensureTablesExist();
         
-        // Count concurrent users (unique usernames in sessions)
+        // Count concurrent users (unique usernames in sessions).
+        //
+        // A phone in someone's pocket is still someone in the chat: mobile
+        // browsers freeze the page, so the 60s heartbeat stops and the strict
+        // five-minute rule dropped a backgrounded reader who was very much still
+        // there — peak concurrency read low for a mobile audience. A session that
+        // ANNOUNCED it was backgrounding (the visibilitychange beacon → state
+        // 'away') therefore keeps counting for half an hour. Silence still means
+        // gone; only a declared absence gets the longer rope. The user list is
+        // unaffected and keeps the strict rule, so nobody sees ghosts.
+        $presentWindow = "((COALESCE(state, 'active') <> 'away' AND last_heartbeat > NOW() - INTERVAL '5 minutes')"
+            . " OR (state = 'away' AND last_heartbeat > NOW() - INTERVAL '"
+            . ChatService::AWAY_CONCURRENCY_WINDOW . "'))";
+
         $concurrentUsers = (int) $this->db->queryBuilder()
             ->from('presence_sessions')
             ->select(['COUNT(DISTINCT username) AS count'])
-            ->whereRaw("last_heartbeat > NOW() - INTERVAL '5 minutes'")
+            ->whereRaw($presentWindow)
             ->first()->fields['count'];
 
         // Count total active sessions (including multiple tabs)
         $activeSessions = $this->db->queryBuilder()
             ->from('presence_sessions')
-            ->whereRaw("last_heartbeat > NOW() - INTERVAL '5 minutes'")
+            ->whereRaw($presentWindow)
             ->count();
 
         // Get radio listeners from RadioStatusService
