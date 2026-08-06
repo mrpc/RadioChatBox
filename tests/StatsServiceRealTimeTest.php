@@ -179,6 +179,123 @@ class StatsServiceRealTimeTest extends TestCase
     }
 
     /**
+     * People who only ever send DMs are still users. The counts came from the
+     * public messages table alone, so a DM-only install reported "Active Users:
+     * 0" all day next to thousands of private messages.
+     */
+    public function testDmSendersCountAsActiveUsers()
+    {
+        $before = $this->activeUserCountsToday();
+
+        $ids = [];
+        try {
+            foreach (['dm_guest_a', 'dm_guest_b'] as $sender) {
+                $stmt = self::$pdo->prepare(
+                    "INSERT INTO private_messages (from_username, to_username, message, created_at)
+                     VALUES (?, 'somebody', 'hello', NOW()) RETURNING id"
+                );
+                $stmt->execute([$sender]);
+                $ids[] = $stmt->fetchColumn();
+            }
+
+            $after = $this->activeUserCountsToday();
+
+            $this->assertSame($before['active_users'] + 2, $after['active_users'],
+                'both DM senders must count as active users');
+            $this->assertSame($before['guest_users'] + 2, $after['guest_users'],
+                'unregistered DM senders count as guests');
+
+            FlatCache::default()->delete('stats:summary');
+            $summary = self::$service->getSummary();
+            $this->assertGreaterThanOrEqual(2, $summary['today']['active_users'],
+                'the dashboard summary must see the DM senders');
+        } finally {
+            $stmt = self::$pdo->prepare("DELETE FROM private_messages WHERE id = ANY(?)");
+            $stmt->execute(['{' . implode(',', $ids) . '}']);
+        }
+    }
+
+    /** A bot talking to itself is not an audience: fake users are never counted. */
+    public function testBotsAreNotCountedAsActiveUsers()
+    {
+        $before = $this->activeUserCountsToday();
+
+        $nickname = 'stats_test_bot';
+        $ids = [];
+        try {
+            $stmt = self::$pdo->prepare(
+                "INSERT INTO fake_users (nickname, is_active) VALUES (?, true)
+                 ON CONFLICT (nickname) DO NOTHING"
+            );
+            $stmt->execute([$nickname]);
+
+            $stmt = self::$pdo->prepare(
+                "INSERT INTO private_messages (from_username, to_username, message, created_at)
+                 VALUES (?, 'dm_guest_c', 'hi there', NOW()) RETURNING id"
+            );
+            $stmt->execute([$nickname]);
+            $ids[] = $stmt->fetchColumn();
+
+            $this->assertSame($before, $this->activeUserCountsToday(),
+                'a fake user (bot) must not move the user counts');
+        } finally {
+            $stmt = self::$pdo->prepare("DELETE FROM private_messages WHERE id = ANY(?)");
+            $stmt->execute(['{' . implode(',', $ids) . '}']);
+            $stmt = self::$pdo->prepare("DELETE FROM fake_users WHERE nickname = ?");
+            $stmt->execute([$nickname]);
+        }
+    }
+
+    /** The stored hourly rollup — what the daily chart is built from — sees DMs too. */
+    public function testHourlyAggregationCountsDmSenders()
+    {
+        $hour = self::$pdo
+            ->query("SELECT date_trunc('hour', NOW() - INTERVAL '1 hour')")
+            ->fetchColumn();
+
+        $ids = [];
+        try {
+            $stmt = self::$pdo->prepare(
+                "INSERT INTO private_messages (from_username, to_username, message, created_at)
+                 VALUES ('dm_hourly_guest', 'somebody', 'hello',
+                         date_trunc('hour', NOW() - INTERVAL '1 hour') + INTERVAL '5 minutes')
+                 RETURNING id"
+            );
+            $stmt->execute();
+            $ids[] = $stmt->fetchColumn();
+
+            $this->assertTrue(self::$service->aggregateHourlyStats($hour));
+
+            $stmt = self::$pdo->prepare(
+                "SELECT active_users, guest_users FROM stats_hourly WHERE stat_hour = ?"
+            );
+            $stmt->execute([$hour]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            $this->assertNotFalse($row, 'the hour must have been aggregated');
+            $this->assertGreaterThanOrEqual(1, (int) $row['active_users'],
+                'a DM-only hour must not aggregate to zero active users');
+            $this->assertGreaterThanOrEqual(1, (int) $row['guest_users']);
+        } finally {
+            $stmt = self::$pdo->prepare("DELETE FROM private_messages WHERE id = ANY(?)");
+            $stmt->execute(['{' . implode(',', $ids) . '}']);
+            $stmt = self::$pdo->prepare("DELETE FROM stats_hourly WHERE stat_hour = ?");
+            $stmt->execute([$hour]);
+        }
+    }
+
+    /** The shared SQL function both the aggregations and the summary read. */
+    private function activeUserCountsToday(): array
+    {
+        $row = self::$pdo
+            ->query("SELECT active_users, guest_users, registered_users
+                     FROM active_user_counts(CURRENT_DATE, CURRENT_DATE + 1)")
+            ->fetch(\PDO::FETCH_ASSOC);
+
+        return array_map('intval', $row);
+    }
+
+    /**
      * Test that cache works on second call
      */
     public function testCacheWorksOnSecondCall()

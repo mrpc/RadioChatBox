@@ -603,6 +603,16 @@ class StatsService
         // Latest snapshot
         $latestSnapshot = $safe(fn () => $this->getLatestSnapshot());
 
+        // Active/guest/registered users for today straight from the raw tables:
+        // the hourly rollup only reaches the last complete hour, and on a
+        // DM-driven install the people who matter are the ones the aggregation
+        // has not seen yet.
+        $todayStats = $this->withActiveUserCounts(
+            $todayStats,
+            date('Y-m-d') . ' 00:00:00',
+            date('Y-m-d', strtotime('+1 day')) . ' 00:00:00'
+        );
+
         // If users just arrived and haven't been aggregated to hourly stats yet,
         // use real-time concurrent users from latest snapshot if higher
         if ($todayStats && $latestSnapshot) {
@@ -679,6 +689,13 @@ class StatsService
                 $todayStats['guest_users'] ?? 0,
                 (int)($realTimeUsers['guest_users'] ?? 0)
             );
+            // Someone present but silent is still active today; keep the headline
+            // from dropping below the parts it is made of.
+            $todayStats['active_users'] = max(
+                $todayStats['active_users'] ?? 0,
+                (int)($realTimeUsers['registered_users'] ?? 0)
+                    + (int)($realTimeUsers['guest_users'] ?? 0)
+            );
         // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log("StatsService: Error querying real-time users: " . $e->getMessage(), 'radiochatbox');
@@ -752,9 +769,51 @@ class StatsService
     }
 
     /**
+     * Overlay the distinct-people counts for [$start, $end) onto a period's stats.
+     *
+     * The MAX(active_users) rollups the readers use are a per-hour figure — the
+     * busiest hour of the week is not the week's audience — and they were blind
+     * to direct messages entirely. active_user_counts() is the same SQL function
+     * the stored aggregations call, so the live summary and the history agree.
+     *
+     * @param array  $stats Period stats to overlay
+     * @param string $start Inclusive range start, 'Y-m-d H:i:s'
+     * @param string $end   Exclusive range end, 'Y-m-d H:i:s'
+     * @return array Stats with active/guest/registered users replaced
+     */
+    private function withActiveUserCounts(array $stats, string $start, string $end): array
+    {
+        try {
+            $result = $this->db->preparedQuery(
+                "SELECT active_users, guest_users, registered_users
+                 FROM active_user_counts(:range_start, :range_end)",
+                ['range_start' => $start, 'range_end' => $end]
+            );
+            $counts = $result ? $result->fetch() : null;
+
+            if ($counts) {
+                $stats['active_users'] = (int) ($counts['active_users'] ?? 0);
+                $stats['guest_users'] = (int) ($counts['guest_users'] ?? 0);
+                $stats['registered_users'] = (int) ($counts['registered_users'] ?? 0);
+            }
+        // @codeCoverageIgnoreStart
+        } catch (\Exception $e) {
+            // Database still on an older schema (migration pending): keep the
+            // aggregated values instead of blanking the summary.
+            \Pramnos\Logs\Logger::log(
+                "StatsService: active_user_counts unavailable: " . $e->getMessage(),
+                'radiochatbox'
+            );
+        }
+        // @codeCoverageIgnoreEnd
+
+        return $stats;
+    }
+
+    /**
      * Compute this week's statistics.
      * Includes all data from Monday to today.
-     * 
+     *
      * @return array|null This week's stats or null if no data available
      */
     private function computeCurrentWeekStats(): ?array
@@ -784,7 +843,7 @@ class StatsService
         $weekData = $result ? $result->fetch() : null;
 
         if ($weekData && ($weekData['active_users'] !== null || $weekData['total_messages'] !== null)) {
-            return [
+            return $this->withActiveUserCounts([
                 'stat_year' => (int)date('Y'),
                 'stat_week' => (int)date('W'),
                 'week_start' => $weekStart,
@@ -798,7 +857,7 @@ class StatsService
                 'radio_listeners_avg' => $weekData['radio_listeners_avg'] ?? 0,
                 'radio_listeners_peak' => $weekData['radio_listeners_peak'] ?? 0,
                 'peak_concurrent_users' => $weekData['peak_concurrent_users'] ?? 0
-            ];
+            ], $weekStartTime, date('Y-m-d', strtotime('+1 day')) . ' 00:00:00');
         }
 
         return null;
@@ -839,7 +898,7 @@ class StatsService
         if ($monthData && ($monthData['active_users'] !== null || $monthData['total_messages'] !== null)) {
             $thisYear = (int)date('Y');
             $thisMonth = (int)date('m');
-            return [
+            return $this->withActiveUserCounts([
                 'stat_year' => $thisYear,
                 'stat_month' => $thisMonth,
                 'active_users' => $monthData['active_users'] ?? 0,
@@ -852,7 +911,7 @@ class StatsService
                 'radio_listeners_avg' => $monthData['radio_listeners_avg'] ?? 0,
                 'radio_listeners_peak' => $monthData['radio_listeners_peak'] ?? 0,
                 'peak_concurrent_users' => $monthData['peak_concurrent_users'] ?? 0
-            ];
+            ], $monthStartTime, date('Y-m-d', strtotime('+1 day')) . ' 00:00:00');
         }
 
         return null;
@@ -892,7 +951,7 @@ class StatsService
 
         if ($yearData && ($yearData['active_users'] !== null || $yearData['total_messages'] !== null)) {
             $thisYear = (int)date('Y');
-            return [
+            return $this->withActiveUserCounts([
                 'stat_year' => $thisYear,
                 'active_users' => $yearData['active_users'] ?? 0,
                 'guest_users' => $yearData['guest_users'] ?? 0,
@@ -904,7 +963,7 @@ class StatsService
                 'radio_listeners_avg' => $yearData['radio_listeners_avg'] ?? 0,
                 'radio_listeners_peak' => $yearData['radio_listeners_peak'] ?? 0,
                 'peak_concurrent_users' => $yearData['peak_concurrent_users'] ?? 0
-            ];
+            ], $yearStartTime, date('Y-m-d', strtotime('+1 day')) . ' 00:00:00');
         }
 
         return null;
