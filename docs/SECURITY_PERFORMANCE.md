@@ -161,7 +161,7 @@ Important logs to monitor:
 ### New Files
 - `src/CleanupService.php` - Automatic cleanup tasks
 - `public/api/cron/cleanup.php` - Cron endpoint
-- `database/migrations/004_add_performance_indexes.sql` - Performance indexes
+- Performance indexes (since squashed into the `create_schema` baseline in `app/Migrations`)
 - `analyze-security.php` - Security analysis script
 - `docs/SECURITY_PERFORMANCE.md` - This document
 

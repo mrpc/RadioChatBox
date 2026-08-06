@@ -7,6 +7,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
+    <!-- The private-channel payload contract, shared with the chat client. The
+         impersonation feed classifies every 'private' event through it. -->
+    <script src="/js/realtime-contract.js"></script>
     <style>
         * {
             margin: 0;
@@ -222,6 +225,47 @@
             font-size: 12px;
             line-height: 18px;
         }
+
+        /* React-as-this-fake-user control, impersonation view only. */
+        .rcb-bubble { position: relative; }
+
+        .rcb-react-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            opacity: 0.45;
+            font-size: 13px;
+            padding: 2px 4px;
+            line-height: 1;
+        }
+
+        .rcb-react-btn:hover { opacity: 1; }
+
+        .rcb-reaction-picker {
+            position: absolute;
+            z-index: 20;
+            bottom: 100%;
+            right: 0;
+            display: flex;
+            gap: 2px;
+            padding: 4px 6px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+
+        .rcb-reaction-picker button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 2px;
+            border-radius: 50%;
+        }
+
+        .rcb-reaction-picker button:hover { background: var(--gray-100, #f3f4f6); }
 
         .rcb-reaction-pill span {
             font-size: 11px;
@@ -4194,6 +4238,93 @@
         // pills show who-many, never a picker. The payload is the same one the chat
         // renders — [{emoji, count, mine}] — attached by ReactionService.
 
+        // The emoji an admin may react with while impersonating — the same set the
+        // chat picker offers (ReactionService::getAllowedEmojis, which reads the
+        // reaction_emojis setting and falls back to these). Fetched once.
+        const RCB_DEFAULT_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🤘'];
+        let rcbReactionEmojis = null;
+
+        async function getReactionEmojis() {
+            if (rcbReactionEmojis) return rcbReactionEmojis;
+            rcbReactionEmojis = RCB_DEFAULT_REACTION_EMOJIS;
+            try {
+                const r = await fetch('/api/settings');
+                if (r.ok) {
+                    const d = await r.json();
+                    const raw = (d.settings && d.settings.reaction_emojis) || d.reaction_emojis || '';
+                    const parsed = String(raw).split(/[\s,]+/).filter(Boolean);
+                    if (parsed.length) rcbReactionEmojis = parsed;
+                }
+            } catch (_) { /* defaults are fine */ }
+            return rcbReactionEmojis;
+        }
+
+        /**
+         * React as the impersonated fake user. The server toggles and broadcasts,
+         * so the pills repaint through the normal reaction event — nothing is
+         * drawn optimistically here.
+         */
+        async function impersonateReact(messageId, emoji) {
+            if (!currentImpersonateConversation) return;
+            try {
+                const body = new URLSearchParams({
+                    impersonate_as: currentImpersonateConversation.fakeUser,
+                    message_id: String(messageId),
+                    emoji: emoji
+                });
+                const r = await fetch('/api/admin/impersonate-react', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: body.toString()
+                });
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    alert(d.error || 'Could not react');
+                }
+            } catch (e) {
+                console.error('impersonate react failed:', e);
+            }
+        }
+
+        /** Open a small picker under a bubble and react with whatever is chosen. */
+        async function openImpersonateReactionPicker(button, messageId) {
+            document.querySelectorAll('.rcb-reaction-picker').forEach(p => p.remove());
+
+            const emojis = await getReactionEmojis();
+            const picker = document.createElement('div');
+            picker.className = 'rcb-reaction-picker';
+            emojis.forEach(emoji => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = emoji;
+                b.onclick = (ev) => {
+                    ev.stopPropagation();
+                    picker.remove();
+                    impersonateReact(messageId, emoji);
+                };
+                picker.appendChild(b);
+            });
+            button.parentNode.appendChild(picker);
+
+            // Next click anywhere closes it.
+            setTimeout(() => {
+                document.addEventListener('click', function close() {
+                    picker.remove();
+                    document.removeEventListener('click', close);
+                }, { once: true });
+            }, 0);
+        }
+
+        /** The react button shown on an impersonation bubble. */
+        function impersonateReactButtonHtml(messageId) {
+            if (messageId == null) return '';
+            return `<button type="button" class="rcb-react-btn" title="React as this user"
+                onclick="event.stopPropagation(); openImpersonateReactionPicker(this, '${escapeHtml(String(messageId))}')">☺+</button>`;
+        }
+
         /** Pills markup for one message, or '' when nothing was reacted. */
         function reactionPillsHtml(reactions) {
             if (!Array.isArray(reactions) || reactions.length === 0) return '';
@@ -4215,16 +4346,17 @@
             const bubble = container.querySelector(`[data-message-id="${String(messageId)}"]`);
             if (!bubble) return; // not on screen (older page / other conversation)
 
-            const list = Object.keys(counts || {})
-                .map(emoji => ({ emoji: emoji, count: counts[emoji] | 0 }))
-                .filter(r => r.count > 0);
+            const list = window.RcbRealtime.reactionCountsToList(counts);
 
             const existing = bubble.querySelector('.rcb-reactions');
             if (existing) existing.remove();
             if (!list.length) return; // last reaction removed → no pills at all
 
-            // Inside the bubble body, so the pills sit under the text like in chat.
-            const target = bubble.querySelector('.rcb-bubble') || bubble.firstElementChild || bubble;
+            // Inside the bubble body (or the message cell, in the moderation
+            // table), so the pills sit under the text like they do in chat.
+            const target = bubble.querySelector('.rcb-bubble, .rcb-msg-cell')
+                || bubble.firstElementChild
+                || bubble;
             target.insertAdjacentHTML('beforeend', reactionPillsHtml(list));
         }
 
@@ -4432,6 +4564,10 @@
             }
             if (notification && notification.signal === 'bot_activity') {
                 onBotActivitySignal(notification);
+                return;
+            }
+            if (notification && notification.signal === 'reactions_changed') {
+                onReactionsChangedSignal(notification);
                 return;
             }
             if (notification && notification.signal === 'messages_changed') {
@@ -4659,20 +4795,15 @@
         function handleImpersonateChatMessage(message) {
             // Check if this message is for the current conversation we're viewing
             if (!currentImpersonateConversation) return;
-            if (!message || typeof message !== 'object') return;
-
-            // Not everything on the private channel is a message. A typing cue
-            // (TypingController / impersonate-typing) and a DM reaction update
-            // (ReactionService::publishDmUpdate) ride the very same 'private'
-            // event and carry no text, no id and no timestamp — they were being
-            // drawn as an empty bubble stamped "unknown time". The chat client
-            // has always filtered them (handlePrivateMessage in js/chat.js);
-            // this view never did.
-            if (message.type === 'typing') return;
+            // Several unrelated payloads share the 'private' event; RcbRealtime
+            // (js/realtime-contract.js) is the one description of which is which,
+            // shared with the chat client so the two cannot drift apart.
+            const RT = window.RcbRealtime;
+            const kind = RT.classifyPrivatePayload(message);
 
             // A reaction is not a new message — it repaints the pills on one that
             // is already on screen.
-            if (message.type === 'reaction') {
+            if (kind === RT.PRIVATE_REACTION) {
                 applyReactionUpdate(
                     document.getElementById('impersonate-messages'),
                     message.message_id,
@@ -4681,10 +4812,10 @@
                 return;
             }
 
-            // Belt and braces for anything else that may later share the channel:
-            // a real DM always has an id and either text or an attachment.
-            const hasBody = !!message.message || !!(message.attachment && message.attachment.file_path);
-            if (!hasBody || (message.id == null && message.message_id == null)) return;
+            // Typing cues, read receipts, author notifications and anything
+            // unrecognised are not this view's business — and must never be drawn
+            // as a bubble, which is exactly the bug this replaced.
+            if (kind !== RT.PRIVATE_MESSAGE) return;
             if (message.from_username !== currentImpersonateConversation.fakeUser && 
                 message.from_username !== currentImpersonateConversation.senderUsername) return;
             if (message.to_username !== currentImpersonateConversation.fakeUser && 
@@ -4755,6 +4886,7 @@
             }
 
             content += reactionPillsHtml(message.reactions);
+            content += impersonateReactButtonHtml(msgId);
 
             msgDiv.innerHTML = content;
             // Was the admin already at the bottom? Capture BEFORE appending.
@@ -6544,14 +6676,14 @@
                                         ? ` <a href="#" onclick="event.stopPropagation(); showMessageEdits('${escapeHtml(String(msg.message_id)).replace(/'/g, "\\'")}'); return false;" style="font-size:11px; color:#6b7280;" title="View edit history">✎ edited</a>`
                                         : '';
                                     return `
-                                    <tr style="${rowStyle}${clickStyle}" ${rowClick}>
+                                    <tr style="${rowStyle}${clickStyle}" ${rowClick} data-message-id="${escapeHtml(String(msg.message_id))}">
                                         ${includePrivate ? `<td><span style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; ${isPrivate ? 'background: #fed7aa; color: #9a3412;' : 'background: #dbeafe; color: #1e40af;'}">${isPrivate ? 'DM' : 'PUBLIC'}</span></td>` : ''}
                                         <td>${new Date(msg.created_at).toLocaleString()}</td>
                                         ${includePrivate
                                             ? `<td>${fromLink}</td><td>${toLink}</td>`
                                             : `<td>${fromLink}</td>`
                                         }
-                                        <td>${photoHtml}${msgText}${editedHtml}${reactionPillsHtml(msg.reactions)}</td>
+                                        <td class="rcb-msg-cell">${photoHtml}${msgText}${editedHtml}${reactionPillsHtml(msg.reactions)}</td>
                                         ${!includePrivate ? `<td>${msg.ip_address}</td>` : ''}
                                     </tr>
                                 `;
@@ -8099,6 +8231,21 @@
                     loadUsers();
                 }
             }, 1200);
+        }
+
+        // Socket signal: reactions changed on some message. Repaint that one
+        // message wherever it happens to be on screen — the moderation table, the
+        // Bot Activity thread, an open conversation view or the impersonation
+        // panel — instead of reloading a list. Each container is asked in turn;
+        // applyReactionUpdate is a no-op where the message is not rendered, so
+        // this costs nothing on the tabs that are not showing it.
+        function onReactionsChangedSignal(signal) {
+            if (document.hidden || !signal || signal.message_id == null) return;
+            document.querySelectorAll(
+                '#messages-table, #bot-thread-messages, #impersonate-messages, #conversation-thread'
+            ).forEach(container => applyReactionUpdate(
+                container, signal.message_id, signal.counts
+            ));
         }
 
         // Socket signal: a photo was uploaded. Refresh the gallery if it is open —
@@ -13330,6 +13477,7 @@
                         }
 
                         content += reactionPillsHtml(msg.reactions);
+                        content += impersonateReactButtonHtml(msg.id != null ? msg.id : msg.message_id);
 
                         msgDiv.innerHTML = content;
                         wrapperDiv.appendChild(msgDiv);

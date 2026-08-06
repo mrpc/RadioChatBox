@@ -256,6 +256,7 @@ class ReactionService
                 'from_username' => $from,
                 'to_username'   => $to,
             ]);
+            $this->signalAdminReactionChange((string) $dmId, $counts);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('ReactionService::publishDmUpdate failed: ' . $e->getMessage(), 'radiochatbox');
@@ -444,6 +445,38 @@ class ReactionService
      * @param array<string,bool> $mineMap  emoji => true
      * @return array<int, array{emoji:string,count:int,mine:bool}>
      */
+    /**
+     * Live-refresh cue for the admin panel, which renders the same pills in the
+     * moderation list, the Bot Activity thread and the read-only conversation
+     * views. Those are not subscribed to the chat channels — the admin only
+     * listens on its own — so without this they showed whatever the reactions
+     * were at page load and never moved. Carries the counts so the panel can
+     * repaint one message instead of reloading a list. Best-effort.
+     *
+     * @param array<string, int> $counts emoji => count
+     */
+    private function signalAdminReactionChange(string $messageId, array $counts): void
+    {
+        try {
+            BroadcastingManager::instance()->broadcast(
+                'chat:admin_notifications',
+                'reactions_changed',
+                [
+                    'signal'     => 'reactions_changed',
+                    'message_id' => $messageId,
+                    'counts'     => $counts,
+                ]
+            );
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log(
+                'ReactionService: reactions_changed signal failed: ' . $e->getMessage(),
+                'radiochatbox'
+            );
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
     private function buildReactionList(array $countMap, array $mineMap): array
     {
         $list = [];
@@ -492,6 +525,7 @@ class ReactionService
                 'message_id' => $messageId,
                 'counts' => $counts,
             ]);
+            $this->signalAdminReactionChange($messageId, $counts);
         // @codeCoverageIgnoreStart
         } catch (\Exception $e) {
             \Pramnos\Logs\Logger::log('ReactionService::publishUpdate failed: ' . $e->getMessage(), 'radiochatbox');

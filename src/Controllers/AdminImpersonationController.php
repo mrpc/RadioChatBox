@@ -394,6 +394,65 @@ final class AdminImpersonationController
     }
 
     /**
+     * POST /api/admin/impersonate-react — {impersonate_as, message_id, emoji}.
+     * Toggle a DM reaction AS the fake user, so an admin who has taken over a
+     * conversation can react like any other participant instead of only being
+     * able to reply. Root/owner only. 200 {success, message_id, reactions,
+     * action}; bad input -> 400; unknown fake user -> 404.
+     *
+     * The public /api/private/react is not usable here: it authenticates by the
+     * caller's own chat session, which a fake user does not have. This is the
+     * same trade the impersonated send and typing endpoints make — the admin
+     * Bearer plus a root/owner check stands in for the session.
+     */
+    #[Route('/api/admin/impersonate-react', methods: 'POST', name: 'admin.impersonate.react', middleware: [AdminAuthMiddleware::class])]
+    public function react(): Response
+    {
+        $currentUser = AdminAuth::getCurrentUser();
+        if (!$currentUser || !in_array($currentUser['role'], ['root', 'owner'])) {
+            return Response::json(['error' => 'Forbidden'], 403);
+        }
+
+        $input     = $_POST;
+        $as        = trim((string) ($input['impersonate_as'] ?? ''));
+        $messageId = (int) ($input['message_id'] ?? 0);
+        $emoji     = (string) ($input['emoji'] ?? '');
+
+        if ($as === '' || $messageId <= 0 || $emoji === '') {
+            return Response::json(
+                ['error' => 'impersonate_as, message_id and emoji are required'],
+                400
+            );
+        }
+
+        // Only ever act as a real fake user — never as an arbitrary name.
+        if ((new FakeUserService())->getFakeUserByNickname($as) === null) {
+            return Response::json(['error' => 'Unknown fake user'], 404);
+        }
+
+        try {
+            // No session id: a fake user has none, and it is only used to record
+            // who reacted from where.
+            $result = (new \RadioChatBox\Services\ReactionService())
+                ->toggleDmReaction($messageId, $as, null, $emoji);
+
+            return Response::json(['success' => true] + $result);
+        } catch (InvalidArgumentException $e) {
+            return Response::json(['error' => $e->getMessage()], 400);
+        } catch (\RuntimeException $e) {
+            return Response::json(['error' => $e->getMessage()], 404);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log(
+                'AdminImpersonationController::react failed: ' . $e->getMessage(),
+                'radiochatbox'
+            );
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * POST /api/admin/bot-ask — {fake_user, peer, question}. Asks the LLM a
      * question ABOUT the conversation (not as the character) and returns the
      * answer to the admin. Nothing is stored or sent to the peer. Root/owner only.

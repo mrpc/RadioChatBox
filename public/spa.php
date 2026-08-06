@@ -522,6 +522,9 @@
     <script src="js/emojis.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/emojis.js'); ?>"></script>
     <script src="js/analytics.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/analytics.js'); ?>"></script>
     <script src="js/ads.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/ads.js'); ?>"></script>
+    <!-- The private-channel payload contract, shared with the admin panel. Must
+         load before chat.js, which classifies every 'private' event through it. -->
+    <script src="js/realtime-contract.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/realtime-contract.js'); ?>"></script>
     <script src="js/chat.js?v=<?php echo filemtime(PUBLIC_PATH . '/js/chat.js'); ?>"></script>
     <!-- Custom body scripts will be injected here -->
     <script id="custom-body-scripts"></script>

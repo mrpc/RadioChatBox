@@ -6124,13 +6124,21 @@ class RadioChatBox {
     }
     
     handlePrivateMessage(messageData) {
-        // A DM typing cue (shares the private channel, tagged type:'typing').
-        if (messageData && messageData.type === 'typing') {
+        // Several unrelated payloads share this one event. RcbRealtime
+        // (js/realtime-contract.js) is the single description of which is which,
+        // shared with the admin panel so the two clients cannot drift apart —
+        // that drift is exactly how the admin ended up drawing typing cues and
+        // reactions as messages.
+        const RT = window.RcbRealtime;
+        const kind = RT.classifyPrivatePayload(messageData);
+
+        // A DM typing cue.
+        if (kind === RT.PRIVATE_TYPING) {
             this.handleDmTyping(messageData);
             return;
         }
         // A "read receipt": the peer read the messages I sent them.
-        if (messageData && messageData.type === 'read') {
+        if (kind === RT.PRIVATE_READ) {
             // The reader is from_username; if I'm viewing that conversation, mark my
             // sent bubbles as seen.
             if (this.privateChat && this.privateChat.active
@@ -6140,7 +6148,7 @@ class RadioChatBox {
             return;
         }
         // Author-directed reaction notification (someone reacted to my message).
-        if (messageData && messageData.type === 'reaction_notification') {
+        if (kind === RT.PRIVATE_REACTION_NOTIFICATION) {
             if (messageData.to_username === this.username && messageData.from_username !== this.username) {
                 this.showReactionNotification(messageData.from_username, messageData.emoji);
                 // A persistent notification was also written server-side — refresh the badge.
@@ -6148,14 +6156,21 @@ class RadioChatBox {
             }
             return;
         }
-        // A DM reaction update (shares the private channel, tagged type:'reaction')
-        // is not a new message: update the pills on the target bubble in place.
-        if (messageData && messageData.type === 'reaction') {
+        // A DM reaction update is not a new message: update the pills on the
+        // target bubble in place.
+        if (kind === RT.PRIVATE_REACTION) {
             const other = messageData.from_username === this.username
                 ? messageData.to_username : messageData.from_username;
             if (this.privateChat.active && other === this.privateChat.withUser && messageData.message_id) {
                 this.handleReactionUpdate({ message_id: messageData.message_id, counts: messageData.counts });
             }
+            return;
+        }
+
+        // Not a kind we know how to render (a malformed payload, or something new
+        // that has started sharing the channel and has not been taught to the
+        // contract yet) — drop it rather than draw a bubble out of it.
+        if (kind !== RT.PRIVATE_MESSAGE) {
             return;
         }
 

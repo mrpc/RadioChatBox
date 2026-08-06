@@ -204,7 +204,7 @@ curl -X DELETE "http://localhost:98/api/admin/url-blacklist.php?id=4" \
 
 ### New Files
 - `/public/api/admin/url-blacklist.php` - API endpoint for CRUD operations
-- `/database/migrations/003_add_url_blacklist.sql` - Database migration
+- The `url_blacklist` table (since squashed into the `create_schema` baseline in `app/Migrations`)
 - `/docs/URL_BLACKLIST.md` - This documentation
 
 ### Modified Files

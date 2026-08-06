@@ -32,13 +32,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client on track change (Scheduler → `chat:updates` `now_playing`) instead of a
   15s per-client poll. Only connection-health reconnects and the presence
   heartbeat remain as timers.
+- **One shared realtime contract** (`public/js/realtime-contract.js`), loaded by
+  both the chat and the admin panel. Several unrelated payloads ride the private
+  channel under a single `private` event — a DM, a typing cue, a read receipt, a
+  reaction update, an author notification — and each client used to work out
+  which was which on its own. They drifted, and the admin grew exactly the bugs
+  that follow from guessing. Classification now lives in one file that both read,
+  and an unrecognised payload is dropped rather than rendered, so a future kind
+  cannot leak into a transcript before anyone teaches the clients about it.
+- **An admin can react as the fake user they are impersonating** (a picker on
+  each bubble, `POST /api/admin/impersonate-react`, root/owner). Taking over a
+  conversation gave you replies but not reactions, so the persona came across as
+  oddly unresponsive. The public react endpoint authenticates by the caller's own
+  chat session, which a fake user has none of — hence the admin-side route.
 - **Reactions are visible in the admin.** They existed only for the two people in
   the conversation; a moderator reading the same thread saw none of them.
   Read-only pills (emoji + count, no picker) now render everywhere the admin
-  reads messages: the impersonation conversation — live, so a reaction lands
-  while you watch — both read-only conversation views, the Bot Activity thread
-  and the Messages moderation list. The two admin endpoints that returned no
-  reactions at all now attach them, each type resolved against its own table.
+  reads messages: the impersonation conversation, both read-only conversation
+  views, the Bot Activity thread and the Messages moderation list. The two admin
+  endpoints that returned no reactions at all now attach them, each type resolved
+  against its own table. All of those views also update **live**: a
+  `reactions_changed` signal on the admin channel repaints the one message that
+  changed (the admin is not subscribed to the chat channels, so without it the
+  pills froze at whatever they were when the page loaded).
 - **Realtime connection indicator in the admin header**, the same amber/green/red
   vocabulary as the chat. The panel is entirely socket-driven, so "the numbers
   stopped moving" and "nothing is happening" used to look identical.

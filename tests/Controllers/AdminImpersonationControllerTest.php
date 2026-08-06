@@ -685,4 +685,93 @@ class AdminImpersonationControllerTest extends TestCase
             FlatCache::default()->clear();
         }
     }
+
+    /** react() refuses non-root callers with 403, before touching anything. */
+    public function testReactForbiddenWithoutRootRole(): void
+    {
+        $this->unauthenticate();
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = ['impersonate_as' => 'bot', 'message_id' => '1', 'emoji' => "\u{1F44D}"];
+
+        $response = (new AdminImpersonationController())->react();
+
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
+    /** Missing or empty fields are rejected before any lookup. */
+    public function testReactMissingParamsReturns400(): void
+    {
+        $this->authAsRoot();
+        $_POST = ['impersonate_as' => 'bot'];
+
+        $response = (new AdminImpersonationController())->react();
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertArrayHasKey('error', $this->json($response));
+    }
+
+    /** An admin may only ever act as a real fake user, never an arbitrary name. */
+    public function testReactUnknownFakeUserReturns404(): void
+    {
+        $this->authAsRoot();
+        $_POST = [
+            'impersonate_as' => 'definitely_not_a_fake_user_' . bin2hex(random_bytes(4)),
+            'message_id'     => '1',
+            'emoji'          => "\u{1F44D}",
+        ];
+
+        $response = (new AdminImpersonationController())->react();
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('Unknown fake user', $this->json($response)['error']);
+    }
+
+    /**
+     * The whole point of the endpoint: an admin who took over a conversation can
+     * react as the fake user, even though a fake user has no chat session of its
+     * own (which is why the public /api/private/react cannot serve this). Toggles
+     * the same reaction twice to prove it adds and then removes.
+     */
+    public function testReactTogglesADmReactionAsTheFakeUser(): void
+    {
+        $this->authAsRoot();
+        $pdo = TestDatabase::connection();
+
+        $nickname = 'rx_bot_' . bin2hex(random_bytes(4));
+        $pdo->prepare('INSERT INTO fake_users (nickname, is_active) VALUES (?, true)')
+            ->execute([$nickname]);
+        $pdo->prepare(
+            'INSERT INTO private_messages (from_username, to_username, message, created_at)
+             VALUES (?, ?, ?, NOW())'
+        )->execute(['rx_peer', $nickname, 'react to this']);
+        $dmId = (string) $pdo->lastInsertId();
+
+        try {
+            $_POST = ['impersonate_as' => $nickname, 'message_id' => $dmId, 'emoji' => "\u{1F44D}"];
+            $added = $this->json((new AdminImpersonationController())->react());
+
+            $this->assertTrue($added['success']);
+            $this->assertSame('added', $added['action']);
+            $this->assertSame(
+                ["\u{1F44D}" => 1],
+                array_column($added['reactions'], 'count', 'emoji'),
+                'the reaction is recorded against the fake user'
+            );
+
+            $stmt = $pdo->prepare(
+                'SELECT username FROM private_message_reactions WHERE message_id = ?'
+            );
+            $stmt->execute([$dmId]);
+            $this->assertSame($nickname, $stmt->fetchColumn(), 'stored as the fake user, not the admin');
+
+            // Same emoji again removes it — a toggle, exactly like a real user's.
+            $removed = $this->json((new AdminImpersonationController())->react());
+            $this->assertSame('removed', $removed['action']);
+            $this->assertSame([], $removed['reactions']);
+        } finally {
+            $pdo->prepare('DELETE FROM private_message_reactions WHERE message_id = ?')->execute([$dmId]);
+            $pdo->prepare('DELETE FROM private_messages WHERE id = ?')->execute([$dmId]);
+            $pdo->prepare('DELETE FROM fake_users WHERE nickname = ?')->execute([$nickname]);
+        }
+    }
 }

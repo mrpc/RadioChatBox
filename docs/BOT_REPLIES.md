@@ -69,8 +69,11 @@ budget.
 
 ### 1. Run the migration
 
+Pending migrations run automatically on the first request; to apply them
+explicitly:
+
 ```bash
-psql "$DATABASE_URL" -f database/migrations/023_add_bot_replies.sql
+php radiochatbox.php migrate --path=app/migrations
 ```
 
 ### 2. Configure it in the admin panel

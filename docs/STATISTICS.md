@@ -49,23 +49,22 @@ The statistics system uses the following tables:
 - `stats_yearly` - Yearly aggregated statistics
 - `stats_snapshots` - Real-time snapshots (kept for 30 days)
 
-See [database/migrations/006_add_statistics_tables.sql](../database/migrations/006_add_statistics_tables.sql) for complete schema.
+The tables, and the `aggregate_*_stats()` / `active_user_counts()` functions that
+fill them, are created by the `create_schema` baseline migration — see
+[app/Migrations](../app/Migrations). (The old `database/migrations/*.sql` files
+were squashed into that baseline and no longer exist.)
 
 ## Installation
 
 ### 1. Run Database Migration
 
-Apply the statistics migration to your database:
+Nothing to do by hand: pending migrations run automatically on the first request
+(`bootstrap/http.php` calls `Application::migrate()`, which is a single indexed
+lookup once the schema is current). To apply them explicitly — a fresh install,
+CI, or before serving traffic:
 
 ```bash
-docker exec radiochatbox_postgres psql -U radiochatbox -d radiochatbox \
-  -f /docker-entrypoint-initdb.d/migrations/006_add_statistics_tables.sql
-```
-
-Or manually:
-
-```bash
-psql -U radiochatbox -d radiochatbox < database/migrations/006_add_statistics_tables.sql
+php radiochatbox.php migrate --path=app/migrations
 ```
 
 ### 2. Set Up Cron Job (Recommended)
