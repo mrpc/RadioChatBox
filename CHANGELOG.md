@@ -57,6 +57,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native 2FA/passkeys, no forced password reset).
 
 ### Fixed
+- **Statistics reported "Active Users: 0" while the chat was busy**: every user
+  count (active/guest/registered, hourly through yearly) was derived from the
+  public messages table alone, so an install whose traffic is direct messages
+  counted nobody — a flat line on the axis next to a Private Messages curve in
+  the thousands. All granularities now count distinct **senders** across public
+  chat and DMs through one shared `active_user_counts()` SQL function, which the
+  live dashboard summary reads too, so a period can no longer disagree with
+  itself. Bots (fake users) and DM recipients are not counted. Because users are
+  people and not events, a week/month/year is now the distinct people who wrote
+  in it rather than MAX() of the level below, and the migration recomputes the
+  stored history.
 - **Mobile: clipped layout + missed messages**: the chat containers use `100dvh`
   so the input/messages fit the visible viewport (no clipping behind the mobile
   address bar), and returning to the foreground (or the network coming back) now

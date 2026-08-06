@@ -70,6 +70,10 @@ class StatsServiceComputeMethodsTest extends TestCase
             
             // Delete sessions from today for clean user count testing
             self::$pdo->exec("DELETE FROM presence_sessions WHERE last_heartbeat >= CURRENT_DATE");
+
+            // ...and today's DMs: user counts are derived from who actually sent
+            // something (public or private), so a stray DM would skew them.
+            self::$pdo->exec("DELETE FROM private_messages WHERE created_at >= CURRENT_DATE");
             
             // Clear Redis cache
             self::$redis->flushAll();
@@ -113,17 +117,34 @@ class StatsServiceComputeMethodsTest extends TestCase
             'peak' => 7
         ]);
         
+        // Two people talking privately: user counts are people, counted from the
+        // raw tables (public chat AND DMs), not from the hourly row — that is what
+        // kept a DM-only day reading "0 active users".
+        $this->seedDmSenders(['compute_guest_a', 'compute_guest_b']);
+
         // Get summary which calls computeTodayStats
         $summary = $this->statsService->getSummary();
-        
+
         $this->assertIsArray($summary);
         $this->assertArrayHasKey('today', $summary);
-        
+
         $today_data = $summary['today'];
-        $this->assertEquals(5, $today_data['active_users'], 'Should compute active_users from hourly');
-        $this->assertEquals(2, $today_data['guest_users'], 'Should compute guest_users from hourly');
-        $this->assertEquals(3, $today_data['registered_users'], 'Should compute registered_users from hourly');
+        $this->assertEquals(2, $today_data['active_users'], 'active_users counts today\'s senders, DMs included');
+        $this->assertEquals(2, $today_data['guest_users'], 'neither sender is registered');
+        $this->assertEquals(0, $today_data['registered_users'], 'no registered sender today');
         $this->assertEquals(15, $today_data['total_messages'], 'Should compute total_messages from hourly');
+    }
+
+    /** Insert one DM per sender, dated now. */
+    private function seedDmSenders(array $senders): void
+    {
+        $stmt = self::$pdo->prepare(
+            "INSERT INTO private_messages (from_username, to_username, message, created_at)
+             VALUES (?, 'peer', 'hello', NOW())"
+        );
+        foreach ($senders as $sender) {
+            $stmt->execute([$sender]);
+        }
     }
 
     /**
@@ -146,16 +167,19 @@ class StatsServiceComputeMethodsTest extends TestCase
         
         $stmt = self::$pdo->prepare($sql);
         $stmt->execute(['stat_hour' => $today . ' 14:00:00']);
-        
+
+        $this->seedDmSenders(['week_guest_a', 'week_guest_b']);
+
         // Get weekly stats
         $weekly = $this->statsService->getWeeklyStats(null, 1);
-        
+
         $this->assertIsArray($weekly);
         $this->assertCount(1, $weekly);
-        
+
         $currentWeek = $weekly[0];
         $this->assertArrayHasKey('stat_week', $currentWeek);
-        $this->assertEquals(10, $currentWeek['active_users'], 'Week should include current hourly data');
+        $this->assertEquals(2, $currentWeek['active_users'],
+            'the week counts the distinct people who wrote in it, DMs included');
         $this->assertEquals(50, $currentWeek['total_messages'], 'Week should include current hourly data');
     }
 
@@ -299,12 +323,15 @@ class StatsServiceComputeMethodsTest extends TestCase
             VALUES (:date, 2, 6, 5, 10)
             ON CONFLICT (stat_date) DO UPDATE SET active_users = EXCLUDED.active_users
         ")->execute(['date' => $today]);
-        
+
+        $this->seedDmSenders(['prefer_guest_a', 'prefer_guest_b', 'prefer_guest_c']);
+
         $summary = $this->statsService->getSummary();
-        
-        // The summary should use hourly data (8, 24) not daily data (2, 6)
-        $this->assertEquals(8, $summary['today']['active_users'], 
-            'Should use hourly data (8) not daily data (2)');
+
+        // Message totals come from the hourly rows (24) and never from the stale
+        // daily one (6); the user count comes from who actually wrote today.
+        $this->assertEquals(3, $summary['today']['active_users'],
+            'active_users is counted from raw activity, not the stale daily row (2)');
         $this->assertEquals(24, $summary['today']['total_messages'],
             'Should use hourly data (24) not daily data (6)');
     }

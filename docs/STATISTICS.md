@@ -8,9 +8,12 @@ RadioChatBox includes a comprehensive statistics system that tracks and visualiz
 
 The system tracks the following metrics at multiple time granularities (hourly, daily, weekly, monthly, yearly):
 
-- **Active Users**: Unique users who sent messages
-- **Guest Users**: Anonymous (non-registered) users
-- **Registered Users**: Authenticated users
+- **Active Users**: Distinct people who sent something in the period — public
+  chat messages **and** direct messages. Bots (fake users) are excluded, and so
+  are DM recipients: receiving a message is not activity. Counted per period, so
+  a week's figure is the people who wrote that week, not its busiest day's total.
+- **Guest Users**: Active users with no account
+- **Registered Users**: Active users with an account
 - **Total Messages**: Public chat messages sent
 - **Private Messages**: Private messages sent
 - **Photo Uploads**: Number of photos uploaded
