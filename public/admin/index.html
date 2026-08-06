@@ -4216,6 +4216,21 @@
         function handleImpersonateChatMessage(message) {
             // Check if this message is for the current conversation we're viewing
             if (!currentImpersonateConversation) return;
+            if (!message || typeof message !== 'object') return;
+
+            // Not everything on the private channel is a message. A typing cue
+            // (TypingController / impersonate-typing) and a DM reaction update
+            // (ReactionService::publishDmUpdate) ride the very same 'private'
+            // event and carry no text, no id and no timestamp — they were being
+            // drawn as an empty bubble stamped "unknown time". The chat client
+            // has always filtered them (handlePrivateMessage in js/chat.js);
+            // this view never did.
+            if (message.type === 'typing' || message.type === 'reaction') return;
+
+            // Belt and braces for anything else that may later share the channel:
+            // a real DM always has an id and either text or an attachment.
+            const hasBody = !!message.message || !!(message.attachment && message.attachment.file_path);
+            if (!hasBody || (message.id == null && message.message_id == null)) return;
             if (message.from_username !== currentImpersonateConversation.fakeUser && 
                 message.from_username !== currentImpersonateConversation.senderUsername) return;
             if (message.to_username !== currentImpersonateConversation.fakeUser && 

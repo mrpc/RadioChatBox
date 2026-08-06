@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native 2FA/passkeys, no forced password reset).
 
 ### Fixed
+- **Stray empty bubbles in the impersonation conversation**: three different
+  payloads ride the private channel under the same `private` event — real DMs,
+  typing cues and DM reaction updates. The chat client filters the last two; the
+  admin's impersonation view rendered them as a message. A typing cue became an
+  empty bubble stamped "unknown time", and a reaction became an empty bubble
+  carrying the *reacted* message's id — which then blocked the real message with
+  that id from ever appearing (the de-dup matched the impostor). Both are now
+  filtered, plus a sanity check that a rendered DM actually has an id and a body.
 - **Admin panel silently went deaf after being backgrounded**: reconnection hung
   entirely off the socket's `onclose`, which is exactly the event a frozen
   connection never fires — a suspended tab comes back with `readyState` still
