@@ -1974,21 +1974,27 @@ class RadioChatBox {
             regEmailInput.required = !!verificationOn;
         }
 
-        // The marketing opt-in is the station's own wording, and its absence is
-        // the answer for a station that does not send marketing at all: no text,
-        // no checkbox, nothing to consent to.
-        const marketingText = (this.settings && this.settings.marketing_consent_text || '').trim();
+        // The marketing opt-in: asked by default, in the station's own words when
+        // it has supplied them. The switch is the way to stop asking; blank
+        // wording just falls back to something neutral, so the box never renders
+        // empty.
+        //
+        // The box is never pre-ticked. A tick that the person did not make is not
+        // consent — it has to be a positive act to be worth recording, which is
+        // the whole reason the grant is stored with a timestamp and an address.
+        const marketingOn = !this.settings
+            || this.settings.marketing_consent_enabled === undefined
+            || this.settings.marketing_consent_enabled === ''
+            || this._settingOn(this.settings.marketing_consent_enabled);
+        const marketingText = ((this.settings && this.settings.marketing_consent_text) || '').trim()
+            || 'Email me occasional updates. You can unsubscribe at any time.';
         const marketingLabel = document.getElementById('register-marketing-label');
         const marketingTextEl = document.getElementById('register-marketing-text');
         if (marketingLabel && marketingTextEl) {
-            if (marketingText !== '') {
-                marketingTextEl.textContent = marketingText;
-                marketingLabel.style.display = 'flex';
-            } else {
-                marketingLabel.style.display = 'none';
-                const box = document.getElementById('register-marketing-input');
-                if (box) box.checked = false;
-            }
+            marketingTextEl.textContent = marketingText;
+            marketingLabel.style.display = marketingOn ? 'flex' : 'none';
+            const box = document.getElementById('register-marketing-input');
+            if (box) box.checked = false;
         }
 
         const showRegister = () => {

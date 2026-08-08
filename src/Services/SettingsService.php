@@ -57,10 +57,14 @@ class SettingsService
         'smtp_tls',
         'admin_mail',
         'admin_replymail',
-        // Wording of the marketing opt-in on the registration form. Blank hides
-        // the checkbox entirely — a station that does not send marketing should
-        // not be asking, and consent has to be phrased in the sender's own terms
-        // rather than ours.
+        // The marketing opt-in on the registration form: whether to ask at all,
+        // and in what words. Blank wording falls back to a neutral default, so
+        // the box always reads sensibly; the switch is what turns it off.
+        //
+        // Unlike every other switch on this branch, this one is ON when unset —
+        // asking is the expected default for a station, and an unticked question
+        // collects nothing until someone answers it.
+        'marketing_consent_enabled',
         'marketing_consent_text',
         // Send a verification email on registration.
         'email_verification_enabled',

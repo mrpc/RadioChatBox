@@ -3098,13 +3098,20 @@
                             <small style="color:#6b7280;">The address transactional email is sent from.</small>
                         </div>
                         <div class="form-group">
-                            <label>Marketing opt-in wording (registration form)</label>
-                            <input type="text" id="setting-marketing-consent-text" maxlength="255" placeholder="e.g. Email me occasional updates from the station. You can unsubscribe at any time.">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-marketing-consent-enabled" style="width:auto;">
+                                Ask about newsletter/marketing email at registration
+                            </label>
                             <small style="color:#6b7280;">
-                                Shown next to a tick box when someone registers, and recorded with the
-                                date and address it was given from. Leave blank to ask nothing —
-                                a station that sends no marketing should not be collecting consent for it.
+                                On by default. The tick box is never pre-ticked — a grant is recorded
+                                only when someone actually makes it, together with the date and the
+                                address it came from.
                             </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Marketing opt-in wording</label>
+                            <input type="text" id="setting-marketing-consent-text" maxlength="255" placeholder="Email me occasional updates. You can unsubscribe at any time.">
+                            <small style="color:#6b7280;">Leave blank to use the neutral default shown above.</small>
                         </div>
                         <div class="form-group">
                             <label>Admin address</label>
@@ -10141,6 +10148,11 @@
                     applyFeatureVisibility(settings);
                     bindFeatureToggles();
                     document.getElementById('setting-mail-from').value = settings.mail_from || '';
+                    // On unless explicitly switched off — the one toggle on this branch
+                    // that defaults to asking.
+                    document.getElementById('setting-marketing-consent-enabled').checked =
+                        settings.marketing_consent_enabled === undefined || settings.marketing_consent_enabled === ''
+                            ? true : featureOn(settings.marketing_consent_enabled);
                     document.getElementById('setting-marketing-consent-text').value = settings.marketing_consent_text || '';
                     document.getElementById('setting-admin-mail').value = settings.admin_mail || '';
                     document.getElementById('setting-admin-replymail').value = settings.admin_replymail || '';
@@ -10647,6 +10659,7 @@
                 notifications_inbox_enabled: document.getElementById('setting-notifications-inbox-enabled').checked ? 'true' : 'false',
                 profile_cards_enabled: document.getElementById('setting-profile-cards-enabled').checked ? 'true' : 'false',
                 reactions_enabled: document.getElementById('setting-reactions-enabled').checked ? 'true' : 'false',
+                marketing_consent_enabled: document.getElementById('setting-marketing-consent-enabled').checked ? 'true' : 'false',
                 marketing_consent_text: document.getElementById('setting-marketing-consent-text').value,
                 admin_mail: document.getElementById('setting-admin-mail').value,
                 admin_replymail: document.getElementById('setting-admin-replymail').value,
