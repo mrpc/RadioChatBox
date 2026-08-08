@@ -1348,11 +1348,45 @@ class RadioChatBox {
          * moments a listener most wants to know it is still trying.
          */
         const setBuffering = (on) => {
-            const label = document.getElementById('rp-label');
-            bar.classList.toggle('is-buffering', !!on);
-            if (label) label.textContent = on ? 'Buffering…' : 'Now Playing';
+            clearTimeout(this._bufferingShowTimer);
+            const apply = (state) => {
+                const label = document.getElementById('rp-label');
+                bar.classList.toggle('is-buffering', state);
+                if (label) label.textContent = state ? 'Buffering…' : 'Now Playing';
+            };
+            if (!on) { apply(false); return; }
+            // Announce the wait only once it IS a wait. A start that connects
+            // quickly would otherwise flash "Buffering…" for a frame, which is
+            // noise; a slow start or a reconnect holds past this and says so.
+            this._bufferingShowTimer = setTimeout(() => apply(true), 600);
         };
         this._setPlayerBuffering = setBuffering;
+
+        /**
+         * Start fetching before the click lands.
+         *
+         * The element is preload="none", so pressing play begins with opening a
+         * connection and filling a buffer from cold — the delay this was showing
+         * "Buffering…" for. Reaching for the button is the earliest honest
+         * signal of intent, so the stream opens then and the press has much less
+         * left to do.
+         *
+         * Not preloaded for everybody: this is a live stream, so a browser that
+         * buffers it while paused keeps pulling audio for a visitor who never
+         * presses play — the station pays for that bandwidth and counts them as
+         * a listener. Intent first, then fetch.
+         */
+        const warmUp = () => {
+            if (this._playerWarmed || !audio.paused) return;
+            this._playerWarmed = true;
+            try {
+                audio.preload = 'auto';
+                audio.load();
+            } catch (e) { /* a failed warm-up just means the old behaviour */ }
+        };
+        ['pointerenter', 'pointerdown', 'focus'].forEach(evt => {
+            playBtn.addEventListener(evt, warmUp, { once: false });
+        });
 
         audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); setBuffering(true); });
         audio.addEventListener('waiting', () => setBuffering(true));
