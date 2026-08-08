@@ -3599,7 +3599,12 @@ class RadioChatBox {
         this._cmdIndex = 0;
 
         try {
-            const r = await fetch(`${this.apiUrl}/api/commands`);
+            // Identify so the list is what THIS person can run: a listener is not
+            // offered /mute, and staff are.
+            const q = (this.username && this.sessionId)
+                ? `?username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`
+                : '';
+            const r = await fetch(`${this.apiUrl}/api/commands${q}`);
             const d = await r.json();
             this._commands = (d && d.commands) || [];
         } catch (e) {
@@ -3675,7 +3680,7 @@ class RadioChatBox {
         this.messageInput.focus();
         // A command that takes arguments needs the space; one that does not is
         // ready to send, and /poll opens its builder on exactly this value.
-        if (cmd.command !== 'poll' && cmd.command !== 'help') {
+        if (!['poll', 'help'].includes(cmd.command)) {
             this.messageInput.value += ' ';
         }
     }

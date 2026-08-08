@@ -24,35 +24,35 @@ class ChatCommandController
      * first because they are the ones always present; the station's own commands
      * follow in the order /help lists them.
      *
-     * Permission is not modelled here — the server checks it when the command is
-     * actually sent, and hiding /poll from someone who may not create one would
-     * mean teaching this endpoint the whole role system to save a single error
-     * message. Commands only offered when their feature is on are filtered,
-     * though: suggesting something switched off is a dead end, not a permission
-     * question. 200 {success, commands:[{command, description}]}.
+     * Filtered to what the caller can actually run: role, feature switches and
+     * the finer poll gate all apply, because a suggestion the send path will
+     * refuse is worse than no suggestion. Identify with ?username=&session_id=;
+     * without them the list is what a plain listener gets, which is also the
+     * right answer for someone who has not joined yet.
+     *
+     * The same CommandCatalog answers /help, so the two can never disagree.
+     * 200 {success, commands:[{command, description}]}.
      */
     #[Route('/api/commands', methods: 'GET', name: 'commands.index')]
     public function index(): Response
     {
         try {
-            $settings = new \RadioChatBox\Services\SettingsService();
+            $request  = Request::getInstance();
+            $username = trim((string) $request->get('username', '', 'get'));
+            $session  = trim((string) $request->get('session_id', '', 'get'));
 
-            $commands = [['command' => 'help', 'description' => 'Show the available commands']];
-
-            if ($settings->get('polls_enabled', 'false') === 'true') {
-                $commands[] = ['command' => 'poll', 'description' => 'Start a poll — send it alone to open the builder'];
+            $usertype = \RadioChatBox\Services\Authz::SIMPLE_USER;
+            if ($username !== '' && $session !== '') {
+                $info = (new \RadioChatBox\Services\ChatService())->getSessionInfo($username, $session);
+                $usertype = \RadioChatBox\Services\Authz::usertypeForLabel(
+                    (string) ($info['user_role'] ?? '')
+                );
             }
 
-            if ($settings->get('chat_commands_enabled', 'false') === 'true') {
-                foreach ((new ChatCommandService())->activeList() as $row) {
-                    $commands[] = [
-                        'command'     => (string) $row['command'],
-                        'description' => trim((string) ($row['description'] ?? '')),
-                    ];
-                }
-            }
-
-            return Response::json(['success' => true, 'commands' => $commands]);
+            return Response::json([
+                'success'  => true,
+                'commands' => (new \RadioChatBox\Services\CommandCatalog())->availableTo($usertype),
+            ]);
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('ChatCommandController::index failed: ' . $e->getMessage(), 'radiochatbox');

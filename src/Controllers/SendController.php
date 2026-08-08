@@ -64,6 +64,34 @@ final class SendController
                 }
             }
 
+            // /help is a built-in, not one of the station's custom commands, and
+            // was previously gated behind chat_commands_enabled along with them —
+            // so on a station with no custom commands the one command that
+            // answers "what can I type?" silently did nothing. It answers with
+            // whatever THIS caller can actually run.
+            if (is_string($message) && preg_match('/^\/help\b/i', ltrim($message))) {
+                $session = $chatService->getSessionInfo($username, $sessionId);
+                $usertype = \RadioChatBox\Services\Authz::usertypeForLabel(
+                    (string) ($session['user_role'] ?? '')
+                );
+                return Response::json([
+                    'success'  => true,
+                    'command'  => true,
+                    'response' => (new \RadioChatBox\Services\CommandCatalog())->helpTextFor($usertype),
+                ]);
+            }
+
+            // /me <action> — the IRC emote, and the one command everyone who has
+            // used a chat before tries. Unlike the rest it is not answered to the
+            // sender: it becomes a message the room sees, so it falls through to
+            // the normal send path with the text rewritten.
+            if (is_string($message) && preg_match('/^\/me\s+(.+)$/is', ltrim($message), $emote)) {
+                $message = '* ' . $username . ' ' . trim($emote[1]);
+            } elseif (is_string($message) && preg_match('/^\/me\s*$/i', ltrim($message))) {
+                return Response::json(['success' => true, 'command' => true,
+                    'response' => 'Usage: /me <what you are doing>']);
+            }
+
             // Slash-commands (when enabled): if the message is a recognised
             // command, answer the sender directly and DON'T post/broadcast it as a
             // chat message. An unrecognised /foo falls through as a normal message.

@@ -130,6 +130,18 @@ class ChatCommandControllerTest extends TestCase
         $this->assertStringContainsString('/help', $body['response']);
     }
 
+    /** /help answers through the send path with custom commands switched off. */
+    public function testSendAnswersHelpEvenWithCustomCommandsOff(): void
+    {
+        (new SettingsService())->set('chat_commands_enabled', 'false');
+        $_POST = ['username' => 'someone', 'message' => '/help', 'sessionId' => 'sess'];
+
+        $body = json_decode((new SendController())->store()->getBody(), true);
+
+        $this->assertTrue($body['command'] ?? false, '/help must answer, not post as a message');
+        $this->assertStringContainsString('/help', $body['response']);
+    }
+
     /** With the feature OFF, a command is NOT intercepted (no command flag). */
     public function testSendDoesNotInterceptWhenDisabled(): void
     {
@@ -217,6 +229,37 @@ class ChatCommandControllerTest extends TestCase
         foreach ($body['commands'] as $command) {
             $this->assertSame(['command', 'description'], array_keys($command));
         }
+    }
+
+    /**
+     * /help answers even on a station with no custom commands.
+     *
+     * It used to be gated behind chat_commands_enabled together with them, so
+     * the one command that tells you what you can type did nothing at all.
+     */
+    public function testHelpWorksWithCustomCommandsDisabled(): void
+    {
+        (new SettingsService())->set('chat_commands_enabled', 'false');
+
+        $text = (new \RadioChatBox\Services\CommandCatalog())
+            ->helpTextFor(\RadioChatBox\Services\Authz::SIMPLE_USER);
+
+        $this->assertStringContainsString('/help', $text);
+        $this->assertStringContainsString('/me', $text);
+    }
+
+    /** The listing is what the caller can run — staff commands only for staff. */
+    public function testHelpListsModeratorCommandsOnlyForStaff(): void
+    {
+        $catalog = new \RadioChatBox\Services\CommandCatalog();
+
+        $listener = $catalog->helpTextFor(\RadioChatBox\Services\Authz::SIMPLE_USER);
+        $this->assertStringNotContainsString('/mute', $listener);
+        $this->assertStringNotContainsString('/ban', $listener);
+
+        $staff = $catalog->helpTextFor(\RadioChatBox\Services\Authz::MODERATOR);
+        $this->assertStringContainsString('/mute', $staff);
+        $this->assertStringContainsString('/ban', $staff);
     }
 
     /** Commands the station has switched off are not suggested. */
