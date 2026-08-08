@@ -318,6 +318,34 @@ class AdminSystemControllerTest extends TestCase
     }
 
     /**
+     * GET /api/admin/radio/probe rejects a value that is not an http(s) URL,
+     * rather than handing it to the fetcher.
+     */
+    public function testRadioProbeRejectsANonUrl(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['url' => 'file:///etc/passwd'];
+
+        $response = (new AdminSystemController())->radioProbe();
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('http', json_decode($response->getBody(), true)['error']);
+    }
+
+    /**
+     * With no URL in the request and none saved, the probe says so instead of
+     * reporting a dead feed — the button has to distinguish "nothing to check"
+     * from "checked and unreachable".
+     */
+    public function testRadioProbeWithNothingToCheckIsABadRequest(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['url' => ''];
+
+        $response = (new AdminSystemController())->radioProbe();
+        $this->assertSame(400, $response->getStatusCode());
+    }
+
+    /**
      * GET /api/admin/mails returns the email log with a tally of every status,
      * so a failed delivery is countable even while the list is filtered.
      */

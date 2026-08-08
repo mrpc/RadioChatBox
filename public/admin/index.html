@@ -9770,8 +9770,20 @@
             const box = document.getElementById('feed-capabilities');
             box.innerHTML = 'Checking…';
             try {
-                const resp = await fetch(`/api/now-playing?t=${Date.now()}`, { cache: 'no-cache' });
+                // Check what is in the box, not what was last saved — otherwise a
+                // new URL cannot be tested without committing it first, and the
+                // now-playing widget breaks while you find out it was wrong.
+                const urlInput = document.getElementById('setting-radio-status-url');
+                const url = urlInput ? urlInput.value.trim() : '';
+                const resp = await fetch(
+                    `/api/admin/radio/probe?url=${encodeURIComponent(url)}&t=${Date.now()}`,
+                    { cache: 'no-cache', headers: { 'Authorization': `Bearer ${authToken}` } }
+                );
                 const data = await resp.json();
+                if (data.error) {
+                    box.innerHTML = `<span style="color:#ef4444;">${escapeHtml(data.error)}</span>`;
+                    return;
+                }
                 const np = data.nowPlaying || {};
                 if (!np.active) {
                     box.innerHTML = '<span style="color:#9ca3af;">Feed not reachable or no current song.</span>';
@@ -9901,19 +9913,19 @@
          * Every switch here is opt-in: unset reads as off, so upgrading a station
          * changes nothing until someone turns it on.
          */
-        function applyFeatureVisibility(settings) {
-            if (!settings) return;
-
-            // Every switch in the Features and Radio sections, with the surfaces
-            // that only exist to serve it: its tab in this panel, and the settings
-            // groups that would be configuring something switched off.
-            //
-            // Every one is off until set — a deploy activates nothing on its own.
-            //
-            // Function-local on purpose — loadSettings() calls this during initial
-            // page execution, before a module-level const further down the script
-            // would have been initialised.
-            const FEATURE_SURFACES = [
+        /**
+         * Every switch in the Features and Radio sections, with the surfaces that
+         * only exist to serve it: its tab in this panel, and the settings groups
+         * that would be configuring something switched off.
+         *
+         * Every one is off until set — a deploy activates nothing on its own.
+         *
+         * A hoisted function rather than a const: loadSettings() runs during
+         * initial page execution, before a module-level declaration further down
+         * the script would have been initialised.
+         */
+        function featureSurfaces() {
+            return [
                 { setting: 'shows_enabled',         tabs: ['shows'] },
                 { setting: 'reactions_enabled',     tabs: [], groups: ['settings-group-reactions'] },
                 { setting: 'polls_enabled',         tabs: ['polls'], groups: ['settings-group-polls'] },
@@ -9925,8 +9937,23 @@
                 // itself rather than waiting for a save. One owner per feature.
                 { setting: 'bot_replies_enabled',   tabs: ['promos'] }
             ];
+        }
 
-            FEATURE_SURFACES.forEach(f => {
+        /** The checkbox that drives a setting: shows_enabled → setting-shows-enabled. */
+        function featureToggleId(setting) {
+            return 'setting-' + setting.replace(/_/g, '-');
+        }
+
+        /**
+         * Hide the admin surface of every disabled feature — the nav tab and the
+         * settings panel both, so a switched-off feature leaves no trace to
+         * configure. Applies to the toggles that predate this too: a station with
+         * polls off should not be looking at a Polls tab.
+         */
+        function applyFeatureVisibility(settings) {
+            if (!settings) return;
+
+            featureSurfaces().forEach(f => {
                 const on = featureOn(settings[f.setting]);
 
                 (f.tabs || []).forEach(tab => {
@@ -9945,6 +9972,30 @@
                 const fields = panel.querySelectorAll('.form-group');
                 const anyVisible = Array.prototype.some.call(fields, f => f.style.display !== 'none');
                 panel.style.display = anyVisible ? '' : 'none';
+            });
+        }
+
+        /**
+         * Re-apply the visibility rules from the checkboxes as they stand right
+         * now, rather than from what was last saved — so ticking a switch shows or
+         * hides its tab and settings immediately, the way the older toggles
+         * (bots, analytics, ads, GIFs) already behave through applySettingsCollapse.
+         */
+        function applyFeatureVisibilityFromForm() {
+            const live = {};
+            featureSurfaces().forEach(f => {
+                const el = document.getElementById(featureToggleId(f.setting));
+                if (el) live[f.setting] = el.checked ? 'true' : 'false';
+            });
+            applyFeatureVisibility(live);
+        }
+
+        function bindFeatureToggles() {
+            featureSurfaces().forEach(f => {
+                const el = document.getElementById(featureToggleId(f.setting));
+                if (!el || el.dataset.featureBound === 'true') return;
+                el.addEventListener('change', applyFeatureVisibilityFromForm);
+                el.dataset.featureBound = 'true';
             });
         }
 
@@ -10079,6 +10130,7 @@
                     setFeatureToggle('setting-profile-cards-enabled', settings.profile_cards_enabled);
                     setFeatureToggle('setting-reactions-enabled', settings.reactions_enabled);
                     applyFeatureVisibility(settings);
+                    bindFeatureToggles();
                     document.getElementById('setting-mail-from').value = settings.mail_from || '';
                     document.getElementById('setting-admin-mail').value = settings.admin_mail || '';
                     document.getElementById('setting-admin-replymail').value = settings.admin_replymail || '';

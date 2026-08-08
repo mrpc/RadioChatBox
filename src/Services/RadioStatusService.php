@@ -47,6 +47,34 @@ class RadioStatusService
     }
 
     /**
+     * Fetch and parse one specific status URL, bypassing both the saved setting
+     * and the cache.
+     *
+     * For the admin's "Check feed" button, which has to answer for the URL in the
+     * box — not the one last saved — or testing a feed would mean saving an
+     * unverified URL first and breaking the now-playing widget to find out it was
+     * wrong. Skipping the cache matters for the same reason: a second check after
+     * correcting the URL must actually go out again.
+     *
+     * @return array{active:bool, display:string|null, artist:string|null, title:string|null, listeners:int|null}
+     */
+    public function probe(string $url): array
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return [
+                'active' => false,
+                'display' => null,
+                'artist' => null,
+                'title' => null,
+                'listeners' => null,
+            ];
+        }
+
+        return $this->fetchAndParse($url);
+    }
+
+    /**
      * Return the currently-cached now-playing WITHOUT fetching the remote status
      * on a miss. For callers on a hot path (e.g. the heartbeat) that want to
      * piggyback the current track cheaply as redundancy against a lost socket push,

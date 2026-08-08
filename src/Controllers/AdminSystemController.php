@@ -492,6 +492,44 @@ final class AdminSystemController
     }
 
     /**
+     * GET /api/admin/radio/probe?url= — fetch and parse one radio status URL and
+     * report what the feed actually provides, for the "Check feed" button.
+     *
+     * Reads the URL from the request rather than the saved setting so a feed can
+     * be tested before it is committed; without this, checking meant saving an
+     * unverified URL first. Admin-only, and no new reach: an admin can already
+     * point the station's own fetcher at any URL by saving it. Falls back to the
+     * saved value when the parameter is empty, so the button still works on a
+     * form the operator has not touched. 200 {success, nowPlaying}.
+     */
+    #[Route('/api/admin/radio/probe', methods: 'GET', name: 'admin.system.radio-probe', middleware: [AdminAuthMiddleware::class])]
+    public function radioProbe(): Response
+    {
+        try {
+            $url = trim((string) Request::getInstance()->get('url', '', 'get'));
+            if ($url === '') {
+                $url = trim((string) (new SettingsService())->get('radio_status_url', ''));
+            }
+            if ($url === '') {
+                return Response::json(['error' => 'No status URL to check'], 400);
+            }
+            if (!filter_var($url, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $url)) {
+                return Response::json(['error' => 'That does not look like an http(s) URL'], 400);
+            }
+
+            return Response::json([
+                'success'    => true,
+                'nowPlaying' => (new \RadioChatBox\Services\RadioStatusService())->probe($url),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminSystemController::radioProbe failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/mails — the transactional email log (the framework's `mails`
      * table, written by Pramnos\Email\Email on every send), newest first, with a
      * per-status tally. Optional ?status= filters to one status.
