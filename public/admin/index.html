@@ -428,6 +428,40 @@
             gap: 16px;
         }
 
+        /* Uniform settings-panel chrome — see initSettingsPanels(). */
+        .section-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .panel-collapse {
+            background: transparent;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
+            color: #6b7280;
+        }
+
+        .panel-collapse:hover {
+            background: #f3f4f6;
+            color: #111827;
+        }
+
+        .section.collapsed .section-body {
+            display: none;
+        }
+
+        /* A collapsed panel is a title bar, so drop the gap under the header. */
+        .section.collapsed .section-header {
+            margin-bottom: 0;
+        }
+
         .section h2 {
             font-size: 20px;
             color: var(--gray-900);
@@ -2786,7 +2820,6 @@
                 <div class="section">
                     <div class="section-header">
                         <h2>Features</h2>
-                        <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
                     </div>
                     <p style="margin: 0 0 16px; color:#6b7280;">
                         What the station offers. Turning something off hides its control in the
@@ -2855,7 +2888,6 @@
                 <div class="section" id="settings-section-radio">
                     <div class="section-header">
                         <h2>📻 Radio</h2>
-                        <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
                     </div>
 
                     <div class="settings-group">
@@ -3763,7 +3795,7 @@
                         💾 Save All Settings
                     </button>
                     <p style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 6px; color: #1e40af; font-size: 14px;">
-                        � <strong>Note:</strong> To change your admin password, go to the <strong>User Management</strong> tab and edit your user account.
+                        💡 <strong>Note:</strong> To change your admin password, go to the <strong>User Management</strong> tab and edit your user account.
                     </p>
                 </div>
 
@@ -9871,6 +9903,115 @@
         }
 
         /**
+         * Give every settings panel the same header: a collapse toggle and its own
+         * Save. Done here rather than in the markup so the treatment is uniform and
+         * a panel added later gets it for free — the page had grown to nine
+         * sections of which two had a save button and none collapsed.
+         *
+         * Sections that perform an action rather than hold settings (the backup
+         * download, the embed snippet) get the collapse but no Save.
+         */
+        const SETTINGS_ACTION_ONLY = ['Configuration Backup', 'Embed Code'];
+        const SETTINGS_COLLAPSE_KEY = 'rcb-settings-collapsed';
+
+        function collapsedSettingsPanels() {
+            try {
+                return new Set(JSON.parse(localStorage.getItem(SETTINGS_COLLAPSE_KEY) || '[]'));
+            } catch (e) {
+                return new Set();
+            }
+        }
+
+        function initSettingsPanels() {
+            const tab = document.getElementById('settings-tab');
+            if (!tab || tab.dataset.panelsReady === '1') return;
+
+            const collapsed = collapsedSettingsPanels();
+
+            tab.querySelectorAll(':scope > .section').forEach(section => {
+                const h2 = section.querySelector('h2');
+                if (!h2) return;
+                const title = h2.textContent.trim();
+
+                // Normalise: some sections already carry a .section-header (with
+                // Export/Import or a Save), most are a bare <h2> then content.
+                let header = section.querySelector(':scope > .section-header');
+                if (!header) {
+                    header = document.createElement('div');
+                    header.className = 'section-header';
+                    h2.parentNode.insertBefore(header, h2);
+                    header.appendChild(h2);
+                }
+
+                // Everything after the header becomes the collapsible body.
+                let body = section.querySelector(':scope > .section-body');
+                if (!body) {
+                    body = document.createElement('div');
+                    body.className = 'section-body';
+                    while (header.nextSibling) {
+                        body.appendChild(header.nextSibling);
+                    }
+                    section.appendChild(body);
+                }
+
+                // Controls live in one place on the right of the header.
+                let controls = header.querySelector(':scope > .section-controls');
+                if (!controls) {
+                    controls = document.createElement('div');
+                    controls.className = 'section-controls';
+                    // Adopt whatever buttons the header already had.
+                    Array.prototype.slice.call(header.children).forEach(child => {
+                        if (child !== h2) controls.appendChild(child);
+                    });
+                    header.appendChild(controls);
+                }
+
+                if (!SETTINGS_ACTION_ONLY.includes(title) && !controls.querySelector('.panel-save')) {
+                    const save = document.createElement('button');
+                    save.className = 'btn btn-primary panel-save';
+                    save.type = 'button';
+                    save.textContent = '💾 Save';
+                    // One payload builder reads every field, so any Save writes the
+                    // whole form — the button is here for reach, not for scope.
+                    save.addEventListener('click', () => saveSettings());
+                    controls.appendChild(save);
+                }
+
+                if (!controls.querySelector('.panel-collapse')) {
+                    const toggle = document.createElement('button');
+                    toggle.className = 'panel-collapse';
+                    toggle.type = 'button';
+                    toggle.setAttribute('aria-label', 'Collapse ' + title);
+                    toggle.textContent = '▾';
+                    toggle.addEventListener('click', () => setSettingsPanelCollapsed(section, !section.classList.contains('collapsed')));
+                    controls.appendChild(toggle);
+                }
+
+                if (collapsed.has(title)) setSettingsPanelCollapsed(section, true, true);
+            });
+
+            tab.dataset.panelsReady = '1';
+        }
+
+        function setSettingsPanelCollapsed(section, collapse, skipPersist) {
+            section.classList.toggle('collapsed', collapse);
+            const toggle = section.querySelector('.panel-collapse');
+            if (toggle) {
+                toggle.textContent = collapse ? '▸' : '▾';
+                toggle.setAttribute('aria-expanded', String(!collapse));
+            }
+            if (skipPersist) return;
+
+            const h2 = section.querySelector('h2');
+            const title = h2 ? h2.textContent.trim() : '';
+            const set = collapsedSettingsPanels();
+            if (collapse) { set.add(title); } else { set.delete(title); }
+            try {
+                localStorage.setItem(SETTINGS_COLLAPSE_KEY, JSON.stringify(Array.from(set)));
+            } catch (e) { /* private mode: collapse just will not persist */ }
+        }
+
+        /**
          * A feature toggle is on unless explicitly turned off. Mirrors
          * Chat.featureOn(): these switches arrived after the features shipped, so
          * an absent key is an un-configured station, not an opted-out one.
@@ -10015,6 +10156,7 @@
         }
 
         async function loadSettings() {
+            initSettingsPanels();
             try {
                 const response = await fetch('/api/admin/settings', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
