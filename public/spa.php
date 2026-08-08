@@ -179,9 +179,12 @@
                  having to be registered here. -->
             <div id="account-tabs" class="account-tabs">
                 <button type="button" class="account-tab is-active" data-pane="profile">Profile</button>
+                <button type="button" class="account-tab" data-pane="appearance">Appearance</button>
                 <button type="button" class="account-tab" data-pane="security">Security</button>
                 <button type="button" class="account-tab" data-pane="alerts">Alerts</button>
             </div>
+
+            <div id="account-body">
 
             <div class="profile-info">
                 <label>Nickname</label>
@@ -283,10 +286,13 @@
             <!-- Change password (registered accounts) -->
             <div id="profile-password-section" class="profile-info" data-pane="security" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
                 <label style="font-weight:600;">Password</label>
+                <button type="button" id="profile-password-reveal" class="btn-secondary" style="font-size:13px;">Change password…</button>
+                <div id="profile-password-form" style="display:none;">
                 <input type="password" id="profile-current-password" placeholder="Current password" autocomplete="current-password">
                 <input type="password" id="profile-new-password" placeholder="New password (min 8 chars)" autocomplete="new-password">
                 <input type="password" id="profile-new-password2" placeholder="Confirm new password" autocomplete="new-password">
-                <button type="button" id="profile-password-btn" class="btn-secondary" style="font-size:13px;">Change password</button>
+                <button type="button" id="profile-password-btn" class="btn-primary" style="font-size:13px;">Save new password</button>
+                </div>
                 <div id="profile-password-msg" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
             </div>
 
@@ -317,6 +323,14 @@
                         <option value="chime">Chime</option>
                     </select>
                 </label>
+            </div>
+
+
+            <!-- Appearance — how the chat looks, which is not the same question
+                 as what interrupts you. These lived under the Notifications
+                 heading, where nobody would look for a text size. -->
+            <div class="profile-info" data-pane="appearance" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">
+                <label style="font-weight:600;">Appearance</label>
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
                     <input type="checkbox" id="pref-dark-mode" style="width:auto;"> Dark mode 🌙
                 </label>
@@ -332,12 +346,13 @@
                     </select>
                 </label>
             </div>
-
             <div id="profile-error" class="error-message"></div>
 
+            </div><!-- /#account-body -->
+
             <div class="modal-buttons">
-                <button id="profile-save-displayname" class="btn-primary" style="display: none;">Save Display Name</button>
-                <button id="profile-save" class="btn-primary" style="display: none;">Save Profile</button>
+                <button id="profile-save-displayname" class="btn-primary" data-pane="profile" style="display: none;">Save Display Name</button>
+                <button id="profile-save" class="btn-primary" data-pane="profile" style="display: none;">Save Profile</button>
                 <button id="profile-logout" class="btn-danger">Logout</button>
                 <button id="profile-close" class="btn-secondary">Close</button>
             </div>

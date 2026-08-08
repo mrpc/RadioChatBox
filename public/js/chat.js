@@ -3665,13 +3665,20 @@ class RadioChatBox {
             modal.querySelectorAll('.account-tab').forEach(t => {
                 t.classList.toggle('is-active', t.dataset.pane === pane);
             });
-            modal.querySelectorAll('.modal-content > .profile-info, .modal-content > #profile-edit-fields')
+            modal.querySelectorAll('#account-body > .profile-info, #account-body > #profile-edit-fields')
                 .forEach(section => {
                     // Untagged sections are Profile: that is where the identity
                     // fields live, and it is the safe home for anything new.
                     const belongs = section.dataset.pane || 'profile';
                     section.dataset.paneHidden = belongs === pane ? '' : '1';
                 });
+
+            // The footer is shared, but "Save Display Name" and "Save Profile"
+            // belong to Profile — they were offering to save the pane you were
+            // not looking at. Everything else here saves as you change it.
+            modal.querySelectorAll('.modal-buttons [data-pane]').forEach(btn => {
+                btn.dataset.paneHidden = btn.dataset.pane === pane ? '' : '1';
+            });
             try { this.setStorage('accountPane', pane); } catch (e) { /* private mode */ }
         };
 
@@ -3686,7 +3693,7 @@ class RadioChatBox {
         // Reopen where they left off — the dialog is usually revisited for the
         // same reason it was opened last time.
         const remembered = this.getStorage('accountPane');
-        show(['profile', 'security', 'alerts'].includes(remembered) ? remembered : 'profile');
+        show(['profile', 'appearance', 'security', 'alerts'].includes(remembered) ? remembered : 'profile');
     }
 
     /**
@@ -3736,6 +3743,24 @@ class RadioChatBox {
             pwSection.style.display = 'block';
             const btn = document.getElementById('profile-password-btn');
             if (btn && !btn._wired) { btn._wired = true; btn.onclick = () => this._changePassword(); }
+
+            // Three password boxes sitting open is most of what made this pane
+            // heavy, for something almost nobody came to do. Folded behind the
+            // one button that says so.
+            const reveal = document.getElementById('profile-password-reveal');
+            const form = document.getElementById('profile-password-form');
+            if (reveal && form) {
+                form.style.display = 'none';
+                reveal.style.display = '';
+                if (!reveal._wired) {
+                    reveal._wired = true;
+                    reveal.onclick = () => {
+                        form.style.display = 'block';
+                        reveal.style.display = 'none';
+                        document.getElementById('profile-current-password').focus();
+                    };
+                }
+            }
         }
 
         if (mkSection) {

@@ -299,11 +299,31 @@ body.dark-mode .command-suggestion .command-desc { color: #9ca3af; }
     border-bottom-color: #4f46e5;
 }
 
-/* The dialog scrolls inside itself rather than running off the screen. */
+/* The dialog scrolls in the middle only. Scrolling the whole panel took the
+   heading, the tabs and the buttons away with it — so the way out was
+   somewhere below whatever you were reading. */
 #profile-modal .modal-content {
     max-height: 85vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
+
+#account-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;      /* a flex child will not shrink below content without this */
+    padding-right: 4px; /* room for the scrollbar so it does not sit on the fields */
+}
+
+#profile-modal .modal-buttons {
+    flex-shrink: 0;
+    border-top: 1px solid #eee;
+    padding-top: 14px;
+    margin-top: 14px;
+}
+
+body.dark-mode #profile-modal .modal-buttons { border-top-color: #333; }
 
 body.dark-mode .account-tabs { border-bottom-color: #333; }
 body.dark-mode .account-tab { color: #9ca3af; }
