@@ -70,14 +70,29 @@ class ChatCommandService
         return $rows[0] ?? null;
     }
 
+    /**
+     * The active commands, name and description only.
+     *
+     * Shared by /help and by the autocomplete endpoint so the two can never
+     * disagree about what exists — and it returns no response bodies, which the
+     * public endpoint must not hand out.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function activeList(): array
+    {
+        return $this->db->queryBuilder()
+            ->from('chat_commands')
+            ->select(['command', 'description'])
+            ->where('is_active', '=', true)
+            ->orderBy('command', 'asc')
+            ->getAll() ?: [];
+    }
+
     /** Build the /help listing from the active commands. */
     public function helpText(): string
     {
-        $rows = $this->db->queryBuilder()
-            ->from('chat_commands')
-            ->where('is_active', '=', true)
-            ->orderBy('command', 'asc')
-            ->getAll();
+        $rows = $this->activeList();
 
         $lines = ['Available commands:', '/help — show this list'];
         foreach ($rows as $row) {

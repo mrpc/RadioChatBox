@@ -222,8 +222,14 @@ class PollControllerTest extends TestCase
         $this->pollIds[] = $active['id'];
     }
 
-    /** /poll with too few options returns a usage hint (permitted user). */
-    public function testPollCommandBadSyntaxShowsUsage(): void
+    /**
+     * A half-typed /poll points at the builder before it spells out the syntax.
+     *
+     * The chat client opens the builder for a bare "/poll", so this reply is for
+     * the in-between case — and an interface question deserves an interface
+     * answer first, with the one-line form kept as the fallback.
+     */
+    public function testPollCommandBadSyntaxPointsAtTheBuilder(): void
     {
         $this->enable();
         (new SettingsService())->set('poll_min_usertype', 'moderator');
@@ -232,7 +238,9 @@ class PollControllerTest extends TestCase
         $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/poll only a question'];
         $response = (new SendController())->store();
         $body = json_decode($response->getBody(), true);
-        $this->assertStringContainsStringIgnoringCase('usage', $body['response']);
+
+        $this->assertStringContainsStringIgnoringCase('builder', $body['response']);
+        $this->assertStringContainsString('/poll Question | Option 1 | Option 2', $body['response']);
     }
 
     /** Admin create validates and returns the new poll. */

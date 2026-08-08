@@ -144,6 +144,22 @@
         </div>
     </div>
 
+    <!-- Poll Composer (opened by typing "/poll" with nothing after it) -->
+    <div id="poll-modal" class="modal">
+        <div class="modal-content">
+            <h2>Create a poll</h2>
+            <p>Ask the room something. Everyone votes once and sees the results live.</p>
+            <input type="text" id="poll-question-input" placeholder="Your question" maxlength="255">
+            <div id="poll-options-list"></div>
+            <button type="button" id="poll-add-option" class="btn-secondary" style="width:auto; padding:8px 14px; font-size:14px;">+ Add option</button>
+            <div id="poll-error" class="error-message"></div>
+            <div class="modal-buttons">
+                <button id="poll-submit" class="btn-primary">Start poll</button>
+                <button id="poll-cancel" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Profile Settings Modal -->
     <div id="profile-modal" class="modal">
         <div class="modal-content">

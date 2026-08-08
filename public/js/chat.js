@@ -964,6 +964,7 @@ class RadioChatBox {
         try { this.initTrackVoting(); } catch (e) { console.warn('initTrackVoting error', e); }
         try { this.initTypingIndicators(); } catch (e) { console.warn('initTypingIndicators error', e); }
         try { this.initPolls(); } catch (e) { console.warn('initPolls error', e); }
+        try { this.initCommandAutocomplete(); } catch (e) { console.warn('initCommandAutocomplete error', e); }
     }
 
     // ---- Now-playing voting -----------------------------------------
@@ -3567,6 +3568,246 @@ class RadioChatBox {
         } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading profile.</p>'; }
     }
 
+    // ---- Slash-command autocomplete ---------------------------------
+
+    /**
+     * Offer the available commands as soon as someone types "/".
+     *
+     * Commands were discoverable only by already knowing /help existed, which is
+     * the same problem /help was meant to solve. The list is fetched once and
+     * filtered locally — it changes when an admin edits it, not while someone is
+     * typing, so a request per keystroke would buy nothing.
+     */
+    async initCommandAutocomplete() {
+        if (!this.messageInput) return;
+
+        const box = document.createElement('div');
+        box.className = 'command-suggestions';
+        box.style.display = 'none';
+        (this.messageInput.parentElement || document.body).appendChild(box);
+        this._cmdBox = box;
+        this._cmdIndex = 0;
+
+        try {
+            const r = await fetch(`${this.apiUrl}/api/commands`);
+            const d = await r.json();
+            this._commands = (d && d.commands) || [];
+        } catch (e) {
+            this._commands = [];
+        }
+        if (!this._commands.length) return;
+
+        this.messageInput.addEventListener('input', () => this.updateCommandSuggestions());
+        this.messageInput.addEventListener('blur', () => setTimeout(() => this.hideCommandSuggestions(), 150));
+        this.messageInput.addEventListener('keydown', (e) => {
+            if (!this._cmdVisible) return;
+            const items = this._cmdMatches || [];
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const step = e.key === 'ArrowDown' ? 1 : -1;
+                this._cmdIndex = (this._cmdIndex + step + items.length) % items.length;
+                this.renderCommandSuggestions();
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                // Enter completes the command rather than sending a half-typed one.
+                e.preventDefault();
+                this.applyCommandSuggestion(items[this._cmdIndex]);
+            } else if (e.key === 'Escape') {
+                this.hideCommandSuggestions();
+            }
+        });
+    }
+
+    updateCommandSuggestions() {
+        const value = this.messageInput.value;
+        // Only while the whole message is the command being typed: a "/" inside a
+        // sentence, or a command already followed by its argument, is not a
+        // lookup.
+        const match = /^\/([a-z0-9_-]*)$/i.exec(value);
+        if (!match || this.privateChat.active) {
+            this.hideCommandSuggestions();
+            return;
+        }
+
+        const term = match[1].toLowerCase();
+        this._cmdMatches = (this._commands || []).filter(c => c.command.toLowerCase().startsWith(term));
+        if (!this._cmdMatches.length) {
+            this.hideCommandSuggestions();
+            return;
+        }
+        this._cmdIndex = 0;
+        this._cmdVisible = true;
+        this.renderCommandSuggestions();
+    }
+
+    renderCommandSuggestions() {
+        const box = this._cmdBox;
+        if (!box) return;
+        box.innerHTML = '';
+        (this._cmdMatches || []).forEach((c, i) => {
+            const row = document.createElement('div');
+            row.className = 'command-suggestion' + (i === this._cmdIndex ? ' is-active' : '');
+            row.innerHTML = `<span class="command-name">/${this.escapeHtml(c.command)}</span>`
+                + (c.description ? `<span class="command-desc">${this.escapeHtml(c.description)}</span>` : '');
+            // mousedown, not click: blur fires first and would close the list.
+            row.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this.applyCommandSuggestion(c);
+            });
+            box.appendChild(row);
+        });
+        box.style.display = 'block';
+    }
+
+    applyCommandSuggestion(cmd) {
+        if (!cmd) return;
+        this.hideCommandSuggestions();
+        this.messageInput.value = '/' + cmd.command;
+        this.messageInput.focus();
+        // A command that takes arguments needs the space; one that does not is
+        // ready to send, and /poll opens its builder on exactly this value.
+        if (cmd.command !== 'poll' && cmd.command !== 'help') {
+            this.messageInput.value += ' ';
+        }
+    }
+
+    hideCommandSuggestions() {
+        this._cmdVisible = false;
+        if (this._cmdBox) this._cmdBox.style.display = 'none';
+    }
+
+    // ---- Poll composer ----------------------------------------------
+
+    /** Minimum viable poll, and the point past which a chat card stops being readable. */
+    static get POLL_MIN_OPTIONS() { return 2; }
+    static get POLL_MAX_OPTIONS() { return 6; }
+
+    /**
+     * Open the poll builder.
+     *
+     * Replaces printing "Usage: /poll Question | Option 1 | Option 2" at someone
+     * — which asked them to hold the whole poll in their head, in one line, with
+     * separators they had to get right blind. The command still parses that form
+     * for anyone who has learned it.
+     */
+    openPollComposer() {
+        const modal = document.getElementById('poll-modal');
+        if (!modal) return;
+
+        if (!this._settingOn(this.settings && this.settings.polls_enabled)) {
+            this.showSystemMessage('Polls are switched off for this chat.');
+            return;
+        }
+
+        const list = document.getElementById('poll-options-list');
+        const question = document.getElementById('poll-question-input');
+        const error = document.getElementById('poll-error');
+        list.innerHTML = '';
+        question.value = '';
+        error.textContent = '';
+        for (let i = 0; i < RadioChatBox.POLL_MIN_OPTIONS; i++) this.addPollOption();
+
+        if (!this._pollComposerBound) {
+            this._pollComposerBound = true;
+            document.getElementById('poll-add-option').addEventListener('click', () => this.addPollOption());
+            document.getElementById('poll-cancel').addEventListener('click', () => this.closePollComposer());
+            document.getElementById('poll-submit').addEventListener('click', () => this.submitPollComposer());
+            modal.addEventListener('click', (e) => { if (e.target === modal) this.closePollComposer(); });
+            modal.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this.closePollComposer();
+                // Enter moves on rather than submitting half a poll.
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const fields = Array.from(modal.querySelectorAll('input[type="text"]'));
+                    const next = fields[fields.indexOf(e.target) + 1];
+                    if (next) { next.focus(); } else { this.submitPollComposer(); }
+                }
+            });
+        }
+
+        modal.style.display = 'flex';
+        question.focus();
+    }
+
+    closePollComposer() {
+        const modal = document.getElementById('poll-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    addPollOption() {
+        const list = document.getElementById('poll-options-list');
+        if (!list) return;
+        const rows = list.querySelectorAll('.poll-option-row');
+        if (rows.length >= RadioChatBox.POLL_MAX_OPTIONS) return;
+
+        const row = document.createElement('div');
+        row.className = 'poll-option-row';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.maxLength = 100;
+        input.placeholder = `Option ${rows.length + 1}`;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'poll-option-remove';
+        remove.title = 'Remove this option';
+        remove.textContent = '✕';
+        remove.addEventListener('click', () => {
+            // Never below the count that makes it a poll rather than a statement.
+            if (list.querySelectorAll('.poll-option-row').length <= RadioChatBox.POLL_MIN_OPTIONS) return;
+            row.remove();
+            this.renumberPollOptions();
+        });
+
+        row.appendChild(input);
+        row.appendChild(remove);
+        list.appendChild(row);
+        this.renumberPollOptions();
+        input.focus();
+    }
+
+    renumberPollOptions() {
+        const list = document.getElementById('poll-options-list');
+        if (!list) return;
+        const rows = Array.from(list.querySelectorAll('.poll-option-row'));
+        rows.forEach((row, i) => {
+            const input = row.querySelector('input');
+            if (input) input.placeholder = `Option ${i + 1}`;
+            const remove = row.querySelector('.poll-option-remove');
+            // Hide rather than disable: a control that cannot act is just noise.
+            if (remove) remove.style.visibility = rows.length > RadioChatBox.POLL_MIN_OPTIONS ? 'visible' : 'hidden';
+        });
+        const add = document.getElementById('poll-add-option');
+        if (add) add.style.display = rows.length >= RadioChatBox.POLL_MAX_OPTIONS ? 'none' : '';
+    }
+
+    /**
+     * Send the composed poll through the same "/poll Q | A | B" the command has
+     * always taken, so permissions, validation and broadcast stay in one place
+     * on the server rather than growing a second path.
+     */
+    submitPollComposer() {
+        const error = document.getElementById('poll-error');
+        const question = document.getElementById('poll-question-input').value.trim();
+        const options = Array.from(document.querySelectorAll('#poll-options-list input'))
+            .map(i => i.value.trim())
+            .filter(v => v !== '');
+
+        error.textContent = '';
+        if (!question) { error.textContent = 'What is the question?'; return; }
+        if (options.length < RadioChatBox.POLL_MIN_OPTIONS) {
+            error.textContent = `Give people at least ${RadioChatBox.POLL_MIN_OPTIONS} options to choose from`;
+            return;
+        }
+        // The separator is the wire format, so it cannot appear inside a field.
+        if ([question, ...options].some(v => v.includes('|'))) {
+            error.textContent = 'Please avoid the "|" character';
+            return;
+        }
+
+        this.closePollComposer();
+        this.messageInput.value = `/poll ${question} | ${options.join(' | ')}`;
+        this.sendMessage();
+    }
+
     /** Close every open bubble overflow menu. */
     closeMessageMenus() {
         document.querySelectorAll('.message-more.open').forEach(w => {
@@ -6072,6 +6313,17 @@ class RadioChatBox {
 
         // Check if we have a photo or message
         if (!message && !this.selectedPhoto) {
+            return;
+        }
+
+        // A bare "/poll" used to be answered with the pipe syntax spelled out,
+        // which is a manual, not an interface — you had to read it, remember it,
+        // and get the separators right in one line with no way to see what you
+        // were building. Open the builder instead. "/poll Q | A | B" still works
+        // for anyone who already knows it.
+        if (/^\/poll$/i.test(message) && !this.privateChat.active) {
+            this.messageInput.value = '';
+            this.openPollComposer();
             return;
         }
         

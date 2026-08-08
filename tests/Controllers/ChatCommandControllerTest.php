@@ -193,4 +193,41 @@ class ChatCommandControllerTest extends TestCase
         $response = $controller->handle();
         $this->assertSame(400, $response->getStatusCode());
     }
+
+    /**
+     * GET /api/commands lists what a user can type, and never the responses.
+     *
+     * The autocomplete needs names and descriptions; the response body is the
+     * payoff for typing the command and has no business being public.
+     */
+    public function testPublicListOffersNamesWithoutResponses(): void
+    {
+        (new SettingsService())->set('chat_commands_enabled', 'true');
+        (new ChatCommandService())->create($this->cmd, 'the secret reply body', 'House rules');
+
+        $body = json_decode((new ChatCommandController())->index()->getBody(), true);
+
+        $this->assertTrue($body['success']);
+        $names = array_column($body['commands'], 'command');
+        $this->assertContains('help', $names, '/help is always available');
+        $this->assertContains($this->cmd, $names);
+
+        $encoded = json_encode($body);
+        $this->assertStringNotContainsString('the secret reply body', $encoded);
+        foreach ($body['commands'] as $command) {
+            $this->assertSame(['command', 'description'], array_keys($command));
+        }
+    }
+
+    /** Commands the station has switched off are not suggested. */
+    public function testPublicListOmitsCustomCommandsWhenTheFeatureIsOff(): void
+    {
+        (new SettingsService())->set('chat_commands_enabled', 'false');
+        (new ChatCommandService())->create($this->cmd, 'reply', 'House rules');
+
+        $body = json_decode((new ChatCommandController())->index()->getBody(), true);
+
+        $this->assertNotContains($this->cmd, array_column($body['commands'], 'command'));
+        $this->assertContains('help', array_column($body['commands'], 'command'));
+    }
 }

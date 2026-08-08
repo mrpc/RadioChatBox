@@ -127,8 +127,13 @@ final class SendController
         $bits = array_map('trim', explode('|', $body));
         $bits = array_values(array_filter($bits, static fn (string $b): bool => $b !== ''));
         if (count($bits) < 3) {
+            // The chat client opens a builder for a bare "/poll", so reaching here
+            // means either a half-typed command or a client that has none. Point
+            // at the builder first and keep the syntax as the fallback, rather
+            // than answering an interface question with a manual.
             return Response::json(['success' => true, 'command' => true,
-                'response' => 'Usage: /poll Question | Option 1 | Option 2 [| Option 3 …]']);
+                'response' => "Send \"/poll\" on its own to open the poll builder.\n"
+                    . 'Or type it in one go: /poll Question | Option 1 | Option 2']);
         }
         $question = array_shift($bits);
 

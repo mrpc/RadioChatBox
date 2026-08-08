@@ -17,6 +17,51 @@ use RadioChatBox\Services\ChatCommandService;
 class ChatCommandController
 {
     /**
+     * GET /api/commands — the commands a chat user can type, for autocomplete.
+     *
+     * Public and deliberately thin: names and descriptions only, never the
+     * response bodies, which are the point of typing the command. Built-ins come
+     * first because they are the ones always present; the station's own commands
+     * follow in the order /help lists them.
+     *
+     * Permission is not modelled here — the server checks it when the command is
+     * actually sent, and hiding /poll from someone who may not create one would
+     * mean teaching this endpoint the whole role system to save a single error
+     * message. Commands only offered when their feature is on are filtered,
+     * though: suggesting something switched off is a dead end, not a permission
+     * question. 200 {success, commands:[{command, description}]}.
+     */
+    #[Route('/api/commands', methods: 'GET', name: 'commands.index')]
+    public function index(): Response
+    {
+        try {
+            $settings = new \RadioChatBox\Services\SettingsService();
+
+            $commands = [['command' => 'help', 'description' => 'Show the available commands']];
+
+            if ($settings->get('polls_enabled', 'false') === 'true') {
+                $commands[] = ['command' => 'poll', 'description' => 'Start a poll — send it alone to open the builder'];
+            }
+
+            if ($settings->get('chat_commands_enabled', 'false') === 'true') {
+                foreach ((new ChatCommandService())->activeList() as $row) {
+                    $commands[] = [
+                        'command'     => (string) $row['command'],
+                        'description' => trim((string) ($row['description'] ?? '')),
+                    ];
+                }
+            }
+
+            return Response::json(['success' => true, 'commands' => $commands]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('ChatCommandController::index failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/commands — list all commands. POST — create one. PUT —
      * update by id. DELETE — remove by id. All admin-only.
      *
