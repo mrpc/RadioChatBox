@@ -57,6 +57,20 @@ class CommandCatalog
                 'irc'         => false,
             ],
             [
+                'command'     => 'pollresults',
+                'description' => 'Post the last poll’s result to the chat',
+                'minUsertype' => Authz::SIMPLE_USER,
+                'feature'     => 'polls_enabled',
+                'irc'         => false,
+            ],
+            [
+                'command'     => 'pollhistory',
+                'description' => 'List the polls you have started',
+                'minUsertype' => Authz::SIMPLE_USER,
+                'feature'     => 'polls_enabled',
+                'irc'         => false,
+            ],
+            [
                 'command'     => 'mute',
                 'description' => 'Silence someone — /mute <user> [minutes]',
                 'minUsertype' => Authz::MODERATOR,
@@ -115,7 +129,11 @@ class CommandCatalog
             ) {
                 continue;
             }
-            if ($command['command'] === 'poll'
+            // Creating a poll carries a second, finer gate. /pollhistory shares
+            // it: it lists the polls you started, so for anyone who cannot start
+            // one it is a command that is always empty. /pollresults does not —
+            // wanting to see how a vote came out is not a privilege.
+            if (in_array($command['command'], ['poll', 'pollhistory'], true)
                 && $usertype < Authz::usertypeForLabel((string) ($settings->get('poll_min_usertype') ?: 'moderator'))
             ) {
                 continue;

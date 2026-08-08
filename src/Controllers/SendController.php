@@ -55,6 +55,23 @@ final class SendController
                 }
             }
 
+            // /pollresults announces the result to the room. Like /me it becomes
+            // a message rather than a private reply — the point is telling
+            // everyone how the vote went, and posting it means latecomers find
+            // it in the history too.
+            if (is_string($message) && preg_match('/^\/pollresults\b/i', ltrim($message))) {
+                $text = $this->pollResultsText($sessionId, $chatService);
+                // Nothing to announce (no poll yet, or polls off) stays between
+                // us: there is no result to put in front of the room.
+                if (!str_starts_with($text, '📊')) {
+                    return Response::json(['success' => true, 'command' => true, 'response' => $text]);
+                }
+                $message = $text;
+            } elseif (is_string($message) && preg_match('/^\/pollhistory\b/i', ltrim($message))) {
+                return Response::json(['success' => true, 'command' => true,
+                    'response' => $this->pollHistoryText($username, $chatService)]);
+            }
+
             // /poll — create a live poll from the chat (permitted roles only). It
             // is NOT posted as a normal message; the poll card is broadcast instead.
             if (is_string($message) && str_starts_with(ltrim($message), '/poll')) {
@@ -145,6 +162,7 @@ final class SendController
         // Only a permitted role may create polls.
         $session = $chatService->getSessionInfo($username, $sessionId);
         $role = (string) ($session['user_role'] ?? '');
+        $isStaff = \RadioChatBox\Services\Authz::usertypeForLabel($role) >= \RadioChatBox\Services\Authz::MODERATOR;
         $minLabel = (string) ($chatService->getSetting('poll_min_usertype') ?: 'moderator');
         if (\RadioChatBox\Services\Authz::usertypeForLabel($role) < \RadioChatBox\Services\Authz::usertypeForLabel($minLabel)) {
             return Response::json(['success' => true, 'command' => true, 'response' => 'You are not allowed to create polls.']);
@@ -164,6 +182,27 @@ final class SendController
                     . 'Or type it in one go: /poll Question | Option 1 | Option 2']);
         }
         $question = array_shift($bits);
+
+        // One poll at a time, and the chat says so rather than acting.
+        //
+        // PollService::create() closes whatever is running before it inserts, so
+        // typing /poll during a live poll silently ended it — the room lost a
+        // vote in progress and only the person who typed knew why. The admin
+        // panel keeps that override, deliberately: replacing a poll from there
+        // is a decision someone went looking for. From the chat it is a
+        // side-effect of a command about something else.
+        $running = (new \RadioChatBox\Services\PollService())->currentlyRunning();
+        if ($running !== null) {
+            $ends = !empty($running['expires_at'])
+                ? ' It ends at ' . date('H:i', strtotime((string) $running['expires_at'])) . '.'
+                : '';
+            $mine = mb_strtolower((string) ($running['created_by'] ?? '')) === mb_strtolower($username);
+            return Response::json(['success' => true, 'command' => true,
+                'response' => '📊 “' . $running['question'] . '” is still running.' . $ends
+                    . ($mine || $isStaff
+                        ? ' End it first with the “End poll” button on the card.'
+                        : ' Wait for it to finish before starting another.')]);
+        }
 
         // Optional duration, sent alongside the command by the builder rather
         // than squeezed into the pipe syntax. A poll from the chat used to have
@@ -223,6 +262,74 @@ final class SendController
             \Pramnos\Logs\Logger::log('SendController::notifyMentions failed: ' . $e->getMessage(), 'radiochatbox');
         }
         // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * /pollresults — the last poll's tally, shown only to whoever asked.
+     *
+     * The card carries the live poll and lingers briefly after it ends; this is
+     * for afterwards, when someone missed it or wants the numbers again without
+     * the room being shown anything.
+     */
+    private function pollResultsText(string $sessionId, ChatService $chatService): string
+    {
+        if ($chatService->getSetting('polls_enabled') !== 'true') {
+            return 'Polls are switched off here.';
+        }
+
+        $poll = (new \RadioChatBox\Services\PollService())->latestResults($sessionId);
+        if ($poll === null || ($poll['id'] ?? 0) === 0) {
+            return 'There has not been a poll yet.';
+        }
+
+        $total = (int) ($poll['total'] ?? 0);
+        $parts = [];
+        foreach (($poll['options'] ?? []) as $i => $option) {
+            $count = (int) ($poll['counts'][$i] ?? 0);
+            $pct = $total > 0 ? (int) round(($count / $total) * 100) : 0;
+            $parts[] = $option . ' ' . $pct . '% (' . $count . ')';
+        }
+
+        // One line: this is posted as a chat message, and .message-text collapses
+        // newlines, so a stacked layout would arrive as one run-on line anyway.
+        return '📊 ' . $poll['question'] . ($poll['is_active'] ? ' (still running)' : '')
+            . ' — ' . implode(' · ', $parts)
+            . ' — ' . $total . ' vote' . ($total === 1 ? '' : 's');
+    }
+
+    /** /pollhistory — the polls this person has started, newest first. */
+    private function pollHistoryText(string $username, ChatService $chatService): string
+    {
+        if ($chatService->getSetting('polls_enabled') !== 'true') {
+            return 'Polls are switched off here.';
+        }
+        if (trim($username) === '') {
+            return 'Join the chat to see your polls.';
+        }
+
+        $polls = (new \RadioChatBox\Services\PollService())->byCreator($username, 10);
+        if ($polls === []) {
+            return 'You have not started a poll yet. Send "/poll" on its own to make one.';
+        }
+
+        $lines = ['📊 Your polls, most recent first:'];
+        foreach ($polls as $poll) {
+            $total = (int) ($poll['total'] ?? 0);
+            // The winner is the useful part of a finished poll; a running one has
+            // no result to name yet.
+            $summary = $poll['is_active'] ? 'running' : 'closed';
+            if (!$poll['is_active'] && $total > 0) {
+                $counts = $poll['counts'] ?? [];
+                $best = array_keys($counts, max($counts))[0] ?? null;
+                if ($best !== null) {
+                    $summary = 'won by “' . ($poll['options'][$best] ?? '?') . '”';
+                }
+            }
+            $lines[] = '  ' . $poll['question'] . ' — ' . $summary
+                . ', ' . $total . ' vote' . ($total === 1 ? '' : 's');
+        }
+
+        return implode("\n", $lines);
     }
 
     /** Whether admin-defined slash-commands are switched on. */

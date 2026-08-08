@@ -270,6 +270,84 @@ class PollControllerTest extends TestCase
     }
 
     /**
+     * /poll during a live poll refuses instead of replacing it.
+     *
+     * PollService::create() closes whatever is running before inserting, so the
+     * command used to silently end a vote in progress — the room lost it and
+     * only the person who typed knew why. The admin panel keeps that override;
+     * from the chat it would be a side-effect of a command about something else.
+     */
+    public function testPollCommandRefusesWhileAnotherIsRunning(): void
+    {
+        $this->enable();
+        (new SettingsService())->set('poll_min_usertype', 'moderator');
+        $this->promoteUser(50);
+
+        $running = $this->makePoll('First question?');
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/poll Second? | A | B'];
+        $body = json_decode((new SendController())->store()->getBody(), true);
+
+        $this->assertTrue($body['command'] ?? false);
+        $this->assertStringContainsString('still running', $body['response']);
+
+        $active = (new PollService())->activeResults();
+        $this->assertSame($running, $active['id'], 'the running poll must survive');
+        $this->assertTrue($active['is_active']);
+    }
+
+    /**
+     * /pollresults posts the tally to the room, as a message rather than a
+     * private reply — the point is telling everyone, and posting also puts it in
+     * the history for whoever arrives next.
+     */
+    public function testPollResultsCommandPostsTheTallyToTheChat(): void
+    {
+        $this->enable();
+        $id = $this->makePoll('Rock or metal?');
+        (new PollService())->vote($id, $this->session, $this->user, 0);
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/pollresults'];
+        $body = json_decode((new SendController())->store()->getBody(), true);
+
+        $this->assertArrayNotHasKey('command', $body, 'it is posted, not answered privately');
+        $this->assertStringContainsString('Rock or metal?', $body['message']['message']);
+        $this->assertStringContainsString('100%', $body['message']['message']);
+        $this->assertStringNotContainsString("\n", $body['message']['message'], 'a chat message is one line');
+    }
+
+    /** With nothing to announce it stays between us rather than posting noise. */
+    public function testPollResultsWithNoPollAnswersPrivately(): void
+    {
+        $this->enable();
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/pollresults'];
+        $body = json_decode((new SendController())->store()->getBody(), true);
+
+        $this->assertTrue($body['command'] ?? false);
+        $this->assertStringContainsString('not been a poll', $body['response']);
+    }
+
+    /** /pollhistory lists the caller's own polls, and says so when there are none. */
+    public function testPollHistoryCommandListsYourOwnPolls(): void
+    {
+        $this->enable();
+        (new SettingsService())->set('poll_min_usertype', 'moderator');
+        $this->promoteUser(50);
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/pollhistory'];
+        $empty = json_decode((new SendController())->store()->getBody(), true);
+        $this->assertStringContainsString('not started a poll', $empty['response']);
+
+        $id = (new PollService())->create('Mine?', ['Yes', 'No'], $this->user);
+        $this->pollIds[] = $id;
+
+        $_POST = ['username' => $this->user, 'sessionId' => $this->session, 'message' => '/pollhistory'];
+        $body = json_decode((new SendController())->store()->getBody(), true);
+        $this->assertStringContainsString('Mine?', $body['response']);
+    }
+
+    /**
      * A half-typed /poll points at the builder before it spells out the syntax.
      *
      * The chat client opens the builder for a bare "/poll", so this reply is for

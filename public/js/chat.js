@@ -3751,7 +3751,12 @@ class RadioChatBox {
             this.hideCommandSuggestions();
             return;
         }
-        this._cmdIndex = 0;
+        // Highlight an exact match rather than the first prefix match. "/poll" is
+        // a prefix of "/pollresults" and "/pollhistory", so typing any of them in
+        // full left the FIRST one selected — and Enter completed to that instead
+        // of sending what was actually typed.
+        const exact = this._cmdMatches.findIndex(c => c.command.toLowerCase() === term);
+        this._cmdIndex = exact >= 0 ? exact : 0;
         this._cmdVisible = true;
         this.renderCommandSuggestions();
     }
@@ -3812,6 +3817,16 @@ class RadioChatBox {
 
         if (!this._settingOn(this.settings && this.settings.polls_enabled)) {
             this.showSystemMessage('Polls are switched off for this chat.');
+            return;
+        }
+
+        // Say so before the composing, not after. The server refuses a second
+        // poll too, but finding out once you have typed the question and every
+        // option is a waste of the effort it just took.
+        const live = document.getElementById('poll-widget');
+        if (this._currentPollId && live && live.style.display !== 'none'
+            && live.querySelector('.poll-option, .poll-close-btn')) {
+            this.showSystemMessage('A poll is already running — end that one first.');
             return;
         }
 

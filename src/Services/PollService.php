@@ -223,6 +223,57 @@ class PollService
     }
 
     /**
+     * The poll currently running, if any — regardless of who started it.
+     *
+     * Distinct from activeResults(), which also reports a just-closed poll so
+     * the room can see the outcome. This one answers only "is the floor taken?",
+     * which is what the /poll command needs before starting another.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function currentlyRunning(): ?array
+    {
+        $row = $this->db->preparedQuery(
+            'SELECT id, question, created_by, expires_at FROM polls
+              WHERE is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+              ORDER BY created_at DESC LIMIT 1'
+        );
+        $poll = $row ? $row->fetch() : false;
+
+        return $poll ?: null;
+    }
+
+    /** The most recent poll's results, running or finished. */
+    public function latestResults(?string $session = null): ?array
+    {
+        $row = $this->db->preparedQuery('SELECT id FROM polls ORDER BY created_at DESC LIMIT 1');
+        $id = $row ? $row->fetchColumn() : false;
+
+        return $id === false ? null : $this->results((int) $id, $session);
+    }
+
+    /**
+     * Polls started by one person, newest first, each with its tally.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function byCreator(string $username, int $limit = 10): array
+    {
+        $rows = $this->db->preparedQuery(
+            'SELECT id FROM polls WHERE LOWER(created_by) = LOWER(:u)
+              ORDER BY created_at DESC LIMIT ' . max(1, min($limit, 50)),
+            ['u' => $username]
+        );
+
+        $out = [];
+        foreach (($rows ? $rows->fetchAll() : []) as $row) {
+            $out[] = $this->results((int) $row['id']);
+        }
+
+        return $out;
+    }
+
+    /**
      * Who voted for what on a poll (named voting, admin view). Returns the poll's
      * options plus, per option index, the list of voter usernames (falling back to
      * a short session tag when a vote was cast without a username).
