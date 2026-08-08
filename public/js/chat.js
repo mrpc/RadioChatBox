@@ -2869,6 +2869,41 @@ class RadioChatBox {
 
         // Start heartbeat
         this.startHeartbeat();
+
+        this.focusMessageInput();
+    }
+
+    /**
+     * Put the cursor in the message box once the chat is up.
+     *
+     * Arriving with a session already open means the join screen never appeared
+     * and there was nothing to click, so the first keystroke went nowhere and
+     * you had to reach for the mouse to start typing.
+     *
+     * Not on touch, where focusing summons the on-screen keyboard and takes half
+     * the screen from someone who came to read. And not while the input is
+     * disabled — blocked, timed out, or public chat switched off — because
+     * focusing a control that refuses input only looks broken.
+     */
+    focusMessageInput() {
+        if (!this.messageInput || this.messageInput.disabled) return;
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
+
+        // After the current paint: the modal is still being hidden as this runs,
+        // and focusing under it does not take.
+        setTimeout(() => {
+            try {
+                if (!this.messageInput || this.messageInput.disabled) return;
+                // A dialog that opened on load owns the cursor — the password
+                // reset arriving as ?reset=<token>, for one.
+                const openModal = Array.prototype.find.call(
+                    document.querySelectorAll('.modal'),
+                    m => getComputedStyle(m).display !== 'none'
+                );
+                if (openModal) return;
+                this.messageInput.focus();
+            } catch (e) { /* never worth breaking the load over */ }
+        }, 0);
     }
 
     // Realtime transport entry point. Asks the server which transport to use;
