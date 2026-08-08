@@ -1330,7 +1330,12 @@ class RadioChatBox {
                 if (audio.muted && !this._userMuted) { audio.muted = false; updateVolIcon(); }
                 this._playerWantsPlay = true;
                 this._playerRetries = 0;
-                audio.play().catch(() => {});
+                audio.play().catch(() => {
+                    // A refused press leaves nothing loading either.
+                    this._playerWantsPlay = false;
+                    this._setPlayerBuffering(false);
+                    setPlaying(false);
+                });
             } else {
                 // Pressing pause is the one thing that should stop us reconnecting.
                 this._playerWantsPlay = false;
@@ -1387,7 +1392,12 @@ class RadioChatBox {
                 // is anything actually happening?
                 const paint = () => {
                     const ahead = bufferedAhead();
-                    setPlayerLabel(ahead === null ? 'Buffering…' : `Buffering… ${ahead.toFixed(1)}s`);
+                    // No buffered range yet means no bytes yet — the connection
+                    // is still being opened. Calling that "Buffering…" with no
+                    // number reads as a broken readout; it is a different state
+                    // and deserves its own word. The seconds appear as soon as
+                    // there is audio to count.
+                    setPlayerLabel(ahead === null ? 'Connecting…' : `Buffering… ${ahead.toFixed(1)}s`);
                 };
                 paint();
                 clearInterval(this._bufferingProgress);
@@ -1589,7 +1599,15 @@ class RadioChatBox {
             audio.muted = true;
             this._userMuted = false; // muted by policy, not by the user
             updateVolIcon();
-            audio.play().catch(() => {});
+            audio.play().catch(() => {
+                // Refused by the autoplay policy. 'play' has already fired and
+                // put the bar into its connecting state, so clear it: nothing is
+                // loading, and a bar that says otherwise while sitting silent is
+                // the confusing part.
+                this._playerWantsPlay = false;
+                setBuffering(false);
+                setPlaying(false);
+            });
         }
     }
 
