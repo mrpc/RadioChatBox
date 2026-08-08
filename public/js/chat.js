@@ -1347,20 +1347,53 @@ class RadioChatBox {
          * than loading. It also reappears on every rebuffer and reconnect, the
          * moments a listener most wants to know it is still trying.
          */
+        /** The one place that writes the player's status line. */
+        const setPlayerLabel = (text) => {
+            const label = document.getElementById('rp-label');
+            bar.classList.toggle('is-buffering', text !== null);
+            if (label) label.textContent = text === null ? 'Now Playing' : text;
+        };
+
         const setBuffering = (on) => {
             clearTimeout(this._bufferingShowTimer);
-            const apply = (state) => {
-                const label = document.getElementById('rp-label');
-                bar.classList.toggle('is-buffering', state);
-                if (label) label.textContent = state ? 'Buffering…' : 'Now Playing';
-            };
-            if (!on) { apply(false); return; }
+            if (!on) {
+                clearInterval(this._reconnectCountdown);
+                setPlayerLabel(null);
+                return;
+            }
             // Announce the wait only once it IS a wait. A start that connects
             // quickly would otherwise flash "Buffering…" for a frame, which is
             // noise; a slow start or a reconnect holds past this and says so.
-            this._bufferingShowTimer = setTimeout(() => apply(true), 600);
+            this._bufferingShowTimer = setTimeout(() => setPlayerLabel('Buffering…'), 600);
         };
         this._setPlayerBuffering = setBuffering;
+
+        /**
+         * Count down to the next reconnect attempt.
+         *
+         * Only here, because only here is there a number worth showing: the
+         * backoff delay is ours and exact. Buffering itself has no known
+         * duration — the stream arrives when the network manages it — so a
+         * countdown there would be a made-up number, and one that hit zero with
+         * nothing to show for it. "Buffering…" is the honest word for that;
+         * "Reconnecting in 4s" is the honest word for this.
+         */
+        const countdownToRetry = (ms) => {
+            clearTimeout(this._bufferingShowTimer);
+            clearInterval(this._reconnectCountdown);
+            let left = Math.ceil(ms / 1000);
+            const tick = () => {
+                if (left <= 0) {
+                    clearInterval(this._reconnectCountdown);
+                    setPlayerLabel('Reconnecting…');
+                    return;
+                }
+                setPlayerLabel(`Reconnecting in ${left}s`);
+                left -= 1;
+            };
+            tick();
+            this._reconnectCountdown = setInterval(tick, 1000);
+        };
 
         /**
          * Start fetching before the click lands.
@@ -1436,15 +1469,10 @@ class RadioChatBox {
         clearInterval(this._playerBufferMonitor);
         this._playerBufferMonitor = setInterval(monitorBuffer, 1000);
 
-        // A deliberate pause ends the game; the rate must not persist into the
-        // next play, where it would be a mystery.
-        audio.addEventListener('pause', () => { audio.playbackRate = 1; });
-
         audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); setBuffering(true); });
         audio.addEventListener('waiting', () => setBuffering(true));
         audio.addEventListener('stalled', () => setBuffering(true));
         audio.addEventListener('canplay', () => setBuffering(false));
-        audio.addEventListener('pause', () => setBuffering(false));
         audio.addEventListener('playing', () => {
             this._playerRetries = 0;
             setPlaying(true);
@@ -1452,8 +1480,15 @@ class RadioChatBox {
             this.updateMediaSession();
         });
         audio.addEventListener('pause', () => {
-            // Only a deliberate pause gives up; a dropped stream also fires this.
+            // One handler, because three of them accumulated here as this file
+            // grew and they all answer the same event. Note that a dropped
+            // stream fires 'pause' too, not just a deliberate one — which is
+            // why giving up on the retries is decided by the play button, not
+            // here.
             setPlaying(false);
+            setBuffering(false);
+            // A rate left over from a bad patch would be a mystery next time.
+            audio.playbackRate = 1;
         });
 
         // A live stream has no end and no seekable buffer: when the connection
@@ -1470,8 +1505,8 @@ class RadioChatBox {
             this._playerRetries = (this._playerRetries || 0) + 1;
             if (this._playerRetries > 10) return;
 
-            setBuffering(true);
             const delay = Math.min(1000 * Math.pow(1.6, this._playerRetries - 1), 30000);
+            countdownToRetry(delay);
             clearTimeout(this._playerRetryTimer);
             this._playerRetryTimer = setTimeout(() => {
                 const base = streamUrl.split('#')[0];
