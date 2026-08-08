@@ -172,8 +172,16 @@
     <!-- Profile Settings Modal -->
     <div id="profile-modal" class="modal">
         <div class="modal-content">
-            <h2>Profile Settings</h2>
-            <p>Update your profile information:</p>
+            <h2>Account &amp; Settings</h2>
+            <!-- Three panes rather than one long scroll. Membership is declared
+                 on each section with data-pane; anything untagged is Profile,
+                 so a section added later lands somewhere sensible without
+                 having to be registered here. -->
+            <div id="account-tabs" class="account-tabs">
+                <button type="button" class="account-tab is-active" data-pane="profile">Profile</button>
+                <button type="button" class="account-tab" data-pane="security">Security</button>
+                <button type="button" class="account-tab" data-pane="alerts">Alerts</button>
+            </div>
 
             <div class="profile-info">
                 <label>Nickname</label>
@@ -237,7 +245,7 @@
             </div>
 
             <!-- Two-factor authentication (registered accounts only) -->
-            <div id="profile-2fa-section" class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+            <div id="profile-2fa-section" class="profile-info" data-pane="security" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
                 <label style="font-weight:600;">Two-factor authentication (2FA)</label>
                 <div id="profile-2fa-status" style="font-size:13px; color:#6b7280; margin:4px 0;"></div>
                 <button type="button" id="profile-2fa-setup-btn" class="btn-secondary" style="display:none;">Set up 2FA</button>
@@ -257,7 +265,7 @@
             </div>
 
             <!-- Passkeys (registered accounts only) -->
-            <div id="profile-passkey-section" class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+            <div id="profile-passkey-section" class="profile-info" data-pane="security" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
                 <label style="font-weight:600;">Passkeys</label>
                 <div id="profile-passkey-list" style="font-size:13px; color:#374151; margin:4px 0;"></div>
                 <button type="button" id="profile-passkey-add-btn" class="btn-secondary">➕ Add a passkey</button>
@@ -265,13 +273,34 @@
             </div>
 
             <!-- Email verification (registered accounts) -->
-            <div id="profile-email-section" class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+            <div id="profile-email-section" class="profile-info" data-pane="security" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
                 <label style="font-weight:600;">Email</label>
+                <div id="profile-email-address" style="font-size:13px; color:#374151; margin:2px 0 6px;"></div>
                 <button type="button" id="profile-resend-verify-btn" class="btn-secondary" style="font-size:13px;">Resend verification email</button>
                 <div id="profile-email-msg" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
             </div>
 
-            <div class="profile-info" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">
+            <!-- Change password (registered accounts) -->
+            <div id="profile-password-section" class="profile-info" data-pane="security" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+                <label style="font-weight:600;">Password</label>
+                <input type="password" id="profile-current-password" placeholder="Current password" autocomplete="current-password">
+                <input type="password" id="profile-new-password" placeholder="New password (min 8 chars)" autocomplete="new-password">
+                <input type="password" id="profile-new-password2" placeholder="Confirm new password" autocomplete="new-password">
+                <button type="button" id="profile-password-btn" class="btn-secondary" style="font-size:13px;">Change password</button>
+                <div id="profile-password-msg" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
+            </div>
+
+            <!-- Marketing consent (registered accounts, when the station asks) -->
+            <div id="profile-marketing-section" class="profile-info" data-pane="alerts" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px; display:none;">
+                <label style="font-weight:600;">Newsletter</label>
+                <label style="display:flex; align-items:flex-start; gap:8px; font-weight:normal; margin-top:6px;">
+                    <input type="checkbox" id="profile-marketing-optin" style="width:auto; margin-top:3px;">
+                    <span id="profile-marketing-text"></span>
+                </label>
+                <div id="profile-marketing-msg" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
+            </div>
+
+            <div class="profile-info" data-pane="alerts" style="border-top:1px solid #eee; padding-top:12px; margin-top:6px;">
                 <label style="font-weight:600;">Notifications</label>
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
                     <input type="checkbox" id="pref-dnd" style="width:auto;"> Do Not Disturb (mute all sounds &amp; alerts)
@@ -358,7 +387,7 @@
                     <button id="schedule-toggle" class="icon-button" title="Show schedule" aria-label="Show schedule">📅</button>
                     <button id="search-toggle" class="icon-button" title="Search messages" aria-label="Search messages">🔍</button>
                     <button id="sound-toggle" class="icon-button" title="Sound On">🔔</button>
-                    <button id="change-nickname" class="icon-button" title="Profile & Settings">
+                    <button id="change-nickname" class="icon-button" title="Account, security &amp; settings" aria-label="Account, security and settings">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="3" />
                             <path d="M12 1v6m0 6v6m5.2-14.2l-4.2 4.2m0 6l-4.2 4.2M23 12h-6m-6 0H1m14.2 5.2l-4.2-4.2m0-6l-4.2-4.2" />

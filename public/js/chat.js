@@ -2622,6 +2622,10 @@ class RadioChatBox {
         this._initTwoFactorSection();
         this._initPasskeySection();
         this._initEmailSection();
+        this._initAccountSection();
+        // Last, so it sorts sections whose own visibility the calls above have
+        // already decided.
+        this._initAccountTabs();
 
         // Pre-fill the bio/status from my own profile card (best-effort).
         (async () => {
@@ -3638,6 +3642,178 @@ class RadioChatBox {
         return { id: cred.id, type: cred.type, rawId: this._bufToB64url(cred.rawId),
             response: { clientDataJSON: this._bufToB64url(r.clientDataJSON), authenticatorData: this._bufToB64url(r.authenticatorData), signature: this._bufToB64url(r.signature), userHandle: r.userHandle ? this._bufToB64url(r.userHandle) : null },
             clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {} };
+    }
+
+    /**
+     * Split the account dialog into panes.
+     *
+     * Everything lived in one column, and each thing added made the scroll
+     * longer until the dialog was taller than the screen and the useful control
+     * was always somewhere below the fold. Three panes, switched by the tabs.
+     *
+     * Which pane a section belongs to is declared on the section itself
+     * (data-pane), not listed here — a list here would be one more thing to
+     * remember to update, and the failure would be a section that silently
+     * appears in every pane or none.
+     */
+    _initAccountTabs() {
+        const tabs = document.getElementById('account-tabs');
+        const modal = document.getElementById('profile-modal');
+        if (!tabs || !modal) return;
+
+        const show = (pane) => {
+            modal.querySelectorAll('.account-tab').forEach(t => {
+                t.classList.toggle('is-active', t.dataset.pane === pane);
+            });
+            modal.querySelectorAll('.modal-content > .profile-info, .modal-content > #profile-edit-fields')
+                .forEach(section => {
+                    // Untagged sections are Profile: that is where the identity
+                    // fields live, and it is the safe home for anything new.
+                    const belongs = section.dataset.pane || 'profile';
+                    section.dataset.paneHidden = belongs === pane ? '' : '1';
+                });
+            try { this.setStorage('accountPane', pane); } catch (e) { /* private mode */ }
+        };
+
+        if (!tabs._wired) {
+            tabs._wired = true;
+            tabs.addEventListener('click', (e) => {
+                const tab = e.target.closest('.account-tab');
+                if (tab) show(tab.dataset.pane);
+            });
+        }
+
+        // Reopen where they left off — the dialog is usually revisited for the
+        // same reason it was opened last time.
+        const remembered = this.getStorage('accountPane');
+        show(['profile', 'security', 'alerts'].includes(remembered) ? remembered : 'profile');
+    }
+
+    /**
+     * The account rows the panel had no endpoints for: the email address it is
+     * offering to re-verify, changing a password you still know, and the
+     * newsletter answer.
+     *
+     * One overview call fills all three, because five requests to draw one
+     * dialog is how a settings panel gets slow.
+     */
+    async _initAccountSection() {
+        const pwSection = document.getElementById('profile-password-section');
+        const mkSection = document.getElementById('profile-marketing-section');
+        if (!this.userId) {
+            if (pwSection) pwSection.style.display = 'none';
+            if (mkSection) mkSection.style.display = 'none';
+            return;
+        }
+
+        let account = null;
+        try {
+            const q = `username=${encodeURIComponent(this.username)}&session_id=${encodeURIComponent(this.sessionId)}`;
+            const r = await fetch(`${this.apiUrl}/api/account/overview?${q}`);
+            const d = await r.json();
+            account = d && d.success ? d.account : null;
+        } catch (e) { /* leave the rows hidden rather than half-drawn */ }
+        if (!account) return;
+
+        // Email: say which address, and whether it is confirmed. Offering
+        // "resend verification" without naming the address it goes to is the
+        // kind of button people press twice and still do not trust.
+        const addr = document.getElementById('profile-email-address');
+        if (addr) {
+            addr.textContent = account.email
+                ? `${account.email} — ${account.email_verified ? 'verified' : 'not verified yet'}`
+                : 'No address on this account.';
+        }
+        const resendBtn = document.getElementById('profile-resend-verify-btn');
+        if (resendBtn) {
+            // Nothing to resend without an address, and nothing to verify when
+            // the station does not verify or it is already done.
+            resendBtn.style.display =
+                (account.email && account.verification_offered && !account.email_verified) ? '' : 'none';
+        }
+
+        if (pwSection) {
+            pwSection.style.display = 'block';
+            const btn = document.getElementById('profile-password-btn');
+            if (btn && !btn._wired) { btn._wired = true; btn.onclick = () => this._changePassword(); }
+        }
+
+        if (mkSection) {
+            mkSection.style.display = account.marketing_offered ? 'block' : 'none';
+            const box = document.getElementById('profile-marketing-optin');
+            const text = document.getElementById('profile-marketing-text');
+            if (text) text.textContent = account.marketing_text || '';
+            if (box) {
+                box.checked = !!account.marketing_opt_in;
+                if (!box._wired) {
+                    box._wired = true;
+                    // Saved on the spot: a consent switch that needs a separate
+                    // Save is one people leave in the wrong position.
+                    box.onchange = () => this._saveMarketing(box.checked);
+                }
+            }
+        }
+    }
+
+    async _changePassword() {
+        const msg = document.getElementById('profile-password-msg');
+        const current = document.getElementById('profile-current-password').value;
+        const next = document.getElementById('profile-new-password').value;
+        const confirm = document.getElementById('profile-new-password2').value;
+
+        msg.style.color = '#dc2626';
+        if (!current || !next) { msg.textContent = 'Fill in both passwords.'; return; }
+        if (next !== confirm) { msg.textContent = 'The new passwords do not match.'; return; }
+
+        try {
+            const body = new URLSearchParams({
+                username: this.username,
+                session_id: this.sessionId,
+                current_password: current,
+                new_password: next
+            });
+            const r = await fetch(`${this.apiUrl}/api/account/password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body
+            });
+            const d = await r.json();
+            if (!r.ok || !d.success) throw new Error(d.error || 'Could not change the password');
+
+            msg.style.color = '#059669';
+            msg.textContent = 'Password changed.';
+            ['profile-current-password', 'profile-new-password', 'profile-new-password2']
+                .forEach(id => { document.getElementById(id).value = ''; });
+        } catch (e) {
+            msg.textContent = e.message;
+        }
+    }
+
+    async _saveMarketing(optIn) {
+        const msg = document.getElementById('profile-marketing-msg');
+        try {
+            const body = new URLSearchParams({
+                username: this.username,
+                session_id: this.sessionId,
+                opt_in: optIn ? 'true' : 'false'
+            });
+            const r = await fetch(`${this.apiUrl}/api/account/marketing`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body
+            });
+            const d = await r.json();
+            if (!r.ok || !d.success) throw new Error(d.error || 'Could not save that');
+
+            msg.style.color = '#059669';
+            msg.textContent = optIn ? 'You will get the newsletter.' : 'You will not get the newsletter.';
+        } catch (e) {
+            msg.style.color = '#dc2626';
+            msg.textContent = e.message;
+            // Put the box back where the server still has it.
+            const box = document.getElementById('profile-marketing-optin');
+            if (box) box.checked = !optIn;
+        }
     }
 
     _initPasskeySection() {

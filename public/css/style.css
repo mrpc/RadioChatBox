@@ -256,6 +256,60 @@ body.dark-mode .command-suggestions {
 body.dark-mode .command-suggestion .command-name { color: #a5b4fc; }
 body.dark-mode .command-suggestion .command-desc { color: #9ca3af; }
 
+/* ---- Account dialog panes -------------------------------------------------
+   The dialog had grown taller than the screen, so the control anyone came for
+   was always below the fold. Tabs split it; the pane a section belongs to is
+   declared on the section, and this rule is what acts on that.
+
+   It only ever HIDES. A section the app has its own reason to hide — 2FA for a
+   guest, the resend button with nothing to resend — keeps that inline
+   display:none when its pane is showing, because this never sets display back
+   to block. */
+[data-pane-hidden="1"] {
+    display: none !important;
+}
+
+.account-tabs {
+    display: flex;
+    gap: 6px;
+    margin: 4px 0 18px;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.account-tab {
+    flex: 1;
+    padding: 9px 10px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+}
+
+.account-tab:hover {
+    color: #4f46e5;
+}
+
+.account-tab.is-active {
+    color: #4f46e5;
+    border-bottom-color: #4f46e5;
+}
+
+/* The dialog scrolls inside itself rather than running off the screen. */
+#profile-modal .modal-content {
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+body.dark-mode .account-tabs { border-bottom-color: #333; }
+body.dark-mode .account-tab { color: #9ca3af; }
+body.dark-mode .account-tab:hover,
+body.dark-mode .account-tab.is-active { color: #a5b4fc; border-bottom-color: #a5b4fc; }
+
 /* ---- Poll composer ------------------------------------------------------- */
 #poll-modal input[type="text"] {
     width: 100%;
