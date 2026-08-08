@@ -152,6 +152,15 @@
             <input type="text" id="poll-question-input" placeholder="Your question" maxlength="255">
             <div id="poll-options-list"></div>
             <button type="button" id="poll-add-option" class="btn-secondary" style="width:auto; padding:8px 14px; font-size:14px;">+ Add option</button>
+            <label for="poll-duration" style="display:block; margin:14px 0 6px; font-size:14px; color:#4b5563;">Closes after</label>
+            <select id="poll-duration">
+                <option value="2">2 minutes</option>
+                <option value="5" selected>5 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="0">No limit — I'll close it myself</option>
+            </select>
             <div id="poll-error" class="error-message"></div>
             <div class="modal-buttons">
                 <button id="poll-submit" class="btn-primary">Start poll</button>

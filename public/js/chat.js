@@ -3074,10 +3074,67 @@ class RadioChatBox {
                 <span class="poll-badge">📊 Poll</span>
                 <span class="poll-question">${this.escapeHtml(poll.question)}</span>
                 ${poll.is_active ? '' : '<span class="poll-closed">closed</span>'}
+                ${this.canClosePoll(poll) ? `<button class="poll-close-btn" onclick="window.chatBox.closeCurrentPoll(${poll.id})">End poll</button>` : ''}
             </div>
             <div class="poll-body">${rows}</div>
-            <div class="poll-foot">${total} vote${total === 1 ? '' : 's'}</div>`;
+            <div class="poll-foot">
+                <span>${total} vote${total === 1 ? '' : 's'}</span>
+                <span class="poll-countdown" id="poll-countdown"></span>
+            </div>`;
         w.style.display = 'block';
+
+        this.startPollCountdown(poll);
+
+        // A finished poll lingers only while the server still reports it, so
+        // keep asking until it stops — otherwise the final result would sit
+        // over the conversation for good, with nothing left to trigger a
+        // repaint.
+        clearTimeout(this._pollLingerTimer);
+        if (!poll.is_active) {
+            this._pollLingerTimer = setTimeout(() => this.refreshPoll(), 30000);
+        }
+    }
+
+    /** Whether this viewer may end the poll: its author, or any moderator. */
+    canClosePoll(poll) {
+        if (!poll || !poll.is_active || !this.username) return false;
+        const author = (poll.created_by || '').toLowerCase();
+        const staff = ['moderator', 'administrator', 'root', 'owner']
+            .includes((this.userRole || '').toLowerCase());
+        return staff || author === this.username.toLowerCase();
+    }
+
+    /**
+     * Count down to the poll's deadline, and stop the widget offering votes the
+     * moment it passes.
+     *
+     * The server already refuses a late vote, but a card that still looks open
+     * invites one — and the next refresh would be the first anyone heard of it.
+     */
+    startPollCountdown(poll) {
+        clearInterval(this._pollCountdownTimer);
+        const el = document.getElementById('poll-countdown');
+        if (!el || !poll || !poll.is_active || !poll.expires_at) return;
+
+        const deadline = new Date(String(poll.expires_at).replace(' ', 'T')).getTime();
+        if (isNaN(deadline)) return;
+
+        const tick = () => {
+            const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+            if (left <= 0) {
+                clearInterval(this._pollCountdownTimer);
+                el.textContent = 'closed';
+                // Ask for the authoritative state rather than assuming it: the
+                // server decides whether a poll is over.
+                this.refreshPoll();
+                return;
+            }
+            const m = Math.floor(left / 60);
+            const s = left % 60;
+            el.textContent = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s left` : `${s}s left`;
+        };
+        tick();
+        this._pollCountdownTimer = setInterval(tick, 1000);
     }
 
     async votePoll(pollId, optionIndex) {
@@ -3828,9 +3885,36 @@ class RadioChatBox {
             return;
         }
 
+        // The duration rides alongside the command rather than inside the pipe
+        // syntax, which has no room for it and no need to grow one.
+        const durationEl = document.getElementById('poll-duration');
+        this._pendingPollMinutes = durationEl ? parseInt(durationEl.value, 10) || 0 : 0;
+
         this.closePollComposer();
         this.messageInput.value = `/poll ${question} | ${options.join(' | ')}`;
         this.sendMessage();
+    }
+
+    /** Ask the server to end the poll, from the chat rather than the admin panel. */
+    async closeCurrentPoll(pollId) {
+        if (!pollId || !this.username || !this.sessionId) return;
+        try {
+            const body = new URLSearchParams({
+                poll_id: String(pollId),
+                username: this.username,
+                session_id: this.sessionId
+            });
+            const resp = await fetch(`${this.apiUrl}/api/polls/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Could not close the poll');
+            this.renderPoll(data.poll);
+        } catch (e) {
+            this.showSystemMessage(e.message);
+        }
     }
 
     /** Close every open bubble overflow menu. */
@@ -6426,6 +6510,14 @@ class RadioChatBox {
                 // Include the pinned track if the user attached "now playing".
                 if (this.pinTrackActive && this.currentTrack) {
                     messagePayload.pinned_track = this.currentTrack;
+                }
+
+                // A duration chosen in the poll builder, which the pipe syntax
+                // has no room for. Consumed once so a later message cannot
+                // inherit it.
+                if (this._pendingPollMinutes) {
+                    messagePayload.poll_expires_minutes = this._pendingPollMinutes;
+                    this._pendingPollMinutes = 0;
                 }
 
                 const response = await fetch(`${this.apiUrl}/api/send`, {

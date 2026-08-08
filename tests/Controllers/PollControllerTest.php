@@ -96,6 +96,53 @@ class PollControllerTest extends TestCase
         $this->assertSame($second, $service->activeResults()['id']);
     }
 
+    /**
+     * A poll that has just closed keeps showing its result for a short while.
+     *
+     * Closing used to take the card away instantly, so the people who voted
+     * never saw how it came out — the one moment the poll was for.
+     */
+    public function testAClosedPollStillReportsItsResultForAWhile(): void
+    {
+        $id = $this->makePoll('Rock or metal?');
+        $service = new PollService();
+        $service->vote($id, $this->session, $this->user, 0);
+        $service->close($id);
+
+        $shown = $service->activeResults();
+        $this->assertNotNull($shown, 'the result must survive the close');
+        $this->assertSame($id, $shown['id']);
+        $this->assertFalse($shown['is_active'], 'but it is not open for votes');
+        $this->assertSame(1, $shown['total']);
+    }
+
+    /** A closed poll nobody voted in has no outcome to linger over. */
+    public function testAClosedPollWithNoVotesDisappearsAtOnce(): void
+    {
+        $id = $this->makePoll('Anyone?');
+        $service = new PollService();
+        $service->close($id);
+
+        $this->assertNull($service->activeResults());
+    }
+
+    /** The window is bounded: an old closed poll is gone. */
+    public function testTheResultWindowExpires(): void
+    {
+        $id = $this->makePoll('Old news?');
+        $service = new PollService();
+        $service->vote($id, $this->session, $this->user, 0);
+        $service->close($id);
+
+        // Backdate the close past the window rather than waiting for it.
+        $this->pdo->prepare(
+            "UPDATE polls SET closed_at = NOW() - INTERVAL '"
+            . (PollService::RESULTS_VISIBLE_MINUTES + 1) . " minutes' WHERE id = ?"
+        )->execute([$id]);
+
+        $this->assertNull($service->activeResults());
+    }
+
     /** A vote is counted; changing it moves the count, never doubles it. */
     public function testVoteAndChange(): void
     {

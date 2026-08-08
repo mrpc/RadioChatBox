@@ -165,9 +165,18 @@ final class SendController
         }
         $question = array_shift($bits);
 
+        // Optional duration, sent alongside the command by the builder rather
+        // than squeezed into the pipe syntax. A poll from the chat used to have
+        // no deadline at all, so it stayed open until someone opened the admin
+        // panel or started another one — the room kept voting on a question
+        // nobody was still asking. Capped at a day; beyond that it is not a chat
+        // poll any more.
+        $minutes = (int) ($_POST['poll_expires_minutes'] ?? 0);
+        $minutes = ($minutes > 0) ? min($minutes, 1440) : null;
+
         try {
             $service = new \RadioChatBox\Services\PollService();
-            $id = $service->create($question, $bits, $username);
+            $id = $service->create($question, $bits, $username, $minutes);
             $results = $service->results($id);
             try {
                 \Pramnos\Broadcasting\BroadcastingManager::instance()

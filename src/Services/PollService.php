@@ -16,6 +16,14 @@ class PollService
     public const MAX_OPTIONS = 6;
     public const MIN_OPTIONS = 2;
 
+    /**
+     * How long a finished poll keeps showing its result in the chat.
+     *
+     * Long enough that the people who voted see the outcome, short enough that
+     * the card is not still sitting there over an unrelated conversation.
+     */
+    public const RESULTS_VISIBLE_MINUTES = 3;
+
     public function __construct()
     {
         $this->db = PramnosDatabase::getInstance();
@@ -143,6 +151,11 @@ class PollService
             'total'     => $total,
             'is_active' => !empty($poll['is_active']) && !$this->isExpired($poll),
             'my_vote'   => $myVote,
+            // Both are for the chat widget: the deadline so voters can see how
+            // long they have, and the author so the person who started it can
+            // close it without going to the admin panel.
+            'expires_at' => $poll['expires_at'] ?? null,
+            'created_by' => $poll['created_by'] ?? null,
         ];
     }
 
@@ -155,10 +168,28 @@ class PollService
              ORDER BY created_at DESC LIMIT 1'
         );
         $id = $row ? $row->fetchColumn() : false;
-        if ($id === false) {
-            return null;
+        if ($id !== false) {
+            return $this->results((int) $id, $session);
         }
-        return $this->results((int) $id, $session);
+
+        // Nothing running — but a poll that has only just ended still has an
+        // answer the room was waiting for. Closing it used to remove the card
+        // instantly, so the people who voted never saw how it came out. Show the
+        // final result for a short while, then let it go.
+        //
+        // Only if somebody voted: an empty poll has no outcome to report, and
+        // the closing here is either an expiry nobody noticed or a mistake.
+        $recent = $this->db->preparedQuery(
+            'SELECT p.id FROM polls p
+              WHERE p.is_active = FALSE
+                AND p.closed_at IS NOT NULL
+                AND p.closed_at > NOW() - INTERVAL \'' . self::RESULTS_VISIBLE_MINUTES . ' minutes\'
+                AND EXISTS (SELECT 1 FROM poll_votes v WHERE v.poll_id = p.id)
+              ORDER BY p.closed_at DESC LIMIT 1'
+        );
+        $recentId = $recent ? $recent->fetchColumn() : false;
+
+        return $recentId === false ? null : $this->results((int) $recentId, $session);
     }
 
     /** Close a poll (id) or all active polls. Returns whether it applied. */

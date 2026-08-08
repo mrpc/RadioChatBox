@@ -10,6 +10,7 @@ use Pramnos\Routing\Attributes\Route;
 use RadioChatBox\AdminAuth;
 use RadioChatBox\Http\Csv;
 use RadioChatBox\Middleware\AdminAuthMiddleware;
+use RadioChatBox\Services\Authz;
 use RadioChatBox\Services\ChatService;
 use RadioChatBox\Services\PollService;
 use RadioChatBox\Services\SettingsService;
@@ -75,6 +76,64 @@ class PollController
         // @codeCoverageIgnoreStart
         } catch (\Throwable $e) {
             \Pramnos\Logs\Logger::log('PollController::vote failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
+     * POST /api/polls/close — {poll_id, username, session_id}. Ends a running
+     * poll from the chat.
+     *
+     * Closing was previously only possible from the admin panel, so the
+     * moderator who opened a poll with /poll had to leave the conversation to
+     * end it — and an ordinary listener allowed to create one (poll_min_usertype
+     * can be lowered) could not end it at all. The author may close their own;
+     * a moderator may close anyone's.
+     *
+     * 200 {success, poll}; 403 for a bad session or someone else's poll.
+     */
+    #[Route('/api/polls/close', methods: 'POST', name: 'polls.close')]
+    public function closeFromChat(): Response
+    {
+        try {
+            if (!$this->isEnabled()) {
+                return Response::json(['success' => false, 'error' => 'Polls are disabled'], 404);
+            }
+
+            $pollId    = (int) ($_POST['poll_id'] ?? 0);
+            $username  = trim((string) ($_POST['username'] ?? ''));
+            $sessionId = trim((string) ($_POST['session_id'] ?? ''));
+
+            if ($pollId <= 0 || $username === '' || $sessionId === '') {
+                return Response::json(['error' => 'poll_id, username and session_id are required'], 400);
+            }
+
+            $session = (new ChatService())->getSessionInfo($username, $sessionId);
+            if ($session === null) {
+                return Response::json(['error' => 'Invalid session'], 403);
+            }
+
+            $service = new PollService();
+            $poll = $service->results($pollId);
+            if (($poll['id'] ?? 0) === 0) {
+                return Response::json(['error' => 'No such poll'], 404);
+            }
+
+            $isAuthor = mb_strtolower((string) ($poll['created_by'] ?? '')) === mb_strtolower($username);
+            $isStaff  = Authz::usertypeForLabel((string) ($session['user_role'] ?? '')) >= Authz::MODERATOR;
+            if (!$isAuthor && !$isStaff) {
+                return Response::json(['error' => 'Only the person who started this poll can close it'], 403);
+            }
+
+            $service->close($pollId);
+            $results = $service->results($pollId);
+            $this->broadcast($results);
+
+            return Response::json(['success' => true, 'poll' => $results]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('PollController::closeFromChat failed: ' . $e->getMessage(), 'radiochatbox');
             return Response::json(['error' => 'Internal server error'], 500);
         }
         // @codeCoverageIgnoreEnd
