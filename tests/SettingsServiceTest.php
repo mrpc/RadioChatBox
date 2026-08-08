@@ -44,6 +44,53 @@ class SettingsServiceTest extends TestCase
     }
 
     /**
+     * No credential reaches the public settings bundle, whatever it is called.
+     *
+     * GET /api/settings is anonymous, and getPublicSettings() is a denylist over
+     * every stored setting — so anything added later is public until someone
+     * remembers to exclude it. realtime_secret, which signs socket auth, was
+     * being served to any visitor for exactly that reason. This asserts the
+     * filter by planting credentials under several naming shapes.
+     */
+    public function testGetPublicSettingsWithholdsAnythingShapedLikeACredential(): void
+    {
+        $planted = [
+            'realtime_secret' => 'sig-should-not-leak',
+            'smtp_pass'       => 'mail-should-not-leak',
+            'smtp_user'       => 'postmaster',
+            'smtp_host'       => 'smtp.example.test',
+            'admin_mail'      => 'admin@example.test',
+        ];
+        // The two that look like credentials but are meant for the browser.
+        $exceptions = [
+            'realtime_app_key' => 'rcb-public-key',
+            'giphy_api_key'    => 'gif-key-is-client-side',
+        ];
+        $this->settingsService->updateFromAdmin($planted + $exceptions);
+
+        $public = $this->settingsService->getPublicSettings();
+
+        foreach (array_keys($planted) as $key) {
+            $this->assertArrayNotHasKey($key, $public, "$key must never reach the browser");
+        }
+        $this->assertNotContains(
+            'sig-should-not-leak',
+            array_map('strval', array_filter($public, 'is_scalar')),
+            'the signing secret must not appear under any key'
+        );
+
+        // The deliberate exceptions stay: the client needs both.
+        foreach ($exceptions as $key => $value) {
+            $this->assertSame($value, $public[$key] ?? null, "$key is client-side by design");
+        }
+
+        // Clean up so the planted values do not leak into other tests.
+        $this->settingsService->updateFromAdmin(
+            array_fill_keys(array_keys($planted + $exceptions), '')
+        );
+    }
+
+    /**
      * timezone() returns the configured IANA zone, falls back to Europe/Athens
      * when unset, and tolerates a stored bogus value without throwing.
      */

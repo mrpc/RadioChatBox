@@ -159,12 +159,17 @@ body {
     box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
 }
 
-#nickname-input,
-#age-input,
-#location-input,
-#sex-input,
-#login-username-input,
-#login-password-input {
+/* Scoped, not enumerated. This used to be a hand-kept list of ids, and every
+   field added since — the whole register form, the 2FA code, the password-reset
+   pair — missed it and rendered as a raw browser input next to styled ones.
+   Anything that lands in the join card or these modals is covered from now on. */
+#nickname-modal input[type="text"],
+#nickname-modal input[type="email"],
+#nickname-modal input[type="password"],
+#nickname-modal select,
+#reset-modal input[type="password"],
+#forgot-modal input[type="text"],
+#forgot-modal input[type="email"] {
     width: 100%;
     padding: 12px 16px;
     border: 2px solid #e5e7eb;
@@ -173,15 +178,49 @@ body {
     margin-bottom: 10px;
     outline: none;
     transition: border-color 0.2s;
+    font-family: inherit;
+    box-sizing: border-box;
 }
 
-#nickname-input:focus,
-#age-input:focus,
-#location-input:focus,
-#sex-input:focus,
-#login-username-input:focus,
-#login-password-input:focus {
+#nickname-modal input[type="text"]:focus,
+#nickname-modal input[type="email"]:focus,
+#nickname-modal input[type="password"]:focus,
+#nickname-modal select:focus,
+#reset-modal input[type="password"]:focus,
+#forgot-modal input[type="text"]:focus,
+#forgot-modal input[type="email"]:focus {
     border-color: #667eea;
+}
+
+/* Checkboxes are the exception: full width would stretch the box itself. */
+#nickname-modal input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+/* The register form's own submit had no styling either — it inherited the
+   browser default while Login & Join Chat carried the gradient. */
+#register-form button,
+#reset-modal button:not(.modal-close),
+#forgot-modal button:not(.modal-close) {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#register-form button:hover,
+#reset-modal button:not(.modal-close):hover,
+#forgot-modal button:not(.modal-close):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
 }
 
 #profile-fields {

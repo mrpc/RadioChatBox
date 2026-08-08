@@ -1832,30 +1832,44 @@ class RadioChatBox {
         
         if (!guestModeBtn || !loginModeBtn) return;
         
-        // Toggle to guest mode
-        guestModeBtn.onclick = () => {
-            guestModeBtn.classList.add('active');
-            guestModeBtn.style.background = '#667eea';
-            guestModeBtn.style.color = 'white';
-            loginModeBtn.classList.remove('active');
-            loginModeBtn.style.background = 'transparent';
-            loginModeBtn.style.color = '#667eea';
-            guestForm.style.display = 'block';
-            loginForm.style.display = 'none';
-            loginError.textContent = '';
+        /**
+         * Show one join mode and deactivate every other.
+         *
+         * Written as one switch rather than a handler per button because the
+         * per-button version only knew about the buttons that existed when it was
+         * written: adding Register left Login still highlighted behind it, so two
+         * modes looked selected at once. A fourth mode now costs one line here.
+         */
+        const setJoinMode = (mode) => {
+            const modes = {
+                guest:    { btn: guestModeBtn,    form: guestForm },
+                login:    { btn: loginModeBtn,    form: loginForm },
+                register: { btn: document.getElementById('register-mode-btn'),
+                            form: document.getElementById('register-form') }
+            };
+
+            Object.entries(modes).forEach(([name, m]) => {
+                if (m.btn) {
+                    const on = name === mode;
+                    m.btn.classList.toggle('active', on);
+                    m.btn.style.background = on ? '#667eea' : 'transparent';
+                    m.btn.style.color = on ? 'white' : '#667eea';
+                }
+                if (m.form) m.form.style.display = name === mode ? 'block' : 'none';
+            });
+
+            if (loginError) loginError.textContent = '';
+            const nickErr = document.getElementById('nickname-error');
+            if (nickErr) nickErr.textContent = '';
+            const regErr = document.getElementById('register-error');
+            if (regErr) regErr.textContent = '';
         };
-        
-        // Toggle to login mode
+        this._setJoinMode = setJoinMode;
+
+        guestModeBtn.onclick = () => setJoinMode('guest');
+
         loginModeBtn.onclick = () => {
-            loginModeBtn.classList.add('active');
-            loginModeBtn.style.background = '#667eea';
-            loginModeBtn.style.color = 'white';
-            guestModeBtn.classList.remove('active');
-            guestModeBtn.style.background = 'transparent';
-            guestModeBtn.style.color = '#667eea';
-            guestForm.style.display = 'none';
-            loginForm.style.display = 'block';
-            document.getElementById('nickname-error').textContent = '';
+            setJoinMode('login');
             if (loginUsernameInput) loginUsernameInput.focus();
         };
         
@@ -1951,10 +1965,7 @@ class RadioChatBox {
         if (registerModeBtn && selfRegOn) registerModeBtn.style.display = '';
 
         const showRegister = () => {
-            [guestModeBtn, loginModeBtn].forEach(b => { b.classList.remove('active'); b.style.background = 'transparent'; b.style.color = '#667eea'; });
-            registerModeBtn.classList.add('active'); registerModeBtn.style.background = '#667eea'; registerModeBtn.style.color = 'white';
-            guestForm.style.display = 'none'; loginForm.style.display = 'none'; registerForm.style.display = 'block';
-            document.getElementById('nickname-error').textContent = '';
+            this._setJoinMode('register');
             const u = document.getElementById('register-username-input'); if (u) u.focus();
         };
         if (registerModeBtn) registerModeBtn.onclick = showRegister;

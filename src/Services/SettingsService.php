@@ -341,12 +341,17 @@ class SettingsService
     public function getPublicSettings(): array
     {
         $all = $this->getAll();
-        
+
         // Remove sensitive keys
         $excludeKeys = [
             'admin_password_hash',
             'rate_limit_messages',
-            'rate_limit_window'
+            'rate_limit_window',
+            // Mail: the transport credentials are covered by the smtp_ rule
+            // below, but the addresses have no business in a page source either.
+            'admin_mail',
+            'admin_replymail',
+            'mail_from',
         ];
 
         foreach ($excludeKeys as $key) {
@@ -355,14 +360,40 @@ class SettingsService
 
         // Bot (fake user auto-reply) configuration is internal: the frontend
         // never needs it and the prompts/limits should not be discoverable.
+        //
+        // Everything else is filtered by NAME rather than by an explicit list.
+        // This method is a denylist over every stored setting, so a credential
+        // added later is public by default until someone remembers to exclude
+        // it — which is how realtime_secret, the key that signs socket auth,
+        // came to be readable by any anonymous visitor at GET /api/settings.
+        // Matching the shape of a secret closes that class of leak in advance.
         foreach (array_keys($all) as $key) {
-            if (str_starts_with($key, 'bot_')) {
+            if (in_array($key, self::PUBLIC_DESPITE_NAME, true)) {
+                continue;
+            }
+            if (str_starts_with($key, 'bot_')
+                || str_starts_with($key, 'smtp_')
+                || preg_match('/secret|password|_pass$|api_key|_token$/i', $key)
+            ) {
                 unset($all[$key]);
             }
         }
 
         return $all;
     }
+
+    /**
+     * Settings that look like credentials but are meant for the browser: the GIF
+     * providers are called directly from the client, and realtime_app_key is the
+     * public half of the socket credentials (realtime_secret is the private one).
+     *
+     * @var list<string>
+     */
+    private const PUBLIC_DESPITE_NAME = [
+        'giphy_api_key',
+        'klipy_api_key',
+        'realtime_app_key',
+    ];
 
     /**
      * Update a setting value
