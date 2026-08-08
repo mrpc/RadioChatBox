@@ -105,6 +105,58 @@ class AdminSettingsUpdateTest extends TestCase
         }
     }
 
+    /**
+     * The email keys the framework mailer reads must be writable from the admin.
+     * Until they were, there was no way to configure SMTP at all and every send
+     * failed before it could even be logged.
+     */
+    public function testMailerSettingsAreAdminEditable(): void
+    {
+        foreach (
+            ['mail_from', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_tls',
+             'admin_mail', 'admin_replymail'] as $key
+        ) {
+            $this->assertContains(
+                $key,
+                SettingsService::ADMIN_EDITABLE,
+                "{$key} is read by Pramnos\\Email\\Email but could not be set from the admin"
+            );
+        }
+    }
+
+    /** smtp_tls speaks the mailer's yes/no, not the true/false the toggles use. */
+    public function testSmtpTlsIsConstrainedToTheMailersVocabulary(): void
+    {
+        $this->assertSame([], $this->settings->updateFromAdmin(['smtp_tls' => 'yes'])['rejected']);
+        $this->assertSame('yes', $this->storedValue('smtp_tls'));
+
+        $result = $this->settings->updateFromAdmin(['smtp_tls' => 'true']);
+        $this->assertArrayHasKey('smtp_tls', $result['rejected'], "'true' would read as off to the mailer");
+        $this->assertSame('yes', $this->storedValue('smtp_tls'), 'the rejected write must not land');
+    }
+
+    /** smtp_port is clamped to a legal TCP port rather than stored as given. */
+    public function testSmtpPortIsClamped(): void
+    {
+        $this->settings->updateFromAdmin(['smtp_port' => '99999']);
+        $this->assertSame('65535', $this->storedValue('smtp_port'));
+    }
+
+    /** Every feature toggle the admin panel submits must survive the allowlist. */
+    public function testFeatureTogglesAreAdminEditable(): void
+    {
+        foreach (
+            ['shows_enabled', 'search_enabled', 'notifications_inbox_enabled',
+             'profile_cards_enabled', 'reactions_enabled'] as $key
+        ) {
+            $this->assertContains(
+                $key,
+                SettingsService::ADMIN_EDITABLE,
+                "{$key} is submitted by the admin panel but would be dropped on save"
+            );
+        }
+    }
+
     public function testBotSettingsArePersisted(): void
     {
         $payload = [

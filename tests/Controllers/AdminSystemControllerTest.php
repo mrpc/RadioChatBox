@@ -318,6 +318,42 @@ class AdminSystemControllerTest extends TestCase
     }
 
     /**
+     * GET /api/admin/mails returns the email log with a tally of every status,
+     * so a failed delivery is countable even while the list is filtered.
+     */
+    public function testMailsReturnsLogWithStatusCounts(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+
+        $response = (new AdminSystemController())->mails();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        $this->assertIsArray($body['mails']);
+        $this->assertSame(
+            ['sent', 'queued', 'failed'],
+            array_keys($body['counts']),
+            'the tally must name every status the mailer can write'
+        );
+    }
+
+    /** GET /api/admin/mails?status= narrows the list without hiding the tally. */
+    public function testMailsStatusFilterKeepsTheFullTally(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['status' => '0'];
+
+        $response = (new AdminSystemController())->mails();
+        $this->assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getBody(), true);
+        $this->assertTrue($body['success']);
+        foreach ($body['mails'] as $mail) {
+            $this->assertSame(0, (int) $mail['status']);
+        }
+        $this->assertArrayHasKey('sent', $body['counts']);
+    }
+
+    /**
      * GET /api/admin/photos with the default list action returns success=true, a
      * photos array and the pagination block.
      */

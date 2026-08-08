@@ -492,6 +492,66 @@ final class AdminSystemController
     }
 
     /**
+     * GET /api/admin/mails — the transactional email log (the framework's `mails`
+     * table, written by Pramnos\Email\Email on every send), newest first, with a
+     * per-status tally. Optional ?status= filters to one status.
+     *
+     * Status is the mailer's own vocabulary: 1 sent, 2 queued, 0 failed —
+     * Email::send() stores `$success ? 1 : 0`, so a 0 row is a delivery that did
+     * not happen. Admin-only. 200 {success, mails, counts}.
+     */
+    #[Route('/api/admin/mails', methods: 'GET', name: 'admin.system.mails', middleware: [AdminAuthMiddleware::class])]
+    public function mails(): Response
+    {
+        try {
+            $db = Database::getInstance();
+
+            $limit  = min(500, max(1, (int) Request::getInstance()->get('limit', '200', 'get')));
+            $status = Request::getInstance()->get('status', '', 'get');
+
+            $qb = $db->queryBuilder()
+                ->from('mails')
+                // extrainfo carries the mailer's error text on a failed row
+                // (Email::recordMail stores lastError there) — the one field that
+                // says *why*, so the log is diagnosable without the app log.
+                ->select(['id', 'status', 'tomail', 'toname', 'subject', 'date', 'module', 'extrainfo'])
+                ->orderBy('date', 'desc')
+                ->limit($limit);
+
+            if ($status !== '' && $status !== null) {
+                $qb->where('status', (int) $status);
+            }
+
+            $rows = $qb->getAll() ?: [];
+
+            // Tally every status, not just the filtered one, so the UI can show
+            // "3 failed" while the list is filtered to sent.
+            $tally  = $db->query('SELECT status, COUNT(*) AS total FROM mails GROUP BY status');
+            $counts = ['sent' => 0, 'queued' => 0, 'failed' => 0];
+            foreach (($tally ? $tally->fetchAll() : []) as $row) {
+                $key = match ((int) $row['status']) {
+                    1 => 'sent',
+                    2 => 'queued',
+                    default => 'failed',
+                };
+                $counts[$key] += (int) $row['total'];
+            }
+
+            return Response::json([
+                'success' => true,
+                'mails'   => $rows,
+                'counts'  => $counts,
+                'count'   => count($rows),
+            ]);
+        // @codeCoverageIgnoreStart
+        } catch (\Throwable $e) {
+            \Pramnos\Logs\Logger::log('AdminSystemController::mails failed: ' . $e->getMessage(), 'radiochatbox');
+            return Response::json(['error' => 'Internal server error'], 500);
+        }
+        // @codeCoverageIgnoreEnd
+    }
+
+    /**
      * GET /api/admin/user-data-export?username= — a GDPR-style data export for a
      * user: everything the app stores about them, as a downloadable JSON file.
      * Admin-only. 400 when username is missing.

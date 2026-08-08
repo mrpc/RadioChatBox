@@ -1203,6 +1203,101 @@ body {
     opacity: 1;
 }
 
+/* An open overflow menu must survive the pointer leaving the bubble, or the
+   menu disappears on the way to the item you were reaching for. */
+.message-actions:has(.message-more.open) {
+    opacity: 1;
+}
+
+/* ---- Bubble overflow menu ("⋯") ------------------------------------------
+   Reply and react stay on the bubble; the rest live in here. */
+.message-more {
+    position: relative;
+    display: inline-flex;
+}
+
+.message-more-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: inherit;
+    opacity: 0.75;
+}
+
+.message-more-btn:hover,
+.message-more.open .message-more-btn {
+    background: rgba(102, 126, 234, 0.12);
+    opacity: 1;
+}
+
+.message-more-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 60;
+    min-width: 168px;
+    padding: 6px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.message-more.open .message-more-menu {
+    display: block;
+}
+
+/* The action buttons keep their own classes and handlers; inside the menu they
+   are re-laid-out as labelled rows. */
+.message-more-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    color: #333;
+}
+
+.message-more-menu button:hover {
+    background: rgba(102, 126, 234, 0.12);
+}
+
+.message-more-menu .delete-message-btn:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* The label only makes sense in the menu — a bubble-level button stays an icon. */
+.action-label {
+    display: none;
+}
+
+.message-more-menu .action-label {
+    display: inline;
+}
+
+@media (prefers-color-scheme: dark) {
+    .message-more-menu {
+        background: #1f2126;
+        border-color: #333;
+    }
+
+    .message-more-menu button {
+        color: #eee;
+    }
+}
+
 .reply-message-btn {
     background: transparent;
     border: none;
@@ -1556,6 +1651,7 @@ body {
     text-overflow: ellipsis;
 }
 
+.user-actions-popover .user-action-profile,
 .user-actions-popover .user-action-mention,
 .user-actions-popover .user-action-dm,
 .user-actions-popover .user-action-block {
@@ -1571,6 +1667,7 @@ body {
     color: #333;
 }
 
+.user-actions-popover .user-action-profile:hover,
 .user-actions-popover .user-action-mention:hover,
 .user-actions-popover .user-action-dm:hover {
     background: rgba(102, 126, 234, 0.12);
@@ -1592,6 +1689,7 @@ body {
         border-color: #3a3a3a;
     }
     .user-actions-popover .user-actions-name { color: #bbb; border-color: #333; }
+    .user-actions-popover .user-action-profile,
     .user-actions-popover .user-action-mention,
     .user-actions-popover .user-action-dm,
     .user-actions-popover .user-action-block { color: #eee; }

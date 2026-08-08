@@ -1404,6 +1404,19 @@
                         <span>Settings</span>
                     </div>
                 </div>
+
+                <div class="nav-section" id="nav-section-logs">
+                    <div class="nav-section-title">Logs</div>
+                    <div class="nav-item" onclick="switchTab('email-log')" data-tab="email-log">
+                        <span class="icon">✉️</span>
+                        <span>Email Log</span>
+                        <span id="email-log-badge" style="display:none; margin-left:auto; background:#ef4444; color:#fff; border-radius:10px; font-size:11px; padding:1px 7px;">0</span>
+                    </div>
+                    <div class="nav-item" onclick="switchTab('migrations')" data-tab="migrations">
+                        <span class="icon">🗄️</span>
+                        <span>Migrations</span>
+                    </div>
+                </div>
             </nav>
             
             <div class="sidebar-footer">
@@ -2736,7 +2749,213 @@
             </div>
 
             <!-- Settings Tab -->
+            <div id="email-log-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Email Log</h2>
+                        <button class="btn btn-outline" onclick="loadEmailLog()">🔄 Refresh</button>
+                    </div>
+                    <p style="margin-bottom: 10px; color: #6b7280;">
+                        Every transactional email the station tried to send — password resets and
+                        address verifications — including the ones that never left, with the reason.
+                        Configure delivery under <a href="#" onclick="switchTab('settings'); return false;">Settings → Email</a>.
+                    </p>
+                    <div class="filter-bar" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+                        <button class="btn btn-outline" onclick="loadEmailLog('')" id="email-filter-all">All</button>
+                        <button class="btn btn-outline" onclick="loadEmailLog('1')" id="email-filter-sent">Sent</button>
+                        <button class="btn btn-outline" onclick="loadEmailLog('0')" id="email-filter-failed">Failed</button>
+                        <button class="btn btn-outline" onclick="loadEmailLog('2')" id="email-filter-queued">Queued</button>
+                    </div>
+                    <div id="email-log-summary" style="margin-bottom: 12px; color:#6b7280;"></div>
+                    <div id="email-log-table"></div>
+                </div>
+            </div>
+
+            <div id="migrations-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Database Migrations</h2>
+                        <button class="btn btn-outline" onclick="loadMigrations()">🔄 Refresh</button>
+                    </div>
+                    <p style="margin-bottom: 10px; color: #6b7280;">Applied schema migrations (newest first). A failed row means the schema is not what the code expects.</p>
+                    <div id="migrations-table"></div>
+                </div>
+            </div>
+
             <div id="settings-tab" class="tab-content">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Features</h2>
+                        <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
+                    </div>
+                    <p style="margin: 0 0 16px; color:#6b7280;">
+                        What the station offers. Turning something off hides its control in the
+                        chat, its tab in this panel, and the settings below that only exist to
+                        configure it. Nothing is deleted — a feature switched back on finds its
+                        data where it left it.
+                    </p>
+
+                    <div class="settings-group">
+                        <h3>Chat</h3>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-search-enabled" style="width:auto;">
+                                Message search (🔍 in the chat header)
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-reactions-enabled" style="width:auto;">
+                                Message reactions (emoji picker and pills)
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-polls-enabled" style="width: auto;">
+                                Live chat polls (📊 poll card in the chat)
+                            </label>
+                            <small>Created from the chat with <code>/poll Question | Option 1 | Option 2</code>.</small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-gif-enabled" style="width: auto;">
+                                GIF picker
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-chat-commands-enabled" style="width: auto;">
+                                Slash commands (<code>/help</code>, <code>/rules</code>, …)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>People</h3>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-profile-cards-enabled" style="width:auto;">
+                                Public profile cards (click a username to open a card)
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-notifications-inbox-enabled" style="width:auto;">
+                                Notifications inbox (📥 per-user notification history)
+                            </label>
+                        </div>
+                    </div>
+
+                    <p style="margin: 4px 0 0; color:#6b7280; font-size: 13px;">
+                        Everything to do with the station — the stream, the player, charts,
+                        requests and the schedule — lives in <a href="#" onclick="document.getElementById('settings-section-radio').scrollIntoView({behavior:'smooth'}); return false;">📻 Radio</a> below.
+                    </p>
+                </div>
+
+                <div class="section" id="settings-section-radio">
+                    <div class="section-header">
+                        <h2>📻 Radio</h2>
+                        <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>On air</h3>
+                        <p class="settings-group-note">What listeners can do around the music. Each switch also controls its own tab and settings below.</p>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-shows-enabled" style="width:auto;">
+                                Show schedule (📅 upcoming shows, subscriptions, iCal)
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-charts-enabled" style="width: auto;">
+                                Top Charts panel (📊 next to now-playing)
+                            </label>
+                            <small>Top 10 tracks and artists for day/week/month, from play history.</small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-song-requests-enabled" style="width: auto;">
+                                Listener song requests (📻 button + admin queue)
+                            </label>
+                            <small>A track with an optional dedication; requests land in the Song Requests tab.</small>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-track-voting-enabled" style="width: auto;">
+                                Now-playing voting (👍 / 👎 on the current track)
+                            </label>
+                            <small>One vote per person per track.</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Stream</h3>
+                        <div class="form-group">
+                            <label>Stream Status JSON URL (Icecast/Shoutcast)</label>
+                            <input type="url" id="setting-radio-status-url" placeholder="https://example.com/status-json.xsl">
+                            <small>If set, the chat header shows the current song/artist.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn" onclick="checkFeedCapabilities()" style="background:#6366f1;color:white;">🔍 Check feed</button>
+                            <div id="feed-capabilities" style="margin-top: 8px; font-size: 13px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group" id="settings-group-charts">
+                        <h3>Top Charts</h3>
+                        <div class="form-group">
+                            <label>Charts default period</label>
+                            <select id="setting-charts-default-period">
+                                <option value="day">Day</option>
+                                <option value="week">Week</option>
+                                <option value="month">Month</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>In-chat player</h3>
+                        <div class="form-group">
+                            <label>Player mode</label>
+                            <select id="setting-player-mode">
+                                <option value="off">Off (never show)</option>
+                                <option value="on">On (everywhere)</option>
+                                <option value="iframe_only">Only when embedded (iframe)</option>
+                                <option value="app_only">Only standalone (not in an iframe)</option>
+                            </select>
+                            <small>Embeds a live audio player bar above the chat. When shown it replaces the text-only now-playing widget.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Stream URL</label>
+                            <input type="url" id="setting-player-stream-url" placeholder="https://example.com/stream">
+                            <small>The audio stream the player connects to (required for the player to appear).</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Stream format</label>
+                            <select id="setting-player-stream-format">
+                                <option value="mp3">MP3</option>
+                                <option value="aac">AAC</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-player-autoplay" style="width: auto;">
+                                Try to autoplay (starts muted — browsers block audible autoplay)
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="setting-player-allow-override" style="width: auto;">
+                                Allow per-embed override via <code>?player=1</code> / <code>?player=0</code>
+                            </label>
+                            <small>When off, the URL parameter is ignored and the mode above always wins.</small>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="section">
                     <div class="section-header">
                         <h2>General Settings</h2>
@@ -2776,107 +2995,14 @@
                         </div>
                     </div>
 
-                    <div class="settings-group">
-                        <h3>Radio stream</h3>
-                        <div class="form-group">
-                            <label>Stream Status JSON URL (Icecast/Shoutcast)</label>
-                            <input type="url" id="setting-radio-status-url" placeholder="https://example.com/status-json.xsl">
-                            <small>If set, the chat header shows the current song/artist.</small>
-                        </div>
-                        <div class="form-group">
-                            <label>&nbsp;</label>
-                            <button type="button" class="btn" onclick="checkFeedCapabilities()" style="background:#6366f1;color:white;">🔍 Check feed</button>
-                            <div id="feed-capabilities" style="margin-top: 8px; font-size: 13px;"></div>
-                        </div>
-                    </div>
-
-                    <div class="settings-group">
-                        <h3>Top Charts</h3>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-charts-enabled" style="width: auto;">
-                                Enable Top Charts panel (📊 button next to now-playing)
-                            </label>
-                            <small>Shows the top 10 tracks and artists for day/week/month, aggregated from play history.</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Charts default period</label>
-                            <select id="setting-charts-default-period">
-                                <option value="day">Day</option>
-                                <option value="week">Week</option>
-                                <option value="month">Month</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="settings-group">
-                        <h3>In-chat radio player</h3>
-                        <div class="form-group">
-                            <label>Player mode</label>
-                            <select id="setting-player-mode">
-                                <option value="off">Off (never show)</option>
-                                <option value="on">On (everywhere)</option>
-                                <option value="iframe_only">Only when embedded (iframe)</option>
-                                <option value="app_only">Only standalone (not in an iframe)</option>
-                            </select>
-                            <small>Embeds a live audio player bar above the chat. When shown it replaces the text-only now-playing widget.</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Stream URL</label>
-                            <input type="url" id="setting-player-stream-url" placeholder="https://example.com/stream">
-                            <small>The audio stream the player connects to (required for the player to appear).</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Stream format</label>
-                            <select id="setting-player-stream-format">
-                                <option value="mp3">MP3</option>
-                                <option value="aac">AAC</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-player-autoplay" style="width: auto;">
-                                Try to autoplay (starts muted — browsers block audible autoplay)
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-player-allow-override" style="width: auto;">
-                                Allow per-embed override via <code>?player=1</code> / <code>?player=0</code>
-                            </label>
-                            <small>When off, the URL parameter is ignored and the mode above always wins.</small>
-                        </div>
-                    </div>
-
-                    <div class="settings-group">
-                        <h3>Listener engagement</h3>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-song-requests-enabled" style="width: auto;">
-                                Enable listener Song Requests (📻 button + admin queue)
-                            </label>
-                            <small>Chat users can request a track with an optional dedication; requests appear in the Song Requests tab.</small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-track-voting-enabled" style="width: auto;">
-                                Enable now-playing voting (👍 / 👎 on the current track)
-                            </label>
-                            <small>Listeners rate what's on air; one vote per person per track.</small>
-                        </div>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-polls-enabled" style="width: auto;">
-                                Enable live chat Polls (📊 poll card in the chat)
-                            </label>
-                            <small>Users create polls from the chat with <code>/poll Question | Option 1 | Option 2</code>; others vote once and see live results.</small>
-                        </div>
-                        <div class="form-group">
+                    <div class="settings-group" id="settings-group-engagement-detail">
+                        <h3>Polls &amp; reactions</h3>
+                        <div class="form-group" id="settings-group-reactions">
                             <label>Reaction emojis (space-separated, blank = default set)</label>
                             <input type="text" id="setting-reaction-emojis" placeholder="👍 ❤️ 😂 😮 😢 🔥 🤘">
                             <small>The emoji shown in the reaction picker. Leave empty to use the defaults.</small>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="settings-group-polls">
                             <label>Who can create polls</label>
                             <select id="setting-poll-min-usertype">
                                 <option value="moderator">Moderators and above</option>
@@ -2904,15 +3030,9 @@
                         </div>
                     </div>
 
-                    <div class="settings-group">
+                    <div class="settings-group" id="settings-group-chat-commands">
                         <h3>Chat commands</h3>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-chat-commands-enabled" style="width: auto;">
-                                Enable slash-commands (/help and the custom commands below)
-                            </label>
-                            <small>When a user types a matching command, they get the reply privately — it is not posted to the chat.</small>
-                        </div>
+                        <p class="settings-group-note">A matching command is answered privately — the reply is never posted to the chat.</p>
                         <div id="chat-commands-list" style="margin: 8px 0;"></div>
                         <div class="form-group" style="border-top:1px solid #e5e7eb; padding-top:12px;">
                             <label>Add a command</label>
@@ -2956,11 +3076,6 @@
                                 Send a verification email on registration
                             </label>
                         </div>
-                        <div class="form-group">
-                            <label>Transactional email "From" address</label>
-                            <input type="email" id="setting-mail-from" placeholder="no-reply@livechats.gr">
-                            <small style="color:#6b7280;">Used for password-reset &amp; verification emails. Requires a configured mailer.</small>
-                        </div>
                         <div class="form-group" id="setting-minimum-users-group">
                             <label>Minimum Users (Fake Users Feature)</label>
                             <input type="number" id="setting-minimum-users" placeholder="0" min="0" max="100">
@@ -2968,6 +3083,54 @@
                                 When real users are below this number, random fake users are activated to fill the gap.
                                 0 disables it.
                             </small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Email</h3>
+                        <p style="margin: -6px 0 14px; color:#6b7280; font-size: 13px;">
+                            Password resets and verification emails go out through this mailer.
+                            Without an SMTP host nothing can be sent — there is no local-mail
+                            fallback — and every attempt is recorded, sent or failed, in
+                            <a href="#" onclick="switchTab('email-log'); return false;">Email Log</a>.
+                        </p>
+                        <div class="form-group">
+                            <label>"From" address</label>
+                            <input type="email" id="setting-mail-from" placeholder="no-reply@livechats.gr">
+                            <small style="color:#6b7280;">The address transactional email is sent from.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Admin address</label>
+                            <input type="email" id="setting-admin-mail" placeholder="admin@livechats.gr">
+                            <small style="color:#6b7280;">Fallback sender and recipient for system notices.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Reply-To address (optional)</label>
+                            <input type="email" id="setting-admin-replymail" placeholder="support@livechats.gr">
+                        </div>
+                        <div class="form-group">
+                            <label>SMTP host</label>
+                            <input type="text" id="setting-smtp-host" placeholder="smtp.example.com">
+                            <small style="color:#6b7280;">Blank sends through the local PHP mailer instead.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>SMTP port</label>
+                            <input type="number" id="setting-smtp-port" placeholder="587" min="1" max="65535">
+                            <small style="color:#6b7280;">465 uses implicit SSL; 587 and 25 use STARTTLS when TLS is on.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>SMTP username</label>
+                            <input type="text" id="setting-smtp-user" placeholder="Leave blank for an unauthenticated relay" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label>SMTP password</label>
+                            <input type="password" id="setting-smtp-pass" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:10px;">
+                                <input type="checkbox" id="setting-smtp-tls" style="width:auto;">
+                                Use TLS
+                            </label>
                         </div>
                     </div>
 
@@ -2986,15 +3149,9 @@
                         </div>
                     </div>
 
-                    <div class="settings-group">
+                    <div class="settings-group" id="settings-group-gifs">
                         <h3>GIFs</h3>
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="setting-gif-enabled" style="width: auto;">
-                                Enable GIF Selector
-                            </label>
-                            <small>Let users search and share GIFs. Pick a provider and add its API key.</small>
-                        </div>
+                        <p class="settings-group-note">Pick a provider and add its API key.</p>
                         <div class="form-group">
                             <label>GIF Provider</label>
                             <select id="setting-gif-provider">
@@ -3617,15 +3774,6 @@
                 </div>
 
                 <div class="section">
-                    <div class="section-header">
-                        <h2>Database Migrations</h2>
-                        <button class="btn btn-outline" onclick="loadMigrations()">🔄 Refresh</button>
-                    </div>
-                    <p style="margin-bottom: 10px; color: #6b7280;">Applied schema migrations (newest first).</p>
-                    <div id="migrations-table"></div>
-                </div>
-
-                <div class="section">
                     <h2>Embed Code</h2>
                     <p style="margin-bottom: 10px; color: #6b7280;">Copy this code to embed the chat on your website:</p>
                     
@@ -4155,11 +4303,19 @@
                 adminStreamEventSource = new EventSource(`/api/admin/stream?session_token=${encodeURIComponent(adminSessionToken)}`);
                 let sseEverOpened = false;
 
+                // The endpoint sends this immediately after the token checks out, so
+                // it — not `open` — is the proof the connection is usable. Resetting
+                // the backoff on `open` alone let a refused stream reconnect at the
+                // minimum delay indefinitely, since the refusal also arrives over an
+                // opened connection.
+                adminStreamEventSource.addEventListener('notification_count', () => {
+                    adminStreamReconnectAttempts = 0;
+                });
+
                 adminStreamEventSource.addEventListener('open', () => {
                     console.log('Admin SSE stream connected');
                     updateAdminRtStatus('connected', 'Live');
                     sseEverOpened = true;
-                    adminStreamReconnectAttempts = 0;
                     // Clear periodic reconnect timer
                     if (adminStreamPeriodicReconnectTimer) {
                         clearInterval(adminStreamPeriodicReconnectTimer);
@@ -4199,15 +4355,40 @@
                 adminStreamEventSource.addEventListener('error', (e) => {
                     console.error('Admin SSE error:', e);
                     adminStreamEventSource.close();
-                    // Never opened → most likely the stream token was refused. It is
-                    // minted once at login with a 24h TTL and never rotated (unlike
-                    // the chat's, which rides every heartbeat), so a laptop that
-                    // slept longer than that wakes up holding a token Redis has
-                    // already forgotten — and connectAdminSSE only mints a new one
-                    // when the variable is empty, so retrying would loop forever on
-                    // the dead token. Drop it and the next attempt gets a fresh one.
-                    // A stream that DID open is a normal disconnect: keep the token.
-                    if (!sseEverOpened) adminSessionToken = null;
+
+                    // Two different failures arrive on this one listener.
+                    //
+                    // A transport failure has no payload. A REFUSAL does: the
+                    // endpoint accepts the connection with 200 and then sends
+                    // `event: error {"error":"Unauthorized"}` — deliberately, so the
+                    // reason is visible at all (EventSource exposes no body on a
+                    // non-200). That means the stream *opens* even when the token is
+                    // dead, so keying the recovery off "never opened" could not fire
+                    // and the panel reconnected forever on the same rejected token,
+                    // its attempt counter reset by every open.
+                    //
+                    // The token is minted once at login with a 24h TTL and never
+                    // rotated (unlike the chat's, which rides every heartbeat), so
+                    // any panel left open longer than that ends up here. Drop it on
+                    // a refusal and the next attempt mints a fresh one.
+                    //
+                    // Forbidden counts as a refusal too: the role is copied into the
+                    // token at mint time, so an admin promoted since login is being
+                    // judged on a stale one, and re-minting is the fix. If the role
+                    // really is wrong, the reconnect cap now ends it — the counter
+                    // resets on notification_count, which a refused stream never
+                    // reaches.
+                    let refused = false;
+                    if (e && typeof e.data === 'string' && e.data !== '') {
+                        try {
+                            const reason = JSON.parse(e.data).error || '';
+                            refused = /unauthorized|forbidden/i.test(reason);
+                        } catch (parseError) {
+                            // A payload we cannot read is still a server-sent error,
+                            // but not one we can attribute to the token.
+                        }
+                    }
+                    if (refused || !sseEverOpened) adminSessionToken = null;
                     updateAdminRtStatus('disconnected', 'Disconnected');
                     reconnectAdminStream();
                 });
@@ -5940,7 +6121,7 @@
         function switchTab(tabName, updateHistory = true) {
             // Role-based guard: prevent moderators from accessing restricted tabs via hash/direct calls
             if (currentUserRole === 'moderator') {
-                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'bot-activity', 'settings', 'statistics', 'track-stats', 'photos', 'url-whitelist', 'url-blacklist']);
+                const restrictedTabs = new Set(['admin-users', 'fake-users', 'impersonate', 'bot-activity', 'settings', 'statistics', 'track-stats', 'photos', 'url-whitelist', 'url-blacklist', 'email-log', 'migrations']);
                 if (restrictedTabs.has(tabName)) {
                     tabName = 'dashboard';
                     updateHistory = true;
@@ -5949,6 +6130,13 @@
             // Bot Activity is only reachable when bots are enabled — the nav item is
             // hidden then, so block direct navigation via hash/direct calls too.
             if (tabName === 'bot-activity' && botSettingsLoaded && !botRepliesEnabled) {
+                tabName = 'dashboard';
+                updateHistory = true;
+            }
+            // Same for a feature switched off in Settings: its nav item is hidden,
+            // so hash navigation must not be a way back in.
+            const navForTab = document.querySelector(`.nav-item[data-tab="${tabName}"]`);
+            if (navForTab && navForTab.style.display === 'none') {
                 tabName = 'dashboard';
                 updateHistory = true;
             }
@@ -6064,6 +6252,10 @@
                 loadUrlWhitelist();
             } else if (tabName === 'url-blacklist') {
                 loadUrlBlacklist();
+            } else if (tabName === 'email-log') {
+                loadEmailLog();
+            } else if (tabName === 'migrations') {
+                loadMigrations();
             } else {
                 // Stop dashboard refresh when switching away from dashboard
                 clearInterval(window.dashboardRefreshInterval);
@@ -9678,6 +9870,132 @@
             } catch (e) { box.innerHTML = '<p style="color:#ef4444;">Error loading migrations.</p>'; }
         }
 
+        /**
+         * A feature toggle is on unless explicitly turned off. Mirrors
+         * Chat.featureOn(): these switches arrived after the features shipped, so
+         * an absent key is an un-configured station, not an opted-out one.
+         */
+        function featureOn(value) {
+            if (value === undefined || value === null || value === '') return true;
+            return ['1', 'true', 'on', 'yes'].includes(String(value).toLowerCase().trim());
+        }
+
+        function setFeatureToggle(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.checked = featureOn(value);
+        }
+
+        /**
+         * Hide the admin surface of every disabled feature — the nav tab and the
+         * settings panel both, so a switched-off feature leaves no trace to
+         * configure. Applies to the toggles that predate this too: a station with
+         * polls off should not be looking at a Polls tab.
+         *
+         * Keyed by setting; `defaultOn` distinguishes the switches added with this
+         * change (absent = on) from the older ones that have always been opt-in.
+         */
+        // Every switch in the Features section, with the surfaces that only exist
+        // to serve it: its tab in this panel, and the settings groups that would
+        // be configuring something switched off.
+        const FEATURE_SURFACES = [
+            { setting: 'shows_enabled',         defaultOn: true,  tabs: ['shows'] },
+            { setting: 'reactions_enabled',     defaultOn: true,  tabs: [], groups: ['settings-group-reactions'] },
+            { setting: 'polls_enabled',         defaultOn: false, tabs: ['polls'], groups: ['settings-group-polls'] },
+            { setting: 'song_requests_enabled', defaultOn: false, tabs: ['song-requests'] },
+            { setting: 'charts_enabled',        defaultOn: false, tabs: [], groups: ['settings-group-charts'] },
+            { setting: 'gif_enabled',           defaultOn: false, tabs: [], groups: ['settings-group-gifs'] },
+            { setting: 'chat_commands_enabled', defaultOn: false, tabs: [], groups: ['settings-group-chat-commands'] },
+            { setting: 'bot_replies_enabled',   defaultOn: false, tabs: ['promos'] }
+        ];
+
+        function applyFeatureVisibility(settings) {
+            if (!settings) return;
+            FEATURE_SURFACES.forEach(f => {
+                const raw = settings[f.setting];
+                const on = (raw === undefined || raw === null || raw === '')
+                    ? f.defaultOn
+                    : ['1', 'true', 'on', 'yes'].includes(String(raw).toLowerCase().trim());
+
+                (f.tabs || []).forEach(tab => {
+                    const nav = document.querySelector(`.nav-item[data-tab="${tab}"]`);
+                    if (nav) nav.style.display = on ? '' : 'none';
+                });
+                (f.groups || []).forEach(id => {
+                    const group = document.getElementById(id);
+                    if (group) group.style.display = on ? '' : 'none';
+                });
+            });
+
+            // A panel whose every field is now hidden would otherwise sit there as
+            // a bare heading, so collapse the container too.
+            document.querySelectorAll('.settings-group[id$="-detail"]').forEach(panel => {
+                const fields = panel.querySelectorAll('.form-group');
+                const anyVisible = Array.prototype.some.call(fields, f => f.style.display !== 'none');
+                panel.style.display = anyVisible ? '' : 'none';
+            });
+        }
+
+        // The mailer's own status vocabulary — Email::send() stores 1 on success
+        // and 0 on failure, and the queue writes 2.
+        const MAIL_STATUS = {
+            1: { label: 'Sent',   colour: '#059669' },
+            2: { label: 'Queued', colour: '#d97706' },
+            0: { label: 'Failed', colour: '#ef4444' }
+        };
+
+        async function loadEmailLog(status = '') {
+            const box = document.getElementById('email-log-table');
+            if (!box) return;
+            box.innerHTML = '<div style="color:#6b7280;padding:8px;">Loading…</div>';
+            try {
+                const qs = status === '' ? '' : `?status=${encodeURIComponent(status)}`;
+                const res = await fetch(`/api/admin/mails${qs}`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = '<p style="color:#ef4444;">Failed to load.</p>'; return; }
+
+                const counts = data.counts || { sent: 0, queued: 0, failed: 0 };
+                const summary = document.getElementById('email-log-summary');
+                if (summary) {
+                    summary.innerHTML = `<strong style="color:#059669;">${counts.sent}</strong> sent ·
+                        <strong style="color:#d97706;">${counts.queued}</strong> queued ·
+                        <strong style="color:#ef4444;">${counts.failed}</strong> failed`;
+                }
+                updateEmailLogBadge(counts.failed);
+
+                const rows = data.mails || [];
+                if (!rows.length) {
+                    box.innerHTML = '<p style="color:#6b7280;">No email has been sent yet. Password resets and verification emails will appear here.</p>';
+                    return;
+                }
+                box.innerHTML = `<div style="max-height:520px; overflow:auto;"><table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead><tr style="text-align:left; color:#6b7280;"><th style="padding:6px 8px;">When</th><th style="padding:6px 8px;">To</th><th style="padding:6px 8px;">Subject</th><th style="padding:6px 8px;">Source</th><th style="padding:6px 8px;">Status</th></tr></thead>
+                    <tbody>${rows.map(m => {
+                        const st = MAIL_STATUS[Number(m.status)] || MAIL_STATUS[0];
+                        const when = m.date ? new Date(Number(m.date) * 1000).toLocaleString() : '';
+                        const to = m.toname ? `${m.toname} <${m.tomail}>` : (m.tomail || '');
+                        // The mailer's own error text; the only thing that says why.
+                        const why = (Number(m.status) !== 1 && m.extrainfo) ? String(m.extrainfo) : '';
+                        return `<tr style="border-top:1px solid #f0f0f0;">
+                            <td style="padding:6px 8px; white-space:nowrap;">${escapeHtml(when)}</td>
+                            <td style="padding:6px 8px;">${escapeHtml(to)}</td>
+                            <td style="padding:6px 8px;">${escapeHtml(m.subject || '')}</td>
+                            <td style="padding:6px 8px;"><code>${escapeHtml(m.module || '')}</code></td>
+                            <td style="padding:6px 8px; color:${st.colour}; white-space:nowrap;">${st.label}</td>
+                        </tr>${why ? `<tr><td colspan="5" style="padding:0 8px 8px; color:#ef4444; font-size:12px;">${escapeHtml(why)}</td></tr>` : ''}`;
+                    }).join('')}</tbody></table></div>`;
+            } catch (e) { box.innerHTML = '<p style="color:#ef4444;">Error loading the email log.</p>'; }
+        }
+
+        // A failed send is invisible to the person it was meant for, so surface the
+        // count in the sidebar rather than waiting for someone to open the log.
+        function updateEmailLogBadge(failed) {
+            const badge = document.getElementById('email-log-badge');
+            if (!badge) return;
+            const n = Number(failed) || 0;
+            badge.textContent = n > 99 ? '99+' : String(n);
+            badge.style.display = n > 0 ? '' : 'none';
+        }
+
         // Fill the timezone datalist once, preferring the browser's full IANA list.
         function populateTimezoneList() {
             const list = document.getElementById('timezone-list');
@@ -9697,7 +10015,6 @@
         }
 
         async function loadSettings() {
-            loadMigrations();
             try {
                 const response = await fetch('/api/admin/settings', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
@@ -9739,7 +10056,23 @@
                     document.getElementById('setting-self-registration-enabled').checked = settings.self_registration_enabled === 'true';
                     document.getElementById('setting-passkey-rp-id').value = settings.passkey_rp_id || '';
                     document.getElementById('setting-passkey-origins').value = settings.passkey_origins || '';
+                    // Absent means on — see Chat.featureOn(); these toggles were
+                    // added after the features shipped.
+                    setFeatureToggle('setting-shows-enabled', settings.shows_enabled);
+                    setFeatureToggle('setting-search-enabled', settings.search_enabled);
+                    setFeatureToggle('setting-notifications-inbox-enabled', settings.notifications_inbox_enabled);
+                    setFeatureToggle('setting-profile-cards-enabled', settings.profile_cards_enabled);
+                    setFeatureToggle('setting-reactions-enabled', settings.reactions_enabled);
+                    applyFeatureVisibility(settings);
                     document.getElementById('setting-mail-from').value = settings.mail_from || '';
+                    document.getElementById('setting-admin-mail').value = settings.admin_mail || '';
+                    document.getElementById('setting-admin-replymail').value = settings.admin_replymail || '';
+                    document.getElementById('setting-smtp-host').value = settings.smtp_host || '';
+                    document.getElementById('setting-smtp-port').value = settings.smtp_port || '';
+                    document.getElementById('setting-smtp-user').value = settings.smtp_user || '';
+                    document.getElementById('setting-smtp-pass').value = settings.smtp_pass || '';
+                    // The framework mailer tests this as == 'yes', not 'true'.
+                    document.getElementById('setting-smtp-tls').checked = settings.smtp_tls === 'yes';
                     document.getElementById('setting-email-verification-enabled').checked = settings.email_verification_enabled === 'true';
                     document.getElementById('setting-allow-photo-uploads').checked = settings.allow_photo_uploads === 'true';
                     document.getElementById('setting-gif-enabled').checked = settings.gif_enabled === 'true';
@@ -10223,6 +10556,18 @@
                 passkey_rp_id: document.getElementById('setting-passkey-rp-id').value,
                 passkey_origins: document.getElementById('setting-passkey-origins').value,
                 mail_from: document.getElementById('setting-mail-from').value,
+                shows_enabled: document.getElementById('setting-shows-enabled').checked ? 'true' : 'false',
+                search_enabled: document.getElementById('setting-search-enabled').checked ? 'true' : 'false',
+                notifications_inbox_enabled: document.getElementById('setting-notifications-inbox-enabled').checked ? 'true' : 'false',
+                profile_cards_enabled: document.getElementById('setting-profile-cards-enabled').checked ? 'true' : 'false',
+                reactions_enabled: document.getElementById('setting-reactions-enabled').checked ? 'true' : 'false',
+                admin_mail: document.getElementById('setting-admin-mail').value,
+                admin_replymail: document.getElementById('setting-admin-replymail').value,
+                smtp_host: document.getElementById('setting-smtp-host').value,
+                smtp_port: document.getElementById('setting-smtp-port').value,
+                smtp_user: document.getElementById('setting-smtp-user').value,
+                smtp_pass: document.getElementById('setting-smtp-pass').value,
+                smtp_tls: document.getElementById('setting-smtp-tls').checked ? 'yes' : 'no',
                 email_verification_enabled: document.getElementById('setting-email-verification-enabled').checked ? 'true' : 'false',
                 allow_photo_uploads: document.getElementById('setting-allow-photo-uploads').checked ? 'true' : 'false',
                 gif_enabled: document.getElementById('setting-gif-enabled').checked ? 'true' : 'false',
@@ -12232,6 +12577,9 @@
             const msgFlushRedisBtn = document.getElementById('messages-flush-redis-btn');
             const msgClearChatBtn = document.getElementById('messages-clear-chat-btn');
             const minimumUsersGroup = document.getElementById('setting-minimum-users-group');
+            // The Logs section is system-level (mail delivery, schema state), so it
+            // follows Settings rather than the moderation tabs.
+            const logsSection = document.getElementById('nav-section-logs');
             const activeUsersTitle = document.getElementById('kpi-active-users-title');
             const activeUsersSubline = document.getElementById('kpi-active-users-subline');
 
@@ -12263,7 +12611,9 @@
                 if (activeUsersTitle) activeUsersTitle.textContent = 'Users';
                 if (activeUsersSubline) activeUsersSubline.textContent = 'Currently online';
                 if (minimumUsersGroup) minimumUsersGroup.style.display = 'none';
+                if (logsSection) logsSection.style.display = 'none';
             } else if (role === 'root' || role === 'owner') {
+                if (logsSection) logsSection.style.display = '';
                 // Show all features for root/owner
                 if (impersonateNav) impersonateNav.style.display = 'flex';
                 if (botActivityNav) botActivityNav.style.display = 'flex';
@@ -12297,6 +12647,7 @@
                 if (urlBlacklistNav) urlBlacklistNav.style.display = 'flex';
                 if (activeUsersTitle) activeUsersTitle.textContent = 'Active Users (Real)';
                 if (activeUsersSubline) activeUsersSubline.textContent = 'Currently online (real users)';
+                if (logsSection) logsSection.style.display = '';
             }
 
             // The role branches above may have shown Bot Activity; the global

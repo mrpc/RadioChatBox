@@ -942,6 +942,19 @@ class RadioChatBox {
         return ['1', 'true', 'on', 'yes'].includes(String(value).toLowerCase().trim());
     }
 
+    /**
+     * Whether an on/off feature toggle is on, defaulting to ON when the station
+     * has never set it.
+     *
+     * These toggles were added after the features they gate had already shipped,
+     * so an absent key means "this station upgraded", not "off" — defaulting the
+     * other way would silently strip the calendar, search and inbox from every
+     * existing install on deploy. New stations get the same defaults seeded.
+     */
+    featureOn(key) {
+        return this._settingOn(this.settings && this.settings[key], true);
+    }
+
     initRadioExtras() {
         try { this.initCharts(); } catch (e) { console.warn('initCharts error', e); }
         try { this.initPlayer(); } catch (e) { console.warn('initPlayer error', e); }
@@ -2600,15 +2613,23 @@ class RadioChatBox {
         // Keyboard: Escape closes any open header overlay.
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') return;
+            this.closeMessageMenus();
             ['notifications-panel', 'schedule-panel', 'search-panel'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el && el.style.display !== 'none') el.style.display = 'none';
             });
         });
 
+        // A click anywhere else dismisses an open bubble menu.
+        document.addEventListener('click', () => this.closeMessageMenus());
+
         // Notifications inbox
         const notifBtn = document.getElementById('notifications-toggle');
-        if (notifBtn) notifBtn.addEventListener('click', () => this.toggleNotifications());
+        if (notifBtn && !this.featureOn('notifications_inbox_enabled')) {
+            notifBtn.style.display = 'none';
+        } else if (notifBtn) {
+            notifBtn.addEventListener('click', () => this.toggleNotifications());
+        }
         const notifClose = document.getElementById('notifications-close');
         if (notifClose) notifClose.addEventListener('click', () => this.toggleNotifications(false));
         const notifMarkAll = document.getElementById('notif-mark-all');
@@ -2616,13 +2637,21 @@ class RadioChatBox {
 
         // Show schedule
         const scheduleBtn = document.getElementById('schedule-toggle');
-        if (scheduleBtn) scheduleBtn.addEventListener('click', () => this.toggleSchedule());
+        if (scheduleBtn && !this.featureOn('shows_enabled')) {
+            scheduleBtn.style.display = 'none';
+        } else if (scheduleBtn) {
+            scheduleBtn.addEventListener('click', () => this.toggleSchedule());
+        }
         const scheduleClose = document.getElementById('schedule-close');
         if (scheduleClose) scheduleClose.addEventListener('click', () => this.toggleSchedule(false));
 
         // Message search
         const searchBtn = document.getElementById('search-toggle');
-        if (searchBtn) searchBtn.addEventListener('click', () => this.toggleSearch());
+        if (searchBtn && !this.featureOn('search_enabled')) {
+            searchBtn.style.display = 'none';
+        } else if (searchBtn) {
+            searchBtn.addEventListener('click', () => this.toggleSearch());
+        }
         const searchClose = document.getElementById('search-close');
         if (searchClose) searchClose.addEventListener('click', () => this.toggleSearch(false));
         const searchInput = document.getElementById('search-input');
@@ -3301,6 +3330,10 @@ class RadioChatBox {
     // ---- User profile card ------------------------------------------
 
     async showUserProfile(username) {
+        // Gated at the single entry point rather than on every username that can
+        // be clicked, so no call site can reintroduce the card by accident.
+        if (!this.featureOn('profile_cards_enabled')) return;
+
         let modal = document.getElementById('user-profile-modal');
         if (!modal) {
             modal = document.createElement('div');
@@ -3331,7 +3364,12 @@ class RadioChatBox {
             const meta = bits.length ? `<div class="profile-meta">${bits.join(' · ')}</div>` : '';
             const statusHTML = p.status ? `<div class="profile-status">“${this.escapeHtml(p.status)}”</div>` : '';
             const bioHTML = p.bio ? `<div class="profile-bio">${this.escapeHtml(p.bio)}</div>` : '';
-            const since = p.first_seen ? new Date((p.first_seen + '').replace(' ', 'T')).toLocaleDateString() : null;
+            // Guarding on the raw value alone is not enough: an unparseable one
+            // still yields a Date, and toLocaleDateString() renders it as the
+            // literal string "Invalid Date" — non-empty, so it passed the check
+            // below and shipped "Invalid Date / first seen" to the card. Validate
+            // the parsed date instead, and omit the stat when there is none.
+            const since = this.formatDateOrNull(p.first_seen);
             const rank = p.rank
                 ? `<span class="profile-rank" style="background:${this.escapeHtml(p.rank.color)}1a; color:${this.escapeHtml(p.rank.color)};">${this.escapeHtml(p.rank.title)}</span>`
                 : '';
@@ -3352,6 +3390,27 @@ class RadioChatBox {
                     ${since ? `<div><strong>${this.escapeHtml(since)}</strong><span>first seen</span></div>` : ''}
                 </div>`;
         } catch (e) { body.innerHTML = '<p style="color:#ef4444;">Error loading profile.</p>'; }
+    }
+
+    /** Close every open bubble overflow menu. */
+    closeMessageMenus() {
+        document.querySelectorAll('.message-more.open').forEach(w => {
+            w.classList.remove('open');
+            const btn = w.querySelector('.message-more-btn');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    /**
+     * A localised date string, or null when there is nothing real to show.
+     *
+     * Returns null for a missing value AND for one that does not parse, so a
+     * caller can drop the whole line rather than print "Invalid Date".
+     */
+    formatDateOrNull(value) {
+        if (!value) return null;
+        const d = new Date((value + '').replace(' ', 'T'));
+        return isNaN(d.getTime()) ? null : d.toLocaleDateString();
     }
 
     // ---- Notifications inbox ----------------------------------------
@@ -5191,13 +5250,13 @@ class RadioChatBox {
         const isAdmin = localStorage.getItem('isAdmin') === 'true';
         const deleteButton = isAdmin && msgId ? `
             <button class="delete-message-btn" data-message-id="${msgId}" title="Delete message">
-                🗑️
+                🗑️<span class="action-label">Delete</span>
             </button>
         ` : '';
         // Pin button (admin-only): pins the message to the top-of-chat bar.
         const pinButton = isAdmin && msgId ? `
             <button class="pin-message-btn" data-message-id="${msgId}" title="Pin message" onclick="window.chatBox.pinMessage('${String(msgId).replace(/'/g, "\\'")}')">
-                📌
+                📌<span class="action-label">Pin</span>
             </button>
         ` : '';
 
@@ -5214,16 +5273,32 @@ class RadioChatBox {
         const canEdit = isOwnMsg && msgId && msgAgeSeconds < 600;
         const editButton = canEdit ? `
             <button class="edit-message-btn" data-message-id="${msgId}" title="Edit message">
-                ✏️
+                ✏️<span class="action-label">Edit</span>
             </button>
         ` : '';
 
         // Report button: flag someone else's message for the moderators.
         const reportButton = (msgId && !isOwnMsg) ? `
             <button class="report-message-btn" data-message-id="${msgId}" title="Report this message">
-                🚩
+                🚩<span class="action-label">Report</span>
             </button>
         ` : '';
+
+        // Reply and react stay on the bubble; everything else moves behind one
+        // "⋯" control. Six icons per message read as clutter, and the rarely-used
+        // ones (report, pin, delete) were competing with the two people actually
+        // reach for. The buttons themselves are unchanged and still live inside
+        // the message element, so every handler wired below still finds them —
+        // only their placement and visibility differ.
+        const overflowButtons = [reportButton, editButton, deleteButton, pinButton]
+            .filter(b => b !== '')
+            .join('');
+        const overflowHTML = overflowButtons === '' ? '' : `
+            <div class="message-more">
+                <button class="message-more-btn" title="More actions" aria-label="More actions" aria-expanded="false">⋯</button>
+                <div class="message-more-menu" role="menu">${overflowButtons}</div>
+            </div>
+        `;
 
         // Edited badge
         const editedBadge = messageData.edited_at
@@ -5267,13 +5342,28 @@ class RadioChatBox {
                 <div class="message-text">${this.formatMessageText(messageData.message)}</div>
                 <div class="message-actions">
                     ${replyButton}
-                    ${reportButton}
-                    ${editButton}
-                    ${deleteButton}
-                    ${pinButton}
+                    ${overflowHTML}
                 </div>
             </div>
         `;
+
+        // "⋯" → open this bubble's overflow menu, closing any other.
+        const moreBtn = messageDiv.querySelector('.message-more-btn');
+        if (moreBtn) {
+            moreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const wrap = moreBtn.parentElement;
+                const wasOpen = wrap.classList.contains('open');
+                this.closeMessageMenus();
+                if (!wasOpen) {
+                    wrap.classList.add('open');
+                    moreBtn.setAttribute('aria-expanded', 'true');
+                }
+            });
+            // Acting on an item closes the menu; the action's own handler still runs.
+            const menu = messageDiv.querySelector('.message-more-menu');
+            if (menu) menu.addEventListener('click', () => this.closeMessageMenus());
+        }
 
         // Report button → reason menu.
         const reportBtn = messageDiv.querySelector('.report-message-btn');
@@ -5365,6 +5455,9 @@ class RadioChatBox {
      */
     setupReactions(messageDiv, msgId, reactions = [], isOwn = false) {
         if (!msgId) return;
+        // Off means no picker and no pills — reactions already on old messages
+        // stay in the database, they just stop being rendered.
+        if (!this.featureOn('reactions_enabled')) return;
         if (!this.myReactions) this.myReactions = new Map();
 
         if (!isOwn) {
@@ -5379,7 +5472,13 @@ class RadioChatBox {
                     e.stopPropagation();
                     this.openReactionPicker(msgId, btn);
                 });
-                actions.appendChild(btn);
+                // React belongs beside reply, ahead of the "⋯" that ends the row.
+                const overflow = actions.querySelector('.message-more');
+                if (overflow) {
+                    actions.insertBefore(btn, overflow);
+                } else {
+                    actions.appendChild(btn);
+                }
             }
         }
 
@@ -5509,6 +5608,7 @@ class RadioChatBox {
 
     /** Open the emoji picker popover anchored to the react button. */
     openReactionPicker(msgId, anchorBtn) {
+        if (!this.featureOn('reactions_enabled')) return;
         this.closeReactionPicker();
         const picker = document.createElement('div');
         picker.className = 'reaction-picker';

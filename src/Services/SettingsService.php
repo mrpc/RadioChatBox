@@ -43,8 +43,20 @@ class SettingsService
         'chat_mode',
         // Public account self-registration (username/password/email).
         'self_registration_enabled',
-        // From-address for transactional email (password reset, etc).
+        // Transactional email (password reset, verification). Everything below
+        // `mail_from` is read by the framework's mailer, not by us — see
+        // Pramnos\Email\Email::send(), which pulls smtp_* off the settings store
+        // and falls back to admin_mail/admin_replymail for the envelope. Until
+        // these were editable there was no way to configure SMTP at all, so every
+        // send failed silently.
         'mail_from',
+        'smtp_host',
+        'smtp_port',
+        'smtp_user',
+        'smtp_pass',
+        'smtp_tls',
+        'admin_mail',
+        'admin_replymail',
         // Send a verification email on registration.
         'email_verification_enabled',
         // WebAuthn passkeys: RP id (effective domain) + allowed origins.
@@ -73,6 +85,15 @@ class SettingsService
         'poll_min_usertype',
         // Custom reaction emoji set (space/comma-separated; empty = defaults).
         'reaction_emojis',
+        // On/off switches for features that shipped without one. Absent means ON
+        // (see Chat.featureOn) so upgrading a station never silently removes a
+        // feature its listeners already use; turning one off hides both the chat
+        // control and the matching admin section.
+        'reactions_enabled',
+        'shows_enabled',
+        'search_enabled',
+        'notifications_inbox_enabled',
+        'profile_cards_enabled',
         // "User is typing…" indicators — public chat and DMs are toggled separately
         'typing_indicators_enabled',
         'dm_typing_indicators_enabled',
@@ -220,6 +241,7 @@ class SettingsService
         'bot_typing_max_delay' => [1, 600],
         'bot_read_delay_min' => [0, 300],
         'bot_read_delay_max' => [0, 600],
+        'smtp_port' => [1, 65535],
     ];
 
     /**
@@ -241,6 +263,9 @@ class SettingsService
         'automod_action'        => ['timeout', 'ban'],
         // Custom profanity filter behaviour.
         'profanity_filter_mode' => ['off', 'mask', 'block'],
+        // The framework mailer tests this as `== 'yes'`, so store its vocabulary
+        // rather than the 'true'/'false' the other toggles use.
+        'smtp_tls'              => ['yes', 'no'],
     ];
 
     public function __construct()

@@ -295,32 +295,27 @@ final class AuthController
         // @codeCoverageIgnoreEnd
     }
 
-    /** Email a verification link (best-effort; a failed mailer never surfaces). */
+    /**
+     * Email a verification link. The send is best-effort — the account is created
+     * and the token stays valid whether or not the mail goes out, so a broken
+     * mailer must not fail the registration. The failure is not lost, though:
+     * Email::recordMail() writes a status-0 row with the error into `mails`,
+     * which the admin's Email Log reads (and badges in the sidebar).
+     */
     private function sendVerificationEmail(string $to, string $username, string $token): void
     {
-        try {
-            $settings = new \RadioChatBox\Services\SettingsService();
-            $base = rtrim((string) ($settings->get('siteurl') ?: ($_SERVER['HTTP_ORIGIN'] ?? '')), '/');
-            $link = $base . '/?verify=' . urlencode($token);
-            $brand = (string) ($settings->get('brand_name') ?: ($settings->get('site_title') ?: 'RadioChatBox'));
+        $settings = new \RadioChatBox\Services\SettingsService();
+        $base = rtrim((string) ($settings->get('siteurl') ?: ($_SERVER['HTTP_ORIGIN'] ?? '')), '/');
+        $link = $base . '/?verify=' . urlencode($token);
+        $brand = (string) ($settings->get('brand_name') ?: ($settings->get('site_title') ?: 'RadioChatBox'));
 
-            $body = '<p>Hi ' . htmlspecialchars($username) . ',</p>'
-                . '<p>Please confirm your email address for ' . htmlspecialchars($brand)
-                . ' by clicking the link below (valid for 24 hours):</p>'
-                . '<p><a href="' . htmlspecialchars($link) . '">' . htmlspecialchars($link) . '</a></p>';
+        $body = '<p>Hi ' . htmlspecialchars($username) . ',</p>'
+            . '<p>Please confirm your email address for ' . htmlspecialchars($brand)
+            . ' by clicking the link below (valid for 24 hours):</p>'
+            . '<p><a href="' . htmlspecialchars($link) . '">' . htmlspecialchars($link) . '</a></p>';
 
-            $email = \Pramnos\Email\Email::getInstance();
-            $email->setTo($to);
-            $email->setSubject($brand . ' — verify your email');
-            $email->setBody($body);
-            $from = (string) $settings->get('mail_from', '');
-            if ($from !== '') {
-                $email->setFrom($from);
-            }
-            $email->send();
-        } catch (\Throwable $e) {
-            \Pramnos\Logs\Logger::log('verification email failed (token still valid): ' . $e->getMessage(), 'radiochatbox');
-        }
+        (new \RadioChatBox\Services\MailService($settings))
+            ->send($to, $brand . ' — verify your email', $body, 'verification');
     }
 
     /**
@@ -428,15 +423,8 @@ final class AuthController
                 . '<p><a href="' . htmlspecialchars($link) . '">' . htmlspecialchars($link) . '</a></p>'
                 . '<p>If you did not request this, you can safely ignore this email.</p>';
 
-            $email = \Pramnos\Email\Email::getInstance();
-            $email->setTo($to);
-            $email->setSubject($brand . ' — password reset');
-            $email->setBody($body);
-            $from = (string) $settings->get('mail_from', '');
-            if ($from !== '') {
-                $email->setFrom($from);
-            }
-            $email->send();
+            (new \RadioChatBox\Services\MailService($settings))
+                ->send($to, $brand . ' — password reset', $body, 'password_reset');
         } catch (\Throwable $e) {
             // Delivery is best-effort; the reset token is already persisted.
             \Pramnos\Logs\Logger::log('password reset email failed (token still valid): ' . $e->getMessage(), 'radiochatbox');
