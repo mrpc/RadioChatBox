@@ -22,6 +22,16 @@ final class CreateSchema extends Migration
 
     public bool $transactional = false;
 
+    /** Must run before every framework migration (lowest framework priority is
+     *  10; the runner orders by priority first and only then by timestamp, so
+     *  the 2025_01_01 filename alone does not put us first). The convergence at
+     *  the end of up() reshapes our tables into the framework shape, which is
+     *  what makes the framework's own create_users/settings/messages/sessions
+     *  migrations hasTable() skips. Run after them instead and this migration
+     *  dies on `CREATE TABLE "messages"` — already created by the framework —
+     *  taking the seed data (incl. the admin user) and the convergence with it. */
+    public int $priority = 0;
+
     public function up(): void
     {
         $s = $this->schema();

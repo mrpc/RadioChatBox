@@ -103,28 +103,29 @@ if ($primary) {
         exit(1);
     }
 
-    // Build the schema in two explicit phases. On a FRESH database the un-applied
-    // baseline (priority 50) and the framework create_* migrations (priority 10)
-    // would share one batch, where the lower-priority framework tables sort first
-    // and clobber the baseline. So we apply the app migrations alone first
-    // (Phase A: the single create_schema baseline, which builds the RCB schema and
-    // then reshapes users/settings to the framework shape and frees the
-    // messages/sessions names — the convergence is squashed into the baseline),
-    // THEN enable the framework set (Phase B), whose create_users/settings become
-    // hasTable() skips and whose sessions/messages create fresh.
-    // RCB_SKIP_AUTO_MIGRATE=1 stops radiochatbox.php's line-48 auto-migrate from
-    // pulling everything into one unordered batch first.
-    // The subprocesses inherit DB_NAME={$testDb} from putenv() above.
-    $php  = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php');
-    $envp = 'RCB_SKIP_AUTO_MIGRATE=1 ';
-
-    // Phase A — app migrations only (framework dirs excluded by --path).
-    $outputA = (string) shell_exec($envp . $php . ' migrate --path=app/Migrations 2>&1');
-    fwrite(STDERR, "[tests] migrate A app ({$testDb}):\n" . trim($outputA) . "\n");
-
-    // Phase B — framework migrations (app.php has framework => true).
-    $outputB = (string) shell_exec($envp . $php . ' migrate 2>&1');
-    fwrite(STDERR, "[tests] migrate B framework ({$testDb}):\n" . trim($outputB) . "\n");
+    // Build the schema with ONE `migrate` — deliberately the exact command a
+    // fresh install runs, so the suite tests the real path instead of a
+    // test-only arrangement of it. Correct ordering is the baseline's own
+    // responsibility: CreateSchema declares priority 0, below every framework
+    // migration, so it builds the RCB schema and reshapes users/settings to the
+    // framework shape (freeing the messages/sessions names) before the framework
+    // set runs and its create_users/settings become hasTable() skips.
+    //
+    // This used to be a two-phase build (app migrations via --path, then the
+    // framework set) that compensated here for the baseline defaulting to
+    // priority 50 and therefore sorting AFTER the framework's create_* — which
+    // meant green tests over an install that died on `CREATE TABLE "messages"`
+    // and never reached the seed data. A workaround here hides exactly the class
+    // of bug these tests exist to catch, so ordering is asserted, not arranged:
+    // see MigrationBaselineTest::testBaselineOutranksEveryFrameworkMigration and
+    // ::testFreshInstallAppliesEveryMigrationCleanly.
+    //
+    // RCB_SKIP_AUTO_MIGRATE=1 stops radiochatbox.php's auto-migrate from running
+    // a first, redundant pass before the explicit command.
+    // The subprocess inherits DB_NAME={$testDb} from putenv() above.
+    $php    = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/radiochatbox.php');
+    $output = (string) shell_exec('RCB_SKIP_AUTO_MIGRATE=1 ' . $php . ' migrate 2>&1');
+    fwrite(STDERR, "[tests] migrate ({$testDb}):\n" . trim($output) . "\n");
 }
 
 // ---------------------------------------------------------------------------
