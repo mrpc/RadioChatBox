@@ -389,6 +389,12 @@
             </div>
 
             <div id="messages-container">
+                <!-- Everything that must stay in view while the conversation
+                     scrolls under it: the overlays opened from the header, the
+                     moderator pins, the live poll and the private-chat header.
+                     One sticky block rather than one sticky element each, which
+                     would all pin to the same top and overlap. -->
+                <div id="chat-pinned-area">
                 <!-- Upcoming shows overlay (toggled from the header 📅) -->
                 <div id="schedule-panel" style="display: none;">
                     <div class="search-bar">
@@ -426,6 +432,7 @@
                     <button id="block-user-btn" class="btn btn-block" style="display: none;">🚫 Block</button>
                     <button id="back-to-public" class="btn">← Back to Public Chat</button>
                 </div>
+                </div><!-- /#chat-pinned-area -->
                 <div id="messages" role="log" aria-live="polite" aria-label="Chat messages"></div>
                 <button id="scroll-to-bottom" title="Scroll to bottom">↓</button>
             </div>

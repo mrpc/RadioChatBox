@@ -249,14 +249,11 @@ body {
     white-space: nowrap;
 }
 
-body.dark-theme .command-suggestions,
 body.dark-mode .command-suggestions {
     background: #1f2126;
     border-color: #333;
 }
-body.dark-theme .command-suggestion .command-name,
 body.dark-mode .command-suggestion .command-name { color: #a5b4fc; }
-body.dark-theme .command-suggestion .command-desc,
 body.dark-mode .command-suggestion .command-desc { color: #9ca3af; }
 
 /* ---- Poll composer ------------------------------------------------------- */
@@ -643,9 +640,7 @@ body.dark-mode .command-suggestion .command-desc { color: #9ca3af; }
     color: #6b7280;
 }
 
-body.dark-theme .now-playing-card,
 body.dark-mode .now-playing-card { background: #1e1e1e; color: #eee; }
-body.dark-theme .now-playing-card .np-label,
 body.dark-mode .now-playing-card .np-label { color: #9ca3af; }
 
 /* ------------------------------------------------------------------ */
@@ -886,17 +881,11 @@ body.dark-mode .now-playing-card .np-label { color: #9ca3af; }
     .charts-body { grid-template-columns: minmax(0, 1fr); }
 }
 
-body.dark-theme .charts-modal,
 body.dark-mode .charts-modal { background: #1c1c22; color: #e5e7eb; }
-body.dark-theme .charts-modal-head,
 body.dark-mode .charts-modal-head { border-bottom-color: #2c2c34; }
-body.dark-theme .charts-periods,
 body.dark-mode .charts-periods { background: #26262e; }
-body.dark-theme .charts-period,
 body.dark-mode .charts-period { color: #cbd5e1; }
-body.dark-theme .charts-list li,
 body.dark-mode .charts-list li { border-bottom-color: #2c2c34; }
-body.dark-theme .charts-list .chart-img,
 body.dark-mode .charts-list .chart-img { background: #26262e; }
 
 /* Song request modal (reuses .charts-overlay / .charts-modal shell) */
@@ -943,13 +932,9 @@ body.dark-mode .charts-list .chart-img { background: #26262e; }
 .sr-actions .btn:disabled { opacity: 0.6; cursor: default; }
 .sr-error.sr-ok { background: #ecfdf5; color: #047857; }
 
-body.dark-theme .sr-field label,
 body.dark-mode .sr-field label { color: #cbd5e1; }
-body.dark-theme .sr-field input, body.dark-theme .sr-field textarea,
 body.dark-mode .sr-field input, body.dark-mode .sr-field textarea { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
-body.dark-theme .sr-error,
 body.dark-mode .sr-error { background: #3a1f22; color: #fca5a5; }
-body.dark-theme .sr-error.sr-ok,
 body.dark-mode .sr-error.sr-ok { background: #113a2b; color: #6ee7b7; }
 
 /* Now-playing cover: fills the header height, flush to the left.
@@ -1444,12 +1429,10 @@ body.dark-mode .sr-error.sr-ok { background: #113a2b; color: #6ee7b7; }
     display: inline;
 }
 
-body.dark-theme .message-more-menu,
 body.dark-mode .message-more-menu {
     background: #1f2126;
     border-color: #333;
 }
-body.dark-theme .message-more-menu button,
 body.dark-mode .message-more-menu button {
     color: #eee;
 }
@@ -1545,11 +1528,8 @@ body.dark-mode .message-more-menu button {
     padding: 0 4px;
 }
 .pinned-unpin:hover { color: #ef4444; }
-body.dark-theme .pinned-bar,
 body.dark-mode .pinned-bar { background: rgba(129, 140, 248, 0.14); border-bottom-color: rgba(129, 140, 248, 0.3); }
-body.dark-theme .pinned-item,
 body.dark-mode .pinned-item { color: #cbd5e1; }
-body.dark-theme .pinned-author,
 body.dark-mode .pinned-author { color: #a5b4fc; }
 
 /* ===================== Emoji reactions ===================== */
@@ -1672,36 +1652,28 @@ body.dark-mode .pinned-author { color: #a5b4fc; }
     color: #b91c1c;
 }
 
-body.dark-theme .report-menu,
 body.dark-mode .report-menu {
     background: #1f2937;
     border-color: #374151;
 }
-body.dark-theme .report-option,
 body.dark-mode .report-option {
     color: #e5e7eb;
 }
-body.dark-theme .report-option:hover,
 body.dark-mode .report-option:hover {
     background: #7f1d1d;
     color: #fff;
 }
 
-body.dark-theme .reaction-pill,
 body.dark-mode .reaction-pill {
     background: #2a2a2a;
     border-color: #3a3a3a;
 }
-body.dark-theme .reaction-pill:hover,
 body.dark-mode .reaction-pill:hover { background: #333; }
-body.dark-theme .reaction-pill .reaction-count,
 body.dark-mode .reaction-pill .reaction-count { color: #bbb; }
-body.dark-theme .reaction-picker,
 body.dark-mode .reaction-picker {
     background: #1e1e1e;
     border-color: #3a3a3a;
 }
-body.dark-theme .reaction-option:hover,
 body.dark-mode .reaction-option:hover { background: #2a2a2a; }
 
 /* Static (non-clickable) reaction pills on own messages */
@@ -1842,18 +1814,13 @@ body.dark-mode .reaction-option:hover { background: #2a2a2a; }
     background: rgba(34, 197, 94, 0.15);
 }
 
-body.dark-theme .mention-item .mention-name,
 body.dark-mode .mention-item .mention-name { color: #eee; }
-body.dark-theme .mention-dropdown, body.dark-theme .user-actions-popover,
 body.dark-mode .mention-dropdown, body.dark-mode .user-actions-popover {
     background: #1e1e1e;
     border-color: #3a3a3a;
 }
-body.dark-theme .user-actions-popover .user-actions-name,
 body.dark-mode .user-actions-popover .user-actions-name { color: #bbb; border-color: #333; }
-body.dark-theme .user-actions-popover .user-action-profile, body.dark-theme .user-actions-popover .user-action-mention, body.dark-theme .user-actions-popover .user-action-dm, body.dark-theme .user-actions-popover .user-action-block,
 body.dark-mode .user-actions-popover .user-action-profile, body.dark-mode .user-actions-popover .user-action-mention, body.dark-mode .user-actions-popover .user-action-dm, body.dark-mode .user-actions-popover .user-action-block { color: #eee; }
-body.dark-theme .message.mentions-me,
 body.dark-mode .message.mentions-me { background: rgba(245, 158, 11, 0.22); }
 
 /* Edit button */
@@ -2216,7 +2183,6 @@ body.dark-mode .message.mentions-me { background: rgba(245, 158, 11, 0.22); }
     justify-content: center;
 }
 .song-request-btn:hover { background: #f3f4f6; }
-body.dark-theme .song-request-btn:hover,
 body.dark-mode .song-request-btn:hover { background: #2a2a2a; }
 
 /* "User is typing…" indicator (above the input) */
@@ -2227,7 +2193,6 @@ body.dark-mode .song-request-btn:hover { background: #2a2a2a; }
     color: #6b7280;
     min-height: 16px;
 }
-body.dark-theme .typing-indicator,
 body.dark-mode .typing-indicator { color: #9ca3af; }
 
 /* ---- Live poll widget (top of the chat) ---- */
@@ -2262,15 +2227,10 @@ body.dark-mode .typing-indicator { color: #9ca3af; }
 .poll-foot { margin-top: 8px; font-size: 12px; color: #6b7280; }
 /* Dark styling follows the APP's theme, not the operating system's.
    These rules used to sit behind  background: rgba(129, 140, 248, 0.12); border-color: rgba(129, 140, 248, 0.28); 
-body.dark-theme .poll-question,
 body.dark-mode .poll-question { color: #e5e7eb; }
-body.dark-theme .poll-option,
 body.dark-mode .poll-option { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
-body.dark-theme .poll-option:hover,
 body.dark-mode .poll-option:hover { background: #2f2f38; }
-body.dark-theme .poll-result,
 body.dark-mode .poll-result { background: #26262e; }
-body.dark-theme .poll-result-label,
 body.dark-mode .poll-result-label { color: #e5e7eb; }
 
 /* Now-playing vote widget (header) */
@@ -2322,7 +2282,6 @@ body.dark-mode .poll-result-label { color: #e5e7eb; }
 /* Same correction as the poll widget: the app's theme decides, not the OS.
    On a light station with a dark-set machine this rendered #cbd5e1 on a pale
    lavender panel, which is how /help came back invisible. */
-body.dark-theme .system-message,
 body.dark-mode .system-message {
     background: rgba(129, 140, 248, 0.14);
     color: #cbd5e1;
@@ -2382,11 +2341,8 @@ body.dark-mode .system-message {
     color: #fff;
 }
 
-body.dark-theme .pin-track-btn:hover,
 body.dark-mode .pin-track-btn:hover { background: #2a2a2a; }
-body.dark-theme .pin-track-chip,
 body.dark-mode .pin-track-chip { color: #cbd5e1; }
-body.dark-theme .pinned-track,
 body.dark-mode .pinned-track { color: #d8b4fe; }
 
 .photo-btn {
@@ -3171,6 +3127,26 @@ body.embedded-mode .emoji-toggle-btn {
 }
 
 /* Private Chat Header */
+/* The pinned strip at the top of the scrolling chat.
+   A poll or an opened panel used to sit in the message flow and scroll away —
+   which is the one thing a live poll must not do. They pin together as one
+   block: separate sticky elements would all anchor to top: 0 and cover each
+   other. The negative margins cancel the container's side padding so children
+   still span edge-to-edge, and the cap keeps a stack of open panels from taking
+   the whole viewport. */
+#chat-pinned-area {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    margin: 0 -20px;
+    padding: 0 20px;
+    background: #f9fafb;
+    max-height: 60%;
+    overflow-y: auto;
+}
+
+body.dark-mode #chat-pinned-area { background: #0f172a; }
+
 #private-chat-header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -3416,11 +3392,8 @@ body.embedded-mode .emoji-toggle-btn {
     font-size: 14px;
 }
 
-body.dark-theme .gallery-modal,
 body.dark-mode .gallery-modal { background: #1e1e1e; color: #eee; }
-body.dark-theme .gallery-modal-header,
 body.dark-mode .gallery-modal-header { border-color: #333; }
-body.dark-theme .gallery-close,
 body.dark-mode .gallery-close { color: #aaa; }
 
 #back-to-public:hover {
