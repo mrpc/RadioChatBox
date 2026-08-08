@@ -3623,9 +3623,19 @@ class RadioChatBox {
                 this._cmdIndex = (this._cmdIndex + step + items.length) % items.length;
                 this.renderCommandSuggestions();
             } else if (e.key === 'Enter' || e.key === 'Tab') {
-                // Enter completes the command rather than sending a half-typed one.
                 e.preventDefault();
-                this.applyCommandSuggestion(items[this._cmdIndex]);
+                const choice = items[this._cmdIndex];
+                // Completing something already complete swallows the keypress and
+                // looks like Enter doing nothing — which is what typing "/help"
+                // in full and pressing Enter used to do. When there is nothing
+                // left to add, Enter means send.
+                const done = choice && this.messageInput.value.trim().toLowerCase() === '/' + choice.command;
+                if (done && e.key === 'Enter') {
+                    this.hideCommandSuggestions();
+                    this.sendMessage();
+                } else {
+                    this.applyCommandSuggestion(choice);
+                }
             } else if (e.key === 'Escape') {
                 this.hideCommandSuggestions();
             }
@@ -5761,12 +5771,28 @@ class RadioChatBox {
             ? `<div class="pinned-track" title="Track playing when this message was sent">🎵 ${this.escapeHtml(messageData.pinned_track)}</div>`
             : '';
 
+        // An emote already names its author — "* admin is waving" — so the usual
+        // header would print the name twice. IRC has always rendered an action
+        // as a single line without a speaker, and that is what /me produced here
+        // before this was noticed. The check requires the author's OWN name, so
+        // it recognises only what our own /me writes.
+        const isEmote = typeof messageData.message === 'string'
+            && messageData.message.startsWith(`* ${messageData.username} `);
+        if (isEmote) messageDiv.classList.add('emote-message');
+
+        const headerHTML = isEmote
+            ? `<div class="message-header emote-header">
+                   <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
+                   ${editedBadge}
+               </div>`
+            : `<div class="message-header">
+                   <span class="message-username" data-username="${this.escapeHtml(messageData.username)}">${this.escapeHtml(displayName)}</span>
+                   <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
+                   ${editedBadge}
+               </div>`;
+
         messageDiv.innerHTML = `
-            <div class="message-header">
-                <span class="message-username" data-username="${this.escapeHtml(messageData.username)}">${this.escapeHtml(displayName)}</span>
-                <span class="message-time" title="${this.escapeHtml(fullDate)}">${timeString}</span>
-                ${editedBadge}
-            </div>
+            ${headerHTML}
             ${replyQuoteHTML}
             ${pinnedTrackHTML}
             <div class="message-body">

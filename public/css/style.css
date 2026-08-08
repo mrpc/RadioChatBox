@@ -192,6 +192,17 @@ body {
     border-color: #667eea;
 }
 
+/* An emote is one line that names its own author, so the bubble drops the
+   speaker header and leans on italics the way every IRC client has. */
+.emote-message .message-text {
+    font-style: italic;
+    opacity: 0.92;
+}
+
+.emote-header {
+    justify-content: flex-end;
+}
+
 /* ---- Slash-command autocomplete ------------------------------------------
    Anchored above the input; the input's wrapper is the positioning context. */
 .command-suggestions {
@@ -238,15 +249,15 @@ body {
     white-space: nowrap;
 }
 
-@media (prefers-color-scheme: dark) {
-    .command-suggestions {
-        background: #1f2126;
-        border-color: #333;
-    }
-
-    .command-suggestion .command-name { color: #a5b4fc; }
-    .command-suggestion .command-desc { color: #9ca3af; }
+body.dark-theme .command-suggestions,
+body.dark-mode .command-suggestions {
+    background: #1f2126;
+    border-color: #333;
 }
+body.dark-theme .command-suggestion .command-name,
+body.dark-mode .command-suggestion .command-name { color: #a5b4fc; }
+body.dark-theme .command-suggestion .command-desc,
+body.dark-mode .command-suggestion .command-desc { color: #9ca3af; }
 
 /* ---- Poll composer ------------------------------------------------------- */
 #poll-modal input[type="text"] {
@@ -632,10 +643,10 @@ body {
     color: #6b7280;
 }
 
-@media (prefers-color-scheme: dark) {
-    .now-playing-card { background: #1e1e1e; color: #eee; }
-    .now-playing-card .np-label { color: #9ca3af; }
-}
+body.dark-theme .now-playing-card,
+body.dark-mode .now-playing-card { background: #1e1e1e; color: #eee; }
+body.dark-theme .now-playing-card .np-label,
+body.dark-mode .now-playing-card .np-label { color: #9ca3af; }
 
 /* ------------------------------------------------------------------ */
 /* In-chat radio player bar (a single dark, rounded bar above the chat) */
@@ -875,14 +886,18 @@ body {
     .charts-body { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (prefers-color-scheme: dark) {
-    .charts-modal { background: #1c1c22; color: #e5e7eb; }
-    .charts-modal-head { border-bottom-color: #2c2c34; }
-    .charts-periods { background: #26262e; }
-    .charts-period { color: #cbd5e1; }
-    .charts-list li { border-bottom-color: #2c2c34; }
-    .charts-list .chart-img { background: #26262e; }
-}
+body.dark-theme .charts-modal,
+body.dark-mode .charts-modal { background: #1c1c22; color: #e5e7eb; }
+body.dark-theme .charts-modal-head,
+body.dark-mode .charts-modal-head { border-bottom-color: #2c2c34; }
+body.dark-theme .charts-periods,
+body.dark-mode .charts-periods { background: #26262e; }
+body.dark-theme .charts-period,
+body.dark-mode .charts-period { color: #cbd5e1; }
+body.dark-theme .charts-list li,
+body.dark-mode .charts-list li { border-bottom-color: #2c2c34; }
+body.dark-theme .charts-list .chart-img,
+body.dark-mode .charts-list .chart-img { background: #26262e; }
 
 /* Song request modal (reuses .charts-overlay / .charts-modal shell) */
 .sr-modal { max-width: 460px; }
@@ -928,13 +943,14 @@ body {
 .sr-actions .btn:disabled { opacity: 0.6; cursor: default; }
 .sr-error.sr-ok { background: #ecfdf5; color: #047857; }
 
-@media (prefers-color-scheme: dark) {
-    .sr-field label { color: #cbd5e1; }
-    .sr-field input,
-    .sr-field textarea { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
-    .sr-error { background: #3a1f22; color: #fca5a5; }
-    .sr-error.sr-ok { background: #113a2b; color: #6ee7b7; }
-}
+body.dark-theme .sr-field label,
+body.dark-mode .sr-field label { color: #cbd5e1; }
+body.dark-theme .sr-field input, body.dark-theme .sr-field textarea,
+body.dark-mode .sr-field input, body.dark-mode .sr-field textarea { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
+body.dark-theme .sr-error,
+body.dark-mode .sr-error { background: #3a1f22; color: #fca5a5; }
+body.dark-theme .sr-error.sr-ok,
+body.dark-mode .sr-error.sr-ok { background: #113a2b; color: #6ee7b7; }
 
 /* Now-playing cover: fills the header height, flush to the left.
    Fixed height (never align-self:stretch + aspect-ratio, which can blow up to
@@ -1428,15 +1444,14 @@ body {
     display: inline;
 }
 
-@media (prefers-color-scheme: dark) {
-    .message-more-menu {
-        background: #1f2126;
-        border-color: #333;
-    }
-
-    .message-more-menu button {
-        color: #eee;
-    }
+body.dark-theme .message-more-menu,
+body.dark-mode .message-more-menu {
+    background: #1f2126;
+    border-color: #333;
+}
+body.dark-theme .message-more-menu button,
+body.dark-mode .message-more-menu button {
+    color: #eee;
 }
 
 .reply-message-btn {
@@ -1530,11 +1545,12 @@ body {
     padding: 0 4px;
 }
 .pinned-unpin:hover { color: #ef4444; }
-@media (prefers-color-scheme: dark) {
-    .pinned-bar { background: rgba(129, 140, 248, 0.14); border-bottom-color: rgba(129, 140, 248, 0.3); }
-    .pinned-item { color: #cbd5e1; }
-    .pinned-author { color: #a5b4fc; }
-}
+body.dark-theme .pinned-bar,
+body.dark-mode .pinned-bar { background: rgba(129, 140, 248, 0.14); border-bottom-color: rgba(129, 140, 248, 0.3); }
+body.dark-theme .pinned-item,
+body.dark-mode .pinned-item { color: #cbd5e1; }
+body.dark-theme .pinned-author,
+body.dark-mode .pinned-author { color: #a5b4fc; }
 
 /* ===================== Emoji reactions ===================== */
 .react-message-btn {
@@ -1656,33 +1672,37 @@ body {
     color: #b91c1c;
 }
 
-@media (prefers-color-scheme: dark) {
-    .report-menu {
-        background: #1f2937;
-        border-color: #374151;
-    }
-    .report-option {
-        color: #e5e7eb;
-    }
-    .report-option:hover {
-        background: #7f1d1d;
-        color: #fff;
-    }
+body.dark-theme .report-menu,
+body.dark-mode .report-menu {
+    background: #1f2937;
+    border-color: #374151;
+}
+body.dark-theme .report-option,
+body.dark-mode .report-option {
+    color: #e5e7eb;
+}
+body.dark-theme .report-option:hover,
+body.dark-mode .report-option:hover {
+    background: #7f1d1d;
+    color: #fff;
 }
 
-@media (prefers-color-scheme: dark) {
-    .reaction-pill {
-        background: #2a2a2a;
-        border-color: #3a3a3a;
-    }
-    .reaction-pill:hover { background: #333; }
-    .reaction-pill .reaction-count { color: #bbb; }
-    .reaction-picker {
-        background: #1e1e1e;
-        border-color: #3a3a3a;
-    }
-    .reaction-option:hover { background: #2a2a2a; }
+body.dark-theme .reaction-pill,
+body.dark-mode .reaction-pill {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
 }
+body.dark-theme .reaction-pill:hover,
+body.dark-mode .reaction-pill:hover { background: #333; }
+body.dark-theme .reaction-pill .reaction-count,
+body.dark-mode .reaction-pill .reaction-count { color: #bbb; }
+body.dark-theme .reaction-picker,
+body.dark-mode .reaction-picker {
+    background: #1e1e1e;
+    border-color: #3a3a3a;
+}
+body.dark-theme .reaction-option:hover,
+body.dark-mode .reaction-option:hover { background: #2a2a2a; }
 
 /* Static (non-clickable) reaction pills on own messages */
 .reaction-pill.static {
@@ -1822,20 +1842,19 @@ body {
     background: rgba(34, 197, 94, 0.15);
 }
 
-@media (prefers-color-scheme: dark) {
-    .mention-item .mention-name { color: #eee; }
-    .mention-dropdown,
-    .user-actions-popover {
-        background: #1e1e1e;
-        border-color: #3a3a3a;
-    }
-    .user-actions-popover .user-actions-name { color: #bbb; border-color: #333; }
-    .user-actions-popover .user-action-profile,
-    .user-actions-popover .user-action-mention,
-    .user-actions-popover .user-action-dm,
-    .user-actions-popover .user-action-block { color: #eee; }
-    .message.mentions-me { background: rgba(245, 158, 11, 0.22); }
+body.dark-theme .mention-item .mention-name,
+body.dark-mode .mention-item .mention-name { color: #eee; }
+body.dark-theme .mention-dropdown, body.dark-theme .user-actions-popover,
+body.dark-mode .mention-dropdown, body.dark-mode .user-actions-popover {
+    background: #1e1e1e;
+    border-color: #3a3a3a;
 }
+body.dark-theme .user-actions-popover .user-actions-name,
+body.dark-mode .user-actions-popover .user-actions-name { color: #bbb; border-color: #333; }
+body.dark-theme .user-actions-popover .user-action-profile, body.dark-theme .user-actions-popover .user-action-mention, body.dark-theme .user-actions-popover .user-action-dm, body.dark-theme .user-actions-popover .user-action-block,
+body.dark-mode .user-actions-popover .user-action-profile, body.dark-mode .user-actions-popover .user-action-mention, body.dark-mode .user-actions-popover .user-action-dm, body.dark-mode .user-actions-popover .user-action-block { color: #eee; }
+body.dark-theme .message.mentions-me,
+body.dark-mode .message.mentions-me { background: rgba(245, 158, 11, 0.22); }
 
 /* Edit button */
 .edit-message-btn {
@@ -2197,9 +2216,8 @@ body {
     justify-content: center;
 }
 .song-request-btn:hover { background: #f3f4f6; }
-@media (prefers-color-scheme: dark) {
-    .song-request-btn:hover { background: #2a2a2a; }
-}
+body.dark-theme .song-request-btn:hover,
+body.dark-mode .song-request-btn:hover { background: #2a2a2a; }
 
 /* "User is typing…" indicator (above the input) */
 .typing-indicator {
@@ -2209,9 +2227,8 @@ body {
     color: #6b7280;
     min-height: 16px;
 }
-@media (prefers-color-scheme: dark) {
-    .typing-indicator { color: #9ca3af; }
-}
+body.dark-theme .typing-indicator,
+body.dark-mode .typing-indicator { color: #9ca3af; }
 
 /* ---- Live poll widget (top of the chat) ---- */
 .poll-widget {
@@ -2243,14 +2260,18 @@ body {
 .poll-result-label { position: relative; z-index: 1; flex: 1 1 auto; color: #1f2937; }
 .poll-result-pct { position: relative; z-index: 1; font-weight: 600; color: #4f46e5; }
 .poll-foot { margin-top: 8px; font-size: 12px; color: #6b7280; }
-@media (prefers-color-scheme: dark) {
-    .poll-widget { background: rgba(129, 140, 248, 0.12); border-color: rgba(129, 140, 248, 0.28); }
-    .poll-question { color: #e5e7eb; }
-    .poll-option { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
-    .poll-option:hover { background: #2f2f38; }
-    .poll-result { background: #26262e; }
-    .poll-result-label { color: #e5e7eb; }
-}
+/* Dark styling follows the APP's theme, not the operating system's.
+   These rules used to sit behind  background: rgba(129, 140, 248, 0.12); border-color: rgba(129, 140, 248, 0.28); 
+body.dark-theme .poll-question,
+body.dark-mode .poll-question { color: #e5e7eb; }
+body.dark-theme .poll-option,
+body.dark-mode .poll-option { background: #26262e; color: #e5e7eb; border-color: #3a3a44; }
+body.dark-theme .poll-option:hover,
+body.dark-mode .poll-option:hover { background: #2f2f38; }
+body.dark-theme .poll-result,
+body.dark-mode .poll-result { background: #26262e; }
+body.dark-theme .poll-result-label,
+body.dark-mode .poll-result-label { color: #e5e7eb; }
 
 /* Now-playing vote widget (header) */
 .track-vote {
@@ -2298,8 +2319,14 @@ body {
     text-align: center;
     white-space: normal;
 }
-@media (prefers-color-scheme: dark) {
-    .system-message { background: rgba(129, 140, 248, 0.14); color: #cbd5e1; border-color: rgba(129, 140, 248, 0.3); }
+/* Same correction as the poll widget: the app's theme decides, not the OS.
+   On a light station with a dark-set machine this rendered #cbd5e1 on a pale
+   lavender panel, which is how /help came back invisible. */
+body.dark-theme .system-message,
+body.dark-mode .system-message {
+    background: rgba(129, 140, 248, 0.14);
+    color: #cbd5e1;
+    border-color: rgba(129, 140, 248, 0.3);
 }
 
 /* Chip above the input showing the track that will be pinned */
@@ -2355,11 +2382,12 @@ body {
     color: #fff;
 }
 
-@media (prefers-color-scheme: dark) {
-    .pin-track-btn:hover { background: #2a2a2a; }
-    .pin-track-chip { color: #cbd5e1; }
-    .pinned-track { color: #d8b4fe; }
-}
+body.dark-theme .pin-track-btn:hover,
+body.dark-mode .pin-track-btn:hover { background: #2a2a2a; }
+body.dark-theme .pin-track-chip,
+body.dark-mode .pin-track-chip { color: #cbd5e1; }
+body.dark-theme .pinned-track,
+body.dark-mode .pinned-track { color: #d8b4fe; }
 
 .photo-btn {
     padding: 12px;
@@ -3388,11 +3416,12 @@ body.embedded-mode .emoji-toggle-btn {
     font-size: 14px;
 }
 
-@media (prefers-color-scheme: dark) {
-    .gallery-modal { background: #1e1e1e; color: #eee; }
-    .gallery-modal-header { border-color: #333; }
-    .gallery-close { color: #aaa; }
-}
+body.dark-theme .gallery-modal,
+body.dark-mode .gallery-modal { background: #1e1e1e; color: #eee; }
+body.dark-theme .gallery-modal-header,
+body.dark-mode .gallery-modal-header { border-color: #333; }
+body.dark-theme .gallery-close,
+body.dark-mode .gallery-close { color: #aaa; }
 
 #back-to-public:hover {
     background: rgba(255, 255, 255, 0.3);
