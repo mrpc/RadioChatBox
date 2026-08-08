@@ -1385,19 +1385,31 @@ class RadioChatBox {
             // Announce the wait only once it IS a wait. A start that connects
             // quickly would otherwise flash "Buffering…" for a frame, which is
             // noise; a slow start or a reconnect holds past this and says so.
+            const startedAt = Date.now();
             this._bufferingShowTimer = setTimeout(() => {
-                // How much has arrived IS knowable, even though how long it will
-                // take is not — so show the seconds climbing rather than a
-                // static word. It answers the question the word leaves open:
-                // is anything actually happening?
+                /**
+                 * Two numbers, because two situations.
+                 *
+                 * Once audio has arrived, how much is ahead of the playhead is
+                 * exact and is the number that matters — it says whether the
+                 * stream is keeping up.
+                 *
+                 * Before the first byte there is no buffered range to read: the
+                 * element exposes nothing until it has audio it can decode, and
+                 * by then it is usually playing. So at the start there is
+                 * genuinely nothing to measure about the stream — but there IS
+                 * something to measure about the wait, and how long it has been
+                 * going is the thing that answers "is this still alive?".
+                 * Counting the wait up beats a word that never changes.
+                 */
                 const paint = () => {
                     const ahead = bufferedAhead();
-                    // No buffered range yet means no bytes yet — the connection
-                    // is still being opened. Calling that "Buffering…" with no
-                    // number reads as a broken readout; it is a different state
-                    // and deserves its own word. The seconds appear as soon as
-                    // there is audio to count.
-                    setPlayerLabel(ahead === null ? 'Connecting…' : `Buffering… ${ahead.toFixed(1)}s`);
+                    if (ahead === null) {
+                        const waited = Math.floor((Date.now() - startedAt) / 1000);
+                        setPlayerLabel(`Connecting… ${waited}s`);
+                        return;
+                    }
+                    setPlayerLabel(`Buffering… ${ahead.toFixed(1)}s`);
                 };
                 paint();
                 clearInterval(this._bufferingProgress);
@@ -1509,8 +1521,15 @@ class RadioChatBox {
         this._playerBufferMonitor = setInterval(monitorBuffer, 1000);
 
         audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); setBuffering(true); });
-        audio.addEventListener('waiting', () => setBuffering(true));
-        audio.addEventListener('stalled', () => setBuffering(true));
+
+        // Only report a wait when somebody is waiting. An idle element with
+        // preload="none" and a src set is not fetching anything, and browsers
+        // announce that as 'stalled' — which was putting "Connecting…" on the
+        // bar of a station nobody had pressed play on. Waiting for data you have
+        // not asked for is not a wait.
+        const reportWait = () => { if (this._playerWantsPlay) setBuffering(true); };
+        audio.addEventListener('waiting', reportWait);
+        audio.addEventListener('stalled', reportWait);
         audio.addEventListener('canplay', () => setBuffering(false));
         audio.addEventListener('playing', () => {
             this._playerRetries = 0;
