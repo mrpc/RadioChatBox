@@ -428,40 +428,6 @@
             gap: 16px;
         }
 
-        /* Uniform settings-panel chrome — see initSettingsPanels(). */
-        .section-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .panel-collapse {
-            background: transparent;
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            width: 32px;
-            height: 32px;
-            font-size: 13px;
-            line-height: 1;
-            cursor: pointer;
-            color: #6b7280;
-        }
-
-        .panel-collapse:hover {
-            background: #f3f4f6;
-            color: #111827;
-        }
-
-        .section.collapsed .section-body {
-            display: none;
-        }
-
-        /* A collapsed panel is a title bar, so drop the gap under the header. */
-        .section.collapsed .section-header {
-            margin-bottom: 0;
-        }
-
         .section h2 {
             font-size: 20px;
             color: var(--gray-900);
@@ -9911,106 +9877,6 @@
          * Sections that perform an action rather than hold settings (the backup
          * download, the embed snippet) get the collapse but no Save.
          */
-        const SETTINGS_ACTION_ONLY = ['Configuration Backup', 'Embed Code'];
-        const SETTINGS_COLLAPSE_KEY = 'rcb-settings-collapsed';
-
-        function collapsedSettingsPanels() {
-            try {
-                return new Set(JSON.parse(localStorage.getItem(SETTINGS_COLLAPSE_KEY) || '[]'));
-            } catch (e) {
-                return new Set();
-            }
-        }
-
-        function initSettingsPanels() {
-            const tab = document.getElementById('settings-tab');
-            if (!tab || tab.dataset.panelsReady === '1') return;
-
-            const collapsed = collapsedSettingsPanels();
-
-            tab.querySelectorAll(':scope > .section').forEach(section => {
-                const h2 = section.querySelector('h2');
-                if (!h2) return;
-                const title = h2.textContent.trim();
-
-                // Normalise: some sections already carry a .section-header (with
-                // Export/Import or a Save), most are a bare <h2> then content.
-                let header = section.querySelector(':scope > .section-header');
-                if (!header) {
-                    header = document.createElement('div');
-                    header.className = 'section-header';
-                    h2.parentNode.insertBefore(header, h2);
-                    header.appendChild(h2);
-                }
-
-                // Everything after the header becomes the collapsible body.
-                let body = section.querySelector(':scope > .section-body');
-                if (!body) {
-                    body = document.createElement('div');
-                    body.className = 'section-body';
-                    while (header.nextSibling) {
-                        body.appendChild(header.nextSibling);
-                    }
-                    section.appendChild(body);
-                }
-
-                // Controls live in one place on the right of the header.
-                let controls = header.querySelector(':scope > .section-controls');
-                if (!controls) {
-                    controls = document.createElement('div');
-                    controls.className = 'section-controls';
-                    // Adopt whatever buttons the header already had.
-                    Array.prototype.slice.call(header.children).forEach(child => {
-                        if (child !== h2) controls.appendChild(child);
-                    });
-                    header.appendChild(controls);
-                }
-
-                if (!SETTINGS_ACTION_ONLY.includes(title) && !controls.querySelector('.panel-save')) {
-                    const save = document.createElement('button');
-                    save.className = 'btn btn-primary panel-save';
-                    save.type = 'button';
-                    save.textContent = '💾 Save';
-                    // One payload builder reads every field, so any Save writes the
-                    // whole form — the button is here for reach, not for scope.
-                    save.addEventListener('click', () => saveSettings());
-                    controls.appendChild(save);
-                }
-
-                if (!controls.querySelector('.panel-collapse')) {
-                    const toggle = document.createElement('button');
-                    toggle.className = 'panel-collapse';
-                    toggle.type = 'button';
-                    toggle.setAttribute('aria-label', 'Collapse ' + title);
-                    toggle.textContent = '▾';
-                    toggle.addEventListener('click', () => setSettingsPanelCollapsed(section, !section.classList.contains('collapsed')));
-                    controls.appendChild(toggle);
-                }
-
-                if (collapsed.has(title)) setSettingsPanelCollapsed(section, true, true);
-            });
-
-            tab.dataset.panelsReady = '1';
-        }
-
-        function setSettingsPanelCollapsed(section, collapse, skipPersist) {
-            section.classList.toggle('collapsed', collapse);
-            const toggle = section.querySelector('.panel-collapse');
-            if (toggle) {
-                toggle.textContent = collapse ? '▸' : '▾';
-                toggle.setAttribute('aria-expanded', String(!collapse));
-            }
-            if (skipPersist) return;
-
-            const h2 = section.querySelector('h2');
-            const title = h2 ? h2.textContent.trim() : '';
-            const set = collapsedSettingsPanels();
-            if (collapse) { set.add(title); } else { set.delete(title); }
-            try {
-                localStorage.setItem(SETTINGS_COLLAPSE_KEY, JSON.stringify(Array.from(set)));
-            } catch (e) { /* private mode: collapse just will not persist */ }
-        }
-
         /**
          * A feature toggle is on unless explicitly turned off. Mirrors
          * Chat.featureOn(): these switches arrived after the features shipped, so
@@ -10035,22 +9901,29 @@
          * Keyed by setting; `defaultOn` distinguishes the switches added with this
          * change (absent = on) from the older ones that have always been opt-in.
          */
-        // Every switch in the Features section, with the surfaces that only exist
-        // to serve it: its tab in this panel, and the settings groups that would
-        // be configuring something switched off.
-        const FEATURE_SURFACES = [
-            { setting: 'shows_enabled',         defaultOn: true,  tabs: ['shows'] },
-            { setting: 'reactions_enabled',     defaultOn: true,  tabs: [], groups: ['settings-group-reactions'] },
-            { setting: 'polls_enabled',         defaultOn: false, tabs: ['polls'], groups: ['settings-group-polls'] },
-            { setting: 'song_requests_enabled', defaultOn: false, tabs: ['song-requests'] },
-            { setting: 'charts_enabled',        defaultOn: false, tabs: [], groups: ['settings-group-charts'] },
-            { setting: 'gif_enabled',           defaultOn: false, tabs: [], groups: ['settings-group-gifs'] },
-            { setting: 'chat_commands_enabled', defaultOn: false, tabs: [], groups: ['settings-group-chat-commands'] },
-            { setting: 'bot_replies_enabled',   defaultOn: false, tabs: ['promos'] }
-        ];
-
         function applyFeatureVisibility(settings) {
             if (!settings) return;
+
+            // Every switch in the Features and Radio sections, with the surfaces
+            // that only exist to serve it: its tab in this panel, and the settings
+            // groups that would be configuring something switched off.
+            //
+            // Function-local on purpose — loadSettings() calls this during initial
+            // page execution, before a module-level const further down the script
+            // would have been initialised.
+            const FEATURE_SURFACES = [
+                { setting: 'shows_enabled',         defaultOn: true,  tabs: ['shows'] },
+                { setting: 'reactions_enabled',     defaultOn: true,  tabs: [], groups: ['settings-group-reactions'] },
+                { setting: 'polls_enabled',         defaultOn: false, tabs: ['polls'], groups: ['settings-group-polls'] },
+                { setting: 'song_requests_enabled', defaultOn: false, tabs: ['song-requests'] },
+                { setting: 'charts_enabled',        defaultOn: false, tabs: [], groups: ['settings-group-charts'] },
+                { setting: 'chat_commands_enabled', defaultOn: false, tabs: [], groups: ['settings-group-chat-commands'] },
+                // gif_enabled is deliberately absent: COLLAPSIBLE_SETTINGS below
+                // already owns it, and does it better — it reacts to the checkbox
+                // itself rather than waiting for a save. One owner per feature.
+                { setting: 'bot_replies_enabled',   defaultOn: false, tabs: ['promos'] }
+            ];
+
             FEATURE_SURFACES.forEach(f => {
                 const raw = settings[f.setting];
                 const on = (raw === undefined || raw === null || raw === '')
@@ -10076,15 +9949,17 @@
             });
         }
 
-        // The mailer's own status vocabulary — Email::send() stores 1 on success
-        // and 0 on failure, and the queue writes 2.
-        const MAIL_STATUS = {
-            1: { label: 'Sent',   colour: '#059669' },
-            2: { label: 'Queued', colour: '#d97706' },
-            0: { label: 'Failed', colour: '#ef4444' }
-        };
-
         async function loadEmailLog(status = '') {
+            // The mailer's own status vocabulary — Email::send() stores 1 on
+            // success and 0 on failure, and the queue writes 2. Kept inside the
+            // function for the same initialisation-order reason as the tables
+            // above.
+            const MAIL_STATUS = {
+                1: { label: 'Sent',   colour: '#059669' },
+                2: { label: 'Queued', colour: '#d97706' },
+                0: { label: 'Failed', colour: '#ef4444' }
+            };
+
             const box = document.getElementById('email-log-table');
             if (!box) return;
             box.innerHTML = '<div style="color:#6b7280;padding:8px;">Loading…</div>';
@@ -10156,7 +10031,6 @@
         }
 
         async function loadSettings() {
-            initSettingsPanels();
             try {
                 const response = await fetch('/api/admin/settings', {
                     headers: { 'Authorization': `Bearer ${authToken}` }
@@ -10402,8 +10276,9 @@
             { toggle: 'setting-analytics-enabled' },
             { toggle: 'setting-ads-enabled' },
             {
-                // The GIF toggle sits in General Settings next to unrelated
-                // fields, so its options are listed explicitly.
+                // The GIF switch now lives in the Features section, a section away
+                // from the fields it governs, so those are listed explicitly
+                // rather than inferred from what follows the toggle.
                 toggle: 'setting-gif-enabled',
                 fields: ['setting-gif-provider', 'setting-giphy-api-key', 'setting-klipy-api-key']
             }
@@ -10489,12 +10364,20 @@
 
                 const heading = section.querySelector('h2');
 
-                // Everything below the heading becomes the foldable body.
+                // Everything below the heading becomes the foldable body — but
+                // "the heading" is the whole .section-header where a section has
+                // one (General Settings carries Export/Import beside its title,
+                // and Features/Radio follow the same shape). Anchoring on the h2
+                // alone leaves its siblings *inside* the header, so the wrap
+                // collected nothing and the section rendered as a title and a
+                // save button with its contents missing.
+                const anchor = section.querySelector(':scope > .section-header') || heading;
+
                 if (heading) {
                     const body = document.createElement('div');
                     body.className = 'section-body';
-                    while (heading.nextSibling) {
-                        body.appendChild(heading.nextSibling);
+                    while (anchor.nextSibling) {
+                        body.appendChild(anchor.nextSibling);
                     }
                     section.appendChild(body);
 
