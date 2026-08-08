@@ -659,6 +659,17 @@ body.dark-mode .now-playing-card .np-label { color: #9ca3af; }
     flex-wrap: nowrap;
 }
 
+/* The join modal deliberately blocks the interface until someone joins — but
+   this is a radio station, and listening is not chatting. Somebody who has just
+   arrived should be able to press play and hear what is on while they decide
+   whether to join at all, so the player rises above the modal's backdrop and
+   stays clickable. Nothing else does: the rest of the chat is genuinely behind
+   the door. */
+body.awaiting-join #radio-player-bar {
+    position: relative;
+    z-index: 1001;
+}
+
 #radio-player-bar .rp-cover {
     width: 46px;
     height: 46px;

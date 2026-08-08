@@ -1858,7 +1858,10 @@ class RadioChatBox {
         }
 
         modal.style.display = 'flex';
-        
+        // Marks the "hasn't joined yet" state for the stylesheet — see the
+        // radio player, which has to stay reachable through this modal.
+        document.body.classList.add('awaiting-join');
+
         // Pre-fill nickname if provided
         if (prefillNickname) {
             nicknameInput.value = prefillNickname;
@@ -1936,6 +1939,7 @@ class RadioChatBox {
     hideNicknameModal() {
         const modal = document.getElementById('nickname-modal');
         modal.style.display = 'none';
+        document.body.classList.remove('awaiting-join');
     }
     
     setupModeToggle() {
