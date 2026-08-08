@@ -1546,10 +1546,21 @@ class RadioChatBox {
         audio.addEventListener('stalled', reportWait);
         audio.addEventListener('canplay', () => setBuffering(false));
         audio.addEventListener('playing', () => {
+            // A non-zero retry count means we have just come back from a drop.
+            const recovered = (this._playerRetries || 0) > 0;
             this._playerRetries = 0;
             setPlaying(true);
             setBuffering(false);
             this.updateMediaSession();
+
+            // Whatever was on air when the connection died is almost certainly
+            // not on air now — a reconnect can take a minute of backoff, and a
+            // track is three. The bar, the cover and the lock screen would all
+            // have kept showing the old one until the next scheduled poll came
+            // round, so ask straight away.
+            if (recovered) {
+                this.updateNowPlaying();
+            }
         });
         audio.addEventListener('pause', () => {
             // One handler, because three of them accumulated here as this file
@@ -1607,7 +1618,12 @@ class RadioChatBox {
         // Coming back to a backgrounded tab is the other moment a dead stream
         // shows up, and the one a listener actually notices.
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this._playerWantsPlay && audio.paused) reconnect();
+            if (document.hidden) return;
+            if (this._playerWantsPlay && audio.paused) reconnect();
+            // Background tabs have their timers throttled, so the now-playing
+            // poll has been crawling or stopped while we were away — whatever is
+            // on screen is as old as the absence.
+            if (this._playerActive) this.updateNowPlaying();
         });
 
         vol.addEventListener('input', () => {
