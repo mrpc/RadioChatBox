@@ -1388,6 +1388,58 @@ class RadioChatBox {
             playBtn.addEventListener(evt, warmUp, { once: false });
         });
 
+        // Pitch correction is the default in current browsers, but it is the one
+        // thing that must not silently change — a stream that goes chipmunk on a
+        // bad connection is worse than one that stutters. Say so explicitly,
+        // including the prefixed spellings older engines still read.
+        ['preservesPitch', 'mozPreservesPitch', 'webkitPreservesPitch'].forEach(prop => {
+            if (prop in audio) audio[prop] = true;
+        });
+
+        /**
+         * Ride out a thin buffer by playing very slightly slower.
+         *
+         * A live stream that runs out of buffered audio stalls, and a stall
+         * costs seconds — the connection has to recover and refill before a
+         * single sample plays. Slowing to 0.97 stretches the audio that IS
+         * buffered, which buys the network time to get ahead again, and at three
+         * percent nobody hears it. This is the trick Twitch uses.
+         *
+         * The cost is latency: every slowdown leaves us a little further behind
+         * what is actually on air. So the reverse applies too — once the buffer
+         * is comfortably deep, 1.02 eases that drift back off. Between the two
+         * the rate is exactly 1, because most of the time nothing is wrong and
+         * the safest rate is the real one.
+         */
+        const LOW_BUFFER = 1.0;     // seconds ahead below which we stretch
+        const DEEP_BUFFER = 6.0;    // seconds ahead above which we have drifted
+        const monitorBuffer = () => {
+            if (audio.paused || !audio.buffered || audio.buffered.length === 0) {
+                if (audio.playbackRate !== 1) audio.playbackRate = 1;
+                return;
+            }
+
+            const ahead = audio.buffered.end(audio.buffered.length - 1) - audio.currentTime;
+            let rate = 1;
+            if (ahead < LOW_BUFFER) {
+                rate = 0.97;
+            } else if (ahead > DEEP_BUFFER) {
+                rate = 1.02;
+            }
+
+            // Only touch it on a real change: assigning playbackRate every
+            // second is enough to make some engines audibly click.
+            if (Math.abs(audio.playbackRate - rate) > 0.001) {
+                audio.playbackRate = rate;
+            }
+        };
+        clearInterval(this._playerBufferMonitor);
+        this._playerBufferMonitor = setInterval(monitorBuffer, 1000);
+
+        // A deliberate pause ends the game; the rate must not persist into the
+        // next play, where it would be a mystery.
+        audio.addEventListener('pause', () => { audio.playbackRate = 1; });
+
         audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); setBuffering(true); });
         audio.addEventListener('waiting', () => setBuffering(true));
         audio.addEventListener('stalled', () => setBuffering(true));
@@ -1425,6 +1477,9 @@ class RadioChatBox {
                 const base = streamUrl.split('#')[0];
                 audio.src = base + (base.includes('?') ? '&' : '?') + '_r=' + Date.now();
                 audio.load();
+                // A fresh connection starts at the live edge, so whatever drift
+                // the rate was working off is gone with the old one.
+                audio.playbackRate = 1;
                 audio.play().catch(() => reconnect());
             }, delay);
         };
