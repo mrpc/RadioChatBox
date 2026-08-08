@@ -1495,8 +1495,22 @@ class RadioChatBox {
          * the rate is exactly 1, because most of the time nothing is wrong and
          * the safest rate is the real one.
          */
-        const LOW_BUFFER = 1.0;     // seconds ahead below which we stretch
-        const DEEP_BUFFER = 6.0;    // seconds ahead above which we have drifted
+        // Calibrated against a real stream rather than guessed: this player sits
+        // at roughly 2.3s of buffer when healthy, which is the cushion these
+        // numbers have to work inside.
+        //
+        // Engage at 1.5s, not 1.0 — waiting until the cushion is nearly gone
+        // leaves nothing to stretch. Stretch by 5%, not 3%: rebuilding buffer at
+        // 3% takes about 33 seconds of playback per lost second, which is slower
+        // than most dips last. Five percent is still well under the threshold
+        // where pitch-corrected audio is noticeable.
+        //
+        // Deep is 4s, not 6: with a 2.3s natural cushion, 6s was unreachable, so
+        // the drift correction could never actually run.
+        const LOW_BUFFER = 1.5;     // seconds ahead below which we stretch
+        const SLOW_RATE = 0.95;
+        const DEEP_BUFFER = 4.0;    // seconds ahead above which we have drifted
+        const CATCHUP_RATE = 1.03;
         const monitorBuffer = () => {
             const ahead = audio.paused ? null : bufferedAhead();
             if (ahead === null) {
@@ -1506,9 +1520,9 @@ class RadioChatBox {
 
             let rate = 1;
             if (ahead < LOW_BUFFER) {
-                rate = 0.97;
+                rate = SLOW_RATE;
             } else if (ahead > DEEP_BUFFER) {
-                rate = 1.02;
+                rate = CATCHUP_RATE;
             }
 
             // Only touch it on a real change: assigning playbackRate every
