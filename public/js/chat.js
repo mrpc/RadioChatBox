@@ -964,7 +964,6 @@ class RadioChatBox {
         try { this.initTrackVoting(); } catch (e) { console.warn('initTrackVoting error', e); }
         try { this.initTypingIndicators(); } catch (e) { console.warn('initTypingIndicators error', e); }
         try { this.initPolls(); } catch (e) { console.warn('initPolls error', e); }
-        try { this.initCommandAutocomplete(); } catch (e) { console.warn('initCommandAutocomplete error', e); }
     }
 
     // ---- Now-playing voting -----------------------------------------
@@ -2629,6 +2628,13 @@ class RadioChatBox {
         this.messagesContainer = document.getElementById('messages');
         this.messageInput = document.getElementById('message-input');
         this.sendButton = document.getElementById('send-button');
+
+        // Here, not in initRadioExtras(): that runs from loadSettings(), which
+        // fires before this method assigns messageInput — so the autocomplete
+        // bound to nothing and simply never appeared. Its own guard made the
+        // failure silent, which is exactly why it needs to be anchored to the
+        // moment the input actually exists.
+        try { this.initCommandAutocomplete(); } catch (e) { console.warn('initCommandAutocomplete error', e); }
         this.statusIndicator = document.getElementById('status-indicator');
         this.statusText = document.getElementById('status-text');
         this.activeUsersContainer = document.getElementById('active-users-list');
@@ -3579,7 +3585,11 @@ class RadioChatBox {
      * typing, so a request per keystroke would buy nothing.
      */
     async initCommandAutocomplete() {
-        if (!this.messageInput) return;
+        // initializeChat() runs on each of the three join paths (guest, login,
+        // register), so without this the box is appended again and every
+        // listener bound a second time.
+        if (!this.messageInput || this._cmdInit) return;
+        this._cmdInit = true;
 
         const box = document.createElement('div');
         box.className = 'command-suggestions';
