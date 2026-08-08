@@ -53,7 +53,7 @@ class AdminSettingsUpdateTest extends TestCase
         $this->pdo = TestDatabase::connection();
 
         // These tests write to the real settings table; remember what to restore.
-        $extraKeys = ['max_photo_size_mb', 'page_title', 'player_mode', 'player_stream_format', 'charts_default_period'];
+        $extraKeys = ['max_photo_size_mb', 'page_title', 'player_mode', 'charts_default_period', 'profanity_filter_mode'];
         foreach (array_merge(self::BOT_KEYS, $extraKeys) as $key) {
             $stmt = $this->pdo->prepare('SELECT value FROM settings WHERE setting = ?');
             $stmt->execute([$key]);
@@ -460,12 +460,12 @@ class AdminSettingsUpdateTest extends TestCase
         $this->assertNull($this->storedValue('player_mode'));
     }
 
-    public function testAnInvalidStreamFormatIsRejected(): void
+    public function testAnInvalidProfanityModeIsRejected(): void
     {
-        $result = $this->settings->updateFromAdmin(['player_stream_format' => 'flac']);
+        $result = $this->settings->updateFromAdmin(['profanity_filter_mode' => 'shout']);
 
-        $this->assertArrayHasKey('player_stream_format', $result['rejected']);
-        $this->assertNull($this->storedValue('player_stream_format'));
+        $this->assertArrayHasKey('profanity_filter_mode', $result['rejected']);
+        $this->assertNull($this->storedValue('profanity_filter_mode'));
     }
 
     public function testAnInvalidChartsPeriodIsRejected(): void

@@ -94,10 +94,10 @@ class SettingsService
         'poll_min_usertype',
         // Custom reaction emoji set (space/comma-separated; empty = defaults).
         'reaction_emojis',
-        // On/off switches for features that shipped without one. Absent means ON
-        // (see Chat.featureOn) so upgrading a station never silently removes a
-        // feature its listeners already use; turning one off hides both the chat
-        // control and the matching admin section.
+        // On/off switches for features that shipped without one. Absent means OFF
+        // (see Chat.featureOn): a deploy must not activate anything by itself, so
+        // an upgraded station keeps exactly the feature set it had. Turning one on
+        // reveals both the chat control and the matching admin section.
         'reactions_enabled',
         'shows_enabled',
         'search_enabled',
@@ -110,7 +110,6 @@ class SettingsService
         'player_mode',
         'player_allow_override',
         'player_stream_url',
-        'player_stream_format',
         'player_autoplay',
         // Realtime (WebSocket) transport — public address the browser dials, the
         // worker's local bind, and the public app key (see RealtimeSettings).
@@ -264,7 +263,6 @@ class SettingsService
         // Where the in-chat player shows: never / everywhere / only when embedded
         // in an iframe / only standalone (not in an iframe).
         'player_mode'           => ['off', 'on', 'iframe_only', 'app_only'],
-        'player_stream_format'  => ['mp3', 'aac'],
         'charts_default_period' => ['day', 'week', 'month'],
         // Minimum role allowed to create a poll with /poll on the front end.
         'poll_min_usertype'     => ['moderator', 'administrator', 'root'],

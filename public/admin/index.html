@@ -2932,13 +2932,6 @@
                             <small>The audio stream the player connects to (required for the player to appear).</small>
                         </div>
                         <div class="form-group">
-                            <label>Stream format</label>
-                            <select id="setting-player-stream-format">
-                                <option value="mp3">MP3</option>
-                                <option value="aac">AAC</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 10px;">
                                 <input type="checkbox" id="setting-player-autoplay" style="width: auto;">
                                 Try to autoplay (starts muted — browsers block audible autoplay)
@@ -10128,7 +10121,6 @@
                     document.getElementById('setting-player-mode').value = settings.player_mode || 'off';
                     document.getElementById('setting-player-allow-override').checked = settings.player_allow_override !== 'false';
                     document.getElementById('setting-player-stream-url').value = settings.player_stream_url || '';
-                    document.getElementById('setting-player-stream-format').value = settings.player_stream_format || 'mp3';
                     document.getElementById('setting-player-autoplay').checked = settings.player_autoplay === 'true';
                     document.getElementById('setting-chat-commands-enabled').checked = settings.chat_commands_enabled === 'true';
                     loadChatCommands();
@@ -10644,7 +10636,6 @@
                 player_mode: document.getElementById('setting-player-mode').value,
                 player_allow_override: document.getElementById('setting-player-allow-override').checked ? 'true' : 'false',
                 player_stream_url: document.getElementById('setting-player-stream-url').value,
-                player_stream_format: document.getElementById('setting-player-stream-format').value,
                 player_autoplay: document.getElementById('setting-player-autoplay').checked ? 'true' : 'false',
                 chat_commands_enabled: document.getElementById('setting-chat-commands-enabled').checked ? 'true' : 'false',
                 color_scheme: document.getElementById('setting-color-scheme').value,

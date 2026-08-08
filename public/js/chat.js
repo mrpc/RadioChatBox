@@ -1327,14 +1327,69 @@ class RadioChatBox {
             if (audio.paused) {
                 // A user gesture: unmute if the only reason it was muted was autoplay.
                 if (audio.muted && !this._userMuted) { audio.muted = false; updateVolIcon(); }
+                this._playerWantsPlay = true;
+                this._playerRetries = 0;
                 audio.play().catch(() => {});
             } else {
+                // Pressing pause is the one thing that should stop us reconnecting.
+                this._playerWantsPlay = false;
+                clearTimeout(this._playerRetryTimer);
                 audio.pause();
             }
         });
-        audio.addEventListener('play', () => setPlaying(true));
-        audio.addEventListener('playing', () => setPlaying(true));
-        audio.addEventListener('pause', () => setPlaying(false));
+        audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); });
+        audio.addEventListener('playing', () => {
+            this._playerRetries = 0;
+            setPlaying(true);
+            this.updateMediaSession();
+        });
+        audio.addEventListener('pause', () => {
+            // Only a deliberate pause gives up; a dropped stream also fires this.
+            setPlaying(false);
+        });
+
+        // A live stream has no end and no seekable buffer: when the connection
+        // drops — a tunnel, a wifi-to-cellular handover, the station restarting
+        // its encoder — the element simply stops and stays stopped, because there
+        // is nothing left to buffer through. Nothing here used to notice, so the
+        // player sat silent until someone pressed play again.
+        //
+        // Reconnecting means re-fetching the source, not resuming: the old URL is
+        // a finished response. The cache-buster matters for the same reason —
+        // without it a proxy can hand back the dead response.
+        const reconnect = () => {
+            if (!this._playerWantsPlay) return;
+            this._playerRetries = (this._playerRetries || 0) + 1;
+            if (this._playerRetries > 10) return;
+
+            const delay = Math.min(1000 * Math.pow(1.6, this._playerRetries - 1), 30000);
+            clearTimeout(this._playerRetryTimer);
+            this._playerRetryTimer = setTimeout(() => {
+                const base = streamUrl.split('#')[0];
+                audio.src = base + (base.includes('?') ? '&' : '?') + '_r=' + Date.now();
+                audio.load();
+                audio.play().catch(() => reconnect());
+            }, delay);
+        };
+
+        audio.addEventListener('error', reconnect);
+        audio.addEventListener('ended', reconnect);
+        audio.addEventListener('stalled', reconnect);
+        // 'waiting' is normal rebuffering; give it a moment before treating it as
+        // a drop, or a brief hiccup would tear down a stream that recovers.
+        audio.addEventListener('waiting', () => {
+            clearTimeout(this._playerWaitTimer);
+            this._playerWaitTimer = setTimeout(() => {
+                if (audio.readyState < 3) reconnect();
+            }, 8000);
+        });
+        audio.addEventListener('playing', () => clearTimeout(this._playerWaitTimer));
+
+        // Coming back to a backgrounded tab is the other moment a dead stream
+        // shows up, and the one a listener actually notices.
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && this._playerWantsPlay && audio.paused) reconnect();
+        });
 
         vol.addEventListener('input', () => {
             audio.volume = (parseInt(vol.value, 10) || 0) / 100;
@@ -1362,9 +1417,72 @@ class RadioChatBox {
         }
     }
 
+    /**
+     * Tell the OS what is playing.
+     *
+     * Without this the stream is an anonymous <audio> element: the lock screen
+     * and notification shade show nothing, the headset and car controls have
+     * nothing to talk to, and a mobile browser is far readier to tear down
+     * playback it cannot attribute to anything when the screen goes off. With
+     * metadata and handlers declared, the station keeps playing with its name,
+     * the current track and its cover art on the lock screen.
+     *
+     * Guarded because Media Session is not everywhere, and every part of it is
+     * optional — an unsupported action handler throws rather than no-ops.
+     */
+    updateMediaSession() {
+        if (!('mediaSession' in navigator)) return;
+
+        const audio = document.getElementById('rp-audio');
+        const np = this._lastNowPlaying;
+        const s = this.settings || {};
+        const station = s.brand_name || s.page_title || 'Live Radio';
+
+        try {
+            const artwork = [];
+            const cover = (np && (np.cover || np.feed_cover)) || s.logo_url;
+            if (cover) {
+                // Sizes are a hint; the OS picks. Declaring several stops it
+                // rejecting the art outright on some platforms.
+                ['96x96', '256x256', '512x512'].forEach(sizes => {
+                    artwork.push({ src: cover, sizes });
+                });
+            }
+
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title:  (np && np.active && np.title) ? np.title : station,
+                artist: (np && np.active && np.artist) ? np.artist : station,
+                album:  (np && np.album) ? np.album : '',
+                artwork
+            });
+        } catch (e) { /* metadata is a nicety, never a reason to stop playing */ }
+
+        if (!this._mediaSessionBound && audio) {
+            this._mediaSessionBound = true;
+            const handlers = {
+                play:  () => { this._playerWantsPlay = true; audio.play().catch(() => {}); },
+                pause: () => { this._playerWantsPlay = false; audio.pause(); },
+                stop:  () => { this._playerWantsPlay = false; audio.pause(); }
+            };
+            Object.entries(handlers).forEach(([action, fn]) => {
+                try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) { /* unsupported */ }
+            });
+            // A live stream has nowhere to seek to; leaving these unset tells the
+            // OS to grey them out instead of showing controls that do nothing.
+            ['seekbackward', 'seekforward', 'previoustrack', 'nexttrack'].forEach(action => {
+                try { navigator.mediaSession.setActionHandler(action, null); } catch (e) { /* unsupported */ }
+            });
+        }
+
+        try {
+            navigator.mediaSession.playbackState = (audio && !audio.paused) ? 'playing' : 'paused';
+        } catch (e) { /* optional */ }
+    }
+
     /** Update the player bar's title from a nowPlaying object (when active). */
     syncPlayerMeta(nowPlaying) {
         this._lastNowPlaying = nowPlaying || null;
+        this.updateMediaSession();
         if (!this._playerActive) return;
         const titleEl = document.getElementById('rp-title');
         if (!titleEl) return;
