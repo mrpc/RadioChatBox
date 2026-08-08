@@ -118,6 +118,11 @@
                 <input type="email" id="register-email-input" placeholder="Email (optional)" autocomplete="email">
                 <input type="password" id="register-password-input" placeholder="Password (min 8 chars)" autocomplete="new-password" required>
                 <input type="password" id="register-password2-input" placeholder="Confirm password" autocomplete="new-password" required>
+                <!-- Wording comes from marketing_consent_text; blank hides this. -->
+                <label id="register-marketing-label" style="display:none; align-items:flex-start; gap:10px; margin:4px 0 12px; font-size:14px; color:#4b5563; text-align:left; cursor:pointer;">
+                    <input type="checkbox" id="register-marketing-input" style="margin-top:3px;">
+                    <span id="register-marketing-text"></span>
+                </label>
                 <div id="register-error" class="error-message"></div>
                 <button id="register-submit">Create account & Join</button>
             </div>

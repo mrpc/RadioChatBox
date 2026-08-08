@@ -1964,6 +1964,33 @@ class RadioChatBox {
         const selfRegOn = this.settings && this.settings.self_registration_enabled === 'true';
         if (registerModeBtn && selfRegOn) registerModeBtn.style.display = '';
 
+        // A station that verifies addresses cannot take an account without one:
+        // it would be permanently unverified and unable to reset its own
+        // password. So the field stops being optional, and says so.
+        const verificationOn = this.settings && this.settings.email_verification_enabled === 'true';
+        const regEmailInput = document.getElementById('register-email-input');
+        if (regEmailInput) {
+            regEmailInput.placeholder = verificationOn ? 'Email' : 'Email (optional)';
+            regEmailInput.required = !!verificationOn;
+        }
+
+        // The marketing opt-in is the station's own wording, and its absence is
+        // the answer for a station that does not send marketing at all: no text,
+        // no checkbox, nothing to consent to.
+        const marketingText = (this.settings && this.settings.marketing_consent_text || '').trim();
+        const marketingLabel = document.getElementById('register-marketing-label');
+        const marketingTextEl = document.getElementById('register-marketing-text');
+        if (marketingLabel && marketingTextEl) {
+            if (marketingText !== '') {
+                marketingTextEl.textContent = marketingText;
+                marketingLabel.style.display = 'flex';
+            } else {
+                marketingLabel.style.display = 'none';
+                const box = document.getElementById('register-marketing-input');
+                if (box) box.checked = false;
+            }
+        }
+
         const showRegister = () => {
             this._setJoinMode('register');
             const u = document.getElementById('register-username-input'); if (u) u.focus();
@@ -1975,8 +2002,14 @@ class RadioChatBox {
             const email = (document.getElementById('register-email-input').value || '').trim();
             const password = document.getElementById('register-password-input').value;
             const password2 = document.getElementById('register-password2-input').value;
+            const marketingEl = document.getElementById('register-marketing-input');
+            const marketingOptIn = !!(marketingEl && marketingEl.checked);
             registerError.textContent = '';
             if (!username) { registerError.textContent = 'Please choose a username'; return; }
+            if (verificationOn && !email) {
+                registerError.textContent = 'Please enter your email address — this station verifies it';
+                return;
+            }
             if (password.length < 8) { registerError.textContent = 'Password must be at least 8 characters'; return; }
             if (password !== password2) { registerError.textContent = 'Passwords do not match'; return; }
             registerSubmit.disabled = true; registerSubmit.textContent = 'Creating…';
@@ -1984,7 +2017,12 @@ class RadioChatBox {
                 const resp = await fetch(`${this.apiUrl}/api/register-account`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, email, password, password_confirm: password2, sessionId: this.sessionId }),
+                    body: JSON.stringify({
+                        username, email, password,
+                        password_confirm: password2,
+                        marketing_opt_in: marketingOptIn,
+                        sessionId: this.sessionId
+                    }),
                 });
                 const data = await resp.json();
                 if (!resp.ok || !data.success) throw new Error(data.error || 'Registration failed');

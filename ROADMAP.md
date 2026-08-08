@@ -146,7 +146,14 @@ Bot Activity profile shortcuts, DM replies + reactions.
 - [ ] "Remember Me" functionality
 - [ ] Facebook OAuth integration
 - [x] Account settings page — Profile settings modal (display name, profile, bio/status, notification prefs, dark mode)
-- [x] Two-factor authentication (2FA) — TOTP enroll/verify/disable (framework TwoFactorAuthService) + login step-up + backup codes
+- [x] Two-factor authentication (2FA) — TOTP enroll/verify/disable (framework TwoFactorAuthService) + login step-up + backup codes. **API and login step-up only**: enrolment has no front-end route yet, so a listener cannot actually turn it on — see the account hub below.
+- [ ] **Account settings hub (front end)** — one place in the chat where a logged-in
+  account manages itself, rather than the endpoints existing with nothing reaching them:
+  - Newsletter / marketing consent (written to `authserver.user_consents`, so the grant is dated and attributable)
+  - Change password
+  - 2FA enrolment: QR, verify, backup codes, disable
+  - Passkey registration and revocation — today the only passkey affordance is "Sign in with a passkey" on the login screen, so an account can never acquire one
+  - Email address, verification status, and re-send verification
 - [ ] CAPTCHA/robot protection for sign-in and registration
   - Google reCAPTCHA v3 (invisible) or v2 (checkbox) integration
   - hCaptcha as privacy-friendly alternative

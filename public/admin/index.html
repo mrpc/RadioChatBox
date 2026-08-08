@@ -3098,6 +3098,15 @@
                             <small style="color:#6b7280;">The address transactional email is sent from.</small>
                         </div>
                         <div class="form-group">
+                            <label>Marketing opt-in wording (registration form)</label>
+                            <input type="text" id="setting-marketing-consent-text" maxlength="255" placeholder="e.g. Email me occasional updates from the station. You can unsubscribe at any time.">
+                            <small style="color:#6b7280;">
+                                Shown next to a tick box when someone registers, and recorded with the
+                                date and address it was given from. Leave blank to ask nothing —
+                                a station that sends no marketing should not be collecting consent for it.
+                            </small>
+                        </div>
+                        <div class="form-group">
                             <label>Admin address</label>
                             <input type="email" id="setting-admin-mail" placeholder="admin@livechats.gr">
                             <small style="color:#6b7280;">Fallback sender and recipient for system notices.</small>
@@ -10132,6 +10141,7 @@
                     applyFeatureVisibility(settings);
                     bindFeatureToggles();
                     document.getElementById('setting-mail-from').value = settings.mail_from || '';
+                    document.getElementById('setting-marketing-consent-text').value = settings.marketing_consent_text || '';
                     document.getElementById('setting-admin-mail').value = settings.admin_mail || '';
                     document.getElementById('setting-admin-replymail').value = settings.admin_replymail || '';
                     document.getElementById('setting-smtp-host').value = settings.smtp_host || '';
@@ -10637,6 +10647,7 @@
                 notifications_inbox_enabled: document.getElementById('setting-notifications-inbox-enabled').checked ? 'true' : 'false',
                 profile_cards_enabled: document.getElementById('setting-profile-cards-enabled').checked ? 'true' : 'false',
                 reactions_enabled: document.getElementById('setting-reactions-enabled').checked ? 'true' : 'false',
+                marketing_consent_text: document.getElementById('setting-marketing-consent-text').value,
                 admin_mail: document.getElementById('setting-admin-mail').value,
                 admin_replymail: document.getElementById('setting-admin-replymail').value,
                 smtp_host: document.getElementById('setting-smtp-host').value,

@@ -55,6 +55,86 @@ class RegistrationTest extends TestCase
         $this->assertSame(0, (int) $usertype, 'a fresh account is a plain simple_user');
     }
 
+    /**
+     * A station that verifies addresses refuses an account without one.
+     *
+     * Otherwise the account is created permanently unverified, cannot reset its
+     * own password, and never receives a single mail the feature exists to send.
+     */
+    public function testEmailIsRequiredWhenVerificationIsOn(): void
+    {
+        (new SettingsService())->set('email_verification_enabled', 'true');
+        try {
+            $_POST = ['username' => $this->user, 'password' => 'secret123', 'password_confirm' => 'secret123'];
+            $response = (new AuthController())->registerAccount();
+
+            $this->assertSame(400, $response->getStatusCode());
+            $this->assertStringContainsString('email', strtolower(json_decode($response->getBody(), true)['error']));
+            $this->assertFalse(
+                (bool) $this->pdo->query('SELECT 1 FROM users WHERE username = ' . $this->pdo->quote($this->user))->fetchColumn(),
+                'the account must not be created'
+            );
+        } finally {
+            $this->pdo->prepare("DELETE FROM settings WHERE setting = 'email_verification_enabled'")->execute();
+            FlatCache::default()->clear();
+        }
+    }
+
+    /** With verification off, the address stays optional. */
+    public function testEmailStaysOptionalWhenVerificationIsOff(): void
+    {
+        (new SettingsService())->set('email_verification_enabled', 'false');
+        $_POST = ['username' => $this->user, 'password' => 'secret123', 'password_confirm' => 'secret123'];
+        $this->assertSame(200, (new AuthController())->registerAccount()->getStatusCode());
+    }
+
+    /**
+     * Marketing consent is recorded only when asked for, and dated — silence is
+     * not consent.
+     */
+    public function testMarketingConsentIsRecordedOnlyWhenGiven(): void
+    {
+        $_POST = [
+            'username' => $this->user,
+            'password' => 'secret123',
+            'password_confirm' => 'secret123',
+            'email' => 'a@b.com',
+            'marketing_opt_in' => true,
+        ];
+        $body = json_decode((new AuthController())->registerAccount()->getBody(), true);
+        $userId = (int) ($body['user']['userid'] ?? $body['user']['id'] ?? 0);
+        $this->assertGreaterThan(0, $userId);
+
+        $row = $this->pdo->query(
+            'SELECT granted, legal_basis FROM authserver.user_consents
+              WHERE userid = ' . $userId . " AND consent_type = 'marketing_email'"
+        )->fetch(PDO::FETCH_ASSOC);
+
+        $this->assertNotFalse($row, 'the grant must be on the record');
+        $this->assertSame(1, (int) $row['granted']);
+        $this->assertSame('consent', $row['legal_basis']);
+
+        $this->pdo->prepare('DELETE FROM authserver.user_consents WHERE userid = ?')->execute([$userId]);
+    }
+
+    /** No checkbox, no row: an unticked box must not become a grant. */
+    public function testNoMarketingConsentRecordedWhenNotAsked(): void
+    {
+        $_POST = [
+            'username' => $this->user,
+            'password' => 'secret123',
+            'password_confirm' => 'secret123',
+            'email' => 'a@b.com',
+        ];
+        $body = json_decode((new AuthController())->registerAccount()->getBody(), true);
+        $userId = (int) ($body['user']['userid'] ?? $body['user']['id'] ?? 0);
+
+        $count = (int) $this->pdo->query(
+            'SELECT COUNT(*) FROM authserver.user_consents WHERE userid = ' . $userId
+        )->fetchColumn();
+        $this->assertSame(0, $count);
+    }
+
     /** Mismatched passwords are a 400. */
     public function testPasswordMismatch(): void
     {

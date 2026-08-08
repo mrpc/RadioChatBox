@@ -164,6 +164,16 @@ final class AuthController
             if ($password !== $confirm) {
                 return Response::json(['error' => 'Passwords do not match'], 400);
             }
+
+            // A station that verifies addresses cannot accept accounts without
+            // one: the account would be permanently unverified, unable to reset
+            // its own password, and invisible to every mail the feature exists to
+            // send. Optional only while verification is off.
+            $settings = new \RadioChatBox\Services\SettingsService();
+            $verificationOn = $settings->get('email_verification_enabled', 'false') === 'true';
+            if ($verificationOn && $email === '') {
+                return Response::json(['error' => 'An email address is required'], 400);
+            }
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 return Response::json(['error' => 'Invalid email address'], 400);
             }
@@ -202,10 +212,17 @@ final class AuthController
                 );
             }
 
-            // Send a verification email when the feature is on and an email exists.
             $newUserId = (int) ($result['user']['userid'] ?? $result['user']['id'] ?? 0);
-            if ($email !== '' && $newUserId > 0
-                && (new \RadioChatBox\Services\SettingsService())->get('email_verification_enabled', 'false') === 'true') {
+
+            // Marketing consent is opt-in and recorded, not inferred: the ledger
+            // keeps when it was given and from which address, which is what makes
+            // it defensible later. Silence means no consent.
+            if ($newUserId > 0 && !empty($input['marketing_opt_in'])) {
+                (new \RadioChatBox\Services\ConsentService())->grant($newUserId, 'marketing_email');
+            }
+
+            // Send a verification email when the feature is on and an email exists.
+            if ($email !== '' && $newUserId > 0 && $verificationOn) {
                 try {
                     $token = (new \RadioChatBox\Services\EmailVerificationService())->issue($newUserId);
                     $this->sendVerificationEmail($email, $username, $token);

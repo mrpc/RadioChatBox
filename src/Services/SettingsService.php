@@ -57,6 +57,11 @@ class SettingsService
         'smtp_tls',
         'admin_mail',
         'admin_replymail',
+        // Wording of the marketing opt-in on the registration form. Blank hides
+        // the checkbox entirely — a station that does not send marketing should
+        // not be asking, and consent has to be phrased in the sender's own terms
+        // rather than ours.
+        'marketing_consent_text',
         // Send a verification email on registration.
         'email_verification_enabled',
         // WebAuthn passkeys: RP id (effective domain) + allowed origins.
