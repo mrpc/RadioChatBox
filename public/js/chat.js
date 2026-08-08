@@ -1354,17 +1354,45 @@ class RadioChatBox {
             if (label) label.textContent = text === null ? 'Now Playing' : text;
         };
 
+        /**
+         * Seconds of audio sitting ahead of the playhead, or null when the
+         * element cannot say yet.
+         *
+         * The one measurement, shared by the label and the rate monitor so they
+         * can never disagree about how healthy the buffer is. Before playback
+         * starts currentTime is 0, so this reads as "how much has arrived" —
+         * which is the useful number then too.
+         */
+        const bufferedAhead = () => {
+            if (!audio.buffered || audio.buffered.length === 0) return null;
+            const ahead = audio.buffered.end(audio.buffered.length - 1) - audio.currentTime;
+            return isFinite(ahead) && ahead >= 0 ? ahead : null;
+        };
+
         const setBuffering = (on) => {
             clearTimeout(this._bufferingShowTimer);
             if (!on) {
                 clearInterval(this._reconnectCountdown);
+                clearInterval(this._bufferingProgress);
                 setPlayerLabel(null);
                 return;
             }
             // Announce the wait only once it IS a wait. A start that connects
             // quickly would otherwise flash "Buffering…" for a frame, which is
             // noise; a slow start or a reconnect holds past this and says so.
-            this._bufferingShowTimer = setTimeout(() => setPlayerLabel('Buffering…'), 600);
+            this._bufferingShowTimer = setTimeout(() => {
+                // How much has arrived IS knowable, even though how long it will
+                // take is not — so show the seconds climbing rather than a
+                // static word. It answers the question the word leaves open:
+                // is anything actually happening?
+                const paint = () => {
+                    const ahead = bufferedAhead();
+                    setPlayerLabel(ahead === null ? 'Buffering…' : `Buffering… ${ahead.toFixed(1)}s`);
+                };
+                paint();
+                clearInterval(this._bufferingProgress);
+                this._bufferingProgress = setInterval(paint, 250);
+            }, 600);
         };
         this._setPlayerBuffering = setBuffering;
 
@@ -1381,6 +1409,7 @@ class RadioChatBox {
         const countdownToRetry = (ms) => {
             clearTimeout(this._bufferingShowTimer);
             clearInterval(this._reconnectCountdown);
+            clearInterval(this._bufferingProgress);
             let left = Math.ceil(ms / 1000);
             const tick = () => {
                 if (left <= 0) {
@@ -1447,12 +1476,12 @@ class RadioChatBox {
         const LOW_BUFFER = 1.0;     // seconds ahead below which we stretch
         const DEEP_BUFFER = 6.0;    // seconds ahead above which we have drifted
         const monitorBuffer = () => {
-            if (audio.paused || !audio.buffered || audio.buffered.length === 0) {
+            const ahead = audio.paused ? null : bufferedAhead();
+            if (ahead === null) {
                 if (audio.playbackRate !== 1) audio.playbackRate = 1;
                 return;
             }
 
-            const ahead = audio.buffered.end(audio.buffered.length - 1) - audio.currentTime;
             let rate = 1;
             if (ahead < LOW_BUFFER) {
                 rate = 0.97;
