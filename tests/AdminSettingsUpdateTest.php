@@ -142,6 +142,59 @@ class AdminSettingsUpdateTest extends TestCase
         $this->assertSame('65535', $this->storedValue('smtp_port'));
     }
 
+    /**
+     * A feature switch is off until someone turns it on — on both sides.
+     *
+     * This is a deployment rule, not a preference: pushing this branch to a
+     * running station must not put a calendar, a search box or reaction pickers
+     * into its chat by itself. The gates live in JavaScript, so this guards the
+     * source text; the earlier version of featureOn() defaulted the other way and
+     * would have activated five features on deploy.
+     */
+    public function testFeatureTogglesDefaultToOffOnBothSides(): void
+    {
+        $chat = (string) file_get_contents(__DIR__ . '/../public/js/chat.js');
+        $this->assertMatchesRegularExpression(
+            '/featureOn\(key\)\s*\{\s*return this\._settingOn\(this\.settings && this\.settings\[key\]\);/',
+            $chat,
+            'Chat.featureOn() must delegate without a default-on flag'
+        );
+
+        $admin = (string) file_get_contents(__DIR__ . '/../public/admin/index.html');
+        $this->assertMatchesRegularExpression(
+            '/function featureOn\(value\)\s*\{\s*if \(value === undefined \|\| value === null \|\| value === \'\'\) return false;/',
+            $admin,
+            "the admin's featureOn() must read an unset toggle as off"
+        );
+        $this->assertStringNotContainsString(
+            'defaultOn: true',
+            $admin,
+            'no feature surface may default to on'
+        );
+    }
+
+    /**
+     * Every *_enabled setting this branch adds is opt-in server-side too, so a
+     * feature cannot come up hot through a PHP path either.
+     */
+    public function testNewServerSideTogglesAreOptIn(): void
+    {
+        $reads = [
+            'src/Services/AutoModService.php' => "get('automod_enabled', 'false')",
+            'src/Services/SpamGuard.php'      => "get('spam_detection_enabled', 'false')",
+            'src/Services/ChatService.php'    => "getSetting('rate_limit_new_user_enabled', 'false')",
+            'src/Services/MessageFilter.php'  => "get('profanity_filter_mode', 'off')",
+        ];
+
+        foreach ($reads as $file => $expected) {
+            $this->assertStringContainsString(
+                $expected,
+                (string) file_get_contents(__DIR__ . '/../' . $file),
+                "$file must read its switch as off when the station has not set it"
+            );
+        }
+    }
+
     /** Every feature toggle the admin panel submits must survive the allowlist. */
     public function testFeatureTogglesAreAdminEditable(): void
     {

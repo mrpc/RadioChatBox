@@ -943,16 +943,18 @@ class RadioChatBox {
     }
 
     /**
-     * Whether an on/off feature toggle is on, defaulting to ON when the station
-     * has never set it.
+     * Whether an on/off feature toggle is on. Absent means OFF.
      *
-     * These toggles were added after the features they gate had already shipped,
-     * so an absent key means "this station upgraded", not "off" — defaulting the
-     * other way would silently strip the calendar, search and inbox from every
-     * existing install on deploy. New stations get the same defaults seeded.
+     * Deliberately the conservative direction: a deploy must not switch anything
+     * on by itself. An operator who upgrades gets exactly the feature set they
+     * had, and turns on what they want from Settings → Features — rather than
+     * discovering a calendar, a search box and reaction pickers appeared in
+     * their chat overnight. Every other setting this branch adds behaves the
+     * same way (automod, spam detection, self-registration and the rest all read
+     * as 'false' when unset), so this is the house rule, not an exception.
      */
     featureOn(key) {
-        return this._settingOn(this.settings && this.settings[key], true);
+        return this._settingOn(this.settings && this.settings[key]);
     }
 
     initRadioExtras() {

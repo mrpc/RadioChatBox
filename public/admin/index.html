@@ -9878,12 +9878,12 @@
          * download, the embed snippet) get the collapse but no Save.
          */
         /**
-         * A feature toggle is on unless explicitly turned off. Mirrors
-         * Chat.featureOn(): these switches arrived after the features shipped, so
-         * an absent key is an un-configured station, not an opted-out one.
+         * A feature toggle is off until switched on. Mirrors Chat.featureOn():
+         * a deploy must never activate something by itself, so an unset key reads
+         * as off here and in the chat alike.
          */
         function featureOn(value) {
-            if (value === undefined || value === null || value === '') return true;
+            if (value === undefined || value === null || value === '') return false;
             return ['1', 'true', 'on', 'yes'].includes(String(value).toLowerCase().trim());
         }
 
@@ -9898,8 +9898,8 @@
          * configure. Applies to the toggles that predate this too: a station with
          * polls off should not be looking at a Polls tab.
          *
-         * Keyed by setting; `defaultOn` distinguishes the switches added with this
-         * change (absent = on) from the older ones that have always been opt-in.
+         * Every switch here is opt-in: unset reads as off, so upgrading a station
+         * changes nothing until someone turns it on.
          */
         function applyFeatureVisibility(settings) {
             if (!settings) return;
@@ -9908,27 +9908,26 @@
             // that only exist to serve it: its tab in this panel, and the settings
             // groups that would be configuring something switched off.
             //
+            // Every one is off until set — a deploy activates nothing on its own.
+            //
             // Function-local on purpose — loadSettings() calls this during initial
             // page execution, before a module-level const further down the script
             // would have been initialised.
             const FEATURE_SURFACES = [
-                { setting: 'shows_enabled',         defaultOn: true,  tabs: ['shows'] },
-                { setting: 'reactions_enabled',     defaultOn: true,  tabs: [], groups: ['settings-group-reactions'] },
-                { setting: 'polls_enabled',         defaultOn: false, tabs: ['polls'], groups: ['settings-group-polls'] },
-                { setting: 'song_requests_enabled', defaultOn: false, tabs: ['song-requests'] },
-                { setting: 'charts_enabled',        defaultOn: false, tabs: [], groups: ['settings-group-charts'] },
-                { setting: 'chat_commands_enabled', defaultOn: false, tabs: [], groups: ['settings-group-chat-commands'] },
+                { setting: 'shows_enabled',         tabs: ['shows'] },
+                { setting: 'reactions_enabled',     tabs: [], groups: ['settings-group-reactions'] },
+                { setting: 'polls_enabled',         tabs: ['polls'], groups: ['settings-group-polls'] },
+                { setting: 'song_requests_enabled', tabs: ['song-requests'] },
+                { setting: 'charts_enabled',        tabs: [], groups: ['settings-group-charts'] },
+                { setting: 'chat_commands_enabled', tabs: [], groups: ['settings-group-chat-commands'] },
                 // gif_enabled is deliberately absent: COLLAPSIBLE_SETTINGS below
                 // already owns it, and does it better — it reacts to the checkbox
                 // itself rather than waiting for a save. One owner per feature.
-                { setting: 'bot_replies_enabled',   defaultOn: false, tabs: ['promos'] }
+                { setting: 'bot_replies_enabled',   tabs: ['promos'] }
             ];
 
             FEATURE_SURFACES.forEach(f => {
-                const raw = settings[f.setting];
-                const on = (raw === undefined || raw === null || raw === '')
-                    ? f.defaultOn
-                    : ['1', 'true', 'on', 'yes'].includes(String(raw).toLowerCase().trim());
+                const on = featureOn(settings[f.setting]);
 
                 (f.tabs || []).forEach(tab => {
                     const nav = document.querySelector(`.nav-item[data-tab="${tab}"]`);
