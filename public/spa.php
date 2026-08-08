@@ -386,7 +386,7 @@
                 </div>
                 <button id="rp-play" class="rp-play" title="Play" aria-label="Play">▶</button>
                 <div class="rp-meta">
-                    <div class="rp-label">Now Playing</div>
+                    <div class="rp-label" id="rp-label">Now Playing</div>
                     <div class="rp-title" id="rp-title">Live Radio</div>
                 </div>
                 <div class="rp-right">

@@ -888,8 +888,9 @@ class RadioChatBox {
         }
 
         if (full && key === this._coverKey && this._playerActive) {
-            // The player bar owns the cover; keep the header cover hidden.
-            this.syncPlayerCover(thumb || full);
+            // The player bar owns the cover; keep the header cover hidden. Pass
+            // the full image too — it is what the lightbox opens.
+            this.syncPlayerCover(thumb || full, full);
             return;
         }
 
@@ -1337,10 +1338,31 @@ class RadioChatBox {
                 audio.pause();
             }
         });
-        audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); });
+        /**
+         * Say when the player is waiting on the network.
+         *
+         * Pressing play on a live stream is not instant — the browser has to
+         * open the connection and fill a buffer, and until now the bar showed
+         * "Now Playing" and silence throughout, which reads as broken rather
+         * than loading. It also reappears on every rebuffer and reconnect, the
+         * moments a listener most wants to know it is still trying.
+         */
+        const setBuffering = (on) => {
+            const label = document.getElementById('rp-label');
+            bar.classList.toggle('is-buffering', !!on);
+            if (label) label.textContent = on ? 'Buffering…' : 'Now Playing';
+        };
+        this._setPlayerBuffering = setBuffering;
+
+        audio.addEventListener('play', () => { this._playerWantsPlay = true; setPlaying(true); setBuffering(true); });
+        audio.addEventListener('waiting', () => setBuffering(true));
+        audio.addEventListener('stalled', () => setBuffering(true));
+        audio.addEventListener('canplay', () => setBuffering(false));
+        audio.addEventListener('pause', () => setBuffering(false));
         audio.addEventListener('playing', () => {
             this._playerRetries = 0;
             setPlaying(true);
+            setBuffering(false);
             this.updateMediaSession();
         });
         audio.addEventListener('pause', () => {
@@ -1362,6 +1384,7 @@ class RadioChatBox {
             this._playerRetries = (this._playerRetries || 0) + 1;
             if (this._playerRetries > 10) return;
 
+            setBuffering(true);
             const delay = Math.min(1000 * Math.pow(1.6, this._playerRetries - 1), 30000);
             clearTimeout(this._playerRetryTimer);
             this._playerRetryTimer = setTimeout(() => {
@@ -1493,17 +1516,38 @@ class RadioChatBox {
     }
 
     /** Show/clear the player bar cover (falls back to a music-note placeholder). */
-    syncPlayerCover(url) {
+    syncPlayerCover(url, full = null) {
         if (!this._playerActive) return;
         const img = document.getElementById('rp-cover-img');
         const ph = document.getElementById('rp-cover-ph');
         if (!img) return;
         if (url) {
             img.src = url;
+            // The lightbox wants the full-size image, the bar only a thumbnail.
+            img.dataset.full = full || url;
             img.style.display = 'block';
             if (ph) ph.style.display = 'none';
+
+            // The header cover has always offered these two: hover for track
+            // details, click to see the artwork full size. Switching the player
+            // bar on hid the header widget and took both with it, leaving a
+            // cover that looked interactive and did nothing. Same behaviour,
+            // bound once to the bar's own image.
+            if (!img._coverBound) {
+                img.addEventListener('click', () => {
+                    const clickFull = img.dataset.full;
+                    if (!clickFull) return;
+                    this._galleryPhotos = [{ url: clickFull, from: this.currentTrack || '' }];
+                    this.openLightbox(0);
+                });
+                img.addEventListener('mouseenter', () => this.showNowPlayingCard(img));
+                img.addEventListener('mouseleave', () => this.scheduleHideNowPlayingCard());
+                img.style.cursor = 'pointer';
+                img._coverBound = true;
+            }
         } else {
             img.removeAttribute('src');
+            delete img.dataset.full;
             img.style.display = 'none';
             if (ph) ph.style.display = '';
         }
