@@ -9,9 +9,13 @@ A scalable, real-time chat application designed for radio shows, podcasts, and l
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-blue)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-6.0%2B-red)](https://redis.io/)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API](#-api-documentation) • [Contributing](#-contributing)
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API](#-api-documentation) • [Forking](#-forking)
 
 </div>
+
+> **This project is finished and no longer maintained here.** v1 is complete and running in
+> production; development has moved to a private codebase with different goals. The code is MIT and
+> stays that way — fork it freely and take it wherever you need. See [Forking](#-forking).
 
 ---
 
@@ -229,15 +233,18 @@ The system supports four hierarchical roles with different permission levels:
 
 ### Key Documentation Files
 
-- **[DAEMONS.md](docs/DAEMONS.md)** - Background processing: the worker, the supervisor, the periodic tasks, and how to run it all from cron instead
-- **[STATISTICS.md](docs/STATISTICS.md)** - Comprehensive statistics system guide
-- **[BOT_REPLIES.md](docs/BOT_REPLIES.md)** - Fake user auto-replies (LLM bots) setup and behaviour
-- **[STATISTICS_QUICKSTART.md](STATISTICS_QUICKSTART.md)** - Quick setup for statistics
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Structural & schema decisions (why RCB diverges from classic MVC) — read this first
+- **[docs/DAEMONS.md](docs/DAEMONS.md)** - Background processing: the worker, the supervisor, the periodic tasks, and how to run it all from cron instead
+- **[docs/STATISTICS.md](docs/STATISTICS.md)** - Comprehensive statistics system guide
+- **[docs/BOT_REPLIES.md](docs/BOT_REPLIES.md)** - Fake user auto-replies (LLM bots) setup and behaviour
+- **[docs/REDIS_CACHING.md](docs/REDIS_CACHING.md)** - Cache keys, TTLs and invalidation
+- **[docs/SECURITY_PERFORMANCE.md](docs/SECURITY_PERFORMANCE.md)** - Security and performance notes
+- **[docs/URL_BLACKLIST.md](docs/URL_BLACKLIST.md)** - URL filtering
+- **[docs/ADMIN_REWRITE_PLAN.md](docs/ADMIN_REWRITE_PLAN.md)** - An unimplemented plan for replacing the monolithic admin panel, kept for whoever wants it
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
+- **[CHANGELOG.md](CHANGELOG.md)** - Full history through the final release
 - **[public/api/openapi.json](public/api/openapi.json)** - OpenAPI 3.0 spec, auto-generated from the `#[Route]` attributes (browsable at `/api/docs/`)
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Structural & schema decisions (why RCB diverges from classic MVC)
-- **[EMOJI_SUPPORT.md](docs/EMOJI_SUPPORT.md)** - Emoji rendering documentation
 
 ### Project Structure
 
@@ -447,29 +454,20 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for complete documentation including:
 
 ---
 
-## 🤝 Contributing
+## 🍴 Forking
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+This repository is complete and no longer developed here, so a fork is the way to take it further.
+Everything you need is in the tree: `docker-compose up -d` gives you a running install, the test
+suite passes, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the structural decisions
+before you start changing things.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+There is deliberately no roadmap — what this should become next depends on what you need it for.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 📞 Support
-
-- 🐛 [Report bugs](https://github.com/mrpc/RadioChatBox/issues)
-- 💬 [Discussions](https://github.com/mrpc/RadioChatBox/discussions)
-- 📖 [Documentation](https://github.com/mrpc/RadioChatBox/wiki)
+MIT — see the [LICENSE](LICENSE) file. Use it, change it, ship it, sell it.
 
 ---
 

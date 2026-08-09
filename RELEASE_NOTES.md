@@ -1,6 +1,9 @@
 # RadioChatBox v1.0 Release Notes
 
-## Latest Updates
+A historical snapshot of the v1.0 release. For the full history through the final
+release, see [CHANGELOG.md](CHANGELOG.md).
+
+## What shipped in v1.0
 
 ### Fake Users Feature
 - Added fake users system to make chat appear more active
@@ -12,7 +15,7 @@
 - New database table: `fake_users`
 - Auto-balancing on user join/heartbeat
 
-### Recent Improvements
+### Other improvements in this release
 - Multi-instance Redis isolation with database name prefixing
 - Comprehensive unit tests (51 tests, 154 assertions)
 - Fixed SSE user updates to include fake users

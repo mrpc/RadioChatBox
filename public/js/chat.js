@@ -886,8 +886,8 @@ class RadioChatBox {
     }
 
     // ==================================================================
-    // Top charts panel + in-chat radio player (roadmap: Now-Playing
-    // Enhancements). Both are settings-gated so a station opts in.
+    // Top charts panel + in-chat radio player. Both are settings-gated so a
+    // station opts in.
     // ==================================================================
 
     /** A setting stored as a string is "on" for true/1/on/yes. */
