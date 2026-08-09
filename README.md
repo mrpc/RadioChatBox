@@ -240,7 +240,6 @@ The system supports four hierarchical roles with different permission levels:
 - **[docs/REDIS_CACHING.md](docs/REDIS_CACHING.md)** - Cache keys, TTLs and invalidation
 - **[docs/SECURITY_PERFORMANCE.md](docs/SECURITY_PERFORMANCE.md)** - Security and performance notes
 - **[docs/URL_BLACKLIST.md](docs/URL_BLACKLIST.md)** - URL filtering
-- **[docs/ADMIN_REWRITE_PLAN.md](docs/ADMIN_REWRITE_PLAN.md)** - An unimplemented plan for replacing the monolithic admin panel, kept for whoever wants it
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
 - **[CHANGELOG.md](CHANGELOG.md)** - Full history through the final release
